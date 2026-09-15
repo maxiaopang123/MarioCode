@@ -24,6 +24,7 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { getManagedRuntimeRoot, listManagedVersions } from "@main/runtimes/managedRuntimeRoots.js";
+import { getRuntimeSelection, resolveExternalRuntimeSync } from "@main/runtimes/runtimeSelection.js";
 
 /** The platform subpackage suffix the SDK looks for, e.g. "win32-x64".
  *  Mirrors the SDK's own resolution (see its `getDefaultExecutable`/`FU`). */
@@ -55,8 +56,14 @@ function toUnpackedPath(p: string): string {
  * installed" error pointing at the download panel).
  */
 export function resolveSdkBinaryPath(): string | null {
-  // 0) Managed runtime (download-on-demand). The installer prunes older
-  //    versions, so the newest dir is normally the only candidate.
+  const selection = getRuntimeSelection("claude");
+  if (selection.mode === "external") {
+    const resolved = resolveExternalRuntimeSync("claude");
+    if (resolved) return resolved.path;
+    throw new Error(selection.path
+      ? `Configured external Claude runtime is unavailable: ${selection.path}. Choose a valid native Claude executable in Settings.`
+      : "Claude external runtime is selected but no executable is configured. Choose a detected installation in Settings.");
+  }
   const managedRoot = getManagedRuntimeRoot();
   if (managedRoot) {
     for (const version of listManagedVersions("claude")) {
@@ -122,4 +129,3 @@ export function resolveBundledSdkBinaryPath(): string | null {
   }
   return null;
 }
-

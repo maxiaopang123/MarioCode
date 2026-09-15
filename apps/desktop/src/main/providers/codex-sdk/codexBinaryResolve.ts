@@ -24,6 +24,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename as pathBasename, join } from "node:path";
 import { getManagedRuntimeRoot, listManagedVersions } from "@main/runtimes/managedRuntimeRoots.js";
+import { getRuntimeSelection, resolveExternalRuntimeSync } from "@main/runtimes/runtimeSelection.js";
 
 /** The platform-package suffix, e.g. "darwin-arm64" / "win32-x64". */
 function platformSuffix(): string {
@@ -89,8 +90,14 @@ export function codexVendorTriple(): string | null {
  * error that points at the runtime download panel).
  */
 export function resolveCodexBinaryPath(): string | null {
-  // 0) Managed runtime (download-on-demand). Scanned newest-version first;
-  //    the installer prunes older versions, so this is normally the only one.
+  const selection = getRuntimeSelection("codex");
+  if (selection.mode === "external") {
+    const resolved = resolveExternalRuntimeSync("codex");
+    if (resolved) return resolved.path;
+    throw new Error(selection.path
+      ? `Configured external Codex runtime is unavailable: ${selection.path}. Choose a valid native Codex executable in Settings.`
+      : "Codex external runtime is selected but no executable is configured. Choose a detected installation in Settings.");
+  }
   const managedRoot = getManagedRuntimeRoot();
   if (managedRoot) {
     for (const version of listManagedVersions("codex")) {

@@ -20,6 +20,8 @@ import {
   RuntimesInstallSchema,
   RuntimesInstallLocalSchema,
   RuntimesRemoveSchema,
+  RuntimesSelectSchema,
+  RuntimesDiscoverSchema,
 } from "@contracts/ipc";
 import { runtimeManager } from "@main/claude/RuntimeManager.js";
 import {
@@ -28,6 +30,31 @@ import {
   installRuntimeFromLocalPath,
   removeRuntime,
 } from "@main/runtimes/runtimeInstaller.js";
+import {
+  discoverExternalRuntimes,
+  selectRuntime,
+} from "@main/runtimes/runtimeSelection.js";
+import { withRuntimeMutation } from "@main/runtimes/runtimeMutation.js";
+
+function runningTurnError(): string | null {
+  const count = runtimeManager.runningSessionIds().length;
+  return count > 0 ? `${count} session(s) still have a running turn — stop them before changing a runtime` : null;
+}
+
+async function mutate<T extends { ok: boolean; error?: string }>(
+  agent: "claude" | "codex" | "pi",
+  operation: () => Promise<T>,
+): Promise<T | { ok: false; error: string }> {
+  try {
+    return await withRuntimeMutation(agent, async () => {
+      const blocked = runningTurnError();
+      if (blocked) return { ok: false, error: blocked };
+      return await operation();
+    });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
 
 export function registerRuntimesHandlers(ipcMain: IpcMain): void {
   // list takes no input (mirrors lsp.list) — nothing to parse.
@@ -37,23 +64,26 @@ export function registerRuntimesHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle(IPC.RUNTIMES_INSTALL, async (_evt, raw) => {
     const input = RuntimesInstallSchema.parse(raw);
-    return await installRuntime(input.agent);
+    return await mutate(input.agent, () => installRuntime(input.agent));
   });
 
   ipcMain.handle(IPC.RUNTIMES_INSTALL_LOCAL, async (_evt, raw) => {
     const input = RuntimesInstallLocalSchema.parse(raw);
-    return await installRuntimeFromLocalPath(input.agent, input.localPath);
+    return await mutate(input.agent, () => installRuntimeFromLocalPath(input.agent, input.localPath));
   });
 
   ipcMain.handle(IPC.RUNTIMES_REMOVE, async (_evt, raw) => {
     const input = RuntimesRemoveSchema.parse(raw);
-    const running = runtimeManager.runningSessionIds();
-    if (running.length > 0) {
-      return {
-        ok: false,
-        error: `${running.length} session(s) still have a running turn — stop them before removing a runtime`,
-      };
-    }
-    return await removeRuntime(input.agent);
+    return await mutate(input.agent, () => removeRuntime(input.agent));
+  });
+
+  ipcMain.handle(IPC.RUNTIMES_DISCOVER, async (_evt, raw) => {
+    const input = RuntimesDiscoverSchema.parse(raw);
+    return { candidates: await discoverExternalRuntimes(input.agent) };
+  });
+
+  ipcMain.handle(IPC.RUNTIMES_SELECT, async (_evt, raw) => {
+    const input = RuntimesSelectSchema.parse(raw);
+    return await mutate(input.agent, () => selectRuntime(input.agent, input.mode, input.path, input.nodePath));
   });
 }

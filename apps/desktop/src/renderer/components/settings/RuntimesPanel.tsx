@@ -22,7 +22,7 @@ import { useI18n, type MessageId } from "@renderer/lib/i18n/index.js";
 import { Button } from "@renderer/components/ui/index.js";
 import { PanelHeader } from "./PanelHeader.js";
 import { SettingsSection } from "./SettingsSection.js";
-import type { RuntimeAgentId, RuntimeAgentState } from "@contracts/ipc";
+import type { RuntimeAgentId, RuntimeAgentState, RuntimeCandidate } from "@contracts/ipc";
 import { getProviderIcon } from "@renderer/lib/providerIcon.js";
 import {
   IconCheck,
@@ -132,6 +132,8 @@ function RuntimeRow({
       const res = await api.runtimes.install({ agent: state.agent });
       if (!res.ok) setActionError(t("settings.runtimes.installFailed", { error: res.error ?? "" }));
       await onReload();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
     }
@@ -145,6 +147,8 @@ function RuntimeRow({
       const res = await api.runtimes.remove({ agent: state.agent });
       if (!res.ok) setActionError(t("settings.runtimes.removeFailed", { error: res.error ?? "" }));
       await onReload();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
     }
@@ -164,6 +168,8 @@ function RuntimeRow({
       const res = await api.runtimes.installLocal({ agent: state.agent, localPath: path });
       if (!res.ok) setActionError(t("settings.runtimes.installFailed", { error: res.error ?? "" }));
       await onReload();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
     }
@@ -177,7 +183,7 @@ function RuntimeRow({
   // copy actually in use, falling back to the expected version before any
   // install exists. Upstream latest is intentionally not displayed — the
   // "update available" badge covers that signal.
-  const version = state.installedVersion ?? state.activeVersion ?? state.expectedVersion;
+  const version = state.activeVersion ?? state.installedVersion;
   // Expanded detail (path + versions + source). Collapsed by default — the
   // row itself stays the single-line summary.
   const [expanded, setExpanded] = useState(false);
@@ -198,7 +204,10 @@ function RuntimeRow({
   // Truthy guards everywhere — a stale main process (older list shape) must
   // degrade to "no version shown", never render "vundefined".
   const details: string[] = [];
-  if (state.installedVersion) {
+  if (state.source === "external") {
+    details.push(state.activeVersion ? `v${state.activeVersion}` : t("settings.runtimes.versionUnknown"));
+    details.push(t("settings.runtimes.externalOwnership"));
+  } else if (state.installedVersion) {
     details.push(t("settings.runtimes.detailInstalled", { v: state.installedVersion }));
     if (state.diskBytes > 0) details.push(formatBytes(state.diskBytes));
   } else if (state.source === "dev" || state.source === "bundled") {
@@ -250,6 +259,7 @@ function RuntimeRow({
 
         {/* Actions */}
         <div className="flex shrink-0 items-center gap-1">
+          {state.selectedMode !== "external" && <>
           {!state.installed ? (
             <Button variant={state.source === null ? "primary" : "outline"} size="sm" onClick={doInstall} disabled={installing}>
               {installing ? (
@@ -285,8 +295,16 @@ function RuntimeRow({
           >
             <IconFileImport size={12} />
           </Button>
+          </>}
         </div>
       </div>
+
+      <RuntimeSourceControls state={state} disabled={installing} onReload={onReload} />
+      {state.diagnostic && (!state.available || state.selectedMode === "external") && (
+        <p className={cn("ml-7 mt-1 text-xs break-words", state.available ? "text-content-subtle" : "text-warning")}>
+          {runtimeDiagnostic(state.diagnostic, t)}
+        </p>
+      )}
 
       {/* Expanded details: source / versions / disk / load path */}
       {expanded && (
@@ -357,7 +375,120 @@ function RuntimeRow({
   );
 }
 
+/** Selection is explicit: inspecting candidates never changes the active runtime. */
+function RuntimeSourceControls({ state, disabled, onReload }: {
+  state: RuntimeAgentState;
+  disabled: boolean;
+  onReload: () => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [editing, setEditing] = useState(state.selectedMode === "external");
+  const [path, setPath] = useState(state.configuredPath ?? "");
+  const [nodePath, setNodePath] = useState(state.configuredNodePath ?? "");
+  const [candidates, setCandidates] = useState<RuntimeCandidate[]>(state.candidates ?? []);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setPath(state.configuredPath ?? "");
+    setNodePath(state.configuredNodePath ?? "");
+  }, [state.configuredPath, state.configuredNodePath]);
+  const unavailable = disabled || pending;
+  const select = async (mode: "managed" | "external") => {
+    if (mode === "external" && !path.trim()) {
+      setError(t("settings.runtimes.pathRequired"));
+      return;
+    }
+    setPending(true);
+    setError(null);
+    try {
+      const result = await api.runtimes.select({
+        agent: state.agent, mode,
+        ...(mode === "external" ? { path: path.trim(), ...(nodePath.trim() ? { nodePath: nodePath.trim() } : {}) } : {}),
+      });
+      if (!result.ok) setError(result.error ?? t("settings.runtimes.selectionFailed"));
+      else setEditing(mode === "external");
+      await onReload();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally { setPending(false); }
+  };
+  const discover = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      const result = await api.runtimes.discover({ agent: state.agent });
+      setCandidates(result.candidates);
+      if (!result.candidates.length) setError(t("settings.runtimes.noCandidates"));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally { setPending(false); }
+  };
+  return (
+    <div className="ml-7 mt-2 space-y-2 pb-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant={state.selectedMode !== "external" ? "outline" : "ghost"} size="sm"
+          disabled={unavailable} onClick={() => void select("managed")}>
+          {state.selectedMode !== "external" && <IconCheck size={12} />}
+          {t("settings.runtimes.modeManaged")}
+        </Button>
+        <Button variant={editing ? "outline" : "ghost"} size="sm" disabled={unavailable}
+          onClick={() => setEditing(!editing)}>
+          {state.selectedMode === "external" && <IconCheck size={12} />}
+          {t("settings.runtimes.modeExternal")}
+        </Button>
+      </div>
+      {editing && (
+        <div className="space-y-2 rounded-lg border border-edge bg-surface-muted/30 p-3">
+          <p className="text-xs text-content-subtle">{t("settings.runtimes.externalHint")}</p>
+          <Button size="sm" variant="outline" disabled={unavailable} onClick={() => void discover()}>
+            {pending ? <IconLoader2 size={12} className="animate-spin" /> : <IconRefresh size={12} />}
+            {t("settings.runtimes.discover")}
+          </Button>
+          {candidates.map((candidate) => (
+            <button key={candidate.path} type="button" disabled={unavailable}
+              onClick={() => setPath(candidate.path)}
+              className={cn("block w-full rounded border px-2 py-1.5 text-left text-xs hover:bg-surface-hover disabled:opacity-50",
+                path === candidate.path ? "border-accent" : "border-edge")}>
+              <span className="block break-all font-mono">{candidate.path}</span>
+              <span className="text-content-subtle">{candidate.version ? `v${candidate.version}` : t("settings.runtimes.versionUnknown")}</span>
+              {candidate.diagnostic && <span className="ml-2 text-content-subtle">{runtimeDiagnostic(candidate.diagnostic, t)}</span>}
+            </button>
+          ))}
+          <label className="block text-xs text-content-muted">
+            {t(state.agent === "pi" ? "settings.runtimes.piPathLabel" : "settings.runtimes.binaryPathLabel")}
+            <input value={path} onChange={(event) => setPath(event.target.value)} disabled={unavailable}
+              spellCheck={false} autoComplete="off"
+              className="mt-1 w-full rounded border border-edge bg-surface px-2 py-1.5 font-mono text-xs text-content"
+              placeholder={t("settings.runtimes.pathPlaceholder")} />
+          </label>
+          {state.agent === "pi" && (
+            <label className="block text-xs text-content-muted">
+              {t("settings.runtimes.nodePathLabel")}
+              <input value={nodePath} onChange={(event) => setNodePath(event.target.value)} disabled={unavailable}
+                spellCheck={false} autoComplete="off"
+                className="mt-1 w-full rounded border border-edge bg-surface px-2 py-1.5 font-mono text-xs text-content"
+                placeholder={t("settings.runtimes.nodePathPlaceholder")} />
+            </label>
+          )}
+          <Button size="sm" variant="primary" disabled={unavailable || !path.trim()} onClick={() => void select("external")}>
+            {pending && <IconLoader2 size={12} className="animate-spin" />}
+            {t("settings.runtimes.validateAndUse")}
+          </Button>
+          <p className="text-xs text-content-subtle">{t("settings.runtimes.configurationSeparate")}</p>
+        </div>
+      )}
+      {error && <p role="alert" className="break-words text-xs text-danger">{error}</p>}
+    </div>
+  );
+}
+
 /** Human label for the active source (detail panel). */
+function runtimeDiagnostic(message: string, t: (key: MessageId) => string): string {
+  if (message === "Pi package metadata and entry are valid; full provider compatibility is not asserted.") return t("settings.runtimes.piBasicCheck");
+  if (message === "Executable answered --version; full SDK/protocol compatibility is not asserted.") return t("settings.runtimes.binaryBasicCheck");
+  return message;
+}
+
 function sourceLabel(state: RuntimeAgentState, t: (key: MessageId) => string): string {
   switch (state.source) {
     case "managed":
@@ -366,6 +497,8 @@ function sourceLabel(state: RuntimeAgentState, t: (key: MessageId) => string): s
       return t("settings.runtimes.source.dev");
     case "bundled":
       return t("settings.runtimes.source.bundled");
+    case "external":
+      return t("settings.runtimes.source.external");
     default:
       return t("settings.runtimes.statusNotInstalled");
   }
@@ -389,6 +522,19 @@ function StatusBadge({ state }: { state: RuntimeAgentState }) {
         {t("settings.runtimes.statusInstalling")}
       </span>
     );
+  }
+  if (state.selectedMode === "external") {
+    const verified = state.available && state.compatibility === "compatible";
+    return (
+      <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.72em]",
+        verified ? "bg-accent/10 text-accent" : "bg-warning/10 text-warning")}>
+        {verified ? <IconCheck size={9} /> : <IconAlertTriangle size={9} />}
+        {t(!state.available ? "settings.runtimes.statusUnavailable" : verified ? "settings.runtimes.statusExternal" : "settings.runtimes.statusUnverified")}
+      </span>
+    );
+  }
+  if (state.available === false) {
+    return <span className="rounded-full bg-warning/10 px-1.5 py-0.5 text-[0.72em] text-warning">{t("settings.runtimes.statusUnavailable")}</span>;
   }
   if (state.updateAvailable) {
     return (

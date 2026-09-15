@@ -3267,13 +3267,29 @@ export type RuntimeAgentId = z.infer<typeof RuntimeAgentSchema>;
  *  "bundled" = a legacy build that still ships the payload in
  *  app.asar.unpacked. null = not available anywhere → the provider errors
  *  on use and the panel should offer the install button. */
-export type RuntimeAgentSource = "managed" | "dev" | "bundled";
+export type RuntimeMode = "managed" | "external";
+export type RuntimeAgentSource = "managed" | "dev" | "bundled" | "external";
+export type RuntimeCompatibility = "compatible" | "incompatible" | "unknown";
+
+export interface RuntimeCandidate {
+  path: string;
+  version: string | null;
+  available: boolean;
+  compatibility: RuntimeCompatibility;
+  diagnostic: string;
+}
 
 /** Snapshot of one agent runtime for the settings panel. Read-only display
  *  data; mutations happen through install/remove and are reflected by
  *  re-listing plus `runtimes:event` pushes. */
 export interface RuntimeAgentState {
   agent: RuntimeAgentId;
+  /** Persisted execution policy. Managed retains the dev/bundled fallback. */
+  selectedMode: RuntimeMode;
+  /** Explicit external path, or null when external mode uses auto-detection. */
+  configuredPath: string | null;
+  /** Pi-only explicit Node executable for external mode. */
+  configuredNodePath: string | null;
   /** Version this Mcode build expects (pinned in package.json). */
   expectedVersion: string;
   /** Version installed under userData/runtimes, or null when absent. Note:
@@ -3288,6 +3304,12 @@ export interface RuntimeAgentState {
   /** Absolute path of the payload the provider actually loads (binary /
    *  package.json). Null when nothing is usable. */
   activePath: string | null;
+  /** Whether the selected source passed a real, non-model invocation probe. */
+  available: boolean;
+  compatibility: RuntimeCompatibility;
+  diagnostic: string;
+  /** Detected zero-copy external installations. */
+  candidates: RuntimeCandidate[];
   /** Latest version advertised by the registry, or null when the check
    *  hasn't run yet / failed (offline). Populated lazily by `runtimes.list`. */
   latestVersion: string | null;
@@ -3344,6 +3366,18 @@ export type RuntimesInstallLocalInput = z.infer<typeof RuntimesInstallLocalSchem
 
 export const RuntimesRemoveSchema = z.object({ agent: RuntimeAgentSchema });
 export type RuntimesRemoveInput = z.infer<typeof RuntimesRemoveSchema>;
+
+export const RuntimesSelectSchema = z.object({
+  agent: RuntimeAgentSchema,
+  mode: z.enum(["managed", "external"]),
+  /** Required for external mode; discovery never binds a candidate implicitly. */
+  path: z.string().optional(),
+  /** Pi-only Node executable override. */
+  nodePath: z.string().optional(),
+});
+export type RuntimesSelectInput = z.infer<typeof RuntimesSelectSchema>;
+export const RuntimesDiscoverSchema = z.object({ agent: RuntimeAgentSchema });
+export type RuntimesDiscoverInput = z.infer<typeof RuntimesDiscoverSchema>;
 
 export interface ClaudeEventMessage {
   channel: "claude:event";
@@ -4406,6 +4440,9 @@ export interface RpcMap {
   /** Delete an installed runtime from disk. Rejected while any turn is
    *  running. */
   "runtimes.remove": (input: RuntimesRemoveInput) => Promise<{ ok: boolean; error?: string }>;
+  /** Select managed execution or a zero-copy external installation. */
+  "runtimes.select": (input: RuntimesSelectInput) => Promise<{ ok: boolean; error?: string }>;
+  "runtimes.discover": (input: RuntimesDiscoverInput) => Promise<{ candidates: RuntimeCandidate[] }>;
   // ── Plugins (settings panel; docs/plugin-feasibility.md v1) ──
   /** List installed plugins (manifest + component summaries + enable state).
    *  Enabled plugins are delivered to providers at the next turn start. */
@@ -4718,6 +4755,8 @@ export const IPC = {
   RUNTIMES_INSTALL: "runtimes:install",
   RUNTIMES_INSTALL_LOCAL: "runtimes:installLocal",
   RUNTIMES_REMOVE: "runtimes:remove",
+  RUNTIMES_SELECT: "runtimes:select",
+  RUNTIMES_DISCOVER: "runtimes:discover",
   RUNTIMES_EVENT: "runtimes:event",
   // Plugins (settings panel): list/install (local/git/marketplace)/enable/
   // remove + marketplace management. No push channel — every RPC resolves

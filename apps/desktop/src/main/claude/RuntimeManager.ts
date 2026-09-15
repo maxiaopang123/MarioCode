@@ -21,6 +21,7 @@ import { mobileEventBus } from "@main/mobile/MobileEventBus.js";
 import { broadcastRuntimeEvent } from "@main/lib/sessionSync.js";
 import { invalidateUsageStats } from "@main/lib/usageStats.js";
 import { log } from "@main/lib/logger.js";
+import { isRuntimeMutationActive } from "@main/runtimes/runtimeMutation.js";
 
 interface SessionRuntime {
   /** The TurnHandle for the currently running turn, if any. */
@@ -103,6 +104,7 @@ const TURN_END_SETTLE_GRACE_MS = 4_000;
 
 class RuntimeManager {
   private sessions = new Map<string, SessionRuntime>();
+  private startingSessions = new Set<string>();
   /** Optional observer fired for every emitted RuntimeEvent (after the
    *  renderer push + persistence). Used by the NotificationManager to decide
    *  whether an OS notification is warranted. Set via {@link setObserver}. */
@@ -343,11 +345,11 @@ class RuntimeManager {
    *  phone that missed `turn.done` while backgrounded can self-correct its
    *  client-side running state. */
   runningSessionIds(): string[] {
-    const ids: string[] = [];
+    const ids = new Set(this.startingSessions);
     for (const [id, rt] of this.sessions) {
-      if (rt.handle?.isRunning()) ids.push(id);
+      if (rt.handle?.isRunning()) ids.add(id);
     }
-    return ids;
+    return [...ids];
   }
 
   /** Append the deferred per-turn usage-history record (stashed by the
@@ -389,6 +391,20 @@ class RuntimeManager {
 
   /** Send a user message to the provider and stream events back. */
   async sendTurn(
+    session: Session,
+    input: Parameters<RuntimeManager["sendTurnInternal"]>[1],
+  ): Promise<void> {
+    if (isRuntimeMutationActive()) {
+      throw new Error("Agent runtime is being installed or changed. Wait for it to finish before sending a message.");
+    }
+    if (this.startingSessions.has(session.id)) return;
+    // Reserve before the first await so runtime selection cannot race startup.
+    this.startingSessions.add(session.id);
+    try { await this.sendTurnInternal(session, input); }
+    finally { this.startingSessions.delete(session.id); }
+  }
+
+  private async sendTurnInternal(
     session: Session,
     input: {
       prompt: string;

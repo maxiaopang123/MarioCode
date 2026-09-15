@@ -558,6 +558,10 @@ const api = {
       ipcRenderer.invoke(IPC.RUNTIMES_INSTALL_LOCAL, input)) as RpcMap["runtimes.installLocal"],
     remove: ((input) =>
       ipcRenderer.invoke(IPC.RUNTIMES_REMOVE, input)) as RpcMap["runtimes.remove"],
+    select: ((input) =>
+      ipcRenderer.invoke(IPC.RUNTIMES_SELECT, input)) as RpcMap["runtimes.select"],
+    discover: ((input) =>
+      ipcRenderer.invoke(IPC.RUNTIMES_DISCOVER, input)) as RpcMap["runtimes.discover"],
   },
 
   /** Plugins (settings panel): install/enable/remove over ~/.mcode/plugins +

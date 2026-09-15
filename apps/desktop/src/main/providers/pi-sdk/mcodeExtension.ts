@@ -52,7 +52,7 @@ import type {
 import type { ProviderContext } from "@contracts/provider";
 import type { PermissionMode } from "@contracts/runtime";
 import { normalizeToolFilePath } from "@main/lib/fileSnapshot.js";
-import { getFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
+import type { FileSnapshot } from "@main/lib/fileSnapshot.js";
 import { normalizeBashCommand } from "@main/lib/msysPath.js";
 import { guardBashCommand, expandTilde } from "./bashWriteGuard.js";
 import {
@@ -61,29 +61,12 @@ import {
   ASK_NATIVE_TOOL_PROMPT,
 } from "@main/lib/askQuestion.js";
 import { PI_IDENTITY_PROMPT, joinPromptSections } from "@main/lib/systemPrompt.js";
-import {
-  browserList,
-  browserNavigate,
-  browserSnapshot,
-  browserClick,
-  browserType,
-  browserKeys,
-  browserScroll,
-  browserWait,
-  browserHistory,
-  browserSelect,
-  browserFind,
-  browserSwitchTab,
-  browserCloseTab,
-  browserUploadFile,
-  browserSavePdf,
-  browserDownloads,
-  browserEvaluate,
-  browserScreenshot,
-  browserToolsUsagePrompt,
-  BROWSER_TOOL_SPECS,
-  type ToolResult,
-} from "@main/browser/agentBrowserTools.js";
+type ToolResult = { content: Array<{ type: "text"; text: string }>; details?: unknown; isError?: boolean };
+export interface PiBrowserBridge {
+  specs: Record<string, { description: string; promptSnippet?: string }>;
+  usagePrompt: string;
+  invoke(name: string, args: unknown, meta?: unknown): Promise<ToolResult>;
+}
 
 /** Pi's write/edit tools carry their target path in the `path` field (unlike
  *  Claude's `file_path`). Both schemas are `{ path, ... }`. */
@@ -184,6 +167,9 @@ export interface CreateMcodeExtensionOptions {
    *  Claude provider's options.mcpServers injection); read per-turn by the
    *  provider, so flipping it lands on the next message. */
   browserToolsEnabled: boolean;
+  browserBridge: PiBrowserBridge;
+  snapshot: FileSnapshot;
+  permissionState?(toolName: string): Promise<{ mode?: PermissionMode; alwaysAllowed: boolean }>;
 }
 
 /**
@@ -197,7 +183,7 @@ export interface CreateMcodeExtensionOptions {
  * useful for debugging whether the extension loaded.
  */
 export function createMcodeExtension(opts: CreateMcodeExtensionOptions): InlineExtension {
-  const { ctx, cwd, strict, sessionId, projectPath, turnNumber, browserToolsEnabled } = opts;
+  const { ctx, cwd, strict, sessionId, projectPath, turnNumber, browserToolsEnabled, browserBridge, snapshot, permissionState } = opts;
 
   // ── Plan mode state (per-turn, in-process) ──────────────────────────
   // Tracked here rather than via ctx.getPermissionMode() because the latter
@@ -214,16 +200,16 @@ export function createMcodeExtension(opts: CreateMcodeExtensionOptions): InlineE
   return {
     name: "mcode",
     factory: (pi: ExtensionAPI) => {
-      registerToolCallGuard(pi, { ctx, cwd, strict, sessionId, planMode });
+      registerToolCallGuard(pi, { ctx, cwd, strict, sessionId, planMode, snapshot, permissionState });
       registerAskUserQuestionTool(pi, ctx);
       // Browser tools + their usage prompt ride the same switch: when the
       // built-in server is disabled in the MCP panel, the model must neither
       // see the tools nor the prompt section advertising them.
       if (browserToolsEnabled) {
-        registerBrowserTools(pi, { ctx, sessionId, projectPath, turnNumber });
+        registerBrowserTools(pi, { ctx, sessionId, projectPath, turnNumber, browserBridge });
       }
       registerPlanModeTools(pi, { ctx, sessionId, planMode });
-      registerSystemPromptInjector(pi, { browserToolsEnabled });
+      registerSystemPromptInjector(pi, { browserToolsEnabled, browserUsagePrompt: browserBridge.usagePrompt });
     },
   };
 }
@@ -251,6 +237,8 @@ function registerToolCallGuard(
     strict: boolean;
     sessionId: string;
     planMode: { active: boolean };
+    snapshot: FileSnapshot;
+    permissionState?: CreateMcodeExtensionOptions["permissionState"];
   },
 ): void {
   const { ctx, cwd, strict, sessionId, planMode } = deps;
@@ -278,7 +266,7 @@ function registerToolCallGuard(
         // path uses. Await'd (not fire-and-forget) because the tool executes
         // right after this handler resolves: we want `before` to be the
         // pre-write content, not a racing partial read.
-        await getFileSnapshot(sessionId).recordPre(cwd, checked.path);
+        await deps.snapshot.recordPre(cwd, checked.path);
       }
     }
 
@@ -333,20 +321,28 @@ function registerToolCallGuard(
     // ⑤ Permission-mode auto-approve (reads the LIVE mode so a mid-turn flip
     //    applies to the next tool immediately). In plan mode, nothing is
     //    auto-approved — every tool hits the approval prompt below.
-    const mode = ctx.getPermissionMode?.();
+    // The SDK lives in another process, so sync ProviderContext getters are
+    // only a conservative initial snapshot. Query main for every mutating
+    // tool. A transport failure must block: an initial bypass mode could
+    // have been revoked by the user while the turn was running.
+    let live: { mode?: PermissionMode; alwaysAllowed: boolean } = { mode: ctx.getPermissionMode?.(), alwaysAllowed: false };
+    if (deps.permissionState) {
+      try { live = await deps.permissionState(toolName); }
+      catch { return { block: true, reason: "Cannot verify current tool permissions: the desktop connection is unavailable." }; }
+    }
+    const mode = live.mode;
     if (shouldAutoApproveForPi(mode, toolName)) {
       return;
     }
-    if (ctx.isToolAlwaysAllowed?.(toolName)) {
+    if (deps.permissionState ? live.alwaysAllowed : ctx.isToolAlwaysAllowed?.(toolName)) {
       return;
     }
 
-    // ⑥ Host-moderated approval via IPC. When no bridge is wired, fall open
-    //    (fail-open matches the Claude provider's behavior when requestApproval
-    //    is undefined).
+    // ⑥ Host-moderated approval via IPC. Missing approval must never grant
+    // a mutating tool permission implicitly.
     const requestApproval = ctx.requestApproval;
     if (!requestApproval) {
-      return;
+      return { block: true, reason: "Tool approval is unavailable." };
     }
     const r = await requestApproval({
       requestId: randomUUID(),
@@ -440,9 +436,29 @@ function registerAskUserQuestionTool(pi: ExtensionAPI, ctx: ProviderContext): vo
  */
 function registerBrowserTools(
   pi: ExtensionAPI,
-  deps: { ctx: ProviderContext; sessionId: string; projectPath: string; turnNumber?: number },
+  deps: { ctx: ProviderContext; sessionId: string; projectPath: string; turnNumber?: number; browserBridge: PiBrowserBridge },
 ): void {
-  const { ctx, sessionId, projectPath, turnNumber } = deps;
+  const { ctx, sessionId, projectPath, turnNumber, browserBridge } = deps;
+  const BROWSER_TOOL_SPECS = browserBridge.specs;
+  const call = (name: string, args: unknown = {}, meta?: unknown) => browserBridge.invoke(name, args, meta);
+  const browserList = () => call("browser_list");
+  const browserNavigate = (args: unknown, p: string) => call("browser_navigate", args, { projectPath: p });
+  const browserSnapshot = (args: unknown) => call("browser_snapshot", args);
+  const browserClick = (args: unknown) => call("browser_click", args);
+  const browserType = (args: unknown) => call("browser_type", args);
+  const browserKeys = (args: unknown) => call("browser_keys", args);
+  const browserScroll = (args: unknown) => call("browser_scroll", args);
+  const browserWait = (args: unknown) => call("browser_wait", args);
+  const browserHistory = (args: unknown) => call("browser_history", args);
+  const browserSelect = (args: unknown) => call("browser_select", args);
+  const browserFind = (args: unknown) => call("browser_find", args);
+  const browserSwitchTab = (args: unknown) => call("browser_switch_tab", args);
+  const browserCloseTab = (args: unknown) => call("browser_close_tab", args);
+  const browserUploadFile = (args: unknown, p: string) => call("browser_upload_file", args, { projectPath: p });
+  const browserSavePdf = (args: unknown, meta: unknown) => call("browser_save_pdf", args, meta);
+  const browserDownloads = () => call("browser_downloads");
+  const browserEvaluate = (args: unknown) => call("browser_evaluate", args);
+  const browserScreenshot = (args: unknown, meta: unknown) => call("browser_screenshot", args, meta);
 
   // Convert a shared ToolResult into Pi's execute() return shape. They're
   // structurally identical (content[] + details), so this is effectively an
@@ -460,7 +476,7 @@ function registerBrowserTools(
     promptSnippet: BROWSER_TOOL_SPECS.browser_list.promptSnippet,
     parameters: Type.Object({}),
     async execute() {
-      return toPiResult(browserList());
+      return toPiResult(await browserList());
     },
   });
 
@@ -797,7 +813,7 @@ function registerBrowserTools(
     promptSnippet: BROWSER_TOOL_SPECS.browser_downloads.promptSnippet,
     parameters: Type.Object({}),
     async execute() {
-      return toPiResult(browserDownloads());
+      return toPiResult(await browserDownloads());
     },
   });
 
@@ -831,7 +847,7 @@ function registerBrowserTools(
         toolCallId,
         sessionId,
         turnNumber,
-        onImage: (info) => {
+        onImage: (info: { toolCallId: string; data: string; mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif" }) => {
           // Emit a structured event so the renderer attaches an inline image
           // block (Pi path). Claude's image surfacing happens via the
           // tool_result content instead.
@@ -1022,7 +1038,7 @@ const PLAN_MODE_PROMPT = [
  */
 function registerSystemPromptInjector(
   pi: ExtensionAPI,
-  deps: { browserToolsEnabled: boolean },
+  deps: { browserToolsEnabled: boolean; browserUsagePrompt: string },
 ): void {
   pi.on(
     "before_agent_start",
@@ -1035,7 +1051,7 @@ function registerSystemPromptInjector(
         // Advertise the browser tools only when they are actually registered
         // (MCP panel's built-in switch) — otherwise the model would call
         // tools that don't exist.
-        ...(deps.browserToolsEnabled ? [browserToolsUsagePrompt()] : []),
+        ...(deps.browserToolsEnabled ? [deps.browserUsagePrompt] : []),
       );
       const next = base ? `${base}\n\n${injected}` : injected;
       return { systemPrompt: next };

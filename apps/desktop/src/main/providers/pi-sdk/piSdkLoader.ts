@@ -1,5 +1,7 @@
 /**
- * Shared Pi SDK lazy-loader with the worker_threads polyfill.
+ * Legacy in-process Pi loader, retained for source-history reference only.
+ * @deprecated Do not call this from Electron: Pi now runs in PiHostClient's
+ * independent Node host. Electron's bundled Node may be below Pi's minimum.
  *
  * Both the IPC handlers (piModels.listAvailable) and the provider
  * (PiAgentSdkProvider.startTurn) need to load @earendil-works/pi-coding-agent.

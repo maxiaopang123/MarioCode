@@ -65,6 +65,13 @@ import {
   probeRuntimeAvailability,
   type RuntimeSource,
 } from "./runtimeAvailability.js";
+import {
+  discoverExternalRuntimes,
+  getRuntimeSelection,
+  validateStoredExternalSelection,
+  resolvePiRuntimeLaunch,
+} from "./runtimeSelection.js";
+import { ensureManagedNodeRuntime, managedNpmCli } from "./managedNodeRuntime.js";
 
 /** Used when this app's package.json can't be read (shouldn't happen — it
  *  ships inside the asar and exists in dev). Keep in sync with package.json. */
@@ -285,19 +292,25 @@ async function downloadVerifiedTarball(
  *  each package's integrity itself; --ignore-scripts keeps it hermetic — no
  *  postinstall of any transitive dep runs). Produces exactly the layout
  *  `payloadEntryPath("pi", ...)` asserts. */
-async function assemblePiClosureWithNpm(stagingDir: string, version: string): Promise<void> {
+async function assemblePiClosureWithNpm(stagingDir: string, version: string, runtimeRoot: string): Promise<void> {
   writeFileSync(
     join(stagingDir, "package.json"),
     JSON.stringify({ name: "@mcode/runtime-pi", version, private: true }, null, 2) + "\n",
   );
+  // Use the private managed toolchain only. Calling npm through Node avoids
+  // .cmd/shell semantics on Windows and never depends on or mutates a user's
+  // global Node/npm installation.
+  const nodePath = await ensureManagedNodeRuntime(runtimeRoot);
+  const npmCli = managedNpmCli(runtimeRoot);
   await new Promise<void>((resolve, reject) => {
-    // win32: npm is npm.cmd, and Node >= 18.20 refuses to spawn .cmd without
-    // a shell (CVE-2024-27980).
     const child = spawn(
-      "npm",
+      nodePath,
       [
+        npmCli,
         "install",
         `@earendil-works/pi-coding-agent@${version}`,
+        "--global=false",
+        `--prefix=${stagingDir}`,
         "--ignore-scripts",
         "--omit=dev",
         "--no-audit",
@@ -305,7 +318,7 @@ async function assemblePiClosureWithNpm(stagingDir: string, version: string): Pr
         "--loglevel=error",
         "--no-save",
       ],
-      { cwd: stagingDir, shell: process.platform === "win32", stdio: ["ignore", "pipe", "pipe"] },
+      { cwd: stagingDir, shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
     );
     // Keep only the tail — npm error context lives at the end, and a garbled
     // CN codepage flood shouldn't grow this without bound.
@@ -319,7 +332,7 @@ async function assemblePiClosureWithNpm(stagingDir: string, version: string): Pr
     child.stderr?.on("data", append);
     child.on("error", (err) => {
       clearTimeout(killTimer);
-      reject(new Error(`npm spawn failed: ${err.message}`));
+      reject(new Error(`managed npm spawn failed: ${err.message}`));
     });
     child.on("close", (code) => {
       clearTimeout(killTimer);
@@ -328,7 +341,7 @@ async function assemblePiClosureWithNpm(stagingDir: string, version: string): Pr
         return;
       }
       const tail = output.trim().split("\n").slice(-4).join(" | ");
-      reject(new Error(`npm install exited ${code ?? "abnormally"}${tail ? `: ${tail}` : ""}`));
+      reject(new Error(`managed npm install exited ${code ?? "abnormally"}${tail ? `: ${tail}` : ""}`));
     });
   });
 }
@@ -385,35 +398,62 @@ export async function listRuntimes(): Promise<RuntimeAgentState[]> {
       latestCache.set(agent, { version, at: Date.now() });
     }),
   );
-  return agents.map((agent) => {
+  return await Promise.all(agents.map(async (agent) => {
+    const selection = getRuntimeSelection(agent);
     const managed = installedManagedPayload(agent);
     const installedVersion = managed?.version ?? null;
     // Effective source: managed first, else the fallback the resolvers would
     // use (dev node_modules / legacy bundled). The panel displays THIS — a
     // dev checkout must not read "not installed" while every agent works.
     const fallback = managed ? null : probeRuntimeAvailability(agent);
-    const activeVersion = managed?.version ?? fallback?.version ?? null;
-    const source: RuntimeSource | null = managed
-      ? "managed"
-      : fallback
-        ? fallback.source
-        : null;
+    const candidates = await discoverExternalRuntimes(agent);
+    let external = selection.mode === "external" && selection.path
+      ? await validateStoredExternalSelection(agent)
+      : null;
+    let piLaunchDiagnostic: string | null = null;
+    if (agent === "pi") {
+      try { await resolvePiRuntimeLaunch(); }
+      catch (error) { piLaunchDiagnostic = error instanceof Error ? error.message : String(error); }
+      if (piLaunchDiagnostic && selection.mode === "external" && external) {
+        external = { ...external, available: false, compatibility: "incompatible", diagnostic: piLaunchDiagnostic };
+      }
+    }
+    const activeVersion = selection.mode === "external"
+      ? external?.version ?? null
+      : managed?.version ?? fallback?.version ?? null;
+    const source: RuntimeSource | "external" | null = selection.mode === "external"
+      ? (external?.available ? "external" : null)
+      : managed ? "managed" : fallback?.source ?? null;
+    let available = selection.mode === "external"
+      ? external?.available === true
+      : source !== null;
+    if (agent === "pi" && piLaunchDiagnostic) available = false;
+    const diagnostic = agent === "pi" && piLaunchDiagnostic ? piLaunchDiagnostic : selection.mode === "external"
+      ? external?.diagnostic ?? "External mode is selected but no runtime path is configured."
+      : available ? "Managed runtime selection is available." : "No managed, development, or bundled runtime is available.";
     return {
       agent,
+      selectedMode: selection.mode,
+      configuredPath: selection.path,
+      configuredNodePath: selection.nodePath,
       expectedVersion: expected[agent],
       installedVersion,
       source,
       activeVersion,
-      activePath: managed?.entry ?? fallback?.path ?? null,
+      activePath: selection.mode === "external" ? (external?.available ? external.path : null) : managed?.entry ?? fallback?.path ?? null,
+      available,
+      compatibility: selection.mode === "external" ? external?.compatibility ?? "incompatible" : available ? "unknown" : "incompatible",
+      diagnostic,
+      candidates,
       latestVersion: latestCache.get(agent)?.version ?? null,
       installed: managed !== null,
-      updateAvailable: activeVersion !== null && activeVersion !== expected[agent],
+      updateAvailable: selection.mode === "managed" && activeVersion !== null && activeVersion !== expected[agent],
       installing: installing.get(agent) ?? false,
       lastError: lastErrors.get(agent) ?? "",
       diskBytes: managed ? dirSizeCached(managed.dir) : 0,
       installPath: managed?.entry ?? null,
     };
-  });
+  }));
 }
 
 /** Shared tail of both install paths: verify the extracted payload, fix
@@ -426,6 +466,11 @@ function finalizeInstall(
   version: string,
   record: { npmName?: string; source: "registry" | "local-path"; localPath?: string },
 ): { finalDir: string; entry: string } {
+  // Version comes from local package metadata as well as the registry. It
+  // must never be interpreted as a filesystem path during swap/cleanup.
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
+    throw new Error(`Invalid runtime version: ${version}`);
+  }
   const entry = payloadEntryPath(agent, stagingDir);
   if (!entry || !existsSync(entry)) {
     throw new Error(`extracted archive but the expected payload is missing — wrong package for "${agent}", or the upstream layout changed?`);
@@ -441,19 +486,41 @@ function finalizeInstall(
   }
   const root = getManagedRuntimeRoot() ?? join(app.getPath("userData"), "runtimes");
   const finalDir = join(root, agent, version);
-  rmSync(finalDir, { recursive: true, force: true });
-  renameSync(stagingDir, finalDir);
   writeFileSync(
-    join(finalDir, "install.json"),
+    join(stagingDir, "install.json"),
     JSON.stringify({ agent, version, installedAt: new Date().toISOString(), ...record }, null, 2),
   );
-  // Keep only the installed version around — a stale 300-600MB copy isn't
-  // worth disk space; rollback = reinstall the old version from the panel.
+  // Swap with rollback: never destroy the working version before the fully
+  // verified staging tree is in place. The backup is under this agent's
+  // managed directory and is removed only after the rename succeeds.
+  const backupDir = `${finalDir}.backup-${Date.now()}-${process.pid}`;
+  let backedUp = false;
+  try {
+    if (existsSync(finalDir)) {
+      renameSync(finalDir, backupDir);
+      backedUp = true;
+    }
+    renameSync(stagingDir, finalDir);
+  } catch (error) {
+    if (backedUp && !existsSync(finalDir) && existsSync(backupDir)) {
+      try { renameSync(backupDir, finalDir); }
+      catch (rollbackError) {
+        throw new Error(`runtime swap failed and rollback also failed: ${String(error)}; rollback: ${String(rollbackError)}`);
+      }
+    }
+    throw error;
+  }
+  if (backedUp) rmSync(backupDir, { recursive: true, force: true });
+  // Prune only semantic-version directories returned inside this agent's
+  // managed root. Never touch node/, staging/backup dirs, or external paths.
+  const legalVersion = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
   for (const other of listManagedVersions(agent)) {
-    if (other === version) continue;
+    if (other === version || !legalVersion.test(other)) continue;
     rmSync(join(root, agent, other), { recursive: true, force: true });
   }
-  return { finalDir, entry };
+  const finalEntry = payloadEntryPath(agent, finalDir);
+  if (!finalEntry) throw new Error(`installed runtime payload disappeared after swap: ${finalDir}`);
+  return { finalDir, entry: finalEntry };
 }
 
 /** Version dir name for an installed runtime. The codex platform package
@@ -526,16 +593,19 @@ export async function installRuntime(agent: RuntimeAgentId): Promise<{ ok: boole
         `runtime install: registry has no ${pkg.name}@${expected} — assembling pi closure locally with npm`,
       );
       try {
-        await assemblePiClosureWithNpm(stagingDir, expected);
+        await assemblePiClosureWithNpm(stagingDir, expected, root);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         throw new Error(
           `registry has no ${pkg.name}@${pkg.version} and local npm assembly failed (${reason}) — ` +
-            `check the network/npm, or pack locally with \`pnpm pack:pi-runtime\` and use install-from-file`,
+            `check the network/managed tools, or pack locally with \`pnpm pack:pi-runtime\` and use install-from-file`,
         );
       }
     }
 
+    if (agent === "pi") {
+      await ensureManagedNodeRuntime(getManagedRuntimeRoot() ?? join(app.getPath("userData"), "runtimes"));
+    }
     const { finalDir } = finalizeInstall(agent, stagingDir, expected, {
       npmName: pkg.name,
       source: "registry",
@@ -621,6 +691,9 @@ export async function installRuntimeFromLocalPath(
       agent,
       extractedVersion(stagingDir, loadExpectedVersions()[agent]),
     );
+    if (agent === "pi") {
+      await ensureManagedNodeRuntime(getManagedRuntimeRoot() ?? join(app.getPath("userData"), "runtimes"));
+    }
     const { finalDir } = finalizeInstall(agent, stagingDir, version, {
       source: "local-path",
       localPath,

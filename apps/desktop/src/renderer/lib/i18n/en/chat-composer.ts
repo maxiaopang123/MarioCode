@@ -227,6 +227,7 @@ export const en = {
   "chat.provider.selectTitle": "Choose the SDK for the session",
   "chat.provider.section": "Choose SDK",
   "chat.provider.notInstalled": "Runtime not installed",
+  "chat.provider.runtimeUnavailable": "Runtime unavailable",
   "chat.provider.manage": "Manage agents…",
 
   // ── slash command picker ──

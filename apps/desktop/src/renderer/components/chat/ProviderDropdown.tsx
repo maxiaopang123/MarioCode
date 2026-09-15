@@ -75,7 +75,7 @@ export function ProviderDropdown({ compact = false }: { compact?: boolean }) {
     const agent = runtimeAgentFor(pid);
     if (agent === null || runtimes.length === 0) return true;
     const rt = runtimeByAgent.get(agent);
-    return rt !== undefined && rt.source !== null;
+    return rt?.available === true && rt.compatibility !== "incompatible";
   };
 
   // Single-provider installs need no picker.
@@ -175,7 +175,7 @@ export function ProviderDropdown({ compact = false }: { compact?: boolean }) {
                   </span>
                   {!available ? (
                     <span className="shrink-0 text-[11px] text-content-subtle">
-                      {t("chat.provider.notInstalled")}
+                      {t("chat.provider.runtimeUnavailable")}
                     </span>
                   ) : activeItem ? (
                     <IconCheck size={14} className="shrink-0" />

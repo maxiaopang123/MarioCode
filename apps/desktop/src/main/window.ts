@@ -105,7 +105,7 @@ export function createMainWindow(): BrowserWindow {
     minHeight: 640,
     show: false,
     autoHideMenuBar: true,
-    title: "Mcode",
+    title: "MarioCode",
     // Window/taskbar icon. In dev the build/ tree sits two levels up from
     // out/main; in packaged builds electron-builder injects the icon from
     // build/icon.ico/.icns into the executable itself, so this is mainly for

@@ -37,7 +37,7 @@ type Locale = "zh" | "en";
  *  drag in the whole store graph). Mirror the wording of PairingScreen.tsx. */
 const I18N = {
   zh: {
-    title: "连接 Mcode",
+    title: "连接 MarioCode",
     missingNonce:
       "此链接缺少配对信息。请用手机相机扫描电脑端「连接手机」弹窗中的二维码后重新打开。",
     desc: "在电脑端「连接手机」弹窗中查看 6 位验证码，输入后即可开始使用。",
@@ -55,7 +55,7 @@ const I18N = {
       "设备授权已失效（电脑端可能已移除该设备或重启过）。请输入电脑端显示的新验证码。",
   },
   en: {
-    title: "Connect to Mcode",
+    title: "Connect to MarioCode",
     missingNonce:
       "This link is missing the pairing info. Scan the QR code in the \"Connect phone\" dialog on your computer and reopen it.",
     desc: "Open the 6-digit code shown in the \"Connect phone\" dialog on your computer, then enter it below.",

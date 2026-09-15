@@ -4,7 +4,7 @@
  */
 export const zh = {
   /* ── left bar / brand ── */
-  "layout.about": "关于 Mcode",
+  "layout.about": "关于 MarioCode",
   "layout.tagline": "智能编码工作台",
   "layout.projects": "项目",
   "layout.projectViewMode": "项目视图模式",

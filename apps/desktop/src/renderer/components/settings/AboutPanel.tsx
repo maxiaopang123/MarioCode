@@ -38,8 +38,8 @@ import {
  * to "up-to-date" so the button still works without erroring.
  */
 
-/** App display name (matches the root package.json "name"). */
-const APP_NAME = "Mcode";
+/** App display name (matches electron-builder's productName). */
+const APP_NAME = "MarioCode";
 /** GitHub repo URL. */
 const REPO_URL = "https://github.com/huangbh2020/mcode";
 /** GitHub Releases latest URL — where the user lands to manually download on

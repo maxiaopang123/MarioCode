@@ -1,7 +1,7 @@
 /** English mirror of `zh/layout.ts`. */
 export const en = {
   /* ── left bar / brand ── */
-  "layout.about": "About Mcode",
+  "layout.about": "About MarioCode",
   "layout.tagline": "Smart coding workbench",
   "layout.projects": "Projects",
   "layout.projectViewMode": "Project view mode",

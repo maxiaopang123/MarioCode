@@ -22,19 +22,18 @@ import { setManagedRuntimeRoot } from "@main/runtimes/managedRuntimeRoots.js";
 import { join } from "node:path";
 
 // App identity for OS-level surfaces (desktop notifications, taskbar grouping,
-// Windows AUMID). setName("Mcode") makes the system notification card title
-// read "Mcode" instead of the raw executable name ("electron" in dev, or
+// Windows AUMID). setName("MarioCode") makes the system notification card title
+// read "MarioCode" instead of the raw executable name ("electron" in dev, or
 // "@mcode/desktop" from package.json).
 //
 // ⚠️ setName() ALSO changes the default userData path (%APPDATA%/<name>),
-// which would orphan the existing database + logs (they live under the
-// pre-rename directory). To avoid a silent data wipe, snapshot the current
-// userData path BEFORE renaming, then pin it back with setPath() right after.
-// Unconditional setPath is safe: when the name already matched (packaged
-// builds where exe metadata is "Mcode"), prevUserData == current path and this
-// just rewrites the same value (a no-op).
-const prevUserData = app.getPath("userData");
-app.setName("Mcode");
+// which would orphan the existing database + logs (they live under the legacy
+// Mcode directory). Packaged builds therefore pin userData to that exact
+// directory; development keeps Electron's existing path unchanged.
+const prevUserData = app.isPackaged
+  ? join(app.getPath("appData"), "Mcode")
+  : app.getPath("userData");
+app.setName("MarioCode");
 app.setPath("userData", prevUserData);
 // Managed agent runtimes (claude/codex/pi download-on-demand) live under
 // userData/runtimes. Register the root early so the binary/library resolvers
@@ -43,6 +42,7 @@ setManagedRuntimeRoot(join(app.getPath("userData"), "runtimes"));
 // Windows: AppUserModelId drives taskbar grouping + the AUMID the toast center
 // uses to attribute notifications. Harmless on macOS/Linux (ignored).
 if (process.platform === "win32") {
+  // Keep the existing OS identity; display branding is set independently above.
   app.setAppUserModelId("Mcode");
 }
 

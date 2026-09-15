@@ -1,10 +1,8 @@
-"""Generate Mcode app icons (PNG / ICO / ICNS) with a bold 'M'.
+"""Export MarioCode app icons (PNG / ICO / ICNS) from the approved artwork.
 
-Design:
-  - Rounded-square tile (modern IDE icon shape, works in Win/macOS taskbars).
-  - Dark gradient background (deep indigo -> near-black) for a "developer tool" feel.
-  - A thick white 'M' in Impact, slightly offset to leave room for a code chevron
-    accent in the lower-right, echoing the "Code" in Mcode.
+The source PNG preserves the approved rounded M, graphite and sage-mint design.
+Only resizing and format conversion are applied; transparency is preserved.
+The original procedural renderer remains available for reference.
 
 Run from the repo root:
     python apps/desktop/build/gen_icon.py
@@ -12,6 +10,7 @@ Run from the repo root:
 from __future__ import annotations
 
 import math
+import argparse
 import struct
 import zlib
 from pathlib import Path
@@ -174,13 +173,20 @@ def write_icns(img: Image.Image, path: Path) -> None:
 
 
 def main() -> None:
-    master = render_master()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", type=Path, default=OUT_DIR / "icon-source.png")
+    args = parser.parse_args()
+    with Image.open(args.source) as source:
+        master = source.convert("RGBA")
+    if master.width != master.height:
+        raise ValueError("App icon source must be square")
     write_png(master, OUT_DIR / "icon.png", 1024)
     write_ico(master, OUT_DIR / "icon.ico")
     write_icns(master, OUT_DIR / "icon.icns")
-    # Favicon for the renderer window.
-    write_png(master, OUT_DIR / "favicon.png", 64)
-    print("generated: icon.png, icon.ico, icon.icns, favicon.png in", OUT_DIR)
+    renderer_dir = OUT_DIR.parent / "src" / "renderer"
+    write_png(master, renderer_dir / "brand-logo.png", 1024)
+    write_png(master, renderer_dir / "favicon.png", 64)
+    print("Exported app icons, renderer brand logo and favicon from", args.source)
 
 
 if __name__ == "__main__":

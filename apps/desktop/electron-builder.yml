@@ -3,7 +3,7 @@
 # Output goes to `apps/desktop/release/` (gitignored).
 
 appId: com.huangbh.mcode
-productName: Mcode
+productName: MarioCode
 copyright: MIT
 # Version is read from apps/desktop/package.json. In CI, the release workflow
 # overwrites that field with the pushed git tag (e.g. v0.1.4 -> 0.1.4) before

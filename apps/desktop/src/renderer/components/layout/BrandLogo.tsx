@@ -10,9 +10,9 @@ interface BrandLogoProps {
   className?: string;
 }
 
-/** Mcode 应用品牌 logo。
+/** MarioCode 应用品牌 logo。
  *
- * 直接引用打包用的 `icon.png`(深蓝紫渐变 + 字母 M),与应用图标完全统一。
+ * 直接引用打包用的 `icon.png`(暖白圆角底、深石墨色与灰薄荷绿 M),与应用图标完全统一。
  * 外层用 `rounded-[28%]` 微圆角包裹原始方形图,边缘加一圈极淡的描边
  * (border-edge/40)使 logo 在浅色/深色面板背景上都有清晰边界。 */
 export function BrandLogo({ size = 28, className }: BrandLogoProps) {

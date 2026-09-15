@@ -634,7 +634,7 @@ function LeftBarBase({
             <BrandLogo size={30} />
             <span className="flex min-w-0 flex-col leading-tight">
               <span className="truncate text-[1.07em] font-semibold tracking-tight text-content">
-                Mcode
+                MarioCode
               </span>
               <span className="truncate text-content-subtle [font-size:var(--rp-fs-sm)]">
                 {t("layout.tagline")}

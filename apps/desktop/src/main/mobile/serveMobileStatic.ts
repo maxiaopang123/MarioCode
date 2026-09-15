@@ -94,9 +94,9 @@ export function invalidateMobileDistCache(): void {
 }
 
 function sendPlaceholder(res: ServerResponse): void {
-  const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mcode</title>
+  const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MarioCode</title>
 <body style="font:14px/1.6 system-ui;margin:2rem;color:#333">
-<h2>Mcode (web bundle not built)</h2>
+<h2>MarioCode (web bundle not built)</h2>
 <p>Run <code>pnpm dev</code> (or <code>pnpm build</code>) in apps/desktop, then reload this page.</p>
 <p>If you set <code>MCODE_WEB_DIST</code>, make sure it points at a folder containing <code>index.html</code>.</p>
 </body>`;
@@ -120,9 +120,9 @@ function servePairingPage(res: ServerResponse, root: string): void {
     // pair.html missing — fall through to the inline fallback
   }
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
-  res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mcode</title>
+  res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MarioCode</title>
 <body style="font:14px/1.6 system-ui;margin:2rem;color:#333">
-<h2>Mcode 配对页未构建</h2>
+<h2>MarioCode 配对页未构建</h2>
 <p>请先在 apps/desktop 执行 <code>pnpm build</code> 重新构建 renderer，再扫码配对。</p>
 </body>`);
 }

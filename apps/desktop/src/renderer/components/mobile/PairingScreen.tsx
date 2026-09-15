@@ -75,7 +75,7 @@ export function PairingScreen({ onPaired }: { onPaired: () => void }) {
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-muted">
             <IconDeviceMobile size={28} className="text-accent" />
           </div>
-          <h1 className="text-lg font-semibold">连接 Mcode</h1>
+          <h1 className="text-lg font-semibold">连接 MarioCode</h1>
           <p className="text-sm leading-relaxed text-content-muted">
             {nonce
               ? "在电脑端「连接手机」弹窗中查看 6 位验证码,输入后即可开始使用。"

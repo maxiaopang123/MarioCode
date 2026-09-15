@@ -134,9 +134,9 @@ export function detectLanIps(): string[] {
  *  Purely cosmetic; not used for auth. */
 export function detectHostLabel(): string {
   try {
-    return hostname() || "Mcode";
+    return hostname() || "MarioCode";
   } catch {
-    return "Mcode";
+    return "MarioCode";
   }
 }
 

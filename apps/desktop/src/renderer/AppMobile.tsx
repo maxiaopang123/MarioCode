@@ -195,7 +195,7 @@ function MobileShell() {
   }, [activeSessionId]);
 
   const title = useMemo(() => {
-    if (!activeSessionId) return "Mcode";
+    if (!activeSessionId) return "MarioCode";
     for (const list of Object.values(sessionsByProject)) {
       const hit = list?.find((x) => x.id === activeSessionId);
       if (hit) return hit.title;
@@ -204,7 +204,7 @@ function MobileShell() {
     // pinned bucket before falling back to the default title.
     const pinnedHit = pinnedSessions.find((x) => x.id === activeSessionId);
     if (pinnedHit) return pinnedHit.title;
-    return "Mcode";
+    return "MarioCode";
   }, [activeSessionId, sessionsByProject, pinnedSessions]);
 
   return (

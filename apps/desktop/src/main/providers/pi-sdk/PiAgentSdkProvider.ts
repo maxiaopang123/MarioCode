@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import { app } from "electron";
 import type { AgentProvider, StartTurnRequest, ProviderContext, TurnHandle, ProviderCapabilities } from "@contracts/provider";
 import type { PiProviderPublic } from "@contracts/piModel";
 import { PiModelsStore } from "@main/lib/piModelsStore.js";
@@ -15,7 +17,11 @@ const PI_PERMISSION_MODES = [
   { value: "bypassPermissions", label: "Bypass", icon: "shieldLock", color: "text-danger", hint: "跳过所有权限检查(慎用)" },
 ];
 
-async function loadHostConfiguration(): Promise<{ providers: Record<string, PiProviderPublic>; apiKeys: Record<string, string>; extraSkillPaths: string[]; gitBash: string | null; browserToolsEnabled: boolean }> {
+export function piPrivateAgentDir(): string {
+  return join(app.getPath("userData"), "agent-config", "pi");
+}
+
+async function loadHostConfiguration(): Promise<{ providers: Record<string, PiProviderPublic>; apiKeys: Record<string, string>; extraSkillPaths: string[]; gitBash: string | null; browserToolsEnabled: boolean; agentDir: string }> {
   const providers = await PiModelsStore.listPublic();
   const apiKeys: Record<string, string> = {};
   for (const [name, provider] of Object.entries(providers)) {
@@ -24,7 +30,7 @@ async function loadHostConfiguration(): Promise<{ providers: Record<string, PiPr
     if (key) apiKeys[name] = key;
   }
   const mcp = await getMcpManagement();
-  return { providers, apiKeys, extraSkillPaths: await getEnabledPluginSkillRoots(), gitBash: process.platform === "win32" ? resolveGitBash() : null, browserToolsEnabled: !mcp.browserDisabled };
+  return { providers, apiKeys, extraSkillPaths: await getEnabledPluginSkillRoots(), gitBash: process.platform === "win32" ? resolveGitBash() : null, browserToolsEnabled: !mcp.browserDisabled, agentDir: piPrivateAgentDir() };
 }
 
 export class PiAgentSdkProvider implements AgentProvider {
@@ -47,6 +53,23 @@ export class PiAgentSdkProvider implements AgentProvider {
       ctx.emit({ type: "turn.done", sessionId: req.sessionId, reason: "error" });
       return { done: Promise.resolve(), interrupt: () => {}, isRunning: () => false };
     }
+    const selectedProvider = req.model?.split("/", 1)[0];
+    if (selectedProvider?.startsWith("shared_")) {
+      const selected = config.providers[selectedProvider];
+      const selectedModel = req.model?.slice(selectedProvider.length + 1);
+      if (!selected || !selectedModel || !selected.models?.some((model) => model.id === selectedModel)) {
+        const message = `统一提供商模型不可用: ${req.model ?? selectedProvider}`;
+        ctx.emit({ type: "error", sessionId: req.sessionId, message, code: "PI_SHARED_MODEL_INVALID" });
+        ctx.emit({ type: "turn.done", sessionId: req.sessionId, reason: "error" });
+        return { done: Promise.resolve(), interrupt: () => {}, isRunning: () => false };
+      }
+      if (!config.apiKeys[selectedProvider]) {
+        const message = `统一提供商「${selected.name ?? selectedProvider}」未配置 API Key`;
+        ctx.emit({ type: "error", sessionId: req.sessionId, message, code: "PI_SHARED_KEY_MISSING" });
+        ctx.emit({ type: "turn.done", sessionId: req.sessionId, reason: "error" });
+        return { done: Promise.resolve(), interrupt: () => {}, isRunning: () => false };
+      }
+    }
     const turnId = `${req.sessionId}:${randomUUID()}`;
     let running = true;
     const done = piHostClient.call({ method: "startTurn", params: { turnId, request: req, ...config, browserToolSpecs: BROWSER_TOOL_SPECS, browserUsagePrompt: browserToolsUsagePrompt() } }, ctx, turnId, 24 * 60 * 60_000)
@@ -60,7 +83,7 @@ export class PiAgentSdkProvider implements AgentProvider {
   }
 
   async healthCheck(): Promise<{ ok: boolean; version?: string; error?: string }> {
-    try { return await piHostClient.call({ method: "healthCheck", params: {} }); }
+    try { return await piHostClient.call({ method: "healthCheck", params: { agentDir: piPrivateAgentDir() } }); }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   }
 }

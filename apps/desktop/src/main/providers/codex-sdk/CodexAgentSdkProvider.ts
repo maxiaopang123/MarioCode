@@ -247,8 +247,15 @@ export class CodexAgentSdkProvider implements AgentProvider {
         const p = req.model.slice(0, slash);
         const m = req.model.slice(slash + 1);
         if (configured.has(p)) {
-          providerId = p;
-          modelId = m;
+          const provider = providers.find((candidate) => candidate.id === p);
+          if (provider?.models.some((candidate) => candidate.id === m)) {
+            providerId = p;
+            modelId = m;
+          } else if (p.startsWith("shared_")) {
+            return failTurn(ctx, req.sessionId, "CODEX_SHARED_MODEL_MISSING", `共享提供商中不存在所选模型: ${req.model}`);
+          }
+        } else if (p.startsWith("shared_")) {
+          return failTurn(ctx, req.sessionId, "CODEX_SHARED_PROVIDER_MISSING", `共享提供商配置不存在或已被删除: ${p}`);
         } else {
           ctx.log.warn(`codex: model "${req.model}" names unconfigured provider "${p}", falling back to the first configured provider`);
         }
@@ -262,6 +269,10 @@ export class CodexAgentSdkProvider implements AgentProvider {
     }
     if (!modelId) {
       return failTurn(ctx, req.sessionId, "CODEX_NO_MODEL", "Codex 所选模型端点没有可用模型:请在「设置 → 模型配置 → Codex」补全模型列表。");
+    }
+    const selectedProvider = providers.find((provider) => provider.id === providerId);
+    if (providerId.startsWith("shared_") && !selectedProvider?.hasApiKey) {
+      return failTurn(ctx, req.sessionId, "CODEX_SHARED_KEY_MISSING", `共享提供商「${selectedProvider?.name ?? providerId}」未配置 API Key`);
     }
 
     /* ── 3. Permission mode → sandbox/approvalPolicy ── */

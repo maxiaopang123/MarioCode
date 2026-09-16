@@ -27,6 +27,8 @@ import type { PiModelsFile, PiProviderConfig, PiProviderPublic } from "@contract
 import { SettingRepo } from "@main/store/repositories.js";
 import { encrypt, decrypt } from "@main/lib/secretStore.js";
 import { log } from "@main/lib/logger.js";
+import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
+import { sharedRuntimeId, type SharedProviderProtocol } from "@contracts/sharedProvider";
 
 /** Encrypted apiKey map keyed by provider name. Stored as plain JSON in the
  *  settings table (the values themselves are safeStorage ciphertext blobs). */
@@ -108,6 +110,30 @@ export const PiModelsStore = {
     for (const [name, cfg] of Object.entries(file.providers)) {
       out[name] = toPublic(cfg, Boolean(keys[name]));
     }
+    // Unified providers are projected into Pi's in-memory provider shape.
+    // They never get copied into ~/.pi/agent/models.json.
+    for (const provider of SharedProviderStore.listPublic()) {
+      if (!provider.enabledAgents.includes("pi") || provider.protocols.length === 0) continue;
+      const protocol = provider.protocols[0] as SharedProviderProtocol;
+      const runtimeId = sharedRuntimeId(provider.id);
+      const api = protocol === "anthropic" ? "anthropic-messages"
+        : protocol === "responses" ? "openai-responses" : "openai-completions";
+      out[runtimeId] = {
+        name: provider.name,
+        baseUrl: SharedProviderStore.endpointUrl(provider, protocol),
+        api,
+        authHeader: true,
+        models: provider.models.map((model) => ({
+          id: model.id,
+          name: model.label ?? model.id,
+          contextWindow: model.contextWindow,
+          maxTokens: model.maxTokens,
+          reasoning: model.reasoning,
+          input: model.input,
+        })),
+        hasApiKey: provider.hasApiKey,
+      };
+    }
     return out;
   },
 
@@ -127,6 +153,9 @@ export const PiModelsStore = {
     config: PiProviderConfig,
     apiKey?: string,
   ): Promise<Record<string, PiProviderPublic>> {
+    if (name.startsWith("shared_") || SharedProviderStore.resolveRuntimeId(name)) {
+      throw new Error("统一提供商是只读派生项,请在统一提供商管理中编辑");
+    }
     const err = validateProvider(name, config);
     if (err) throw new Error(err);
 
@@ -166,6 +195,9 @@ export const PiModelsStore = {
 
   /** Delete one provider. Removes both models.json entry and encrypted key. */
   async deleteProvider(name: string): Promise<Record<string, PiProviderPublic>> {
+    if (name.startsWith("shared_") || SharedProviderStore.resolveRuntimeId(name)) {
+      throw new Error("统一提供商是只读派生项,请在统一提供商管理中删除");
+    }
     const file = await readModelsFile();
     if (name in file.providers) {
       delete file.providers[name];
@@ -186,6 +218,8 @@ export const PiModelsStore = {
    * into the pi authStorage at turn time.
    */
   resolveApiKey(name: string): string | null {
+    const shared = SharedProviderStore.resolveRuntimeId(name);
+    if (shared) return SharedProviderStore.resolveApiKey(shared.id);
     const keys = readKeyMap();
     const ciphertext = keys[name];
     if (!ciphertext) return null;

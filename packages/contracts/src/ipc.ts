@@ -13,6 +13,13 @@ import type { CodexProviderPublic } from "./codexModel.js";
 import type { ThemeName, EffectiveTheme, ThemeChangedMessage } from "./theme.js";
 import type { PairingStartResult, PairedDevice } from "./mobile.js";
 import type { RelayStatus, RelayVpsConfig, RelayVpsConfigInput } from "./relay.js";
+import {
+  SharedProviderSaveInputSchema,
+  SharedProviderRemoveInputSchema,
+  type SharedProviderPublic,
+  type SharedProviderSaveInput,
+  type SharedProviderRemoveInput,
+} from "./sharedProvider.js";
 import type {
   PluginState,
   PluginMarketplaceState,
@@ -3379,6 +3386,10 @@ export type RuntimesSelectInput = z.infer<typeof RuntimesSelectSchema>;
 export const RuntimesDiscoverSchema = z.object({ agent: RuntimeAgentSchema });
 export type RuntimesDiscoverInput = z.infer<typeof RuntimesDiscoverSchema>;
 
+/* ── Shared model providers (metadata + OS-encrypted API key) ── */
+export { SharedProviderSaveInputSchema, SharedProviderRemoveInputSchema };
+export type { SharedProviderPublic, SharedProviderSaveInput, SharedProviderRemoveInput };
+
 export interface ClaudeEventMessage {
   channel: "claude:event";
   sessionId: string;
@@ -4443,6 +4454,9 @@ export interface RpcMap {
   /** Select managed execution or a zero-copy external installation. */
   "runtimes.select": (input: RuntimesSelectInput) => Promise<{ ok: boolean; error?: string }>;
   "runtimes.discover": (input: RuntimesDiscoverInput) => Promise<{ candidates: RuntimeCandidate[] }>;
+  "sharedProviders.list": () => Promise<{ providers: SharedProviderPublic[] }>;
+  "sharedProviders.save": (input: SharedProviderSaveInput) => Promise<{ providers: SharedProviderPublic[] }>;
+  "sharedProviders.remove": (input: SharedProviderRemoveInput) => Promise<{ providers: SharedProviderPublic[] }>;
   // ── Plugins (settings panel; docs/plugin-feasibility.md v1) ──
   /** List installed plugins (manifest + component summaries + enable state).
    *  Enabled plugins are delivered to providers at the next turn start. */
@@ -4758,6 +4772,9 @@ export const IPC = {
   RUNTIMES_SELECT: "runtimes:select",
   RUNTIMES_DISCOVER: "runtimes:discover",
   RUNTIMES_EVENT: "runtimes:event",
+  SHARED_PROVIDERS_LIST: "sharedProviders:list",
+  SHARED_PROVIDERS_SAVE: "sharedProviders:save",
+  SHARED_PROVIDERS_REMOVE: "sharedProviders:remove",
   // Plugins (settings panel): list/install (local/git/marketplace)/enable/
   // remove + marketplace management. No push channel — every RPC resolves
   // when done and the panel re-lists.

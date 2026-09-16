@@ -22,7 +22,9 @@ import type { BuiltinModelOption } from "@contracts/provider";
 import type { PiProviderConfig } from "@contracts/piModel";
 import { PiModelsStore } from "@main/lib/piModelsStore.js";
 import { piHostClient } from "@main/providers/pi-sdk/PiHostClient.js";
+import { piPrivateAgentDir } from "@main/providers/pi-sdk/PiAgentSdkProvider.js";
 import { log } from "@main/lib/logger.js";
+import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 
 /** Shared listAvailable core — used by both the desktop IPC handler and the
  *  mobile RPC whitelist. Injects every configured apiKey so the SDK's
@@ -40,7 +42,7 @@ export async function listAvailablePiModels(): Promise<BuiltinModelOption[]> {
       const key = PiModelsStore.resolveApiKey(name);
       if (key) apiKeys[name] = key;
     }
-    return await piHostClient.call<BuiltinModelOption[]>({ method: "listModels", params: { providers: publicProviders, apiKeys } });
+    return await piHostClient.call<BuiltinModelOption[]>({ method: "listModels", params: { providers: publicProviders, apiKeys, agentDir: piPrivateAgentDir() } });
   } catch (err) {
     // Non-fatal: return empty so the picker just shows nothing for pi.
     // Common case is pi SDK failed to load on a non-pi-user's machine.
@@ -77,6 +79,9 @@ export function registerPiModelsHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle(IPC.PI_MODELS_GET_API_KEY, async (_evt, raw) => {
     const input = GetPiApiKeySchema.parse(raw);
+    // Unified credentials may only flow main → private Pi host memory. Never
+    // reveal them through the legacy Pi editor IPC.
+    if (input.name.startsWith("shared_") || SharedProviderStore.resolveRuntimeId(input.name)) return { apiKey: null };
     return { apiKey: PiModelsStore.resolveApiKey(input.name) };
   });
 

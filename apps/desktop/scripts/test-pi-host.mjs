@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
@@ -22,10 +22,27 @@ async function packageInfo(dir) {
   } catch { return null; }
 }
 
+async function directoryContains(dir, needle) {
+  let entries;
+  try { entries = await readdir(dir, { withFileTypes: true }); } catch { return false; }
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) { if (await directoryContains(path, needle)) return true; }
+    else { try { if ((await readFile(path, "utf8")).includes(needle)) return true; } catch { /* binary/unreadable */ } }
+  }
+  return false;
+}
+
 async function testRuntime(runtime) {
   const isolated = await mkdtemp(join(tmpdir(), `mcode-pi-host-${runtime.version}-`));
   const cwd = join(isolated, "cwd");
   await mkdir(cwd);
+  const userPiDir = join(isolated, ".pi", "agent");
+  await mkdir(userPiDir, { recursive: true });
+  const modelsSentinel = '{"sentinel":"models-untouched"}';
+  const authSentinel = '{"sentinel":"auth-untouched"}';
+  await writeFile(join(userPiDir, "models.json"), modelsSentinel);
+  await writeFile(join(userPiDir, "auth.json"), authSentinel);
   const child = spawn(process.execPath, [host, runtime.entry, runtime.dir, runtime.version], {
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],
@@ -58,18 +75,34 @@ async function testRuntime(runtime) {
     await new Promise((r) => setTimeout(r, 100));
     if (messages.some((m) => m.id === "invalid")) throw new Error("invalid request was executed");
 
+    const fixtureProviders = {
+      shared_0123456789abcdef0123456789abcdef: {
+        name: "Isolated fixture",
+        baseUrl: "https://fixture.invalid/v1",
+        api: "openai-completions",
+        authHeader: true,
+        models: [{ id: "fixture-model", name: "Fixture Model", contextWindow: 4096, maxTokens: 1024 }],
+        hasApiKey: true,
+      },
+    };
     const calls = [
-      { type: "call", id: "health", call: { method: "healthCheck", params: {} } },
-      { type: "call", id: "list", call: { method: "listModels", params: { providers: {}, apiKeys: {} } } },
-      { type: "call", id: "smoke-a", call: { method: "smoke", params: { cwd } } },
-      { type: "call", id: "smoke-b", call: { method: "smoke", params: { cwd } } },
+      { type: "call", id: "health", call: { method: "healthCheck", params: { agentDir: join(isolated, "agent") } } },
+      { type: "call", id: "list", call: { method: "listModels", params: { providers: {}, apiKeys: {}, agentDir: join(isolated, "agent") } } },
+      { type: "call", id: "list-fixture", call: { method: "listModels", params: { providers: fixtureProviders, apiKeys: { shared_0123456789abcdef0123456789abcdef: "fixture-secret-never-return" }, agentDir: join(isolated, "agent") } } },
+      { type: "call", id: "smoke-a", call: { method: "smoke", params: { cwd, agentDir: join(isolated, "agent") } } },
+      { type: "call", id: "smoke-b", call: { method: "smoke", params: { cwd, agentDir: join(isolated, "agent") } } },
     ];
     for (const call of calls) child.stdin.write(`${JSON.stringify(call)}\n`);
-    const [health, list, smokeA, smokeB] = await Promise.all(calls.map((c) => waitFor(c.id)));
+    const [health, list, fixture, smokeA, smokeB] = await Promise.all(calls.map((c) => waitFor(c.id)));
     if (!health.ok || health.value?.ok !== true) throw new Error(`health failed: ${JSON.stringify(health)}`);
     if (!list.ok || !Array.isArray(list.value) || list.value.length !== 0) throw new Error(`empty list failed: ${JSON.stringify(list)}`);
+    if (!fixture.ok || fixture.value?.[0]?.id !== "shared_0123456789abcdef0123456789abcdef/fixture-model") throw new Error(`in-memory provider registration failed: ${JSON.stringify(fixture)}`);
+    if (fixture.value[0].supplier !== "Isolated fixture") throw new Error(`shared supplier leaked runtime id: ${JSON.stringify(fixture)}`);
+    if (JSON.stringify(fixture).includes("fixture-secret-never-return")) throw new Error("list response leaked API key");
+    if (await directoryContains(join(isolated, "agent"), "fixture-secret-never-return")) throw new Error("runtime API key was persisted to the private agent directory");
     if (!smokeA.ok || !smokeA.value?.sessionId || smokeA.value.snapshotFresh !== true || !smokeB.ok || !smokeB.value?.sessionId || smokeB.value.snapshotFresh !== true) throw new Error("parallel smoke/snapshot reset failed");
     if (smokeA.id !== "smoke-a" || smokeB.id !== "smoke-b") throw new Error("parallel responses crossed");
+    if (await readFile(join(userPiDir, "models.json"), "utf8") !== modelsSentinel || await readFile(join(userPiDir, "auth.json"), "utf8") !== authSentinel) throw new Error("host touched the user's ~/.pi configuration");
 
     const exited = new Promise((resolvePromise, reject) => {
       const timer = setTimeout(() => { child.kill(); reject(new Error("host stayed alive after stdin EOF")); }, 5000);

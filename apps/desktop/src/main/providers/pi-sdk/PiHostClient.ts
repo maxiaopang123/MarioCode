@@ -207,6 +207,6 @@ process.once("exit", () => piHostClient.stop());
 
 /** Real no-model-call probe: boots the resolved SDK and creates/disposes an
  * in-memory session without reading or transmitting any configured API key. */
-export async function smokePiHost(cwd: string): Promise<{ ok: boolean; sessionId: string }> {
-  return piHostClient.call({ method: "smoke", params: { cwd } });
+export async function smokePiHost(cwd: string, agentDir: string): Promise<{ ok: boolean; sessionId: string }> {
+  return piHostClient.call({ method: "smoke", params: { cwd, agentDir } });
 }

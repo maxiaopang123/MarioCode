@@ -564,6 +564,12 @@ const api = {
       ipcRenderer.invoke(IPC.RUNTIMES_DISCOVER, input)) as RpcMap["runtimes.discover"],
   },
 
+  sharedProviders: {
+    list: (() => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_LIST)) as RpcMap["sharedProviders.list"],
+    save: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_SAVE, input)) as RpcMap["sharedProviders.save"],
+    remove: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_REMOVE, input)) as RpcMap["sharedProviders.remove"],
+  },
+
   /** Plugins (settings panel): install/enable/remove over ~/.mcode/plugins +
    *  marketplace management. Installs land disabled; the panel's review
    *  dialog calls setEnabled. All RPCs resolve when done (no push channel). */

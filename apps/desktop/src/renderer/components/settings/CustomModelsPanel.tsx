@@ -42,6 +42,24 @@ import {
   type PiThinkingKey,
 } from "@contracts/piModel";
 import type { CodexProviderPublic } from "@contracts/codexModel";
+import { SharedProvidersPanel } from "./SharedProvidersPanel.js";
+
+export function CustomModelsPanel() {
+  const { t } = useI18n();
+  const [legacy, setLegacy] = useState(false);
+  return (
+    <div className="space-y-4">
+      <div className="mx-auto flex w-full max-w-5xl gap-2">
+        <Button variant={!legacy ? "primary" : "outline"} size="sm" onClick={() => setLegacy(false)}>{t("settings.shared.tab")}</Button>
+        <Button variant={legacy ? "primary" : "outline"} size="sm" onClick={() => setLegacy(true)}>{t("settings.shared.legacyTab")}</Button>
+      </div>
+      {legacy ? <>
+        <p className="mx-auto max-w-5xl rounded border border-warning/30 bg-warning/5 p-3 text-xs text-content-muted">{t("settings.shared.legacyWarning")}</p>
+        <LegacyCustomModelsPanel />
+      </> : <SharedProvidersPanel />}
+    </div>
+  );
+}
 
 /**
  * Unified model-config panel — the single "模型配置" settings surface.
@@ -471,7 +489,7 @@ type ListItem = { kind: Family; id: string; name: string; sub: string };
 
 /* ════════════════════════ main panel ════════════════════════ */
 
-export function CustomModelsPanel() {
+function LegacyCustomModelsPanel() {
   const { t } = useI18n();
   const customModels = useSessionStore((s) => s.customModels);
   const reloadCustomModels = useSessionStore((s) => s.reloadCustomModels);
@@ -513,7 +531,7 @@ export function CustomModelsPanel() {
 
   const listItems = useMemo<ListItem[]>(() => {
     if (tab === "codex") {
-      return codexProviders.map((p) => ({
+      return codexProviders.filter((p) => !p.id.startsWith("shared_")).map((p) => ({
         kind: "codex" as const,
         id: p.id,
         name: p.name,
@@ -528,7 +546,7 @@ export function CustomModelsPanel() {
       }));
     }
     if (tab === "pi") {
-      return Object.entries(piProviders).map(([name, cfg]) => ({
+      return Object.entries(piProviders).filter(([name]) => !name.startsWith("shared_")).map(([name, cfg]) => ({
         kind: "pi" as const,
         id: name,
         name,
@@ -543,7 +561,7 @@ export function CustomModelsPanel() {
         ].join(" · "),
       }));
     }
-    return customModels.map((m) => {
+    return customModels.filter((m) => !m.id.startsWith("shared_")).map((m) => {
       const count = m.models.filter((e) => e.id.trim()).length;
       return {
         kind: "claude" as const,
@@ -865,10 +883,10 @@ export function CustomModelsPanel() {
         {(["claude", "pi", "codex"] as const).map((k) => {
           const count =
             k === "claude"
-              ? customModels.length
+              ? customModels.filter((p) => !p.id.startsWith("shared_")).length
               : k === "codex"
-                ? codexProviders.length
-                : Object.keys(piProviders).length;
+                ? codexProviders.filter((p) => !p.id.startsWith("shared_")).length
+                : Object.keys(piProviders).filter((id) => !id.startsWith("shared_")).length;
           const label = k === "claude" ? "Claude" : k === "codex" ? "Codex" : "Pi";
           return (
             <button

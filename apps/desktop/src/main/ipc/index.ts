@@ -28,6 +28,7 @@ import { registerNotificationHandlers } from "./notifications.js";
 import { registerMobileHandlers } from "./mobile.js";
 import { registerRelayHandlers } from "./relay.js";
 import { registerVoiceHandlers } from "./voice.js";
+import { registerSharedProviderHandlers } from "./sharedProviders.js";
 
 /**
  * Wrap `ipcMain` so every `handle()` registration automatically awaits DB
@@ -82,6 +83,7 @@ export function registerIpcHandlers(): void {
   registerMobileHandlers(ipc);
   registerRelayHandlers(ipc);
   registerVoiceHandlers(ipc);
+  registerSharedProviderHandlers(ipc);
 }
 
 // Re-export channel constants so handlers stay aligned with the contract.

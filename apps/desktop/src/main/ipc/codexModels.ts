@@ -19,6 +19,7 @@ import {
 } from "@contracts/ipc";
 import { CodexModelsStore } from "@main/lib/codexModelsStore.js";
 import { log } from "@main/lib/logger.js";
+import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 
 export function registerCodexModelsHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(IPC.CODEX_MODELS_LIST, async () => {
@@ -50,6 +51,7 @@ export function registerCodexModelsHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(IPC.CODEX_MODELS_GET_API_KEY, async (_evt, raw) => {
     try {
       const input = GetCodexApiKeySchema.parse(raw);
+      if (input.id.startsWith("shared_") || SharedProviderStore.resolveRuntimeId(input.id)) return { apiKey: null };
       return { apiKey: CodexModelsStore.resolveApiKey(input.id) };
     } catch (err) {
       log.error(`codexModels.getApiKey: ${(err as Error).message}`);

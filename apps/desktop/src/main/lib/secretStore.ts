@@ -46,6 +46,8 @@ import { resolveProtocol } from "@contracts/customModel";
 import { sanitizeCustomHeaders } from "@main/providers/upstreamHeaders.js";
 import { SettingRepo } from "@main/store/repositories.js";
 import { log } from "@main/lib/logger.js";
+import { sharedRuntimeId } from "@contracts/sharedProvider";
+import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 
 /** Settings-table key for the encrypted-token map. */
 const KEYS_SETTING_KEY = "customModelKeys";
@@ -285,12 +287,46 @@ function maskToken(plain: string): string {
   return `${plain.slice(0, 2)}***${plain.slice(-4)}`;
 }
 
+function sharedClaudeProjection(): CustomModelPublic[] {
+  return SharedProviderStore.listPublic()
+    .filter((provider) => provider.enabledAgents.includes("claude"))
+    .flatMap((provider) => {
+      const protocol = provider.protocols.includes("anthropic")
+        ? "anthropic"
+        : provider.protocols.includes("chat-completions")
+          ? "openai"
+          : null;
+      if (!protocol) return [];
+      const upstreamProtocol = protocol === "anthropic" ? "anthropic" : "chat-completions";
+      return [{
+        id: sharedRuntimeId(provider.id),
+        name: `${provider.name}（共享）`,
+        baseUrl: SharedProviderStore.endpointUrl(provider, upstreamProtocol),
+        authMode: protocol === "anthropic" ? "api_key" : "auth_token",
+        protocol,
+        authTokenMasked: provider.hasApiKey ? "***" : "",
+        models: provider.models.map((model) => ({
+          id: model.id,
+          ...(model.contextWindow && model.contextWindow >= 1_000_000 ? { supports1m: true } : {}),
+        })),
+        disableNonEssentialTraffic: true,
+        createdAt: 0,
+      } satisfies CustomModelPublic];
+    });
+}
+
+function assertLegacyCustomModelId(id: string): void {
+  if (id.startsWith("shared_") || SharedProviderStore.resolveRuntimeId(id)) {
+    throw new Error("共享提供商请在共享提供商中心管理，不能从 Claude 旧配置面板修改或删除");
+  }
+}
+
 export const CustomModelStore = {
   /** List all configs (desensitized — tokens masked, never cleartext). */
   listPublic(): CustomModelPublic[] {
     const metas = readMeta();
     const keys = readKeyMap();
-    return metas.map((m) => {
+    const legacy = metas.map((m) => {
       const cleartext = keys[m.id] ? decrypt(keys[m.id]) : "";
       return {
         id: m.id,
@@ -307,6 +343,8 @@ export const CustomModelStore = {
         createdAt: m.createdAt,
       };
     });
+    const legacyIds = new Set(legacy.map((model) => model.id));
+    return [...legacy, ...sharedClaudeProjection().filter((model) => !legacyIds.has(model.id))];
   },
 
   /**
@@ -314,6 +352,7 @@ export const CustomModelStore = {
    * existing stored token is preserved. Returns the new desensitized list.
    */
   save(input: CustomModelInput): CustomModelPublic[] {
+    if (input.id) assertLegacyCustomModelId(input.id);
     const metas = readMeta();
     const keys = readKeyMap();
     const now = Date.now();
@@ -378,6 +417,7 @@ export const CustomModelStore = {
 
   /** Delete a config and its encrypted token. */
   remove(id: string): CustomModelPublic[] {
+    assertLegacyCustomModelId(id);
     const metas = readMeta().filter((m) => m.id !== id);
     const keys = readKeyMap();
     delete keys[id];
@@ -401,6 +441,40 @@ export const CustomModelStore = {
    *   3. anything else (e.g. the model was deleted) → the first entry.
    */
   resolveApiConfig(id: string, selected?: string): ApiConfig | undefined {
+    const shared = SharedProviderStore.resolveRuntimeId(id);
+    if (shared) {
+      if (!shared.enabledAgents.includes("claude")) {
+        throw new Error(`共享提供商 "${shared.name}" 未启用 Claude`);
+      }
+      const upstreamProtocol = shared.protocols.includes("anthropic")
+        ? "anthropic"
+        : shared.protocols.includes("chat-completions")
+          ? "chat-completions"
+          : null;
+      if (!upstreamProtocol) {
+        throw new Error(`共享提供商 "${shared.name}" 没有 Claude 可用协议`);
+      }
+      if (!selected || !shared.models.some((model) => model.id === selected)) {
+        throw new Error(`共享提供商 "${shared.name}" 中不存在所选模型 "${selected ?? ""}"`);
+      }
+      const authToken = SharedProviderStore.resolveApiKey(shared.id);
+      if (!authToken) throw new Error(`共享提供商 "${shared.name}" 未配置 API Key`);
+      return {
+        baseUrl: SharedProviderStore.endpointUrl(shared, upstreamProtocol),
+        authToken,
+        authMode: upstreamProtocol === "anthropic" ? "api_key" : "auth_token",
+        protocol: upstreamProtocol === "anthropic" ? "anthropic" : "openai",
+        selectedModel: selected,
+        models: shared.models.map((model) => ({
+          id: model.id,
+          ...(model.contextWindow && model.contextWindow >= 1_000_000 ? { supports1m: true } : {}),
+        })),
+        disableNonEssentialTraffic: true,
+      };
+    }
+    if (id.startsWith("shared_")) {
+      throw new Error(`共享提供商配置不存在或已被删除: ${id}`);
+    }
     const metas = readMeta();
     const meta = metas.find((m) => m.id === id);
     if (!meta) return undefined;

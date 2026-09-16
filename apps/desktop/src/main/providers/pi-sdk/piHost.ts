@@ -2,6 +2,7 @@ import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
+import { join } from "node:path";
 import type { ProviderContext } from "@contracts/provider";
 import type { BuiltinModelOption } from "@contracts/provider";
 import { PI_1M_CONTEXT_WINDOW } from "@contracts/piModel";
@@ -42,14 +43,29 @@ function reverse(turnId: string, method: "requestApproval" | "requestUserInput" 
   });
 }
 
-async function createRuntime(sdk: typeof import("@earendil-works/pi-coding-agent"), config: Pick<PiHostTurnConfig, "apiKeys">) {
-  const runtime = await sdk.ModelRuntime.create();
-  for (const [name, key] of Object.entries(config.apiKeys)) if (key) await runtime.setRuntimeApiKey(name, key);
+async function createRuntime(sdk: typeof import("@earendil-works/pi-coding-agent"), config: Pick<PiHostTurnConfig, "apiKeys" | "providers" | "agentDir">, sharedOnly: boolean) {
+  // Shared providers are fully isolated. Legacy providers retain Pi's normal
+  // read-only models/auth discovery so existing OAuth/API-key setups continue
+  // to work without migration.
+  const runtime = await sdk.ModelRuntime.create(sharedOnly ? {
+    modelsPath: null,
+    authPath: join(config.agentDir, "auth.json"),
+    modelsStorePath: join(config.agentDir, "models-store.json"),
+    allowModelNetwork: false,
+  } : { allowModelNetwork: false });
+  for (const [name, provider] of Object.entries(config.providers)) {
+    if (!name.startsWith("shared_") || !sharedOnly) continue;
+    const { hasApiKey: _presenceOnly, ...providerConfig } = provider;
+    runtime.registerProvider(name, providerConfig as never);
+  }
+  for (const [name, key] of Object.entries(config.apiKeys)) {
+    if (key && (sharedOnly ? name.startsWith("shared_") : !name.startsWith("shared_"))) await runtime.setRuntimeApiKey(name, key);
+  }
   return runtime;
 }
 
-function projectModel(model: { id: string; name?: string; provider: string; contextWindow?: number }): BuiltinModelOption {
-  return { id: `${model.provider}/${model.id}`, label: model.name ?? model.id, supplier: model.provider,
+function projectModel(model: { id: string; name?: string; provider: string; contextWindow?: number }, providers?: Record<string, PiHostTurnConfig["providers"][string]>): BuiltinModelOption {
+  return { id: `${model.provider}/${model.id}`, label: model.name ?? model.id, supplier: providers?.[model.provider]?.name ?? model.provider,
     hint: model.contextWindow && model.contextWindow >= PI_1M_CONTEXT_WINDOW ? "1M" : undefined };
 }
 
@@ -79,10 +95,18 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
     ctx.emit({ type: "turn.done", sessionId: req.sessionId, reason: "interrupted" });
     return;
   }
+  const selectedProvider = req.model?.split("/", 1)[0] ?? "";
+  const sharedMode = selectedProvider.startsWith("shared_");
+  if (sharedMode && (!config.providers[selectedProvider] || !config.apiKeys[selectedProvider])) {
+    throw new Error(`统一提供商未配置或缺少 API Key: ${selectedProvider}`);
+  }
   let sessionManager;
-  try { sessionManager = req.resumeProviderSessionId ? sdk.SessionManager.open(req.resumeProviderSessionId) : sdk.SessionManager.create(req.cwd); }
-  catch { sessionManager = sdk.SessionManager.create(req.cwd); }
-  const modelRuntime = await createRuntime(sdk, config);
+  const createSessionManager = () => sharedMode
+    ? sdk.SessionManager.create(req.cwd, join(config.agentDir, "sessions"))
+    : sdk.SessionManager.create(req.cwd);
+  try { sessionManager = req.resumeProviderSessionId ? sdk.SessionManager.open(req.resumeProviderSessionId) : createSessionManager(); }
+  catch { sessionManager = createSessionManager(); }
+  const modelRuntime = await createRuntime(sdk, config, sharedMode);
   let model;
   if (req.model && req.model !== "default") {
     const i = req.model.indexOf("/");
@@ -90,6 +114,7 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
       try { model = modelRuntime.getModel(req.model.slice(0, i), req.model.slice(i + 1)); } catch { /* fallback below */ }
     }
   }
+  if (sharedMode && !model) throw new Error(`统一提供商模型不可用: ${req.model ?? selectedProvider}`);
   if (!model) {
     for (const [provider, pub] of Object.entries(config.providers)) {
       const first = pub.models?.find((m) => m.id?.trim());
@@ -103,12 +128,12 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
   const extension = createMcodeExtension({ ctx, cwd: req.cwd, strict, sessionId: req.sessionId, projectPath: req.cwd, turnNumber: req.turnNumber, browserToolsEnabled: config.browserToolsEnabled,
     browserBridge: { specs: config.browserToolSpecs, usagePrompt: config.browserUsagePrompt, invoke: (name, args, meta) => reverse(turnId, "browser", { name, args, meta } as never) as never }, snapshot,
     permissionState: (toolName) => reverse(turnId, "permissionState", { toolName } as never) as never });
-  const loader = await buildPiSkillLoader({ sdk, cwd: req.cwd, allowNames: req.skills?.length ? req.skills : undefined, extraSkillPaths: config.extraSkillPaths, extensionFactories: [extension] });
+  const loader = await buildPiSkillLoader({ sdk, cwd: req.cwd, agentDir: config.agentDir, allowNames: req.skills?.length ? req.skills : undefined, extraSkillPaths: config.extraSkillPaths, extensionFactories: [extension] });
   const customTools = process.platform === "win32" ? [
     createMntNormalizingReadTool(sdk, req.cwd),
     ...(config.gitBash ? [sdk.createBashToolDefinition(req.cwd, { shellPath: config.gitBash }) as never] : []),
   ] : [];
-  const { session } = await sdk.createAgentSession({ cwd: req.cwd, thinkingLevel: req.effort !== "default" ? req.effort as never : undefined, customTools, sessionManager, modelRuntime, resourceLoader: loader, model });
+  const { session } = await sdk.createAgentSession({ cwd: req.cwd, agentDir: config.agentDir, thinkingLevel: req.effort !== "default" ? req.effort as never : undefined, customTools, sessionManager, modelRuntime, resourceLoader: loader, model });
   if (shuttingDown) { await session.abort(); session.dispose(); return; }
   turns.set(turnId, { session, aborted: false });
   if (abortedTurns.delete(turnId)) { turns.get(turnId)!.aborted = true; await session.abort(); }
@@ -137,12 +162,12 @@ async function dispatch(message: Extract<MainToPiHost, { type: "call" }>): Promi
   const sdk = await sdkPromise;
   switch (message.call.method) {
     case "healthCheck": {
-      const { session } = await sdk.createAgentSession({ sessionManager: sdk.SessionManager.inMemory() });
+      const { session } = await sdk.createAgentSession({ agentDir: message.call.params.agentDir, modelRuntime: await createRuntime(sdk, { agentDir: message.call.params.agentDir, providers: {}, apiKeys: {} }, true), sessionManager: sdk.SessionManager.inMemory() });
       session.dispose();
       return { ok: true, version: (sdk as { VERSION?: string }).VERSION ?? runtimeVersion };
     }
     case "smoke": {
-      const { session } = await sdk.createAgentSession({ cwd: message.call.params.cwd, sessionManager: sdk.SessionManager.inMemory() });
+      const { session } = await sdk.createAgentSession({ cwd: message.call.params.cwd, agentDir: message.call.params.agentDir, modelRuntime: await createRuntime(sdk, { agentDir: message.call.params.agentDir, providers: {}, apiKeys: {} }, true), sessionManager: sdk.SessionManager.inMemory() });
       const snapshotKey = `smoke:${randomUUID()}`;
       const first = getFileSnapshot(snapshotKey);
       await first.freeze();
@@ -154,7 +179,19 @@ async function dispatch(message: Extract<MainToPiHost, { type: "call" }>): Promi
       if (!value.snapshotFresh) throw new Error("FileSnapshot registry did not replace the frozen turn instance");
       return value;
     }
-    case "listModels": { const runtime = await createRuntime(sdk, message.call.params); const configured = new Set(Object.keys(message.call.params.providers)); return (await runtime.getAvailable()).filter((m) => configured.has(m.provider)).map(projectModel); }
+    case "listModels": {
+      const providers = message.call.params.providers;
+      const names = Object.keys(providers);
+      const shared = new Set(names.filter((name) => name.startsWith("shared_")));
+      const legacy = new Set(names.filter((name) => !name.startsWith("shared_")));
+      const [legacyModels, sharedModels] = await Promise.all([
+        legacy.size ? createRuntime(sdk, message.call.params, false).then((runtime) => runtime.getAvailable())
+          .catch(() => { send({ type: "log", level: "warn", message: "Legacy Pi model discovery failed; shared providers remain isolated." }); return []; }) : Promise.resolve([]),
+        shared.size ? createRuntime(sdk, message.call.params, true).then((runtime) => runtime.getAvailable()) : Promise.resolve([]),
+      ]);
+      return [...legacyModels.filter((m) => legacy.has(m.provider)), ...sharedModels.filter((m) => shared.has(m.provider))]
+        .map((model) => projectModel(model, providers));
+    }
     case "abort": {
       const turnId = message.call.params.turnId;
       const active = turns.get(turnId);

@@ -5,9 +5,9 @@ import type { PiProviderPublic } from "@contracts/piModel";
 export const PI_HOST_PROTOCOL_VERSION = 1 as const;
 
 export type PiHostCall =
-  | { method: "healthCheck"; params: Record<string, never> }
-  | { method: "listModels"; params: { providers: Record<string, PiProviderPublic>; apiKeys: Record<string, string> } }
-  | { method: "smoke"; params: { cwd: string } }
+  | { method: "healthCheck"; params: { agentDir: string } }
+  | { method: "listModels"; params: { providers: Record<string, PiProviderPublic>; apiKeys: Record<string, string>; agentDir: string } }
+  | { method: "smoke"; params: { cwd: string; agentDir: string } }
   | { method: "startTurn"; params: PiHostTurnConfig }
   | { method: "abort"; params: { turnId: string } };
 
@@ -21,6 +21,7 @@ export interface PiHostTurnConfig {
   browserToolsEnabled: boolean;
   browserToolSpecs: Record<string, { description: string; promptSnippet?: string }>;
   browserUsagePrompt: string;
+  agentDir: string;
 }
 
 export type PiHostReverseMethod = "requestApproval" | "requestUserInput" | "requestPlanApproval" | "permissionState" | "browser";
@@ -49,10 +50,10 @@ export function isMainToPiHost(value: unknown): value is MainToPiHost {
   const call = v.call as { method?: unknown; params?: unknown };
   if (!call.params || typeof call.params !== "object") return false;
   const p = call.params as Record<string, unknown>;
-  if (call.method === "healthCheck") return true;
+  if (call.method === "healthCheck") return typeof p.agentDir === "string" && p.agentDir.length > 0;
   if (call.method === "abort") return typeof p.turnId === "string" && p.turnId.length > 0;
-  if (call.method === "smoke") return typeof p.cwd === "string" && p.cwd.length > 0;
-  if (call.method === "listModels") return isRecord(p.providers) && isStringRecord(p.apiKeys);
+  if (call.method === "smoke") return typeof p.cwd === "string" && p.cwd.length > 0 && typeof p.agentDir === "string" && p.agentDir.length > 0;
+  if (call.method === "listModels") return isRecord(p.providers) && isStringRecord(p.apiKeys) && typeof p.agentDir === "string" && p.agentDir.length > 0;
   if (call.method !== "startTurn") return false;
   if (typeof p.turnId !== "string" || !p.turnId || !p.request || typeof p.request !== "object") return false;
   const req = p.request as Record<string, unknown>;
@@ -63,6 +64,7 @@ export function isMainToPiHost(value: unknown): value is MainToPiHost {
     && Array.isArray(p.extraSkillPaths) && p.extraSkillPaths.every((x) => typeof x === "string")
     && (p.gitBash === null || typeof p.gitBash === "string")
     && typeof p.browserToolsEnabled === "boolean"
+    && typeof p.agentDir === "string" && p.agentDir.length > 0
     && isRecord(p.browserToolSpecs) && typeof p.browserUsagePrompt === "string";
 }
 

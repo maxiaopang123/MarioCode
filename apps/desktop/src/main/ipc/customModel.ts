@@ -24,6 +24,7 @@ import { buildCustomEnv, resolveActiveModel } from "@main/providers/claude-sdk/c
 import { BridgeRegistry } from "@main/providers/bridge/bridgeRegistry.js";
 import { resolveSdkBinaryPath } from "@main/providers/claude-sdk/sdkBinaryPath.js";
 import { log } from "@main/lib/logger.js";
+import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 
 /** Probe timeout — a healthy endpoint should answer the init handshake within
  *  a few seconds. We abort the SDK query after this to avoid hanging the UI. */
@@ -50,6 +51,7 @@ export function registerCustomModelHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle(IPC.CUSTOM_MODEL_GET_TOKEN, (_evt, raw) => {
     const input = GetCustomModelTokenSchema.parse(raw);
+    if (input.id.startsWith("shared_") || SharedProviderStore.resolveRuntimeId(input.id)) return { token: null };
     // resolveApiConfig already decrypts the token in main memory; we reuse it
     // rather than opening a second decryption path. The cleartext is returned
     // here ONLY because the user clicked the eye icon in the settings form.

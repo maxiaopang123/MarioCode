@@ -86,6 +86,16 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react";
  *  padding,停在顶部时可见,向下滚动后随内容滚走。 */
 const MESSAGE_LIST_TOP_PADDING = 10;
 
+/** Lightweight composer identity derived from the provider locked to this
+ * session. Unknown/future providers deliberately fall back to the global
+ * accent instead of inheriting the currently selected global provider. */
+function composerAgentForProvider(providerId: string | null): "claude" | "codex" | "pi" | "default" {
+  if (providerId === "claude-sdk") return "claude";
+  if (providerId === "codex-sdk") return "codex";
+  if (providerId === "pi-sdk") return "pi";
+  return "default";
+}
+
 /** Picker trigger chars → picker kind. CJK soft keyboards often emit
  *  full-width variants (／ U+FF0F, ＠ U+FF20) for the slash/at keys, so
  *  both forms trigger; the full-width char itself lands inside the replaced
@@ -1335,6 +1345,10 @@ function ChatPaneForSession({
   // per-turn (Claude/Codex) or session-cumulative (Pi). See turnTokens.ts.
   const sessionProviderId = useSessionStore((s) => {
     for (const list of Object.values(s.sessionsByProject)) {
+      const found = list?.find((x) => x.id === sessionId);
+      if (found) return found.providerId;
+    }
+    for (const list of Object.values(s.sideChatsByParent)) {
       const found = list?.find((x) => x.id === sessionId);
       if (found) return found.providerId;
     }
@@ -3612,9 +3626,10 @@ function ChatPaneForSession({
             // a busy sweep bar along the top edge while a turn runs, and an
             // accent hairline that lights up on focus-within.
             data-busy={sessionBusy ? "1" : "0"}
+            data-agent={composerAgentForProvider(sessionProviderId)}
+            data-drag-over={dragOver ? "1" : "0"}
             className={cn(
               "composer-card relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-edge-input bg-surface transition-all duration-200",
-              "focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgb(var(--accent)/0.12)]",
               // Highlight the composer while a file-tree drag hovers over it.
               dragOver && "border-accent ring-4 ring-accent/20",
               // Hide the composer card entirely while a bottom prompt (approval /
@@ -3978,8 +3993,8 @@ function ChatPaneForSession({
                     data-ready={hasComposerContent ? "1" : "0"}
                     onAnimationEnd={() => setSendLaunching(false)}
                     className={cn(
-                      "composer-send inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent text-surface shadow-sm transition-all duration-150 ease-out",
-                      "hover:scale-110 hover:brightness-110 hover:shadow-md hover:shadow-accent/20",
+                      "composer-send inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-surface shadow-sm transition-all duration-150 ease-out",
+                      "hover:scale-110 hover:brightness-110 hover:shadow-md",
                       "active:scale-95 active:brightness-95",
                       "disabled:scale-100 disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-content-subtle disabled:shadow-none disabled:hover:scale-100",
                       // One-shot "launch" feedback after a send/enqueue: icon

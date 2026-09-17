@@ -37,7 +37,7 @@ const FALLBACK: ProviderIconMeta = {
 const PROVIDER_ICONS: Record<string, ProviderIconMeta> = {
   "claude-sdk": { Icon: SiClaude, color: "text-[#D97757]", dot: "#D97757", label: "Claude" },
   "pi-sdk": { Icon: PiBrandIcon, color: "text-black dark:text-content", dot: "#A78BFA", label: "Pi" },
-  "codex-sdk": { Icon: OpenAIBrandIcon, color: "text-content", dot: "#10A37F", label: "Codex" },
+  "codex-sdk": { Icon: OpenAIBrandIcon, color: "text-content", dot: "#3B82F6", label: "Codex" },
 };
 
 export function getProviderIcon(providerId: string | null | undefined): ProviderIconMeta {

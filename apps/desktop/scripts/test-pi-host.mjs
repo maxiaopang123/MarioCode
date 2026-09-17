@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const desktop = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const host = join(desktop, "out", "pi-host", "piHost.mjs");
@@ -18,7 +18,17 @@ async function packageInfo(dir) {
     const pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8"));
     const root = pkg.exports?.["."];
     const rel = typeof root === "string" ? root : root?.import || root?.default || "dist/index.js";
-    return { dir, version: pkg.version, entry: join(dir, rel) };
+    const realDir = await realpath(dir);
+    const aiCandidates = [
+      join(realDir, "..", "pi-ai", "dist", "index.js"),
+      join(realDir, "node_modules", "@earendil-works", "pi-ai", "dist", "index.js"),
+    ];
+    let aiEntry;
+    for (const candidate of aiCandidates) {
+      try { await readFile(candidate); aiEntry = candidate; break; } catch { /* try the next install layout */ }
+    }
+    if (!aiEntry) throw new Error(`matching pi-ai runtime not found for ${dir}`);
+    return { dir, version: pkg.version, entry: join(dir, rel), aiEntry };
   } catch { return null; }
 }
 
@@ -81,7 +91,7 @@ async function testRuntime(runtime) {
         baseUrl: "https://fixture.invalid/v1",
         api: "openai-completions",
         authHeader: true,
-        models: [{ id: "fixture-model", name: "Fixture Model", contextWindow: 4096, maxTokens: 1024 }],
+        models: [{ id: "fixture-model" }],
         hasApiKey: true,
       },
     };
@@ -91,14 +101,28 @@ async function testRuntime(runtime) {
       { type: "call", id: "list-fixture", call: { method: "listModels", params: { providers: fixtureProviders, apiKeys: { shared_0123456789abcdef0123456789abcdef: "fixture-secret-never-return" }, agentDir: join(isolated, "agent") } } },
       { type: "call", id: "smoke-a", call: { method: "smoke", params: { cwd, agentDir: join(isolated, "agent") } } },
       { type: "call", id: "smoke-b", call: { method: "smoke", params: { cwd, agentDir: join(isolated, "agent") } } },
+      { type: "call", id: "smoke-model", call: { method: "smoke", params: { cwd, agentDir: join(isolated, "agent"), providers: fixtureProviders, apiKeys: { shared_0123456789abcdef0123456789abcdef: "fixture-secret-never-return" } } } },
     ];
     for (const call of calls) child.stdin.write(`${JSON.stringify(call)}\n`);
-    const [health, list, fixture, smokeA, smokeB] = await Promise.all(calls.map((c) => waitFor(c.id)));
+    const [health, list, fixture, smokeA, smokeB, smokeModel] = await Promise.all(calls.map((c) => waitFor(c.id)));
     if (!health.ok || health.value?.ok !== true) throw new Error(`health failed: ${JSON.stringify(health)}`);
     if (!list.ok || !Array.isArray(list.value) || list.value.length !== 0) throw new Error(`empty list failed: ${JSON.stringify(list)}`);
     if (!fixture.ok || fixture.value?.[0]?.id !== "shared_0123456789abcdef0123456789abcdef/fixture-model") throw new Error(`in-memory provider registration failed: ${JSON.stringify(fixture)}`);
     if (fixture.value[0].supplier !== "Isolated fixture") throw new Error(`shared supplier leaked runtime id: ${JSON.stringify(fixture)}`);
     if (JSON.stringify(fixture).includes("fixture-secret-never-return")) throw new Error("list response leaked API key");
+    const registered = smokeModel.value?.registeredModel;
+    const zeroCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    if (!smokeModel.ok || registered?.name !== "fixture-model" || registered?.reasoning !== false
+      || JSON.stringify(registered?.input) !== JSON.stringify(["text"])
+      || JSON.stringify(registered?.cost) !== JSON.stringify(zeroCost)
+      || registered?.contextWindow !== 128000 || registered?.maxTokens !== 16384) {
+      throw new Error(`shared model registration was not normalized: ${JSON.stringify(smokeModel)}`);
+    }
+    const { calculateCost } = await import(pathToFileURL(runtime.aiEntry).href);
+    const usage = { input: 1000, output: 1000, cacheRead: 100, cacheWrite: 50, totalTokens: 2150,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+    const calculated = calculateCost(registered, usage);
+    if (calculated.total !== 0) throw new Error(`zero-rate cost calculation changed total: ${JSON.stringify(calculated)}`);
     if (await directoryContains(join(isolated, "agent"), "fixture-secret-never-return")) throw new Error("runtime API key was persisted to the private agent directory");
     if (!smokeA.ok || !smokeA.value?.sessionId || smokeA.value.snapshotFresh !== true || !smokeB.ok || !smokeB.value?.sessionId || smokeB.value.snapshotFresh !== true) throw new Error("parallel smoke/snapshot reset failed");
     if (smokeA.id !== "smoke-a" || smokeB.id !== "smoke-b") throw new Error("parallel responses crossed");
@@ -111,7 +135,7 @@ async function testRuntime(runtime) {
     child.stdin.end();
     const code = await exited;
     if (code !== 0) throw new Error(`host exited ${code}`);
-    return `${runtime.version}: ready/health/list/smoke/validation/parallel/EOF passed`;
+    return `${runtime.version}: ready/health/list/smoke/normalized-cost/validation/parallel/EOF passed`;
   } finally {
     if (!child.killed) child.kill();
     if (!resolve(isolated).startsWith(resolve(tmpdir()) + sep)) throw new Error("Unsafe test cleanup target");

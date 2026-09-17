@@ -7,7 +7,7 @@ export const PI_HOST_PROTOCOL_VERSION = 1 as const;
 export type PiHostCall =
   | { method: "healthCheck"; params: { agentDir: string } }
   | { method: "listModels"; params: { providers: Record<string, PiProviderPublic>; apiKeys: Record<string, string>; agentDir: string } }
-  | { method: "smoke"; params: { cwd: string; agentDir: string } }
+  | { method: "smoke"; params: { cwd: string; agentDir: string; providers?: Record<string, PiProviderPublic>; apiKeys?: Record<string, string> } }
   | { method: "startTurn"; params: PiHostTurnConfig }
   | { method: "abort"; params: { turnId: string } };
 
@@ -52,7 +52,8 @@ export function isMainToPiHost(value: unknown): value is MainToPiHost {
   const p = call.params as Record<string, unknown>;
   if (call.method === "healthCheck") return typeof p.agentDir === "string" && p.agentDir.length > 0;
   if (call.method === "abort") return typeof p.turnId === "string" && p.turnId.length > 0;
-  if (call.method === "smoke") return typeof p.cwd === "string" && p.cwd.length > 0 && typeof p.agentDir === "string" && p.agentDir.length > 0;
+  if (call.method === "smoke") return typeof p.cwd === "string" && p.cwd.length > 0 && typeof p.agentDir === "string" && p.agentDir.length > 0
+    && (p.providers === undefined || isRecord(p.providers)) && (p.apiKeys === undefined || isStringRecord(p.apiKeys));
   if (call.method === "listModels") return isRecord(p.providers) && isStringRecord(p.apiKeys) && typeof p.agentDir === "string" && p.agentDir.length > 0;
   if (call.method !== "startTurn") return false;
   if (typeof p.turnId !== "string" || !p.turnId || !p.request || typeof p.request !== "object") return false;

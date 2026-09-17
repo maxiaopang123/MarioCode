@@ -568,6 +568,7 @@ const api = {
     list: (() => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_LIST)) as RpcMap["sharedProviders.list"],
     save: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_SAVE, input)) as RpcMap["sharedProviders.save"],
     remove: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_REMOVE, input)) as RpcMap["sharedProviders.remove"],
+    discoverModels: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_DISCOVER_MODELS, input)) as RpcMap["sharedProviders.discoverModels"],
   },
 
   /** Plugins (settings panel): install/enable/remove over ~/.mcode/plugins +

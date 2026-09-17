@@ -1,6 +1,12 @@
 import type { IpcMain } from "electron";
-import { IPC, SharedProviderRemoveInputSchema, SharedProviderSaveInputSchema } from "@contracts/ipc";
+import {
+  IPC,
+  SharedProviderDiscoverInputSchema,
+  SharedProviderRemoveInputSchema,
+  SharedProviderSaveInputSchema,
+} from "@contracts/ipc";
 import { runtimeManager } from "@main/claude/RuntimeManager.js";
+import { discoverSharedProviderModels } from "@main/lib/sharedProviderDiscovery.js";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 
 function assertNoRunningTurns(): void {
@@ -20,4 +26,6 @@ export function registerSharedProviderHandlers(ipcMain: IpcMain): void {
     assertNoRunningTurns();
     return { providers: SharedProviderStore.remove(SharedProviderRemoveInputSchema.parse(raw).id) };
   });
+  ipcMain.handle(IPC.SHARED_PROVIDERS_DISCOVER_MODELS, async (_event, raw) =>
+    discoverSharedProviderModels(SharedProviderDiscoverInputSchema.parse(raw)));
 }

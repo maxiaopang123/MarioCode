@@ -5,9 +5,17 @@ export type SharedProviderProtocol = z.infer<typeof SharedProviderProtocolSchema
 export const SharedProviderAgentSchema = z.enum(["claude", "codex", "pi"]);
 export type SharedProviderAgent = z.infer<typeof SharedProviderAgentSchema>;
 
-const HttpUrlSchema = z.string().max(2_048).url().refine((value) => {
-  const match = /^https?:\/\/([^/?#]*)(?:[/?#]|$)/i.exec(value);
-  return Boolean(match && !match[1]?.includes("@") && !value.includes("?") && !value.includes("#"));
+const HttpUrlSchema = z.string().trim().max(2_048).url().refine((value) => {
+  try {
+    const parsed = new URL(value);
+    return (parsed.protocol === "http:" || parsed.protocol === "https:")
+      && parsed.username === ""
+      && parsed.password === ""
+      && parsed.search === ""
+      && parsed.hash === "";
+  } catch {
+    return false;
+  }
 }, "must be an http(s) URL without embedded credentials, query, or fragment");
 
 export const SharedProviderModelSchema = z.object({
@@ -36,6 +44,7 @@ function compatible(value: { protocols: SharedProviderProtocol[]; enabledAgents:
 const SharedProviderCoreShape = {
   name: z.string().trim().min(1).max(256),
   baseUrl: HttpUrlSchema,
+  modelsEndpoint: HttpUrlSchema.optional(),
   protocols: z.array(SharedProviderProtocolSchema).min(1).max(3),
   endpointOverrides: EndpointOverridesSchema,
   models: z.array(SharedProviderModelSchema).min(1).max(1_000),
@@ -68,6 +77,32 @@ export type SharedProviderSaveInput = z.infer<typeof SharedProviderSaveInputSche
 
 export const SharedProviderRemoveInputSchema = z.object({ id: z.string().uuid() }).strict();
 export type SharedProviderRemoveInput = z.infer<typeof SharedProviderRemoveInputSchema>;
+
+/** One-off model discovery. The renderer may submit an unsaved draft key, but
+ * the main process is solely responsible for deciding whether a saved key may
+ * be reused. Neither the input key nor any saved key is returned. */
+export const SharedProviderDiscoverInputSchema = z.object({
+  id: z.string().uuid().optional(),
+  baseUrl: HttpUrlSchema,
+  protocol: SharedProviderProtocolSchema,
+  modelsEndpoint: HttpUrlSchema.optional(),
+  apiKey: z.string().max(65_536).optional(),
+}).strict();
+export type SharedProviderDiscoverInput = z.infer<typeof SharedProviderDiscoverInputSchema>;
+
+export const SharedProviderDiscoveredModelSchema = z.object({
+  id: z.string().trim().min(1).max(256),
+  label: z.string().trim().min(1).max(256),
+}).strict();
+export type SharedProviderDiscoveredModel = z.infer<typeof SharedProviderDiscoveredModelSchema>;
+
+export interface SharedProviderDiscoveryResult {
+  models: SharedProviderDiscoveredModel[];
+  /** True when MarioCode stopped at its local result cap. */
+  truncated: boolean;
+  /** True when either the local cap or upstream pagination indicates more rows. */
+  partial: boolean;
+}
 
 export function sharedRuntimeId(id: string): string {
   const parsed = z.string().uuid().parse(id);

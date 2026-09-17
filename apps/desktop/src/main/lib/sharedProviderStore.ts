@@ -14,6 +14,24 @@ const META_KEY = "sharedProviders.meta";
 const SECRET_KEY = "sharedProviders.keys";
 type CipherMap = Record<string, string>;
 
+function normalizedUrl(value: string): string {
+  const parsed = new URL(value);
+  parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+  return parsed.toString();
+}
+
+function routingFingerprint(value: Pick<SharedProviderSaveInput, "baseUrl" | "modelsEndpoint" | "endpointOverrides" | "protocols">): string {
+  const endpointOverrides = Object.entries(value.endpointOverrides ?? {})
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([protocol, url]) => [protocol, normalizedUrl(url)]);
+  return JSON.stringify({
+    baseUrl: normalizedUrl(value.baseUrl),
+    modelsEndpoint: value.modelsEndpoint ? normalizedUrl(value.modelsEndpoint) : null,
+    endpointOverrides,
+    protocols: [...value.protocols].sort(),
+  });
+}
+
 function readSetting(key: string): string | null {
   const row = getDb().prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined;
   return row?.value ?? null;
@@ -99,6 +117,10 @@ export function save(input: SharedProviderSaveInput): SharedProviderPublic[] {
   if (!value.id && providers.some((provider) => provider.id === id)) throw new Error(`Shared provider id already exists: ${id}`);
   const apiKey = value.apiKey ?? "";
   if (apiKey.length > 0 && apiKey.trim().length === 0) throw new Error("API key cannot contain only whitespace");
+  const previous = index >= 0 ? providers[index]! : null;
+  if (previous && apiKey.length === 0 && routingFingerprint(previous) !== routingFingerprint(value)) {
+    throw new Error("The provider endpoint or protocols changed; enter the API key again before saving so the saved key is never reused with a new destination");
+  }
   if (apiKey.length > 0) keys[id] = encryptRequired(apiKey);
   if (index < 0 && !keys[id]) throw new Error("A new shared provider requires an API key");
   if (index >= 0 && apiKey.length === 0 && decryptCipher(keys[id]) === null) {
@@ -108,6 +130,7 @@ export function save(input: SharedProviderSaveInput): SharedProviderPublic[] {
     id,
     name: value.name,
     baseUrl: value.baseUrl,
+    ...(value.modelsEndpoint ? { modelsEndpoint: value.modelsEndpoint } : {}),
     protocols: value.protocols,
     ...(value.endpointOverrides ? { endpointOverrides: value.endpointOverrides } : {}),
     models: value.models,
@@ -115,9 +138,8 @@ export function save(input: SharedProviderSaveInput): SharedProviderPublic[] {
     enabledAgents: value.enabledAgents,
   });
   if (index >= 0) {
-    const previous = providers[index]!;
-    const removedModel = previous.models.some((model) => !provider.models.some((next) => next.id === model.id));
-    const disabledAgent = previous.enabledAgents.some((agent) => !provider.enabledAgents.includes(agent));
+    const removedModel = previous!.models.some((model) => !provider.models.some((next) => next.id === model.id));
+    const disabledAgent = previous!.enabledAgents.some((agent) => !provider.enabledAgents.includes(agent));
     if ((removedModel || disabledAgent) && referencedSession(sharedRuntimeId(id))) {
       throw new Error("Shared provider is used by an existing session; its models and enabled agents cannot be removed");
     }

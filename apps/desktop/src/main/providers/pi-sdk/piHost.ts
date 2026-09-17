@@ -10,6 +10,7 @@ import { PiMessageAdapter } from "./PiMessageAdapter.js";
 import { buildPiTokenSnapshot } from "./piTokenUsage.js";
 import { buildPiSkillLoader, rewriteSkillPrefix, createMntNormalizingReadTool } from "./piSkillBridge.js";
 import { createMcodeExtension } from "./mcodeExtension.js";
+import { normalizePiRegisteredModel } from "./piRegisteredModel.js";
 import { dropFileSnapshot, getFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
 import { isMainToPiHost, PI_HOST_PROTOCOL_VERSION, type MainToPiHost, type PiHostToMain, type PiHostTurnConfig } from "./piHostProtocol.js";
 
@@ -56,7 +57,10 @@ async function createRuntime(sdk: typeof import("@earendil-works/pi-coding-agent
   for (const [name, provider] of Object.entries(config.providers)) {
     if (!name.startsWith("shared_") || !sharedOnly) continue;
     const { hasApiKey: _presenceOnly, ...providerConfig } = provider;
-    runtime.registerProvider(name, providerConfig as never);
+    runtime.registerProvider(name, {
+      ...providerConfig,
+      models: providerConfig.models?.map(normalizePiRegisteredModel),
+    } as never);
   }
   for (const [name, key] of Object.entries(config.apiKeys)) {
     if (key && (sharedOnly ? name.startsWith("shared_") : !name.startsWith("shared_"))) await runtime.setRuntimeApiKey(name, key);
@@ -167,13 +171,23 @@ async function dispatch(message: Extract<MainToPiHost, { type: "call" }>): Promi
       return { ok: true, version: (sdk as { VERSION?: string }).VERSION ?? runtimeVersion };
     }
     case "smoke": {
-      const { session } = await sdk.createAgentSession({ cwd: message.call.params.cwd, agentDir: message.call.params.agentDir, modelRuntime: await createRuntime(sdk, { agentDir: message.call.params.agentDir, providers: {}, apiKeys: {} }, true), sessionManager: sdk.SessionManager.inMemory() });
+      const providers = message.call.params.providers ?? {};
+      const apiKeys = message.call.params.apiKeys ?? {};
+      const modelRuntime = await createRuntime(sdk, { agentDir: message.call.params.agentDir, providers, apiKeys }, true);
+      const { session } = await sdk.createAgentSession({ cwd: message.call.params.cwd, agentDir: message.call.params.agentDir, modelRuntime, sessionManager: sdk.SessionManager.inMemory() });
       const snapshotKey = `smoke:${randomUUID()}`;
       const first = getFileSnapshot(snapshotKey);
       await first.freeze();
       dropFileSnapshot(snapshotKey);
       const second = getFileSnapshot(snapshotKey);
-      const value = { ok: true, sessionId: session.sessionId, snapshotFresh: first !== second && second.size === 0 };
+      const firstShared = Object.entries(providers).find(([name, provider]) => name.startsWith("shared_") && provider.models?.[0]);
+      const registeredModel = firstShared ? modelRuntime.getModel(firstShared[0], firstShared[1].models![0]!.id) : undefined;
+      const value = { ok: true, sessionId: session.sessionId, snapshotFresh: first !== second && second.size === 0,
+        registeredModel: registeredModel ? {
+          id: registeredModel.id, name: registeredModel.name, provider: registeredModel.provider, api: registeredModel.api,
+          baseUrl: registeredModel.baseUrl, reasoning: registeredModel.reasoning, input: registeredModel.input,
+          cost: registeredModel.cost, contextWindow: registeredModel.contextWindow, maxTokens: registeredModel.maxTokens,
+        } : undefined };
       dropFileSnapshot(snapshotKey);
       session.dispose();
       if (!value.snapshotFresh) throw new Error("FileSnapshot registry did not replace the frozen turn instance");

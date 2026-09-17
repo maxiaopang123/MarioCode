@@ -16,9 +16,13 @@ import type { RelayStatus, RelayVpsConfig, RelayVpsConfigInput } from "./relay.j
 import {
   SharedProviderSaveInputSchema,
   SharedProviderRemoveInputSchema,
+  SharedProviderDiscoverInputSchema,
   type SharedProviderPublic,
   type SharedProviderSaveInput,
   type SharedProviderRemoveInput,
+  type SharedProviderDiscoverInput,
+  type SharedProviderDiscoveredModel,
+  type SharedProviderDiscoveryResult,
 } from "./sharedProvider.js";
 import type {
   PluginState,
@@ -3387,8 +3391,15 @@ export const RuntimesDiscoverSchema = z.object({ agent: RuntimeAgentSchema });
 export type RuntimesDiscoverInput = z.infer<typeof RuntimesDiscoverSchema>;
 
 /* ── Shared model providers (metadata + OS-encrypted API key) ── */
-export { SharedProviderSaveInputSchema, SharedProviderRemoveInputSchema };
-export type { SharedProviderPublic, SharedProviderSaveInput, SharedProviderRemoveInput };
+export { SharedProviderSaveInputSchema, SharedProviderRemoveInputSchema, SharedProviderDiscoverInputSchema };
+export type {
+  SharedProviderPublic,
+  SharedProviderSaveInput,
+  SharedProviderRemoveInput,
+  SharedProviderDiscoverInput,
+  SharedProviderDiscoveredModel,
+  SharedProviderDiscoveryResult,
+};
 
 export interface ClaudeEventMessage {
   channel: "claude:event";
@@ -4457,6 +4468,7 @@ export interface RpcMap {
   "sharedProviders.list": () => Promise<{ providers: SharedProviderPublic[] }>;
   "sharedProviders.save": (input: SharedProviderSaveInput) => Promise<{ providers: SharedProviderPublic[] }>;
   "sharedProviders.remove": (input: SharedProviderRemoveInput) => Promise<{ providers: SharedProviderPublic[] }>;
+  "sharedProviders.discoverModels": (input: SharedProviderDiscoverInput) => Promise<SharedProviderDiscoveryResult>;
   // ── Plugins (settings panel; docs/plugin-feasibility.md v1) ──
   /** List installed plugins (manifest + component summaries + enable state).
    *  Enabled plugins are delivered to providers at the next turn start. */
@@ -4775,6 +4787,7 @@ export const IPC = {
   SHARED_PROVIDERS_LIST: "sharedProviders:list",
   SHARED_PROVIDERS_SAVE: "sharedProviders:save",
   SHARED_PROVIDERS_REMOVE: "sharedProviders:remove",
+  SHARED_PROVIDERS_DISCOVER_MODELS: "sharedProviders:discoverModels",
   // Plugins (settings panel): list/install (local/git/marketplace)/enable/
   // remove + marketplace management. No push channel — every RPC resolves
   // when done and the panel re-lists.

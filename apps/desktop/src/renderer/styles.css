@@ -1588,8 +1588,43 @@ button.chat-ledger-head:hover {
 }
 
 /* ── Card polish (方案 B 质感 baseline) ──────────────────────────────── */
-/* Focus: an accent hairline lights up along the card's top edge (the border
- * + halo come from the Tailwind focus-within utilities on the card). */
+/* Agent identity is intentionally scoped to the composer. The neutral
+ * surface stays untouched; only lightweight chrome carries the provider.
+ * Unknown/future providers inherit the app accent. */
+[data-chat-root] .composer-card {
+  --composer-agent: var(--accent);
+  --composer-agent-strong: var(--accent);
+  border-color: color-mix(
+    in srgb,
+    rgb(var(--composer-agent)) 28%,
+    rgb(var(--input-edge))
+  );
+}
+[data-chat-root] .composer-card[data-agent="claude"] {
+  --composer-agent: 217 119 87;
+  --composer-agent-strong: 217 119 87;
+}
+[data-chat-root] .composer-card[data-agent="codex"] {
+  --composer-agent: 59 130 246;
+  --composer-agent-strong: 59 130 246;
+}
+[data-chat-root] .composer-card[data-agent="pi"] {
+  --composer-agent: 167 139 250;
+  --composer-agent-strong: 124 58 237;
+}
+
+/* Focus: the provider color strengthens across the border, halo, and top
+ * hairline without tinting the input background. */
+[data-chat-root] .composer-card:focus-within {
+  border-color: rgb(var(--composer-agent-strong) / 0.78);
+  box-shadow: 0 0 0 3px rgb(var(--composer-agent-strong) / 0.14);
+}
+/* Drag feedback is an interaction state rather than provider identity. Keep
+ * it after the base/focus rules so the original global accent ring wins. */
+[data-chat-root] .composer-card[data-drag-over="1"] {
+  border-color: rgb(var(--accent));
+  box-shadow: 0 0 0 4px rgb(var(--accent) / 0.2);
+}
 [data-chat-root] .composer-card::after {
   content: "";
   position: absolute;
@@ -1598,7 +1633,7 @@ button.chat-ledger-head:hover {
   top: 0;
   height: 1px;
   border-radius: 2px;
-  background: linear-gradient(90deg, transparent, rgb(var(--accent) / 0.65), transparent);
+  background: linear-gradient(90deg, transparent, rgb(var(--composer-agent-strong) / 0.78), transparent);
   opacity: 0;
   transition: opacity 0.34s var(--composer-ease-out);
   pointer-events: none;
@@ -1619,9 +1654,9 @@ button.chat-ledger-head:hover {
   background: linear-gradient(
     90deg,
     transparent,
-    rgb(var(--accent) / 0.15) 20%,
-    rgb(var(--accent)) 50%,
-    rgb(var(--accent) / 0.15) 80%,
+    rgb(var(--composer-agent-strong) / 0.15) 20%,
+    rgb(var(--composer-agent-strong)) 50%,
+    rgb(var(--composer-agent-strong) / 0.15) 80%,
     transparent
   );
   background-size: 220% 100%;
@@ -1633,10 +1668,15 @@ button.chat-ledger-head:hover {
 }
 
 /* ── Send / stop feedback ─────────────────────────────────────────────── */
+/* The active send action shares the session provider identity. Disabled
+ * styling remains the composer's existing neutral surface treatment. */
+[data-chat-root] .composer-send:not(:disabled) {
+  background: rgb(var(--composer-agent-strong));
+}
 /* Ready (has content): a resident soft glow says "可以发了" without touching
  * transform (the button's Tailwind hover/active scales own that). */
 [data-chat-root] .composer-send[data-ready="1"] {
-  box-shadow: 0 4px 16px -5px rgb(var(--accent) / 0.55);
+  box-shadow: 0 4px 16px -5px rgb(var(--composer-agent-strong) / 0.55);
 }
 /* Launch: one-shot after a send/enqueue — the icon flies out and re-enters
  * from the opposite corner while a halo pulse expands around the button.
@@ -1654,8 +1694,8 @@ button.chat-ledger-head:hover {
   100% { transform: translate(0, 0) scale(1); opacity: 1; }
 }
 @keyframes composer-send-pulse {
-  0% { box-shadow: 0 0 0 0 rgb(var(--accent) / 0.45); }
-  100% { box-shadow: 0 0 0 12px rgb(var(--accent) / 0); }
+  0% { box-shadow: 0 0 0 0 rgb(var(--composer-agent-strong) / 0.45); }
+  100% { box-shadow: 0 0 0 12px rgb(var(--composer-agent-strong) / 0); }
 }
 /* Stop: a conic-progress ring spins around the button while generation
  * runs — masked to a 2.5px annulus so it reads as a halo, not a disc. */
@@ -2198,6 +2238,10 @@ html.sketch [data-chat-root] .composer-card {
   outline-offset: 3px;
   box-shadow: var(--sk-sh);
 }
+html.sketch [data-chat-root] .composer-card[data-drag-over="1"] {
+  border-color: rgb(var(--accent));
+  box-shadow: 0 0 0 4px rgb(var(--accent) / 0.2), var(--sk-sh);
+}
 
 /* ── 图标抖动:一枚全局 feTurbulence 位移滤镜 ─────────────────────────────
  * 滤镜本体挂在 index.html(首帧前静态存在——Chrome 对引用不存在滤镜的元素
@@ -2223,4 +2267,3 @@ html.sketch body::after {
 html.sketch.dark body::after {
   opacity: 0.55;
 }
-

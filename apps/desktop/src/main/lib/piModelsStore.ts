@@ -29,6 +29,7 @@ import { encrypt, decrypt } from "@main/lib/secretStore.js";
 import { log } from "@main/lib/logger.js";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 import { sharedRuntimeId, type SharedProviderProtocol } from "@contracts/sharedProvider";
+import { normalizePiRegisteredModel } from "@main/providers/pi-sdk/piRegisteredModel.js";
 
 /** Encrypted apiKey map keyed by provider name. Stored as plain JSON in the
  *  settings table (the values themselves are safeStorage ciphertext blobs). */
@@ -123,7 +124,7 @@ export const PiModelsStore = {
         baseUrl: SharedProviderStore.endpointUrl(provider, protocol),
         api,
         authHeader: true,
-        models: provider.models.map((model) => ({
+        models: provider.models.map((model) => normalizePiRegisteredModel({
           id: model.id,
           name: model.label ?? model.id,
           contextWindow: model.contextWindow,

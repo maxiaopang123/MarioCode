@@ -160,6 +160,12 @@ const api = {
     unbind: (() => ipcRenderer.invoke(IPC.CLAWBOT_UNBIND)) as RpcMap["clawbot.unbind"],
     testPush: ((input) =>
       ipcRenderer.invoke(IPC.CLAWBOT_TEST_PUSH, input)) as RpcMap["clawbot.testPush"],
+    getChatSettings: (() =>
+      ipcRenderer.invoke(IPC.CLAWBOT_GET_CHAT_SETTINGS)) as RpcMap["clawbot.getChatSettings"],
+    updateChatSettings: ((input) =>
+      ipcRenderer.invoke(IPC.CLAWBOT_UPDATE_CHAT_SETTINGS, input)) as RpcMap["clawbot.updateChatSettings"],
+    resumeChat: (() =>
+      ipcRenderer.invoke(IPC.CLAWBOT_RESUME_CHAT)) as RpcMap["clawbot.resumeChat"],
   },
 
   /** Custom-model configs (user-defined Anthropic-compatible endpoints).

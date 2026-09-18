@@ -9,3 +9,4 @@ export * from "./relay.js";
 export * from "./sharedProvider.js";
 export * from "./scheduledTask.js";
 export * from "./clawbot.js";
+export * from "./clawbotChat.js";

@@ -18,6 +18,17 @@ try {
     target: "node22.19",
     tsconfig: join(desktop, "tsconfig.json"),
     alias: { "@contracts": resolve(desktop, "../../packages/contracts/src") },
+    plugins: [{
+      name: "service-test-boundaries",
+      setup(build) {
+        build.onResolve({ filter: /ClawBotCredentialStore\.js$|^@main\/lib\/logger\.js$/ }, ({ path }) => ({ path, namespace: "service-test" }));
+        build.onLoad({ filter: /.*/, namespace: "service-test" }, ({ path }) => ({
+          contents: path.includes("CredentialStore")
+            ? "export class ClawBotCredentialStore {}"
+            : "export const log = { warn() {} };",
+        }));
+      },
+    }],
   });
   await import(pathToFileURL(join(out, "smoke.mjs")).href);
 } finally {

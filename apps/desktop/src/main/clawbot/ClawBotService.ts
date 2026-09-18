@@ -10,6 +10,12 @@ import {
   type ClawBotSecrets,
 } from "./ClawBotCredentialStore.js";
 import {
+  consumeReplyContext,
+  findReplyContext,
+  upsertReplyContexts,
+  type ClawBotReplyContext,
+} from "./inbound.js";
+import {
   ILINK_DEFAULT_BASE_URL,
   buildBaseInfo,
   buildIlinkCommonHeaders,
@@ -20,11 +26,16 @@ import {
   responseCode,
   resolveStoredBindingState,
   normalizeTrustedApiBase,
-  selectOwnerContext,
+  deliverInboundBatch,
+  normalizeOwnerInbound,
+  readUpdatesCursor,
+  readUpdatesMessages,
   BindingEpoch,
+  type ClawBotInboundEvent,
   type ILinkResponse,
   type QrBindingStatus,
   type QrStatusResponse,
+  type UpdatesResponse,
 } from "./protocol.js";
 
 interface BindingSession {
@@ -34,12 +45,6 @@ interface BindingSession {
   baseUrl: string;
   verifyCode?: string;
   status: QrBindingStatus;
-}
-
-interface UpdatesResponse extends ILinkResponse {
-  msgs?: Array<{ from_user_id?: string; context_token?: string }>;
-  get_updates_buf?: string;
-  longpolling_timeout_ms?: number;
 }
 
 const REGULAR_TIMEOUT_MS = 15_000;
@@ -54,6 +59,15 @@ export class ClawBotService {
   private runtimeError: string | null = null;
   private monitorAbort: AbortController | null = null;
   private monitorPromise: Promise<void> | null = null;
+  private inboundSink: ((batch: readonly ClawBotInboundEvent[]) => Promise<void>) | null = null;
+  private lifecycleEpoch = 0;
+  private stopping = false;
+
+  registerInboundSink(sink: (batch: readonly ClawBotInboundEvent[]) => Promise<void>): () => void {
+    if (this.inboundSink) throw new Error("ClawBot 入站处理器已注册。");
+    this.inboundSink = sink;
+    return () => { if (this.inboundSink === sink) this.inboundSink = null; };
+  }
 
   getStatus(): ClawBotStatus {
     const meta = this.store.readMetadata();
@@ -74,6 +88,8 @@ export class ClawBotService {
   }
 
   async start(): Promise<void> {
+    const epoch = ++this.lifecycleEpoch;
+    this.stopping = false;
     const meta = this.store.readMetadata();
     const secrets = this.store.readSecrets();
     if (!meta || !secrets?.botToken) {
@@ -82,10 +98,14 @@ export class ClawBotService {
     }
     this.state = secrets.contextToken ? "bound" : "needs-interaction";
     await this.notify("notifystart");
+    if (this.stopping || epoch !== this.lifecycleEpoch) return;
     this.startMonitor();
   }
 
   async stop(): Promise<void> {
+    // Invalidate pending reply continuations before any shutdown I/O.
+    this.lifecycleEpoch++;
+    this.stopping = true;
     this.invalidateBindingSession();
     this.monitorAbort?.abort();
     this.monitorAbort = null;
@@ -225,6 +245,46 @@ export class ClawBotService {
     }
   }
 
+  async replyTo(replyContextRef: string, text: string, stableClientId: string): Promise<ClawBotSendResult> {
+    if (this.stopping) return { status: "failed", error: "ClawBot 正在关闭。" };
+    const context = findReplyContext(this.store.readSecrets()?.replyContexts, replyContextRef);
+    if (!context) return { status: "failed", error: "回复上下文已失效。" };
+    const meta = this.store.readMetadata();
+    const secrets = this.store.readSecrets();
+    if (!meta || !secrets?.botToken || context.senderId !== meta.userId) {
+      return { status: "failed", error: "ClawBot 尚未绑定或回复目标无效。" };
+    }
+    const requestEpoch = this.lifecycleEpoch;
+    try {
+      const response = await this.requestJson<ILinkResponse>(
+        `${this.safeApiBase(meta.baseUrl)}/ilink/bot/sendmessage`,
+        { method: "POST", body: JSON.stringify(buildSendTextBody(context.senderId, text, context.contextToken, stableClientId)) },
+        secrets.botToken,
+        REGULAR_TIMEOUT_MS,
+      );
+      const result = classifySendResponse(response);
+      // App shutdown may have disposed the DB while fetch was in flight.
+      if (this.stopping || requestEpoch !== this.lifecycleEpoch) return result;
+      const code = responseCode(response);
+      if (code === -14) this.invalidateCredentials(result.error);
+      if (code === -2) this.invalidateContext(result.error);
+      if (code === 0) {
+        // Re-read after the network await so concurrent inbound commits are
+        // preserved; credential writes are synchronous within the main process.
+        const latest = this.store.readSecrets();
+        if (latest) {
+          this.store.writeSecrets({
+            ...latest,
+            replyContexts: consumeReplyContext(latest.replyContexts, replyContextRef),
+          });
+        }
+      }
+      return result;
+    } catch (err) {
+      return { status: "failed", error: this.safeError(err) };
+    }
+  }
+
   private async finishBinding(binding: BindingSession, response: QrStatusResponse): Promise<void> {
     if (this.binding !== binding || !this.bindingEpoch.isCurrent(binding.epoch)) {
       throw new Error("绑定请求已取消或被替代。");
@@ -254,7 +314,7 @@ export class ClawBotService {
   }
 
   private startMonitor(): void {
-    if (this.monitorPromise || this.monitorAbort) return;
+    if (this.stopping || this.monitorPromise || this.monitorAbort) return;
     const controller = new AbortController();
     this.monitorAbort = controller;
     this.monitorPromise = this.monitorLoop(controller.signal).finally(() => {
@@ -281,6 +341,7 @@ export class ClawBotService {
           Math.max(LONG_POLL_TIMEOUT_MS, 5_000),
           signal,
         );
+        if (signal.aborted || this.stopping) return;
         const code = responseCode(response);
         if (code === null) throw new Error("getupdates returned an invalid business response");
         if (code === -14) { this.invalidateCredentials("ClawBot 登录凭证已失效，请重新扫码绑定。"); return; }
@@ -291,26 +352,56 @@ export class ClawBotService {
         }
         if (code !== 0) throw new Error(`getupdates rejected (${code})`);
 
-        let nextMeta = this.store.readMetadata();
-        let nextSecrets = this.store.readSecrets();
-        if (!nextMeta || !nextSecrets) return;
-        let metadataChanged = false;
-        let secretsChanged = false;
-        if (response.get_updates_buf && response.get_updates_buf !== nextSecrets.cursor) {
-          nextSecrets = { ...nextSecrets, cursor: response.get_updates_buf };
-          secretsChanged = true;
+        const storedMeta = this.store.readMetadata();
+        const storedSecrets = this.store.readSecrets();
+        if (!storedMeta || !storedSecrets) return;
+        const ownerUserId = storedMeta.userId;
+        const pendingContexts: ClawBotReplyContext[] = [];
+        const normalized = readUpdatesMessages(response).flatMap((message) => {
+          const inbound = normalizeOwnerInbound(message, ownerUserId, storedMeta.accountId);
+          if (!inbound) return [];
+          pendingContexts.push({
+            ref: inbound.event.replyContextRef,
+            senderId: inbound.senderId,
+            contextToken: inbound.contextToken,
+            createdAt: Date.now(),
+          });
+          return [inbound];
+        });
+        const cursor = readUpdatesCursor(response);
+        if (pendingContexts.length > 0) {
+          // Make reply refs restart-safe before the Inbox can become visible.
+          // Deliberately retain the old cursor: sink failure must replay.
+          const beforeSink = this.store.readSecrets();
+          if (!beforeSink) return;
+          this.store.writeSecrets({
+            ...beforeSink,
+            replyContexts: upsertReplyContexts(beforeSink.replyContexts, pendingContexts),
+          });
         }
-        const owner = selectOwnerContext(nextMeta.userId, nextSecrets.contextToken, response.msgs ?? []);
-        if (owner.matched) {
-          nextMeta = { ...nextMeta, userId: owner.userId, lastInteractionAt: Date.now(), lastError: null };
-          nextSecrets = { ...nextSecrets, contextToken: owner.contextToken };
-          metadataChanged = true;
-          secretsChanged = true;
-          this.state = "bound";
-          this.runtimeError = null;
-        }
-        if (metadataChanged) this.store.writeMetadata(nextMeta);
-        if (secretsChanged) this.store.writeSecrets(nextSecrets);
+        await deliverInboundBatch(normalized.map(({ event }) => event), this.inboundSink, () => {
+          if (signal.aborted || this.stopping) return;
+          const latestMeta = this.store.readMetadata();
+          const latestSecrets = this.store.readSecrets();
+          if (!latestMeta || !latestSecrets) return;
+          let acknowledgedMeta: ClawBotMetadata = latestMeta;
+          let acknowledgedSecrets: ClawBotSecrets = latestSecrets;
+          if (normalized.length > 0) {
+            const latest = normalized.at(-1)!;
+            acknowledgedMeta = { ...acknowledgedMeta, lastInteractionAt: Date.now(), lastError: null };
+            acknowledgedSecrets = {
+              ...acknowledgedSecrets,
+              contextToken: latest.contextToken,
+            };
+            this.state = "bound";
+            this.runtimeError = null;
+          }
+          if (cursor && cursor !== acknowledgedSecrets.cursor) acknowledgedSecrets = { ...acknowledgedSecrets, cursor };
+          if (normalized.length > 0) this.store.writeMetadata(acknowledgedMeta);
+          if (normalized.length > 0 || (cursor && cursor !== latestSecrets.cursor)) {
+            this.store.writeSecrets(acknowledgedSecrets);
+          }
+        });
       } catch (err) {
         if (signal.aborted) return;
         if (err instanceof Error && err.name === "AbortError") continue;
@@ -351,7 +442,7 @@ export class ClawBotService {
     const meta = this.store.readMetadata();
     const secrets = this.store.readSecrets();
     if (meta) this.store.writeMetadata({ ...meta, lastError: error });
-    if (secrets) this.store.writeSecrets({ ...secrets, contextToken: "" });
+    if (secrets) this.store.writeSecrets({ ...secrets, contextToken: "", replyContexts: [] });
     this.state = "needs-interaction";
     this.runtimeError = error;
   }

@@ -1,5 +1,6 @@
 import { safeStorage } from "electron";
 import { SettingRepo } from "@main/store/repositories.js";
+import type { ClawBotReplyContext } from "./inbound.js";
 
 const META_KEY = "clawbot.metadata";
 const SECRETS_KEY = "clawbot.secrets";
@@ -17,7 +18,9 @@ export interface ClawBotSecrets {
   botToken: string;
   cursor: string;
   contextToken: string;
+  replyContexts?: ClawBotReplyContext[];
 }
+
 
 function parseJson<T>(raw: string | null): T | null {
   if (!raw) return null;

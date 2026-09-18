@@ -459,6 +459,9 @@ const clawbot: Api["clawbot"] = {
   cancelBinding: () => webUnsupported("clawbot.cancelBinding"),
   unbind: () => webUnsupported("clawbot.unbind"),
   testPush: () => webUnsupported("clawbot.testPush"),
+  getChatSettings: () => webUnsupported("clawbot.getChatSettings"),
+  updateChatSettings: () => webUnsupported("clawbot.updateChatSettings"),
+  resumeChat: () => webUnsupported("clawbot.resumeChat"),
 };
 
 const customModel: Api["customModel"] = {

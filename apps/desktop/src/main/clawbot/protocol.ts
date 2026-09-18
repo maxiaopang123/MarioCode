@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { ClawBotSendResult, ClawBotState } from "@contracts/clawbot";
 
 export const ILINK_DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com";
@@ -144,6 +144,141 @@ export function normalizeTrustedApiBase(value: string): string {
 export interface InboundContextCandidate {
   from_user_id?: string;
   context_token?: string;
+}
+
+export interface ILinkMessageItem {
+  id?: string | number | bigint;
+  item_id?: string | number | bigint;
+  type?: number;
+  text_item?: { text?: string };
+  [key: string]: unknown;
+}
+
+/** Wire shape observed across current iLink getupdates lanes. */
+export interface ILinkInboundMessage extends InboundContextCandidate {
+  message_id?: string | number | bigint;
+  msg_id?: string | number | bigint;
+  client_id?: string;
+  from_user_id?: string;
+  to_user_id?: string;
+  message_type?: number;
+  message_state?: number;
+  create_time_ms?: string | number;
+  item_list?: ILinkMessageItem[];
+  room_id?: string;
+  group_id?: string;
+  chat_type?: string | number;
+  deleted?: boolean;
+  is_deleted?: boolean;
+  [key: string]: unknown;
+}
+
+export interface UpdatesResponse extends ILinkResponse {
+  msgs?: ILinkInboundMessage[];
+  messages?: ILinkInboundMessage[];
+  Msgs?: ILinkInboundMessage[];
+  get_updates_buf?: string;
+  next_key?: string;
+  longpolling_timeout_ms?: number;
+}
+
+export interface ClawBotInboundEvent {
+  accountId: string;
+  conversationKey: string;
+  messageId: string;
+  text: string;
+  receivedAt: number;
+  replyContextRef: string;
+}
+
+export interface NormalizedInbound {
+  event: ClawBotInboundEvent;
+  senderId: string;
+  contextToken: string;
+}
+
+function wireId(value: unknown): string {
+  if (typeof value === "bigint") return value.toString(10);
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
+function stableFallbackId(message: ILinkInboundMessage, text: string): string {
+  const canonical = JSON.stringify({
+    from: message.from_user_id ?? "",
+    to: message.to_user_id ?? "",
+    created: message.create_time_ms ?? "",
+    client: message.client_id ?? "",
+    text,
+  });
+  return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
+}
+
+function isDirectMessage(message: ILinkInboundMessage): boolean {
+  const sender = message.from_user_id?.trim() ?? "";
+  if (sender.endsWith("@chatroom") || message.room_id || message.group_id) return false;
+  if (message.chat_type !== undefined && ![1, "1", "single", "direct", "private"].includes(message.chat_type)) return false;
+  return true;
+}
+
+/** Normalize only completed owner DMs containing plain text and no tool/media item. */
+export function normalizeOwnerInbound(
+  message: ILinkInboundMessage,
+  ownerUserId: string,
+  accountId: string,
+): NormalizedInbound | null {
+  const senderId = message.from_user_id?.trim() ?? "";
+  const contextToken = message.context_token?.trim() ?? "";
+  if (!senderId || !contextToken || senderId !== ownerUserId) return null;
+  if (message.message_type !== 1 || message.message_state !== 2 || !isDirectMessage(message)) return null;
+  if (message.deleted || message.is_deleted) return null;
+  const items = Array.isArray(message.item_list) ? message.item_list : [];
+  if (items.length === 0 || items.some((item) => item.type !== 1 || typeof item.text_item?.text !== "string")) return null;
+  const text = items.map((item) => item.text_item!.text!).join("").trim();
+  if (!text) return null;
+  const topLevelId = wireId(message.message_id) || wireId(message.msg_id);
+  const itemId = items.map((item) => wireId(item.item_id) || wireId(item.id)).find(Boolean) ?? "";
+  const messageId = topLevelId || itemId || stableFallbackId(message, text);
+  const parsedTime = Number(message.create_time_ms);
+  const conversationKey = createHash("sha256").update(accountId).update("\0").update(senderId).digest("hex");
+  const replyContextRef = `rc_${createHash("sha256").update(accountId).update("\0").update(messageId).digest("hex")}`;
+  return {
+    event: {
+      accountId,
+      conversationKey,
+      messageId,
+      text,
+      receivedAt: Number.isFinite(parsedTime) && parsedTime > 0 ? parsedTime : Date.now(),
+      replyContextRef,
+    },
+    senderId,
+    contextToken,
+  };
+}
+
+export function readUpdatesMessages(response: UpdatesResponse): ILinkInboundMessage[] {
+  if (Array.isArray(response.msgs)) return response.msgs;
+  if (Array.isArray(response.messages)) return response.messages;
+  return Array.isArray(response.Msgs) ? response.Msgs : [];
+}
+
+export function readUpdatesCursor(response: UpdatesResponse): string | null {
+  const cursor = response.get_updates_buf ?? response.next_key;
+  return typeof cursor === "string" && cursor.length > 0 ? cursor : null;
+}
+
+/** The acknowledgement callback is deliberately after the awaited batch sink. */
+export async function deliverInboundBatch(
+  events: readonly ClawBotInboundEvent[],
+  sink: ((batch: readonly ClawBotInboundEvent[]) => Promise<void>) | null,
+  acknowledge: () => void,
+): Promise<void> {
+  if (events.length > 0) {
+    if (!sink) throw new Error("ClawBot 入站处理器尚未注册。");
+    await sink(events);
+  }
+  acknowledge();
 }
 
 export interface OwnerContextSelection {

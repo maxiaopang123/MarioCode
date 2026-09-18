@@ -16,11 +16,16 @@ import type { RelayStatus, RelayVpsConfig, RelayVpsConfigInput } from "./relay.j
 import {
   ClawBotVerifyCodeSchema,
   ClawBotTestPushSchema,
+  ClawBotChatSettingsInputSchema,
+  ClawBotChatSettingsSchema,
   type ClawBotStatus,
   type ClawBotBindingResult,
   type ClawBotVerifyCodeInput,
   type ClawBotTestPushInput,
   type ClawBotSendResult,
+  type ClawBotChatSettingsInput,
+  type ClawBotChatSettings,
+  type ClawBotChatProvider,
 } from "./clawbot.js";
 import {
   ScheduledTaskCreateSchema,
@@ -115,13 +120,21 @@ export {
   ScheduledTaskSetEnabledSchema,
 };
 export type { ScheduledTask, ScheduledTaskCreateInput, ScheduledTaskUpdateInput };
-export { ClawBotVerifyCodeSchema, ClawBotTestPushSchema };
+export {
+  ClawBotVerifyCodeSchema,
+  ClawBotTestPushSchema,
+  ClawBotChatSettingsInputSchema,
+  ClawBotChatSettingsSchema,
+};
 export type {
   ClawBotStatus,
   ClawBotBindingResult,
   ClawBotVerifyCodeInput,
   ClawBotTestPushInput,
   ClawBotSendResult,
+  ClawBotChatSettingsInput,
+  ClawBotChatSettings,
+  ClawBotChatProvider,
 };
 
 // Re-export relay types so consumers can import from "@contracts/ipc".
@@ -4144,6 +4157,9 @@ export interface RpcMap {
   "clawbot.cancelBinding": () => Promise<ClawBotStatus>;
   "clawbot.unbind": () => Promise<ClawBotStatus>;
   "clawbot.testPush": (input: ClawBotTestPushInput) => Promise<ClawBotSendResult>;
+  "clawbot.getChatSettings": () => Promise<ClawBotChatSettings>;
+  "clawbot.updateChatSettings": (input: ClawBotChatSettingsInput) => Promise<ClawBotChatSettings>;
+  "clawbot.resumeChat": () => Promise<ClawBotChatSettings>;
   // Settings
   "setting.get": (input: GetSettingInput) => Promise<{ value: string | null }>;
   "setting.set": (input: SetSettingInput) => Promise<void>;
@@ -4850,6 +4866,9 @@ export const IPC = {
   CLAWBOT_CANCEL_BINDING: "clawbot:cancelBinding",
   CLAWBOT_UNBIND: "clawbot:unbind",
   CLAWBOT_TEST_PUSH: "clawbot:testPush",
+  CLAWBOT_GET_CHAT_SETTINGS: "clawbot:getChatSettings",
+  CLAWBOT_UPDATE_CHAT_SETTINGS: "clawbot:updateChatSettings",
+  CLAWBOT_RESUME_CHAT: "clawbot:resumeChat",
   // Plugins (settings panel): list/install (local/git/marketplace)/enable/
   // remove + marketplace management. No push channel — every RPC resolves
   // when done and the panel re-lists.

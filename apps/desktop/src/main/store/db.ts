@@ -178,6 +178,58 @@ function migrate(database: Database.Database): void {
       ON scheduled_tasks(enabled, next_run_at);
     CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_project
       ON scheduled_tasks(project_id);
+
+    CREATE TABLE IF NOT EXISTS clawbot_conversations (
+      id                  TEXT PRIMARY KEY,
+      account_id          TEXT NOT NULL,
+      peer_key            TEXT NOT NULL,
+      project_id          TEXT,
+      session_id          TEXT,
+      provider_id         TEXT NOT NULL,
+      model               TEXT NOT NULL,
+      permission_mode     TEXT NOT NULL,
+      state               TEXT NOT NULL DEFAULT 'active',
+      created_at          INTEGER NOT NULL,
+      updated_at          INTEGER NOT NULL,
+      UNIQUE(account_id, peer_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS clawbot_inbox (
+      id                        TEXT PRIMARY KEY,
+      account_id                TEXT NOT NULL,
+      external_message_id       TEXT NOT NULL,
+      peer_key                  TEXT NOT NULL,
+      reply_context_ref         TEXT NOT NULL,
+      payload_ciphertext        TEXT NOT NULL,
+      conversation_id           TEXT REFERENCES clawbot_conversations(id),
+      status                    TEXT NOT NULL DEFAULT 'queued',
+      attempt_count             INTEGER NOT NULL DEFAULT 0,
+      received_at               INTEGER NOT NULL,
+      claimed_at                INTEGER,
+      completed_at              INTEGER,
+      last_error                TEXT,
+      created_at                INTEGER NOT NULL,
+      updated_at                INTEGER NOT NULL,
+      UNIQUE(account_id, external_message_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_clawbot_inbox_claim
+      ON clawbot_inbox(conversation_id, status, received_at, id);
+
+    CREATE TABLE IF NOT EXISTS clawbot_outbox (
+      id                        TEXT PRIMARY KEY,
+      inbox_id                  TEXT NOT NULL REFERENCES clawbot_inbox(id),
+      conversation_id           TEXT NOT NULL REFERENCES clawbot_conversations(id),
+      client_id                 TEXT NOT NULL UNIQUE,
+      reply_context_ref         TEXT NOT NULL,
+      payload_ciphertext        TEXT NOT NULL,
+      status                    TEXT NOT NULL DEFAULT 'queued',
+      sent_at                   INTEGER,
+      last_error                TEXT,
+      created_at                INTEGER NOT NULL,
+      updated_at                INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_clawbot_outbox_status
+      ON clawbot_outbox(status, created_at, id);
   `);
   // Backward-compatible column adds for dbs created before these columns
   // existed (CREATE TABLE IF NOT EXISTS won't alter an existing table).
@@ -246,6 +298,11 @@ function migrate(database: Database.Database): void {
   addColumnIfMissing(database, "scheduled_tasks", "last_push_status", "TEXT NOT NULL DEFAULT 'idle'");
   addColumnIfMissing(database, "scheduled_tasks", "last_push_at", "INTEGER");
   addColumnIfMissing(database, "scheduled_tasks", "last_push_error", "TEXT");
+  // Pre-release ClawBot preview databases may contain the earlier encrypted
+  // sender/context columns. Keep those extra columns untouched, but add the
+  // opaque safeStorage lookup reference used by the finalized repository.
+  addColumnIfMissing(database, "clawbot_inbox", "reply_context_ref", "TEXT");
+  addColumnIfMissing(database, "clawbot_outbox", "reply_context_ref", "TEXT");
 
   // Composite index for paginated message reads (cursor on created_at). The
   // single-column idx_messages_session above serves the same queries but

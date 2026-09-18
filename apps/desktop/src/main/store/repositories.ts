@@ -22,6 +22,18 @@ import type {
   ScheduledTaskPushStatus,
   ScheduledTaskStatus,
 } from "@contracts/scheduledTask";
+import type {
+  ClawBotConversation,
+  ClawBotConversationCreateInput,
+  ClawBotConversationPatch,
+  ClawBotConversationIssueCounts,
+  ClawBotInboxItem,
+  ClawBotInboxStatus,
+  ClawBotInboundMessage,
+  ClawBotOutboxItem,
+  ClawBotOutboxStatus,
+  ClawBotOutboxWrite,
+} from "@contracts/clawbotChat";
 import { normPathKey } from "@main/lib/pathNorm.js";
 import { getDb, persist } from "./db.js";
 
@@ -45,6 +57,11 @@ function safeJson(x: unknown): unknown {
  *  this file runs once — the shorthand keeps the call sites flat. */
 function run(sql: string, ...params: BindValue[]): void {
   getDb().prepare(sql).run(...params);
+}
+
+function hasColumn(table: string, column: string): boolean {
+  return getDb().prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ? LIMIT 1")
+    .get(v(table), v(column)) !== undefined;
 }
 
 /* ─────────────────────────────── Projects ─────────────────────────────── */
@@ -1123,6 +1140,240 @@ export const MessageRepo = {
       throw err;
     }
     persist();
+  },
+};
+
+/* ─────────────────────────── ClawBot owner DM ─────────────────────────── */
+
+interface ClawBotConversationRow {
+  id: string; account_id: string; peer_key: string;
+  project_id: string | null; session_id: string | null; provider_id: string;
+  model: string; permission_mode: string; state: ClawBotConversation["state"];
+  created_at: number; updated_at: number;
+}
+
+interface ClawBotInboxRow {
+  id: string; account_id: string; external_message_id: string; peer_key: string;
+  reply_context_ref: string;
+  payload_ciphertext: string; conversation_id: string | null;
+  status: ClawBotInboxStatus; attempt_count: number; received_at: number;
+  claimed_at: number | null; completed_at: number | null; last_error: string | null;
+  created_at: number; updated_at: number;
+}
+
+interface ClawBotOutboxRow {
+  id: string; inbox_id: string; conversation_id: string; client_id: string;
+  reply_context_ref: string; payload_ciphertext: string;
+  status: ClawBotOutboxStatus; sent_at: number | null; last_error: string | null;
+  created_at: number; updated_at: number;
+}
+
+function rowToClawBotConversation(r: ClawBotConversationRow): ClawBotConversation {
+  return { id: r.id, accountId: r.account_id, peerKey: r.peer_key,
+    projectId: r.project_id,
+    sessionId: r.session_id, providerId: r.provider_id, model: r.model,
+    permissionMode: r.permission_mode, state: r.state,
+    createdAt: r.created_at, updatedAt: r.updated_at };
+}
+
+function rowToClawBotInbox(r: ClawBotInboxRow): ClawBotInboxItem {
+  return { id: r.id, accountId: r.account_id, externalMessageId: r.external_message_id,
+    peerKey: r.peer_key, replyContextRef: r.reply_context_ref,
+    payloadCiphertext: r.payload_ciphertext,
+    conversationId: r.conversation_id, status: r.status, attemptCount: r.attempt_count,
+    receivedAt: r.received_at, claimedAt: r.claimed_at, completedAt: r.completed_at,
+    lastError: r.last_error, createdAt: r.created_at, updatedAt: r.updated_at };
+}
+
+function rowToClawBotOutbox(r: ClawBotOutboxRow): ClawBotOutboxItem {
+  return { id: r.id, inboxId: r.inbox_id, conversationId: r.conversation_id,
+    clientId: r.client_id, replyContextRef: r.reply_context_ref,
+    payloadCiphertext: r.payload_ciphertext, status: r.status, sentAt: r.sent_at,
+    lastError: r.last_error, createdAt: r.created_at, updatedAt: r.updated_at };
+}
+
+export const ClawBotConversationRepo = {
+  get(id: string): ClawBotConversation | undefined {
+    const row = getDb().prepare("SELECT * FROM clawbot_conversations WHERE id = ?").get(v(id)) as unknown as ClawBotConversationRow | undefined;
+    return row ? rowToClawBotConversation(row) : undefined;
+  },
+
+  getByPeer(accountId: string, peerKey: string): ClawBotConversation | undefined {
+    const row = getDb().prepare("SELECT * FROM clawbot_conversations WHERE account_id = ? AND peer_key = ?")
+      .get(v(accountId), v(peerKey)) as unknown as ClawBotConversationRow | undefined;
+    return row ? rowToClawBotConversation(row) : undefined;
+  },
+
+  /** Concurrent-safe get/create; the account+peer unique key selects the winner. */
+  getOrCreate(input: ClawBotConversationCreateInput): ClawBotConversation {
+    const db = getDb();
+    return db.transaction(() => {
+      const legacyUserColumn = hasColumn("clawbot_conversations", "user_id_ciphertext");
+      db.prepare(`INSERT OR IGNORE INTO clawbot_conversations
+        (id, account_id, peer_key, ${legacyUserColumn ? "user_id_ciphertext," : ""} project_id, session_id, provider_id,
+         model, permission_mode, state, created_at, updated_at)
+        VALUES (?, ?, ?, ${legacyUserColumn ? "?," : ""} ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(v(input.id), v(input.accountId), v(input.peerKey), ...(legacyUserColumn ? [v("")] : []),
+          v(input.projectId), v(input.sessionId), v(input.providerId), v(input.model),
+          v(input.permissionMode), v(input.state), v(input.createdAt), v(input.updatedAt));
+      const row = db.prepare("SELECT * FROM clawbot_conversations WHERE account_id = ? AND peer_key = ?")
+        .get(v(input.accountId), v(input.peerKey)) as unknown as ClawBotConversationRow;
+      return rowToClawBotConversation(row);
+    })();
+  },
+
+  updateActiveSession(id: string, patch: ClawBotConversationPatch): ClawBotConversation | undefined {
+    const sets: string[] = []; const vals: BindValue[] = [];
+    const fields: Array<[keyof ClawBotConversationPatch, string]> = [
+      ["projectId", "project_id"], ["sessionId", "session_id"], ["providerId", "provider_id"],
+      ["model", "model"], ["permissionMode", "permission_mode"], ["state", "state"],
+    ];
+    for (const [key, column] of fields) if (patch[key] !== undefined) { sets.push(`${column} = ?`); vals.push(v(patch[key])); }
+    if (sets.length === 0) return this.get(id);
+    sets.push("updated_at = ?"); vals.push(v(Date.now()), v(id));
+    run(`UPDATE clawbot_conversations SET ${sets.join(", ")} WHERE id = ?`, ...vals);
+    return this.get(id);
+  },
+
+  /** Manual UI recovery only re-enables routing; terminal work is never replayed. */
+  resumeConversation(id: string): ClawBotConversation | undefined {
+    run("UPDATE clawbot_conversations SET state = 'active', updated_at = ? WHERE id = ?",
+      v(Date.now()), v(id));
+    return this.get(id);
+  },
+
+  issueCounts(id: string): ClawBotConversationIssueCounts {
+    const row = getDb().prepare(`SELECT
+      (SELECT COUNT(*) FROM clawbot_inbox WHERE conversation_id = ? AND status = 'failed') AS inbox_failed,
+      (SELECT COUNT(*) FROM clawbot_inbox WHERE conversation_id = ? AND status = 'needs-review') AS inbox_needs_review,
+      (SELECT COUNT(*) FROM clawbot_outbox WHERE conversation_id = ? AND status = 'failed') AS outbox_failed,
+      (SELECT COUNT(*) FROM clawbot_outbox WHERE conversation_id = ? AND status = 'needs-review') AS outbox_needs_review`)
+      .get(v(id), v(id), v(id), v(id)) as unknown as {
+        inbox_failed: number; inbox_needs_review: number; outbox_failed: number; outbox_needs_review: number;
+      };
+    return { inboxFailed: row.inbox_failed, inboxNeedsReview: row.inbox_needs_review,
+      outboxFailed: row.outbox_failed, outboxNeedsReview: row.outbox_needs_review };
+  },
+};
+
+export const ClawBotInboxRepo = {
+  /** Persist one normalized polling batch atomically; only newly inserted rows are returned. */
+  persistNormalizedBatch(messages: ClawBotInboundMessage[]): ClawBotInboxItem[] {
+    if (messages.length === 0) return [];
+    const db = getDb();
+    return db.transaction(() => {
+      const inserted: ClawBotInboxItem[] = [];
+      const legacyUserColumn = hasColumn("clawbot_inbox", "user_id_ciphertext");
+      const insert = db.prepare(`INSERT OR IGNORE INTO clawbot_inbox
+        (id, account_id, external_message_id, peer_key, ${legacyUserColumn ? "user_id_ciphertext," : ""} reply_context_ref,
+         payload_ciphertext, conversation_id, status, received_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ${legacyUserColumn ? "?," : ""} ?, ?, ?, 'queued', ?, ?, ?)`);
+      const get = db.prepare("SELECT * FROM clawbot_inbox WHERE id = ?");
+      for (const m of messages) {
+        const now = Date.now();
+        const result = insert.run(v(m.id), v(m.accountId), v(m.externalMessageId), v(m.peerKey), ...(legacyUserColumn ? [v("")] : []),
+          v(m.replyContextRef), v(m.payloadCiphertext),
+          v(m.conversationId), v(m.receivedAt), v(now), v(now));
+        if (result.changes === 1) inserted.push(rowToClawBotInbox(get.get(v(m.id)) as unknown as ClawBotInboxRow));
+      }
+      return inserted;
+    })();
+  },
+
+  /** Claim the oldest queued item only when no item for the conversation is processing. */
+  claimQueued(conversationId: string, now = Date.now()): ClawBotInboxItem | undefined {
+    const db = getDb();
+    return db.transaction(() => {
+      const row = db.prepare(`SELECT * FROM clawbot_inbox
+        WHERE conversation_id = ? AND status = 'queued'
+          AND NOT EXISTS (SELECT 1 FROM clawbot_inbox WHERE conversation_id = ? AND status = 'processing')
+        ORDER BY received_at ASC, id ASC LIMIT 1`).get(v(conversationId), v(conversationId)) as unknown as ClawBotInboxRow | undefined;
+      if (!row) return undefined;
+      const changed = db.prepare(`UPDATE clawbot_inbox SET status = 'processing', attempt_count = attempt_count + 1,
+        claimed_at = ?, last_error = NULL, updated_at = ? WHERE id = ? AND status = 'queued'`)
+        .run(v(now), v(now), v(row.id)).changes;
+      if (changed !== 1) return undefined;
+      return rowToClawBotInbox(db.prepare("SELECT * FROM clawbot_inbox WHERE id = ?").get(v(row.id)) as unknown as ClawBotInboxRow);
+    })();
+  },
+
+  attachConversation(inboxId: string, conversationId: string): void {
+    run("UPDATE clawbot_inbox SET conversation_id = ?, updated_at = ? WHERE id = ? AND status = 'queued'",
+      v(conversationId), v(Date.now()), v(inboxId));
+  },
+
+  /** Repair pre-atomic-link preview rows using the conversation's account+peer identity. */
+  repairUnattachedQueued(): number {
+    const result = getDb().prepare(`UPDATE clawbot_inbox
+      SET conversation_id = (
+        SELECT c.id FROM clawbot_conversations c
+        WHERE c.account_id = clawbot_inbox.account_id AND c.peer_key = clawbot_inbox.peer_key
+        LIMIT 1
+      ), updated_at = ?
+      WHERE status = 'queued' AND conversation_id IS NULL
+        AND EXISTS (
+          SELECT 1 FROM clawbot_conversations c
+          WHERE c.account_id = clawbot_inbox.account_id AND c.peer_key = clawbot_inbox.peer_key
+        )`).run(v(Date.now()));
+    return result.changes;
+  },
+
+  /** A precise new-session command supersedes older queued prompts, never in-flight work. */
+  supersedeQueuedForNewSession(conversationId: string, keepInboxId: string): number {
+    const db = getDb();
+    return db.transaction(() => {
+      const now = Date.now();
+      return db.prepare(`UPDATE clawbot_inbox SET status = 'needs-review', completed_at = ?,
+        last_error = 'Superseded by an explicit new-session command; review before retrying', updated_at = ?
+        WHERE conversation_id = ? AND status = 'queued' AND id <> ?`)
+        .run(v(now), v(now), v(conversationId), v(keepInboxId)).changes;
+    })();
+  },
+
+  /** Complete an inbox item and optionally enqueue its reply in one transaction. */
+  writeTerminal(inboxId: string, status: Exclude<ClawBotInboxStatus, "queued" | "processing">,
+    error: string | null, outbox?: ClawBotOutboxWrite): ClawBotOutboxItem | undefined {
+    const db = getDb();
+    return db.transaction(() => {
+      const now = Date.now();
+      const changed = db.prepare(`UPDATE clawbot_inbox SET status = ?, completed_at = ?, last_error = ?, updated_at = ?
+        WHERE id = ? AND status = 'processing'`).run(v(status), v(now), v(error), v(now), v(inboxId)).changes;
+      if (changed !== 1) throw new Error(`ClawBot inbox item is not processing: ${inboxId}`);
+      if (!outbox) return undefined;
+      db.prepare(`INSERT INTO clawbot_outbox
+        (id, inbox_id, conversation_id, client_id, reply_context_ref, payload_ciphertext,
+         status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(client_id) DO NOTHING`).run(v(outbox.id), v(outbox.inboxId), v(outbox.conversationId),
+          v(outbox.clientId), v(outbox.replyContextRef), v(outbox.payloadCiphertext),
+          v(outbox.status ?? "queued"), v(outbox.createdAt), v(outbox.createdAt));
+      const row = db.prepare("SELECT * FROM clawbot_outbox WHERE client_id = ?").get(v(outbox.clientId)) as unknown as ClawBotOutboxRow;
+      return rowToClawBotOutbox(row);
+    })();
+  },
+
+  /** Claimed work may already have started an Agent turn; never replay it automatically. */
+  recoverInterrupted(now = Date.now()): number {
+    const result = getDb().prepare(`UPDATE clawbot_inbox SET status = 'needs-review', completed_at = ?,
+      last_error = 'MarioCode exited after claiming this message; review before retrying', updated_at = ?
+      WHERE status = 'processing'`).run(v(now), v(now));
+    return result.changes;
+  },
+};
+
+export const ClawBotOutboxRepo = {
+  getByClientId(clientId: string): ClawBotOutboxItem | undefined {
+    const row = getDb().prepare("SELECT * FROM clawbot_outbox WHERE client_id = ?").get(v(clientId)) as unknown as ClawBotOutboxRow | undefined;
+    return row ? rowToClawBotOutbox(row) : undefined;
+  },
+  setStatus(clientId: string, status: ClawBotOutboxStatus, error: string | null = null, now = Date.now()): boolean {
+    const sentAt = status === "sent" ? now : null;
+    return getDb().prepare("UPDATE clawbot_outbox SET status = ?, sent_at = ?, last_error = ?, updated_at = ? WHERE client_id = ?")
+      .run(v(status), v(sentAt), v(error), v(now), v(clientId)).changes === 1;
+  },
+  recoverInterrupted(now = Date.now()): number {
+    return getDb().prepare(`UPDATE clawbot_outbox SET status = 'needs-review',
+      last_error = 'MarioCode exited while sending; delivery result is unknown, review before retrying', updated_at = ?
+      WHERE status = 'sending'`).run(v(now)).changes;
   },
 };
 

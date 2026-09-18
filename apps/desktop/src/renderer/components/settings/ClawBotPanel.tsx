@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
-import type { ClawBotBindingResult, ClawBotStatus } from "@contracts/ipc";
+import type {
+  ClawBotBindingResult,
+  ClawBotChatProvider,
+  ClawBotChatSettings,
+  ClawBotStatus,
+} from "@contracts/ipc";
 import { api } from "@renderer/lib/api.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import {
@@ -10,7 +15,20 @@ import {
   IconRefresh,
   IconUnlink,
 } from "@renderer/lib/icons.js";
-import { Button, ConfirmDialog, Input } from "@renderer/components/ui/index.js";
+import { Button, ConfirmDialog, Input, Switch } from "@renderer/components/ui/index.js";
+
+const SAFE_CHAT_PROVIDERS: readonly ClawBotChatProvider[] = ["claude-sdk", "codex-sdk", "pi-sdk"];
+const DEFAULT_CHAT_SETTINGS: ClawBotChatSettings = {
+  enabled: false,
+  providerId: "claude-sdk",
+  model: "default",
+  projectId: null,
+  sessionId: null,
+  queued: 0,
+  failed: 0,
+  lastMessageAt: null,
+  lastError: null,
+};
 
 const EMPTY_STATUS: ClawBotStatus = {
   state: "unbound",
@@ -32,6 +50,12 @@ export function ClawBotPanel() {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ kind: "ok" | "error" | "warning"; text: string } | null>(null);
   const [confirmUnbind, setConfirmUnbind] = useState(false);
+  const [chatSettings, setChatSettings] = useState<ClawBotChatSettings>(DEFAULT_CHAT_SETTINGS);
+  const [chatProviders, setChatProviders] = useState<Array<{ id: ClawBotChatProvider; name: string }>>(
+    SAFE_CHAT_PROVIDERS.map((id) => ({ id, name: id })),
+  );
+  const [chatLoaded, setChatLoaded] = useState(false);
+  const [chatBusy, setChatBusy] = useState(false);
   const pollBusy = useRef(false);
   const bindingGeneration = useRef(0);
 
@@ -65,7 +89,38 @@ export function ClawBotPanel() {
     }
   }, [t]);
 
+  const refreshChatSettings = useCallback(async () => {
+    try {
+      setChatSettings(await api.clawbot.getChatSettings());
+    } catch (err) {
+      setFeedback({ kind: "error", text: t("settings.clawbot.actionFailed", { error: (err as Error).message }) });
+    } finally {
+      setChatLoaded(true);
+    }
+  }, [t]);
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([refreshStatus(), refreshChatSettings()]);
+  }, [refreshStatus, refreshChatSettings]);
+
   useEffect(() => { void refreshStatus(); }, [refreshStatus]);
+  useEffect(() => { void refreshChatSettings(); }, [refreshChatSettings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.provider.list().then((result) => {
+      if (cancelled) return;
+      const available = result.providers
+        .filter((provider): provider is typeof provider & { id: ClawBotChatProvider } =>
+          SAFE_CHAT_PROVIDERS.includes(provider.id as ClawBotChatProvider))
+        .map((provider) => ({ id: provider.id as ClawBotChatProvider, name: provider.displayName }));
+      setChatProviders(SAFE_CHAT_PROVIDERS.map((id) => ({
+        id,
+        name: available.find((provider) => provider.id === id)?.name ?? id,
+      })));
+    }).catch(() => { /* Keep the safe built-in fallback list. */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // After QR confirmation the service still needs one inbound WeChat message
   // before proactive pushes have a usable context. Refresh that transition
@@ -197,6 +252,41 @@ export function ClawBotPanel() {
     }
   };
 
+  const saveChatSettings = async () => {
+    const model = chatSettings.model.trim();
+    if (!model || model.length > 200) return;
+    setChatBusy(true);
+    setFeedback(null);
+    try {
+      const next = await api.clawbot.updateChatSettings({
+        enabled: chatSettings.enabled,
+        providerId: chatSettings.providerId,
+        model,
+      });
+      setChatSettings(next);
+      await refreshChatSettings();
+      setFeedback({ kind: "ok", text: t("settings.clawbot.chatSaved") });
+    } catch (err) {
+      setFeedback({ kind: "error", text: t("settings.clawbot.actionFailed", { error: (err as Error).message }) });
+    } finally {
+      setChatBusy(false);
+    }
+  };
+
+  const resumeChat = async () => {
+    setChatBusy(true);
+    setFeedback(null);
+    try {
+      setChatSettings(await api.clawbot.resumeChat());
+      await refreshChatSettings();
+      setFeedback({ kind: "ok", text: t("settings.clawbot.chatResumed") });
+    } catch (err) {
+      setFeedback({ kind: "error", text: t("settings.clawbot.actionFailed", { error: (err as Error).message }) });
+    } finally {
+      setChatBusy(false);
+    }
+  };
+
   const needsVerify = binding?.bindingStatus === "need_verifycode";
   const bound = status.state === "bound" || status.state === "needs-interaction";
   const stateLabel = status.ready
@@ -219,7 +309,7 @@ export function ClawBotPanel() {
           </div>
           <p className="mt-1 text-xs leading-relaxed text-content-muted">{t("settings.clawbot.description")}</p>
         </div>
-        <Button size="icon" variant="ghost" title={t("settings.clawbot.refreshStatus")} disabled={busy} onClick={() => void refreshStatus()}>
+        <Button size="icon" variant="ghost" title={t("settings.clawbot.refreshStatus")} disabled={busy || chatBusy} onClick={() => void refreshAll()}>
           <IconRefresh size={14} />
         </Button>
       </div>
@@ -279,6 +369,76 @@ export function ClawBotPanel() {
             <p className="text-[11px] leading-relaxed text-content-subtle">{t("settings.clawbot.deliveryNotice")}</p>
           </div>
         )}
+
+        <div className="mt-4 border-t border-edge pt-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h4 className="text-sm font-medium text-content">{t("settings.clawbot.chatTitle")}</h4>
+              <p className="mt-1 text-xs leading-relaxed text-content-subtle">{t("settings.clawbot.chatDescription")}</p>
+            </div>
+            <Switch
+              checked={chatSettings.enabled}
+              disabled={!chatLoaded || chatBusy}
+              onCheckedChange={(enabled) => setChatSettings((current) => ({ ...current, enabled }))}
+              label={chatSettings.enabled ? t("settings.on") : t("settings.off")}
+            />
+          </div>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5 text-xs text-content-muted">
+              <span>{t("settings.clawbot.chatAgent")}</span>
+              <select
+                className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-content outline-none focus:border-accent"
+                value={chatSettings.providerId}
+                disabled={!chatLoaded || chatBusy}
+                onChange={(event) => setChatSettings((current) => ({ ...current, providerId: event.target.value as ClawBotChatProvider }))}
+              >
+                {chatProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1.5 text-xs text-content-muted">
+              <span>{t("settings.clawbot.chatModel")}</span>
+              <Input
+                value={chatSettings.model}
+                maxLength={200}
+                disabled={!chatLoaded || chatBusy}
+                placeholder="default"
+                onChange={(event) => setChatSettings((current) => ({ ...current, model: event.target.value }))}
+              />
+            </label>
+          </div>
+
+          <div className="mt-3 grid gap-2 rounded-lg border border-edge bg-surface-muted/30 p-3 text-xs text-content-muted sm:grid-cols-2">
+            <div>{t("settings.clawbot.chatProject")}: <span className="text-content">{chatSettings.projectId ?? t("settings.clawbot.never")}</span></div>
+            <div>{t("settings.clawbot.chatSession")}: <span className="text-content">{chatSettings.sessionId ?? t("settings.clawbot.never")}</span></div>
+            <div>{t("settings.clawbot.chatQueued")}: <span className="text-content">{chatSettings.queued}</span></div>
+            <div>{t("settings.clawbot.chatFailed")}: <span className="text-content">{chatSettings.failed}</span></div>
+            <div>{t("settings.clawbot.chatLastMessage")}: <span className="text-content">{formatDate(chatSettings.lastMessageAt)}</span></div>
+            {chatSettings.lastError && <div className="sm:col-span-2 text-danger">{t("settings.clawbot.chatLastError")}: {chatSettings.lastError}</div>}
+          </div>
+
+          {(chatSettings.failed > 0 || chatSettings.lastError) && (
+            <div className="mt-3 flex flex-col gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs leading-relaxed text-content-muted">{t("settings.clawbot.chatResumeHint")}</p>
+              <Button variant="secondary" size="md" disabled={!chatLoaded || chatBusy} onClick={() => void resumeChat()}>
+                {chatBusy && <IconLoader2 size={14} className="animate-spin" />}
+                {t("settings.clawbot.chatResume")}
+              </Button>
+            </div>
+          )}
+
+          <div className="mt-3 flex justify-end">
+            <Button
+              variant="secondary"
+              size="md"
+              disabled={!chatLoaded || chatBusy || !chatSettings.model.trim()}
+              onClick={() => void saveChatSettings()}
+            >
+              {chatBusy && <IconLoader2 size={14} className="animate-spin" />}
+              {t("settings.clawbot.chatSave")}
+            </Button>
+          </div>
+        </div>
 
         {(status.error || feedback) && (
           <div className={`mt-3 flex items-start gap-2 rounded border px-3 py-2 text-xs ${feedback?.kind === "ok" ? "border-success/30 bg-success/5 text-success" : feedback?.kind === "warning" ? "border-warning/30 bg-warning/5 text-content-muted" : "border-danger/30 bg-danger/5 text-danger"}`}>

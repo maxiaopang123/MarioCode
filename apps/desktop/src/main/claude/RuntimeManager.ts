@@ -22,6 +22,7 @@ import { broadcastRuntimeEvent } from "@main/lib/sessionSync.js";
 import { invalidateUsageStats } from "@main/lib/usageStats.js";
 import { log } from "@main/lib/logger.js";
 import { isRuntimeMutationActive } from "@main/runtimes/runtimeMutation.js";
+import { isCurrentProviderContext, keepLateHandleOnlyIfCurrent, runIfCurrentProviderContext } from "./turnHandleLifecycle.js";
 
 interface SessionRuntime {
   /** The TurnHandle for the currently running turn, if any. */
@@ -129,6 +130,7 @@ class RuntimeManager {
     if (this.sessions.has(session.id)) return;
 
     const emit = (rawEvent: RuntimeEvent) => {
+      if (!isCurrentProviderContext(this.sessions.get(session.id)?.ctx, ctx)) return;
       // Stamp the turn-end wall-clock ONCE and share it with both consumers:
       // the usage record filed below (keyed by this timestamp) and the renderer
       // (which adopts it as turnMeta.endedAt). The renderer uses the match to
@@ -306,6 +308,7 @@ class RuntimeManager {
     };
 
     const onProviderSessionId = (id: string) => {
+      if (!isCurrentProviderContext(this.sessions.get(session.id)?.ctx, ctx)) return;
       const rt = this.sessions.get(session.id);
       if (!rt) return;
       if (rt.providerSessionId === id) return;
@@ -317,19 +320,37 @@ class RuntimeManager {
       }
     };
 
+    const approvalHandler = approvalBridge.makeApprovalHandler(session.id, emit);
+    const userInputHandler = approvalBridge.makeUserInputHandler(session.id, emit);
+    const planApprovalHandler = approvalBridge.makePlanApprovalHandler(session.id, emit);
     const ctx: ProviderContext = {
       emit,
       onProviderSessionId,
       log,
-      requestApproval: approvalBridge.makeApprovalHandler(session.id, emit),
-      requestUserInput: approvalBridge.makeUserInputHandler(session.id, emit),
-      requestPlanApproval: approvalBridge.makePlanApprovalHandler(session.id, emit),
+      requestApproval: (req) => runIfCurrentProviderContext(
+        this.sessions.get(session.id)?.ctx, ctx,
+        () => approvalHandler(req),
+        () => Promise.resolve({ allow: false, reason: "Session is no longer active." }),
+      ),
+      requestUserInput: (req) => runIfCurrentProviderContext(
+        this.sessions.get(session.id)?.ctx, ctx,
+        () => userInputHandler(req),
+        () => Promise.resolve({ answers: {}, dismissed: true }),
+      ),
+      requestPlanApproval: (req) => runIfCurrentProviderContext(
+        this.sessions.get(session.id)?.ctx, ctx,
+        () => planApprovalHandler(req),
+        () => Promise.resolve({ approved: false, reason: "Session is no longer active." }),
+      ),
       // Expose the per-session always-allow set + current permission mode so
       // the provider's canUseTool can short-circuit without prompting the
       // renderer. Both read the live bridge state, so a mid-turn mode flip
       // (setPermissionMode) is visible to the next tool call immediately.
-      isToolAlwaysAllowed: (toolName: string) => approvalBridge.isAlwaysAllowed(session.id, toolName),
-      getPermissionMode: () => approvalBridge.getPermissionMode(session.id),
+      isToolAlwaysAllowed: (toolName: string) =>
+        isCurrentProviderContext(this.sessions.get(session.id)?.ctx, ctx) && approvalBridge.isAlwaysAllowed(session.id, toolName),
+      getPermissionMode: () => isCurrentProviderContext(this.sessions.get(session.id)?.ctx, ctx)
+        ? approvalBridge.getPermissionMode(session.id)
+        : undefined,
     };
     // Seed the session's permission mode so canUseTool sees the right value
     // from the first tool call (subsequent flips via setPermissionMode update it).
@@ -634,6 +655,12 @@ class RuntimeManager {
     };
 
     const handle = await provider.startTurn(req, rt.ctx);
+    if (!keepLateHandleOnlyIfCurrent(
+      this.sessions.get(session.id),
+      rt,
+      handle,
+      () => approvalBridge.rejectAll(session.id),
+    )) return;
     rt.handle = handle;
     // Remember the cwd for the rewind path (see rewindTurn below).
     rt.lastCwd = input.cwd;

@@ -20,8 +20,12 @@ import { logStartup } from "@main/lib/startupTimer.js";
 import { log } from "@main/lib/logger.js";
 import { schedulerService } from "@main/scheduler/SchedulerService.js";
 import { clawBotService } from "@main/clawbot/ClawBotService.js";
+import { clawBotChatGateway } from "@main/clawbot/ClawBotChatGateway.js";
 import { setManagedRuntimeRoot } from "@main/runtimes/managedRuntimeRoots.js";
 import { join } from "node:path";
+
+let clawBotStartupPromise: Promise<void> | null = null;
+let clawBotQuitRequested = false;
 
 // App identity for OS-level surfaces (desktop notifications, taskbar grouping,
 // Windows AUMID). setName("MarioCode") makes the system notification card title
@@ -151,9 +155,13 @@ app.whenReady().then(async () => {
   void awaitDb().then(() => schedulerService.start()).catch((err) =>
     log.error(`scheduler failed to start: ${(err as Error).message}`),
   );
-  void awaitDb().then(() => clawBotService.start()).catch((err) =>
-    log.error(`ClawBot failed to start: ${(err as Error).message}`),
-  );
+  clawBotStartupPromise = awaitDb().then(async () => {
+    if (clawBotQuitRequested) return;
+    await clawBotChatGateway.start(app.getPath("userData"), clawBotService);
+    if (clawBotQuitRequested) return;
+    await clawBotService.start();
+  }).catch((err) => log.error(`ClawBot failed to start: ${(err as Error).message}`));
+  void clawBotStartupPromise;
 
   // HTTP Basic Auth for the embedded browser: BrowserManager pushes an
   // "authRequest" event so the renderer shows a login dialog (answered via
@@ -271,8 +279,20 @@ app.on("before-quit", (event) => {
   // a dead network can delay shutdown by at most three seconds.
   if (!clawBotStoppedForQuit) {
     event.preventDefault();
+    clawBotQuitRequested = true;
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000).unref());
-    void Promise.race([clawBotService.stop(), timeout]).finally(() => {
+    // Stop immediately instead of chaining behind startup: if DB initialization
+    // is stalled, the 3s quit deadline may close the DB first. The startup chain
+    // checks clawBotQuitRequested at both await boundaries, so it cannot revive
+    // either service after these stop calls.
+    const gatewayStop = clawBotChatGateway.stop();
+    const serviceStop = clawBotService.stop();
+    const stopClawBot = Promise.allSettled([
+      clawBotStartupPromise ?? Promise.resolve(),
+      gatewayStop,
+      serviceStop,
+    ]).then(() => undefined);
+    void Promise.race([stopClawBot, timeout]).finally(() => {
       clawBotStoppedForQuit = true;
       app.quit();
     });

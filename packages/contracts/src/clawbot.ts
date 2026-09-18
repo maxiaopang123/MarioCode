@@ -51,3 +51,28 @@ export const ClawBotTestPushSchema = z.object({
   text: z.string().trim().min(1).max(4000).optional(),
 });
 export type ClawBotTestPushInput = z.infer<typeof ClawBotTestPushSchema>;
+
+export const ClawBotChatProviderSchema = z.enum([
+  "claude-sdk",
+  "codex-sdk",
+  "pi-sdk",
+]);
+export type ClawBotChatProvider = z.infer<typeof ClawBotChatProviderSchema>;
+
+export const ClawBotChatSettingsInputSchema = z.object({
+  enabled: z.boolean(),
+  providerId: ClawBotChatProviderSchema,
+  model: z.string().trim().min(1).max(200),
+}).strict();
+export type ClawBotChatSettingsInput = z.infer<typeof ClawBotChatSettingsInputSchema>;
+
+/** Public chat configuration and operational summary. No permission mode or message content crosses IPC. */
+export const ClawBotChatSettingsSchema = ClawBotChatSettingsInputSchema.extend({
+  projectId: z.string().nullable(),
+  sessionId: z.string().nullable(),
+  queued: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  lastMessageAt: z.number().int().nonnegative().nullable(),
+  lastError: z.string().nullable(),
+}).strict();
+export type ClawBotChatSettings = z.infer<typeof ClawBotChatSettingsSchema>;

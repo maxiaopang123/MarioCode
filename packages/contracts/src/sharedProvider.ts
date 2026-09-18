@@ -6,16 +6,16 @@ export const SharedProviderAgentSchema = z.enum(["claude", "codex", "pi"]);
 export type SharedProviderAgent = z.infer<typeof SharedProviderAgentSchema>;
 
 const HttpUrlSchema = z.string().trim().max(2_048).url().refine((value) => {
-  try {
-    const parsed = new URL(value);
-    return (parsed.protocol === "http:" || parsed.protocol === "https:")
-      && parsed.username === ""
-      && parsed.password === ""
-      && parsed.search === ""
-      && parsed.hash === "";
-  } catch {
-    return false;
-  }
+  // zod's url() already validates the complete URL syntax. Keep the policy
+  // checks environment-neutral so this contracts package does not require the
+  // DOM `URL` global in its TypeScript lib: only http(s), no userinfo, query,
+  // or fragment. The authority is the substring before the first path slash.
+  const scheme = /^(https?):\/\//i.exec(value);
+  if (!scheme || value.includes("?") || value.includes("#")) return false;
+  const remainder = value.slice(scheme[0].length);
+  const slash = remainder.indexOf("/");
+  const authority = slash < 0 ? remainder : remainder.slice(0, slash);
+  return authority.length > 0 && !authority.includes("@");
 }, "must be an http(s) URL without embedded credentials, query, or fragment");
 
 export const SharedProviderModelSchema = z.object({

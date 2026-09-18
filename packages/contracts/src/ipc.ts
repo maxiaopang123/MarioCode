@@ -14,6 +14,24 @@ import type { ThemeName, EffectiveTheme, ThemeChangedMessage } from "./theme.js"
 import type { PairingStartResult, PairedDevice } from "./mobile.js";
 import type { RelayStatus, RelayVpsConfig, RelayVpsConfigInput } from "./relay.js";
 import {
+  ClawBotVerifyCodeSchema,
+  ClawBotTestPushSchema,
+  type ClawBotStatus,
+  type ClawBotBindingResult,
+  type ClawBotVerifyCodeInput,
+  type ClawBotTestPushInput,
+  type ClawBotSendResult,
+} from "./clawbot.js";
+import {
+  ScheduledTaskCreateSchema,
+  ScheduledTaskUpdateSchema,
+  ScheduledTaskIdSchema,
+  ScheduledTaskSetEnabledSchema,
+  type ScheduledTask,
+  type ScheduledTaskCreateInput,
+  type ScheduledTaskUpdateInput,
+} from "./scheduledTask.js";
+import {
   SharedProviderSaveInputSchema,
   SharedProviderRemoveInputSchema,
   SharedProviderDiscoverInputSchema,
@@ -89,6 +107,22 @@ export type {
   PluginsMarketplaceRemoveInput,
   PluginsMarketplaceRefreshInput,
 } from "./plugin.js";
+
+export {
+  ScheduledTaskCreateSchema,
+  ScheduledTaskUpdateSchema,
+  ScheduledTaskIdSchema,
+  ScheduledTaskSetEnabledSchema,
+};
+export type { ScheduledTask, ScheduledTaskCreateInput, ScheduledTaskUpdateInput };
+export { ClawBotVerifyCodeSchema, ClawBotTestPushSchema };
+export type {
+  ClawBotStatus,
+  ClawBotBindingResult,
+  ClawBotVerifyCodeInput,
+  ClawBotTestPushInput,
+  ClawBotSendResult,
+};
 
 // Re-export relay types so consumers can import from "@contracts/ipc".
 export type {
@@ -4102,6 +4136,14 @@ export interface RpcMap {
   "session.updateBookmarks": (input: UpdateBookmarksInput) => Promise<{ session: Session }>;
   // Providers
   "provider.list": () => Promise<{ providers: ProviderInfo[] }>;
+  // Weixin ClawBot (desktop-only; secrets remain in main)
+  "clawbot.status": () => Promise<ClawBotStatus>;
+  "clawbot.startBinding": () => Promise<ClawBotBindingResult>;
+  "clawbot.pollBinding": () => Promise<ClawBotBindingResult>;
+  "clawbot.submitVerifyCode": (input: ClawBotVerifyCodeInput) => Promise<ClawBotBindingResult>;
+  "clawbot.cancelBinding": () => Promise<ClawBotStatus>;
+  "clawbot.unbind": () => Promise<ClawBotStatus>;
+  "clawbot.testPush": (input: ClawBotTestPushInput) => Promise<ClawBotSendResult>;
   // Settings
   "setting.get": (input: GetSettingInput) => Promise<{ value: string | null }>;
   "setting.set": (input: SetSettingInput) => Promise<void>;
@@ -4469,6 +4511,13 @@ export interface RpcMap {
   "sharedProviders.save": (input: SharedProviderSaveInput) => Promise<{ providers: SharedProviderPublic[] }>;
   "sharedProviders.remove": (input: SharedProviderRemoveInput) => Promise<{ providers: SharedProviderPublic[] }>;
   "sharedProviders.discoverModels": (input: SharedProviderDiscoverInput) => Promise<SharedProviderDiscoveryResult>;
+  // Scheduled tasks (run while MarioCode is open).
+  "scheduler.list": () => Promise<{ tasks: ScheduledTask[] }>;
+  "scheduler.create": (input: ScheduledTaskCreateInput) => Promise<{ task: ScheduledTask }>;
+  "scheduler.update": (input: ScheduledTaskUpdateInput) => Promise<{ task: ScheduledTask }>;
+  "scheduler.delete": (input: { id: string }) => Promise<void>;
+  "scheduler.runNow": (input: { id: string }) => Promise<{ task: ScheduledTask }>;
+  "scheduler.setEnabled": (input: { id: string; enabled: boolean }) => Promise<{ task: ScheduledTask }>;
   // ── Plugins (settings panel; docs/plugin-feasibility.md v1) ──
   /** List installed plugins (manifest + component summaries + enable state).
    *  Enabled plugins are delivered to providers at the next turn start. */
@@ -4788,6 +4837,19 @@ export const IPC = {
   SHARED_PROVIDERS_SAVE: "sharedProviders:save",
   SHARED_PROVIDERS_REMOVE: "sharedProviders:remove",
   SHARED_PROVIDERS_DISCOVER_MODELS: "sharedProviders:discoverModels",
+  SCHEDULER_LIST: "scheduler:list",
+  SCHEDULER_CREATE: "scheduler:create",
+  SCHEDULER_UPDATE: "scheduler:update",
+  SCHEDULER_DELETE: "scheduler:delete",
+  SCHEDULER_RUN_NOW: "scheduler:runNow",
+  SCHEDULER_SET_ENABLED: "scheduler:setEnabled",
+  CLAWBOT_STATUS: "clawbot:status",
+  CLAWBOT_START_BINDING: "clawbot:startBinding",
+  CLAWBOT_POLL_BINDING: "clawbot:pollBinding",
+  CLAWBOT_SUBMIT_VERIFY_CODE: "clawbot:submitVerifyCode",
+  CLAWBOT_CANCEL_BINDING: "clawbot:cancelBinding",
+  CLAWBOT_UNBIND: "clawbot:unbind",
+  CLAWBOT_TEST_PUSH: "clawbot:testPush",
   // Plugins (settings panel): list/install (local/git/marketplace)/enable/
   // remove + marketplace management. No push channel — every RPC resolves
   // when done and the panel re-lists.

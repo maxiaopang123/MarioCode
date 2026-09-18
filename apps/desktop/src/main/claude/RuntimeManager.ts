@@ -109,11 +109,19 @@ class RuntimeManager {
    *  renderer push + persistence). Used by the NotificationManager to decide
    *  whether an OS notification is warranted. Set via {@link setObserver}. */
   private observer: ((e: RuntimeEvent) => void) | null = null;
+  private observers = new Set<(e: RuntimeEvent) => void>();
 
   /** Register a global event observer. Only one at a time (the
    *  NotificationManager). Pass null to detach. */
   setObserver(fn: ((e: RuntimeEvent) => void) | null): void {
     this.observer = fn;
+  }
+
+  /** Attach an additional event observer without displacing notifications.
+   *  Returns an idempotent unsubscribe callback. */
+  addObserver(fn: (e: RuntimeEvent) => void): () => void {
+    this.observers.add(fn);
+    return () => this.observers.delete(fn);
   }
 
   /** Create or reuse the runtime state for a GUI session. Idempotent. */
@@ -288,6 +296,13 @@ class RuntimeManager {
       } catch (err) {
         log.error(`notification observer error: ${(err as Error).message}`);
       }
+      for (const observer of this.observers) {
+        try {
+          observer(e);
+        } catch (err) {
+          log.error(`runtime observer error: ${(err as Error).message}`);
+        }
+      }
     };
 
     const onProviderSessionId = (id: string) => {
@@ -350,6 +365,20 @@ class RuntimeManager {
       if (rt.handle?.isRunning()) ids.add(id);
     }
     return [...ids];
+  }
+
+  /** Provider-level completion promise for callers that cannot rely solely
+   *  on streamed events (for example a background scheduled task). */
+  turnCompletion(sessionId: string): Promise<void> | null {
+    return this.sessions.get(sessionId)?.handle?.done ?? null;
+  }
+
+  /** Cancel a background turn without disposing the reusable session runtime.
+   *  Rejecting every pending bridge Deferred first is essential: interrupting
+   *  the provider alone can leave an approval/question promise alive forever. */
+  cancelTurn(sessionId: string): void {
+    approvalBridge.rejectAll(sessionId);
+    this.interrupt(sessionId);
   }
 
   /** Append the deferred per-turn usage-history record (stashed by the

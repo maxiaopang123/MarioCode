@@ -24,6 +24,7 @@ import { Switch } from "@renderer/components/ui/index.js";
 import { PanelHeader } from "./PanelHeader.js";
 import { SettingRow } from "./SettingRow.js";
 import { SettingsSection } from "./SettingsSection.js";
+import { ClawBotPanel } from "./ClawBotPanel.js";
 
 export function NotificationsPanel() {
   const { t } = useI18n();
@@ -117,6 +118,10 @@ export function NotificationsPanel() {
             label={prefs.backgroundTasks ? t("settings.on") : t("settings.off")}
           />
         </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.notifications.channelsSection")}>
+        <ClawBotPanel />
       </SettingsSection>
     </section>
   );

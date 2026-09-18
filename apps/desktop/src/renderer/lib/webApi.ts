@@ -441,6 +441,26 @@ const provider: Api["provider"] = {
   list: () => rpc("provider:list"),
 };
 
+const scheduler: Api["scheduler"] = {
+  list: () => webUnsupported("scheduler.list"),
+  create: () => webUnsupported("scheduler.create"),
+  update: () => webUnsupported("scheduler.update"),
+  delete: () => webUnsupported("scheduler.delete"),
+  runNow: () => webUnsupported("scheduler.runNow"),
+  setEnabled: () => webUnsupported("scheduler.setEnabled"),
+};
+
+/** ClawBot credentials are owned by the desktop safeStorage vault. */
+const clawbot: Api["clawbot"] = {
+  status: () => webUnsupported("clawbot.status"),
+  startBinding: () => webUnsupported("clawbot.startBinding"),
+  pollBinding: () => webUnsupported("clawbot.pollBinding"),
+  submitVerifyCode: () => webUnsupported("clawbot.submitVerifyCode"),
+  cancelBinding: () => webUnsupported("clawbot.cancelBinding"),
+  unbind: () => webUnsupported("clawbot.unbind"),
+  testPush: () => webUnsupported("clawbot.testPush"),
+};
+
 const customModel: Api["customModel"] = {
   list: () => rpc("customModel:list"),
   save: () => webUnsupported("customModel.save"),
@@ -600,6 +620,8 @@ export function createWebApi(): Api {
     project,
     session,
     provider,
+    scheduler,
+    clawbot,
     customModel,
     piModels,
     codexModels,

@@ -20,6 +20,7 @@ import {
   IconHandMove,
   IconPackage,
   IconPuzzle,
+  IconCalendar,
   McpIcon,
   type TablerIconProps,
 } from "@renderer/lib/icons.js";
@@ -40,6 +41,7 @@ import { NotificationsPanel } from "./NotificationsPanel.js";
 import { VoicePanel } from "./VoicePanel.js";
 import { UsagePanel } from "./UsagePanel.js";
 import { AboutPanel } from "./AboutPanel.js";
+import { ScheduledTasksPanel } from "./ScheduledTasksPanel.js";
 
 /**
  * Settings page with a left functional menu + right content panel layout.
@@ -57,7 +59,7 @@ import { AboutPanel } from "./AboutPanel.js";
  * Note: the legacy “Claude CLI 路径” panel was removed - the Agent SDK bundles
  * its own claude binary, so an externally-configured path is no longer used.
  */
-type SectionId = "general" | "runtimes" | "custom-models" | "skills" | "mcp" | "plugins" | "appearance" | "shortcuts" | "gestures" | "voice" | "notifications" | "git" | "terminal" | "browser" | "lsp-languages" | "usage" | "about";
+type SectionId = "general" | "runtimes" | "custom-models" | "skills" | "mcp" | "plugins" | "appearance" | "shortcuts" | "gestures" | "voice" | "notifications" | "scheduled-tasks" | "git" | "terminal" | "browser" | "lsp-languages" | "usage" | "about";
 
 interface NavItem {
   id: SectionId;
@@ -107,6 +109,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     labelKey: "settings.navGroup.workbench",
     items: [
+      { id: "scheduled-tasks", labelKey: "settings.nav.scheduledTasks", icon: IconCalendar },
       { id: "git", labelKey: "settings.nav.git", icon: IconBrandGit },
       { id: "terminal", labelKey: "settings.nav.terminal", icon: IconTerminal2 },
       { id: "browser", labelKey: "settings.nav.browser", icon: IconWorld },
@@ -231,6 +234,7 @@ export function SettingsPage() {
           {active === "mcp" && <McpPanel />}
           {active === "plugins" && <PluginsPanel />}
           {active === "notifications" && <NotificationsPanel />}
+          {active === "scheduled-tasks" && <ScheduledTasksPanel />}
           {active === "git" && <GitPanel />}
           {active === "terminal" && <TerminalPanel />}
           {active === "browser" && <BrowserPanel />}

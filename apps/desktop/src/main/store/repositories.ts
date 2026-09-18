@@ -16,6 +16,12 @@ import type {
   SessionBookmark,
 } from "@contracts/session";
 import type { ContextSnapshot, SubagentSnapshot, TurnFileEntry, TurnUsageRecord } from "@contracts/runtime";
+import type {
+  ScheduledTask,
+  ScheduledTaskCreateInput,
+  ScheduledTaskPushStatus,
+  ScheduledTaskStatus,
+} from "@contracts/scheduledTask";
 import { normPathKey } from "@main/lib/pathNorm.js";
 import { getDb, persist } from "./db.js";
 
@@ -1153,6 +1159,165 @@ export const SettingRepo = {
       v(key),
       v(value),
     );
+    persist();
+  },
+};
+
+/* ─────────────────────────── Scheduled tasks ─────────────────────────── */
+
+interface ScheduledTaskRow {
+  id: string;
+  name: string;
+  project_id: string;
+  provider_id: string;
+  prompt: string;
+  schedule_kind: ScheduledTask["scheduleKind"];
+  time_of_day: string | null;
+  weekdays: string;
+  run_at: string | null;
+  enabled: number;
+  push_enabled: number;
+  next_run_at: number | null;
+  last_run_at: number | null;
+  last_status: ScheduledTaskStatus;
+  last_error: string | null;
+  last_session_id: string | null;
+  last_push_status: ScheduledTaskPushStatus;
+  last_push_at: number | null;
+  last_push_error: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+function rowToScheduledTask(row: ScheduledTaskRow): ScheduledTask {
+  const parsed = safeJson(row.weekdays);
+  return {
+    id: row.id,
+    name: row.name,
+    projectId: row.project_id,
+    providerId: row.provider_id,
+    prompt: row.prompt,
+    scheduleKind: row.schedule_kind,
+    timeOfDay: row.time_of_day,
+    weekdays: Array.isArray(parsed) ? parsed.filter((x): x is number => Number.isInteger(x)) : [],
+    runAt: row.run_at,
+    enabled: !!row.enabled,
+    pushEnabled: !!row.push_enabled,
+    nextRunAt: row.next_run_at,
+    lastRunAt: row.last_run_at,
+    lastStatus: row.last_status,
+    lastError: row.last_error,
+    lastSessionId: row.last_session_id,
+    lastPushStatus: row.last_push_status,
+    lastPushAt: row.last_push_at,
+    lastPushError: row.last_push_error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export const ScheduledTaskRepo = {
+  list(): ScheduledTask[] {
+    const rows = getDb().prepare("SELECT * FROM scheduled_tasks ORDER BY created_at DESC").all() as unknown as ScheduledTaskRow[];
+    return rows.map(rowToScheduledTask);
+  },
+
+  get(id: string): ScheduledTask | undefined {
+    const row = getDb().prepare("SELECT * FROM scheduled_tasks WHERE id = ?").get(v(id)) as unknown as ScheduledTaskRow | undefined;
+    return row ? rowToScheduledTask(row) : undefined;
+  },
+
+  listDue(now: number): ScheduledTask[] {
+    const rows = getDb().prepare(
+      "SELECT * FROM scheduled_tasks WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ? ORDER BY next_run_at ASC",
+    ).all(v(now)) as unknown as ScheduledTaskRow[];
+    return rows.map(rowToScheduledTask);
+  },
+
+  /** Recover rows left running or with an unknown notification outcome after
+   *  an unclean exit. Recurring schedules keep their advanced next_run_at. */
+  recoverInterrupted(): number {
+    const result = getDb().prepare(
+      `UPDATE scheduled_tasks
+       SET last_status=CASE WHEN last_status='running' THEN 'failed' ELSE last_status END,
+           last_error=CASE WHEN last_status='running' THEN 'MarioCode exited before the scheduled run completed' ELSE last_error END,
+           last_push_status=CASE WHEN last_push_status='pending' THEN 'failed' ELSE last_push_status END,
+           last_push_at=CASE WHEN last_push_status='pending' THEN ? ELSE last_push_at END,
+           last_push_error=CASE WHEN last_push_status='pending' THEN 'MarioCode exited before the notification result was known' ELSE last_push_error END,
+           enabled=CASE WHEN last_status='running' AND schedule_kind='one-time' THEN 0 ELSE enabled END,
+           next_run_at=CASE WHEN last_status='running' AND schedule_kind='one-time' THEN NULL ELSE next_run_at END,
+           updated_at=?
+       WHERE last_status='running' OR last_push_status='pending'`,
+    ).run(v(Date.now()), v(Date.now()));
+    persist();
+    return result.changes;
+  },
+
+  create(task: ScheduledTask): void {
+    run(
+      `INSERT INTO scheduled_tasks
+       (id, name, project_id, provider_id, prompt, schedule_kind, time_of_day, weekdays, run_at,
+        enabled, push_enabled, next_run_at, last_run_at, last_status, last_error, last_session_id,
+        last_push_status, last_push_at, last_push_error, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      v(task.id), v(task.name), v(task.projectId), v(task.providerId), v(task.prompt), v(task.scheduleKind),
+      v(task.timeOfDay), v(JSON.stringify(task.weekdays)), v(task.runAt), v(task.enabled), v(task.pushEnabled), v(task.nextRunAt),
+      v(task.lastRunAt), v(task.lastStatus), v(task.lastError), v(task.lastSessionId), v(task.lastPushStatus),
+      v(task.lastPushAt), v(task.lastPushError), v(task.createdAt), v(task.updatedAt),
+    );
+    persist();
+  },
+
+  updateDefinition(id: string, input: ScheduledTaskCreateInput, nextRunAt: number | null): void {
+    run(
+      `UPDATE scheduled_tasks SET name=?, project_id=?, provider_id=?, prompt=?, schedule_kind=?,
+       time_of_day=?, weekdays=?, run_at=?, enabled=?, push_enabled=?, next_run_at=?, updated_at=? WHERE id=?`,
+      v(input.name), v(input.projectId), v(input.providerId), v(input.prompt), v(input.scheduleKind),
+      v(input.timeOfDay ?? null), v(JSON.stringify(input.weekdays)), v(input.runAt ?? null), v(input.enabled), v(input.pushEnabled),
+      v(nextRunAt), v(Date.now()), v(id),
+    );
+    persist();
+  },
+
+  setEnabled(id: string, enabled: boolean, nextRunAt: number | null): void {
+    run("UPDATE scheduled_tasks SET enabled=?, next_run_at=?, updated_at=? WHERE id=?",
+      v(enabled), v(nextRunAt), v(Date.now()), v(id));
+    persist();
+  },
+
+  markRunning(id: string, startedAt: number, sessionId: string, nextRunAt: number | null, enabled: boolean): void {
+    run(
+      "UPDATE scheduled_tasks SET last_run_at=?, last_status='running', last_error=NULL, last_session_id=?, next_run_at=?, enabled=?, updated_at=? WHERE id=?",
+      v(startedAt), v(sessionId), v(nextRunAt), v(enabled), v(Date.now()), v(id),
+    );
+    persist();
+  },
+
+  markFinished(id: string, status: Exclude<ScheduledTaskStatus, "idle" | "running">, error: string | null): void {
+    run("UPDATE scheduled_tasks SET last_status=?, last_error=?, updated_at=? WHERE id=?",
+      v(status), v(error), v(Date.now()), v(id));
+    persist();
+  },
+
+  markPushPending(id: string): void {
+    run(
+      "UPDATE scheduled_tasks SET last_push_status='pending', last_push_at=NULL, last_push_error=NULL, updated_at=? WHERE id=?",
+      v(Date.now()), v(id),
+    );
+    persist();
+  },
+
+  markPushFinished(id: string, status: Exclude<ScheduledTaskPushStatus, "idle" | "pending">, error: string | null): void {
+    const now = Date.now();
+    run(
+      "UPDATE scheduled_tasks SET last_push_status=?, last_push_at=?, last_push_error=?, updated_at=? WHERE id=?",
+      v(status), v(now), v(error), v(now), v(id),
+    );
+    persist();
+  },
+
+  delete(id: string): void {
+    run("DELETE FROM scheduled_tasks WHERE id = ?", v(id));
     persist();
   },
 };

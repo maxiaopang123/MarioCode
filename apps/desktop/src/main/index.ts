@@ -18,6 +18,8 @@ import { is } from "@main/utils.js";
 import { preloadClaudeSdk } from "@main/providers/claude-sdk/ClaudeAgentSdkProvider.js";
 import { logStartup } from "@main/lib/startupTimer.js";
 import { log } from "@main/lib/logger.js";
+import { schedulerService } from "@main/scheduler/SchedulerService.js";
+import { clawBotService } from "@main/clawbot/ClawBotService.js";
 import { setManagedRuntimeRoot } from "@main/runtimes/managedRuntimeRoots.js";
 import { join } from "node:path";
 
@@ -143,6 +145,16 @@ app.whenReady().then(async () => {
   registerIpcHandlers();
   logStartup("IPC handlers registered");
 
+  // Scheduler is intentionally app-lifetime scoped: the MVP executes while
+  // MarioCode is open. It waits for SQLite before scanning for one catch-up
+  // occurrence of overdue tasks.
+  void awaitDb().then(() => schedulerService.start()).catch((err) =>
+    log.error(`scheduler failed to start: ${(err as Error).message}`),
+  );
+  void awaitDb().then(() => clawBotService.start()).catch((err) =>
+    log.error(`ClawBot failed to start: ${(err as Error).message}`),
+  );
+
   // HTTP Basic Auth for the embedded browser: BrowserManager pushes an
   // "authRequest" event so the renderer shows a login dialog (answered via
   // the browser.authRespond RPC; credentials are used for that request only).
@@ -243,6 +255,7 @@ async function maybeAutoStartRelay(): Promise<void> {
 // quit), then re-enters quit; the second pass runs the synchronous teardown
 // below (which is also what closes the DB the vault row was written to).
 let sessionCookiesFlushed = false;
+let clawBotStoppedForQuit = false;
 app.on("before-quit", (event) => {
   if (!sessionCookiesFlushed) {
     event.preventDefault();
@@ -253,11 +266,24 @@ app.on("before-quit", (event) => {
     });
     return;
   }
+  // ClawBot's best-effort notifystop reads its encrypted credentials from the
+  // DB-backed settings store. Give it a short bounded window before closeDb;
+  // a dead network can delay shutdown by at most three seconds.
+  if (!clawBotStoppedForQuit) {
+    event.preventDefault();
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000).unref());
+    void Promise.race([clawBotService.stop(), timeout]).finally(() => {
+      clawBotStoppedForQuit = true;
+      app.quit();
+    });
+    return;
+  }
   BridgeRegistry.disposeAll();
   TerminalManager.disposeAll();
   lspManager.disposeAll();
   BrowserManager.disposeAll();
   relayManager.disposeAll();
+  schedulerService.stop();
   stopMobileServer();
   closeDb();
 });

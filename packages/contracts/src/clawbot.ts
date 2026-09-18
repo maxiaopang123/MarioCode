@@ -1,0 +1,53 @@
+import { z } from "zod";
+
+export const ClawBotStateSchema = z.enum([
+  "unbound",
+  "binding",
+  "bound",
+  "needs-interaction",
+  "error",
+]);
+export type ClawBotState = z.infer<typeof ClawBotStateSchema>;
+
+/** Public-only status. Authentication, cursor and context tokens never cross IPC. */
+export interface ClawBotStatus {
+  state: ClawBotState;
+  ready: boolean;
+  accountId: string | null;
+  userId: string | null;
+  boundAt: number | null;
+  lastInteractionAt: number | null;
+  error: string | null;
+}
+
+export interface ClawBotBindingResult {
+  status: ClawBotStatus;
+  /** URL/content supplied by iLink for rendering the QR code. */
+  qrCodeImage: string | null;
+  bindingStatus:
+    | "wait"
+    | "scaned"
+    | "confirmed"
+    | "expired"
+    | "need_verifycode"
+    | "verify_code_blocked"
+    | "scaned_but_redirect"
+    | "binded_redirect"
+    | null;
+}
+
+export type ClawBotSendStatus = "accepted" | "needs-interaction" | "failed";
+export interface ClawBotSendResult {
+  status: ClawBotSendStatus;
+  error: string | null;
+}
+
+export const ClawBotVerifyCodeSchema = z.object({
+  code: z.string().trim().regex(/^\d{4,8}$/, "Verification code must contain 4-8 digits"),
+});
+export type ClawBotVerifyCodeInput = z.infer<typeof ClawBotVerifyCodeSchema>;
+
+export const ClawBotTestPushSchema = z.object({
+  text: z.string().trim().min(1).max(4000).optional(),
+});
+export type ClawBotTestPushInput = z.infer<typeof ClawBotTestPushSchema>;

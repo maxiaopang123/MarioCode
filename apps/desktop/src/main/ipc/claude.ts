@@ -33,98 +33,7 @@ import { log } from "@main/lib/logger.js";
 import { broadcastSessionChanged } from "@main/lib/sessionSync.js";
 import { createOrReuseSession } from "@main/lib/sessionStart.js";
 import { generateSessionTitle } from "@main/ipc/titleGen.js";
-import { createBranchedWorktree, createDetachedWorktree, nextWorktreeDir } from "@main/lib/worktreeOps.js";
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
-import type { Project, Session } from "@contracts/session";
-
-/** In-flight materializations, keyed by session id. Concurrent first turns
- *  (double-send, desktop + mobile racing) both observe `worktreePath: null`
- *  and would independently probe the disk for the next free directory — an
- *  interleaving that creates TWO worktrees, one of which the DB race orphans.
- *  The second caller awaits the first caller's promise instead. */
-const materializing = new Map<string, Promise<string>>();
-
-/** Resolve the working directory a session's turn must run in.
- *
- *  - local session → the project root (unchanged historical behavior);
- *  - worktree session, not yet materialized → create the detached worktree
- *    NOW (intent-first, materialize-on-first-turn), persist its path BEFORE
- *    the turn is dispatched (a crash between creation and turn-start still
- *    leaves the session pointing at its worktree), and return it. Concurrent
- *    materializations for the same session ride ONE in-flight promise;
- *  - materialized worktree session → its recorded path (restart-safe),
- *    with a friendly error when the directory has since disappeared.
- *
- *  Every downstream mechanism (write guard, bash guard, MCP injection,
- *  file snapshot) keys off this cwd, so isolation between parallel worktree
- *  sessions — and from the local checkout — rides on this single value. */
-async function resolveSessionCwd(session: Session, project: Project): Promise<string> {
-  if (session.envMode !== "worktree") return project.path;
-
-  if (!session.worktreePath) {
-    const inFlight = materializing.get(session.id);
-    if (inFlight) return inFlight;
-    const p = materializeWorktreeSession(session, project).finally(() => {
-      materializing.delete(session.id);
-    });
-    materializing.set(session.id, p);
-    return p;
-  }
-
-  // Already materialized: verify the directory still exists.
-  const exists = await stat(session.worktreePath).then(() => true).catch(() => false);
-  if (!exists) {
-    throw new Error(
-      `会话的工作树目录已不存在:${session.worktreePath}(可能被手动删除)。请在 Git 面板清理后新建会话。`,
-    );
-  }
-  return session.worktreePath;
-}
-
-/** The materialization half of resolveSessionCwd (un-materialized worktree
- *  intent only). Always called under the per-session in-flight lock above. */
-async function materializeWorktreeSession(session: Session, project: Project): Promise<string> {
-  // Materialize. The project root itself must be a git repo (the base is
-  // HEAD as seen from the user's checkout). When it isn't, DEGRADE to
-  // local instead of throwing: this state is reachable without a UI to
-  // fix it (rows created before creation-time coercion existed, the
-  // project's .git removed after the intent was set — in both the chip
-  // is hidden for non-repo projects, so a hard error would brick every
-  // send forever). Flip the row back and broadcast so all clients'
-  // badges/groupings correct themselves.
-  const hasGit = await stat(join(project.path, ".git"))
-    .then(() => true)
-    .catch(() => false);
-  if (!hasGit) {
-    log.warn(
-      `worktree intent for session ${session.id} dropped — project root is not a git repo (${project.path}); running locally`,
-    );
-    SessionRepo.updateSettings(session.id, { envMode: "local", wtStyle: null });
-    const downgraded = SessionRepo.get(session.id) ?? { ...session, envMode: "local" as const };
-    broadcastSessionChanged(downgraded);
-    return project.path;
-  }
-  // Form fork: "branch" materializes on a generated mcode/* ref (durable
-  // named commits), anything else keeps the classic detached checkout.
-  // nextWorktreeDir's branchStyle probe guarantees the branch name is free
-  // BEFORE worktree add -b ever runs.
-  const branchStyle = session.wtStyle === "branch";
-  const target = await nextWorktreeDir(project.path, session.id, { branchStyle });
-  const res = branchStyle
-    ? await createBranchedWorktree(project.path, target)
-    : await createDetachedWorktree(project.path, target);
-  if (!res.ok) {
-    throw new Error(`创建隔离工作树失败:${res.error}`);
-  }
-  SessionRepo.updateWorktreePath(session.id, target);
-  // Re-read so the broadcast + the returned session snapshot both carry
-  // the materialized path (renderer flips its badge off this).
-  const updatedRow = SessionRepo.get(session.id) ?? session;
-  broadcastSessionChanged(updatedRow);
-  log.info(`worktree session materialized: ${session.id} -> ${target}`);
-  return target;
-}
+import { executeSessionTurn } from "@main/lib/sessionTurn.js";
 
 export function registerClaudeHandlers(ipcMain: IpcMain): void {
   // ── health check: is the default provider's binary functional? ──
@@ -158,101 +67,13 @@ export function registerClaudeHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle(IPC.CLAUDE_SEND_TURN, async (_evt, raw) => {
     const input = SendTurnSchema.parse(raw);
-    const session = SessionRepo.get(input.sessionId);
-    if (!session) throw new Error(`session not found: ${input.sessionId}`);
-    const project = ProjectRepo.get(session.projectId);
-    if (!project) throw new Error(`project not found for session ${input.sessionId}`);
-
-	    // Auto-title from the first user message, if the title is still the default.
-	    // Side chats rewrite their own "Quick ask" placeholder (same 40-char
-	    // truncation) but DON'T broadcast the change — they're invisible to the
-	    // left-bar/mobile lists by design; the ask tab patches its own list
-	    // from this handler's return value instead.
-	    let updated = session;
-	    const titlePlaceholder = session.kind === "side" ? "Quick ask" : "New session";
-	    const isFirstMessage = session.title === titlePlaceholder && input.prompt.trim().length > 0;
-	    if (isFirstMessage) {
-      const title = input.prompt.trim().slice(0, 40) + (input.prompt.trim().length > 40 ? "…" : "");
-      SessionRepo.updateTitle(session.id, title);
-      updated = { ...session, title };
-      if (session.kind !== "side") {
-	      // Keep connected mobile clients' session lists in sync.
-	      broadcastSessionChanged(updated);
-      }
-	    }
-	    // Apply per-turn overrides from the renderer's current UI state. The
-	    // renderer persists model/effort/permissionMode/customModelId to the
-	    // session row via fire-and-forget `updateSettings` calls, so the row
-	    // may be stale by the time sendTurn reads it. Patching the in-memory
-	    // session with the explicit overrides eliminates this race: if the UI
-	    // sends a value, it wins over whatever the DB happens to hold.
-	    if (input.model !== undefined) {
-	      updated = { ...updated, model: input.model };
-	    }
-	    if (input.effort !== undefined) {
-	      updated = { ...updated, effort: input.effort };
-	    }
-	    if (input.permissionMode !== undefined) {
-	      updated = { ...updated, permissionMode: input.permissionMode };
-	    }
-    if (input.customModelId !== undefined) {
-      updated = { ...updated, customModelId: input.customModelId };
-    }
-    if (input.providerId !== undefined) {
-      // Per-turn provider override. Does NOT persist to the DB — the
-      // session's authoritative providerId stays as-is so the per-session
-      // "lock after first message" rule still holds. We only patch the
-      // in-memory snapshot RuntimeManager uses to resolve the backend.
-      updated = { ...updated, providerId: input.providerId };
-    }
-
-    SessionRepo.updateStatus(session.id, "running");
-    // Resolve the turn's cwd (worktree materialization happens here — before
-    // bindSession so the runtime sees the final environment). Throws surface
-    // as an IPC rejection the renderer toasts; a retry after a FAILED create
-    // probes the next free `<branch>-<n>` directory (materialization itself
-    // is guarded by the per-session in-flight lock, so concurrent sends
-    // never create two worktrees).
-    const cwd = await resolveSessionCwd(updated, project);
-    // Materialization may have backfilled worktreePath — refresh the
-    // snapshot so the returned session (and the renderer's badge) carries it.
-    if (updated.envMode === "worktree" && !updated.worktreePath) {
-      updated = SessionRepo.get(session.id) ?? updated;
-    }
-    runtimeManager.bindSession(updated);
-    await runtimeManager.sendTurn(updated, {
-      prompt: input.prompt,
-      cwd,
-      skills: input.skills,
-      images: input.images,
-      // User-message echo payload from the renderer (cross-client bubble).
-      userMessage: input.userMessage,
-    });
-    // Background auto-title generation: on the first user message, fire a
-    // one-shot LLM call to produce a short Chinese title and overwrite the
-    // placeholder. Fire-and-forget - never blocks the turn, and if the feature
-    // is disabled (or fails) the placeholder title above already covers the
-    // UI. See titleGen.ts for the full rationale.
-    // Background auto-title generation: on the first user message, fire a
-    // one-shot LLM call to produce a short Chinese title and overwrite the
-    // placeholder. Runs for main sessions AND side chats (both rewrite their
-    // own placeholder above; the truncated text is the fallback when the
-    // feature is off or fails). Fire-and-forget - never blocks the turn. See
-    // titleGen.ts for the full rationale.
+    const { session, isFirstMessage } = await executeSessionTurn(input);
     if (isFirstMessage) {
-      void generateSessionTitle(updated, input.prompt).catch((err) =>
-        log.warn(`title generation failed for ${session.id}: ${(err as Error).message}`),
+      void generateSessionTitle(session, input.prompt).catch((err) =>
+        log.warn(`title generation failed for ${input.sessionId}: ${(err as Error).message}`),
       );
     }
-    // Return the in-memory `updated` snapshot (it already carries every
-    // per-turn override above — including providerId). Re-reading from the DB
-    // here would hand back a stale providerId (the per-turn provider override
-    // is intentionally NOT persisted), which the renderer then uses to
-    // replace its cached session row and flip the thread icon to the wrong
-    // SDK. updated has title/model/effort/permissionMode/customModelId/
-    // providerId patched in; the DB-only `status` flip is surfaced via the
-    // event stream, so it doesn't need to ride this return value.
-    return { session: updated };
+    return { session };
   });
 
   ipcMain.handle(IPC.CLAUDE_INTERRUPT, async (_evt, raw) => {

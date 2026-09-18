@@ -150,6 +150,34 @@ function migrate(database: Database.Database): void {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+      id              TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      provider_id     TEXT NOT NULL,
+      prompt          TEXT NOT NULL,
+      schedule_kind   TEXT NOT NULL,
+      time_of_day     TEXT,
+      weekdays        TEXT NOT NULL DEFAULT '[]',
+      run_at          TEXT,
+      enabled         INTEGER NOT NULL DEFAULT 1,
+      push_enabled    INTEGER NOT NULL DEFAULT 0,
+      next_run_at     INTEGER,
+      last_run_at     INTEGER,
+      last_status     TEXT NOT NULL DEFAULT 'idle',
+      last_error      TEXT,
+      last_session_id TEXT,
+      last_push_status TEXT NOT NULL DEFAULT 'idle',
+      last_push_at     INTEGER,
+      last_push_error  TEXT,
+      created_at      INTEGER NOT NULL,
+      updated_at      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_due
+      ON scheduled_tasks(enabled, next_run_at);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_project
+      ON scheduled_tasks(project_id);
   `);
   // Backward-compatible column adds for dbs created before these columns
   // existed (CREATE TABLE IF NOT EXISTS won't alter an existing table).
@@ -212,6 +240,12 @@ function migrate(database: Database.Database): void {
   // unpinning returns the project to its drag-order position. Mirrors
   // sessions.pinned_at above.
   addColumnIfMissing(database, "projects", "pinned_at", "INTEGER");
+  // Scheduled-task WeChat notifications were added after the scheduler MVP.
+  // Existing databases remain opt-in and start with a neutral push state.
+  addColumnIfMissing(database, "scheduled_tasks", "push_enabled", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing(database, "scheduled_tasks", "last_push_status", "TEXT NOT NULL DEFAULT 'idle'");
+  addColumnIfMissing(database, "scheduled_tasks", "last_push_at", "INTEGER");
+  addColumnIfMissing(database, "scheduled_tasks", "last_push_error", "TEXT");
 
   // Composite index for paginated message reads (cursor on created_at). The
   // single-column idx_messages_session above serves the same queries but

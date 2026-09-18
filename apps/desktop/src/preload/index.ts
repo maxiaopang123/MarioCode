@@ -134,6 +134,34 @@ const api = {
     list: (() => ipcRenderer.invoke(IPC.PROVIDER_LIST)) as RpcMap["provider.list"],
   },
 
+  /** Persistent scheduled agent tasks managed by the desktop main process. */
+  scheduler: {
+    list: (() => ipcRenderer.invoke(IPC.SCHEDULER_LIST)) as RpcMap["scheduler.list"],
+    create: ((input) =>
+      ipcRenderer.invoke(IPC.SCHEDULER_CREATE, input)) as RpcMap["scheduler.create"],
+    update: ((input) =>
+      ipcRenderer.invoke(IPC.SCHEDULER_UPDATE, input)) as RpcMap["scheduler.update"],
+    delete: ((input) =>
+      ipcRenderer.invoke(IPC.SCHEDULER_DELETE, input)) as RpcMap["scheduler.delete"],
+    runNow: ((input) =>
+      ipcRenderer.invoke(IPC.SCHEDULER_RUN_NOW, input)) as RpcMap["scheduler.runNow"],
+    setEnabled: ((input) =>
+      ipcRenderer.invoke(IPC.SCHEDULER_SET_ENABLED, input)) as RpcMap["scheduler.setEnabled"],
+  },
+
+  /** Weixin ClawBot binding and push. Credentials never leave main. */
+  clawbot: {
+    status: (() => ipcRenderer.invoke(IPC.CLAWBOT_STATUS)) as RpcMap["clawbot.status"],
+    startBinding: (() => ipcRenderer.invoke(IPC.CLAWBOT_START_BINDING)) as RpcMap["clawbot.startBinding"],
+    pollBinding: (() => ipcRenderer.invoke(IPC.CLAWBOT_POLL_BINDING)) as RpcMap["clawbot.pollBinding"],
+    submitVerifyCode: ((input) =>
+      ipcRenderer.invoke(IPC.CLAWBOT_SUBMIT_VERIFY_CODE, input)) as RpcMap["clawbot.submitVerifyCode"],
+    cancelBinding: (() => ipcRenderer.invoke(IPC.CLAWBOT_CANCEL_BINDING)) as RpcMap["clawbot.cancelBinding"],
+    unbind: (() => ipcRenderer.invoke(IPC.CLAWBOT_UNBIND)) as RpcMap["clawbot.unbind"],
+    testPush: ((input) =>
+      ipcRenderer.invoke(IPC.CLAWBOT_TEST_PUSH, input)) as RpcMap["clawbot.testPush"],
+  },
+
   /** Custom-model configs (user-defined Anthropic-compatible endpoints).
    *  Keys are encrypted at rest; the renderer only ever receives a masked form. */
   customModel: {

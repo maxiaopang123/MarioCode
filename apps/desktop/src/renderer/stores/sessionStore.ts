@@ -4154,6 +4154,12 @@ function flushDeltas(): void {
       else bySession.set(e.sessionId, [e]);
     }
 
+    /** Sessions whose list actually grew this flush. Collected separately
+     *  instead of written straight onto `s` — mutating the callback argument
+     *  also rewrites the *previous* state object, so anything that compares
+     *  old vs new (devtools, subscribeWithSelector) would see no change. */
+    const updated: Record<string, ChatMessage[]> = {};
+
     for (const [sid, sessionEntries] of bySession) {
       const list = s.messagesBySession[sid] ?? [];
       let next: typeof list = list;
@@ -4230,14 +4236,16 @@ function flushDeltas(): void {
 
       // Write back only if the session changed — avoid touching unrelated sessions.
       if (next !== list) {
-        s.messagesBySession[sid] = next;
+        updated[sid] = next;
       }
     }
 
-    // Return a minimal diff — we mutated messagesBySession directly inside the
-    // setState callback (Zustand accepts this pattern because setState runs
-    // synchronously and can detect the mutation via its proxy).
-    return { messagesBySession: { ...s.messagesBySession } };
+    // Nothing landed (e.g. every buffered delta was a straggler from a turn
+    // that already ended) — return an empty patch so the map keeps its
+    // identity and no subscriber re-renders.
+    if (Object.keys(updated).length === 0) return {};
+
+    return { messagesBySession: { ...s.messagesBySession, ...updated } };
   });
 }
 

@@ -10,6 +10,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@renderer/lib/cn.js";
+import { useI18n, type MessageId } from "@renderer/lib/i18n/index.js";
 import { IconKey, IconLoader2, IconAlertCircle, IconDeviceMobile } from "@renderer/lib/icons.js";
 import { pairWithCode } from "@renderer/lib/webApi.js";
 
@@ -24,19 +25,21 @@ function readNonce(): string | null {
 }
 
 /** A friendly default device name from the UA — shown to the PC so the user
- *  can tell paired devices apart. */
-function defaultDeviceName(): string {
+ *  can tell paired devices apart. Takes the translator rather than calling
+ *  the hook: this runs outside React (lazy state init + submit fallback). */
+function defaultDeviceName(t: (key: MessageId) => string): string {
   const ua = navigator.userAgent;
   if (ua.includes("iPhone")) return "iPhone";
   if (ua.includes("iPad")) return "iPad";
-  if (ua.includes("Android")) return "Android 手机";
-  return "浏览器设备";
+  if (ua.includes("Android")) return t("mobile.pairing.deviceAndroid");
+  return t("mobile.pairing.deviceBrowser");
 }
 
 export function PairingScreen({ onPaired }: { onPaired: () => void }) {
+  const { t } = useI18n();
   const nonce = useMemo(readNonce, []);
   const [code, setCode] = useState("");
-  const [deviceName, setDeviceName] = useState(defaultDeviceName);
+  const [deviceName, setDeviceName] = useState(() => defaultDeviceName(t));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +52,7 @@ export function PairingScreen({ onPaired }: { onPaired: () => void }) {
   const submit = async () => {
     if (!nonce || busy) return;
     if (code.trim().length < 4) {
-      setError("请输入电脑端显示的验证码");
+      setError(t("mobile.pairing.codeRequired"));
       return;
     }
     setBusy(true);
@@ -58,7 +61,7 @@ export function PairingScreen({ onPaired }: { onPaired: () => void }) {
       await pairWithCode({
         nonce,
         code: code.trim(),
-        deviceName: deviceName.trim() || defaultDeviceName(),
+        deviceName: deviceName.trim() || defaultDeviceName(t),
       });
       onPaired();
     } catch (err) {
@@ -75,18 +78,18 @@ export function PairingScreen({ onPaired }: { onPaired: () => void }) {
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-muted">
             <IconDeviceMobile size={28} className="text-accent" />
           </div>
-          <h1 className="text-lg font-semibold">连接 MarioCode</h1>
+          <h1 className="text-lg font-semibold">{t("mobile.pairing.title")}</h1>
           <p className="text-sm leading-relaxed text-content-muted">
-            {nonce
-              ? "在电脑端「连接手机」弹窗中查看 6 位验证码,输入后即可开始使用。"
-              : "此链接缺少配对信息。请用手机相机扫描电脑端「连接手机」弹窗中的二维码后重新打开。"}
+            {nonce ? t("mobile.pairing.introWithNonce") : t("mobile.pairing.introNoNonce")}
           </p>
         </div>
 
         {nonce && (
           <div className="flex flex-col gap-3 rounded-xl border border-edge bg-surface-muted/50 p-4">
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-content-muted">验证码</span>
+              <span className="text-xs font-medium text-content-muted">
+                {t("mobile.pairing.codeLabel")}
+              </span>
               <input
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
@@ -101,11 +104,13 @@ export function PairingScreen({ onPaired }: { onPaired: () => void }) {
               />
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-content-muted">设备名称(可选)</span>
+              <span className="text-xs font-medium text-content-muted">
+                {t("mobile.pairing.deviceNameLabel")}
+              </span>
               <input
                 value={deviceName}
                 onChange={(e) => setDeviceName(e.target.value)}
-                placeholder="我的手机"
+                placeholder={t("mobile.pairing.deviceNamePlaceholder")}
                 className="w-full rounded-lg border border-input-edge bg-surface px-3 py-2 text-sm text-content outline-none focus:border-accent"
               />
             </label>
@@ -125,13 +130,15 @@ export function PairingScreen({ onPaired }: { onPaired: () => void }) {
               )}
             >
               {busy ? <IconLoader2 size={16} className="animate-spin" /> : <IconKey size={16} />}
-              {busy ? "配对中…" : "完成配对"}
+              {busy ? t("mobile.pairing.pairing") : t("mobile.pairing.pair")}
             </button>
           </div>
         )}
 
         <p className="text-center text-xs text-content-subtle">
-          配对码有效期 5 分钟 · 服务器:{window.location.origin || "未知"}
+          {t("mobile.pairing.footer", {
+            origin: window.location.origin || t("mobile.pairing.unknownServer"),
+          })}
         </p>
       </div>
     </div>

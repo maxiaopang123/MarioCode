@@ -37,20 +37,21 @@ import {
 } from "@renderer/lib/icons.js";
 import { copyText } from "@renderer/lib/clipboard.js";
 import { browserUuid } from "@renderer/lib/uuid.js";
-import { useI18n } from "@renderer/lib/i18n/index.js";
+import { useI18n, type MessageId } from "@renderer/lib/i18n/index.js";
 import { parsePatch, PatchRows } from "./PatchView.js";
 
-/** Compact per-status glyphs for the file-list badges. */
-const STATUS_LABEL: Record<GitStatusCode, string> = {
-  modified: "改",
-  added: "增",
-  deleted: "删",
-  renamed: "重",
-  copied: "复",
-  unmerged: "冲",
-  untracked: "?",
-  ignored: "略",
-  unmodified: "",
+/** Compact per-status glyphs for the file-list badges. Module scope can't
+ *  call hooks — hold the key and translate at the use site. */
+const STATUS_LABEL_KEYS: Record<GitStatusCode, MessageId> = {
+  modified: "mobile.git.statusModified",
+  added: "mobile.git.statusAdded",
+  deleted: "mobile.git.statusDeleted",
+  renamed: "mobile.git.statusRenamed",
+  copied: "mobile.git.statusCopied",
+  unmerged: "mobile.git.statusUnmerged",
+  untracked: "mobile.git.statusUntracked",
+  ignored: "mobile.git.statusIgnored",
+  unmodified: "mobile.git.statusUnmodified",
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -196,18 +197,18 @@ export function MobileGitScreen() {
   const commit = (andPush: boolean) =>
     run(andPush ? "commit+push" : "commit", async () => {
       if (!message.trim()) {
-        setError("请输入提交信息");
+        setError(t("mobile.git.commitMessageRequired"));
         setBusy(null);
         return;
       }
       const res = await api.git.commit({ repoPath: repoPath!, message: message.trim() });
-      if (!res.ok) throw new Error(res.error ?? "提交失败");
+      if (!res.ok) throw new Error(res.error ?? t("mobile.git.commitFailed"));
       setMessage("");
-      toast("已提交");
+      toast(t("mobile.git.committed"));
       if (andPush) {
         const pushRes = await api.git.push({ repoPath: repoPath! });
-        if (!pushRes.ok) throw new Error(pushRes.error ?? "推送失败");
-        toast("已推送至远端");
+        if (!pushRes.ok) throw new Error(pushRes.error ?? t("mobile.git.pushFailed"));
+        toast(t("mobile.git.pushedToRemote"));
       }
     });
 
@@ -216,34 +217,38 @@ export function MobileGitScreen() {
   const pull = () =>
     run("pull", async () => {
       const res = await api.git.pull({ repoPath: repoPath! });
-      if (!res.ok) throw new Error(res.error ?? "拉取失败");
+      if (!res.ok) throw new Error(res.error ?? t("mobile.git.pullFailed"));
       if (res.conflict) {
-        setError(`拉取后产生 ${res.conflictedFiles?.length ?? 0} 个冲突文件，请先解决冲突`);
+        setError(
+          t("mobile.git.conflictsAfterPull", { n: res.conflictedFiles?.length ?? 0 }),
+        );
         return;
       }
-      toast("拉取完成");
+      toast(t("mobile.git.pullDone"));
     });
 
   /** Push only — local commits to the remote. */
   const push = () =>
     run("push", async () => {
       const res = await api.git.push({ repoPath: repoPath! });
-      if (!res.ok) throw new Error(res.error ?? "推送失败");
-      toast("推送完成");
+      if (!res.ok) throw new Error(res.error ?? t("mobile.git.pushFailed"));
+      toast(t("mobile.git.pushDone"));
     });
 
   /** Pull then push (desktop's "sync"). Never pushes past a merge conflict. */
   const sync = () =>
     run("sync", async () => {
       const pullRes = await api.git.pull({ repoPath: repoPath! });
-      if (!pullRes.ok) throw new Error(pullRes.error ?? "拉取失败");
+      if (!pullRes.ok) throw new Error(pullRes.error ?? t("mobile.git.pullFailed"));
       if (pullRes.conflict) {
-        setError(`拉取后产生 ${pullRes.conflictedFiles?.length ?? 0} 个冲突文件，请先解决冲突`);
+        setError(
+          t("mobile.git.conflictsAfterPull", { n: pullRes.conflictedFiles?.length ?? 0 }),
+        );
         return;
       }
       const pushRes = await api.git.push({ repoPath: repoPath! });
-      if (!pushRes.ok) throw new Error(pushRes.error ?? "推送失败");
-      toast("同步完成");
+      if (!pushRes.ok) throw new Error(pushRes.error ?? t("mobile.git.pushFailed"));
+      toast(t("mobile.git.syncDone"));
     });
 
   const generate = async () => {
@@ -273,7 +278,7 @@ export function MobileGitScreen() {
         }
       }
       if (!customModelId) {
-        setError("未配置提交信息生成模型，请在桌面端 设置 → Git 中选择");
+        setError(t("mobile.git.noCommitGenModel"));
         return;
       }
       const res = await api.git.generateCommitMessage({
@@ -285,7 +290,7 @@ export function MobileGitScreen() {
       });
       if (genCancelledRef.current) return; // aborted by the user — keep the box as-is
       if (res.ok && res.message) setMessage(res.message);
-      else if (!res.ok) setError(res.error ?? "生成失败");
+      else if (!res.ok) setError(res.error ?? t("mobile.git.generateFailed"));
     } catch (err) {
       if (!genCancelledRef.current) setError((err as Error).message);
     } finally {
@@ -311,15 +316,17 @@ export function MobileGitScreen() {
           type="button"
           onClick={() => void refresh()}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-content-muted active:bg-surface-muted"
-          title="刷新"
-          aria-label="刷新"
+          title={t("common.refresh")}
+          aria-label={t("common.refresh")}
         >
           <IconRefresh size={15} />
         </button>
       </div>
 
       {!envPath ? (
-        <div className="p-6 text-center text-xs text-content-subtle">请先选择一个项目</div>
+        <div className="p-6 text-center text-xs text-content-subtle">
+          {t("mobile.files.pickProjectFirst")}
+        </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col px-3 py-2">
           {/* repo selector */}
@@ -363,7 +370,7 @@ export function MobileGitScreen() {
                 {status.ahead > 0 && (
                   <span
                     className="flex shrink-0 items-center gap-0.5 text-accent"
-                    title={`领先远端 ${status.ahead} 个提交`}
+                    title={t("mobile.git.aheadRemote", { n: status.ahead })}
                   >
                     <IconArrowUp size={11} /> {status.ahead}
                   </span>
@@ -371,7 +378,7 @@ export function MobileGitScreen() {
                 {status.behind > 0 && (
                   <span
                     className="flex shrink-0 items-center gap-0.5 text-warning"
-                    title={`落后远端 ${status.behind} 个提交`}
+                    title={t("mobile.git.behindRemote", { n: status.behind })}
                   >
                     <IconArrowDown size={11} /> {status.behind}
                   </span>
@@ -381,7 +388,7 @@ export function MobileGitScreen() {
                 type="button"
                 onClick={() => void pull()}
                 disabled={!!busy || !repoPath}
-                title="拉取远端更新"
+                title={t("mobile.git.pullTitle")}
                 className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-edge px-2.5 text-xs text-content-muted active:bg-surface-hover disabled:opacity-50"
               >
                 {busy === "pull" ? (
@@ -389,13 +396,13 @@ export function MobileGitScreen() {
                 ) : (
                   <IconArrowDown size={12} />
                 )}
-                拉取
+                {t("mobile.git.pull")}
               </button>
               <button
                 type="button"
                 onClick={() => void push()}
                 disabled={!!busy || !repoPath}
-                title="推送本地提交到远端"
+                title={t("mobile.git.pushTitle")}
                 className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-edge px-2.5 text-xs text-content-muted active:bg-surface-hover disabled:opacity-50"
               >
                 {busy === "push" ? (
@@ -403,13 +410,13 @@ export function MobileGitScreen() {
                 ) : (
                   <IconArrowUp size={12} />
                 )}
-                推送
+                {t("mobile.git.push")}
               </button>
               <button
                 type="button"
                 onClick={() => void sync()}
                 disabled={!!busy || !repoPath}
-                title="拉取远端更新后推送本地提交"
+                title={t("mobile.git.syncTitle")}
                 className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-edge px-2.5 text-xs text-content-muted active:bg-surface-hover disabled:opacity-50"
               >
                 {busy === "sync" ? (
@@ -417,7 +424,7 @@ export function MobileGitScreen() {
                 ) : (
                   <IconArrowsExchange size={12} />
                 )}
-                同步
+                {t("mobile.git.sync")}
               </button>
             </div>
           )}
@@ -427,11 +434,11 @@ export function MobileGitScreen() {
               repo. */}
           {reposLoading ? (
             <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-content-subtle">
-              正在发现仓库…
+              {t("mobile.git.discovering")}
             </div>
           ) : repos.length === 0 ? (
             <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-xs text-content-subtle">
-              此项目下未发现 Git 仓库
+              {t("mobile.git.noRepos")}
             </div>
           ) : (
             <>
@@ -445,7 +452,7 @@ export function MobileGitScreen() {
                 tab === "changes" ? "bg-surface text-content shadow-sm" : "text-content-muted",
               )}
             >
-              更改 {unstaged.length > 0 ? `(${unstaged.length})` : ""}
+              {t("mobile.git.tabChanges")} {unstaged.length > 0 ? `(${unstaged.length})` : ""}
             </button>
             <button
               type="button"
@@ -455,7 +462,7 @@ export function MobileGitScreen() {
                 tab === "staged" ? "bg-surface text-content shadow-sm" : "text-content-muted",
               )}
             >
-              已暂存 {staged.length > 0 ? `(${staged.length})` : ""}
+              {t("mobile.git.tabStaged")} {staged.length > 0 ? `(${staged.length})` : ""}
             </button>
           </div>
 
@@ -463,7 +470,7 @@ export function MobileGitScreen() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             {list.length === 0 ? (
               <div className="p-6 text-center text-xs text-content-subtle">
-                {tab === "changes" ? "没有未暂存的更改" : "没有已暂存的更改"}
+                {tab === "changes" ? t("mobile.git.noUnstaged") : t("mobile.git.noStaged")}
               </div>
             ) : (
               list.map((f) => {
@@ -476,7 +483,7 @@ export function MobileGitScreen() {
                         STATUS_COLOR[code] ?? "bg-surface-hover text-content-muted",
                       )}
                     >
-                      {STATUS_LABEL[code] ?? "?"}
+                      {t(STATUS_LABEL_KEYS[code] ?? "mobile.git.statusUntracked")}
                     </span>
                     <button
                       type="button"
@@ -493,7 +500,7 @@ export function MobileGitScreen() {
                       disabled={!!busy}
                       className="h-8 shrink-0 rounded-lg border border-edge px-3 text-[11px] text-content-muted active:bg-surface-hover disabled:opacity-50"
                     >
-                      {tab === "changes" ? "暂存" : "取消"}
+                      {tab === "changes" ? t("mobile.git.stage") : t("common.cancel")}
                     </button>
                   </div>
                 );
@@ -512,7 +519,7 @@ export function MobileGitScreen() {
               ref={msgRef}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="提交信息…"
+              placeholder={t("mobile.git.commitPlaceholder")}
               rows={1}
               className="mb-2 w-full resize-none overflow-hidden rounded-lg border border-input-edge bg-surface-muted px-2 py-1.5 text-xs leading-relaxed text-content outline-none focus:border-accent"
             />
@@ -521,19 +528,27 @@ export function MobileGitScreen() {
                 type="button"
                 onClick={() => (genLoading ? stopGenerate() : void generate())}
                 disabled={!repoPath || staged.length === 0}
-                title={genLoading ? "停止生成" : "使用 AI 生成提交信息"}
-                aria-label={genLoading ? "停止生成" : "使用 AI 生成提交信息"}
+                title={
+                  genLoading
+                    ? t("mobile.git.stopGenerate")
+                    : t("mobile.git.generateCommitMessage")
+                }
+                aria-label={
+                  genLoading
+                    ? t("mobile.git.stopGenerate")
+                    : t("mobile.git.generateCommitMessage")
+                }
                 className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-edge px-2 py-1.5 text-xs text-content-muted transition-colors hover:bg-surface-hover hover:text-accent disabled:opacity-40"
               >
                 {genLoading ? (
                   <>
                     <IconLoader2 size={14} className="animate-spin" />
-                    停止生成
+                    {t("mobile.git.stopGenerate")}
                   </>
                 ) : (
                   <>
                     <IconSparkles size={14} />
-                    AI 生成提交信息
+                    {t("mobile.git.generateCommitMessageShort")}
                   </>
                 )}
               </button>
@@ -547,7 +562,7 @@ export function MobileGitScreen() {
                 className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-edge px-2 py-2.5 text-xs text-content-muted active:bg-surface-hover disabled:opacity-50"
               >
                 {busy === "commit" ? <IconLoader2 size={12} className="animate-spin" /> : <IconCheck size={12} />}
-                提交
+                {t("mobile.git.commit")}
               </button>
               <button
                 type="button"
@@ -556,7 +571,7 @@ export function MobileGitScreen() {
                 className="flex flex-[1.4] items-center justify-center gap-1 rounded-lg bg-accent px-2 py-2.5 text-xs font-semibold text-surface disabled:opacity-40"
               >
                 {busy === "commit+push" ? <IconLoader2 size={12} className="animate-spin" /> : <IconCheck size={12} />}
-                提交并推送
+                {t("mobile.git.commitAndPush")}
               </button>
             </div>
           </div>
@@ -718,7 +733,7 @@ function BranchSheet({
     <div className="fixed inset-0 z-50">
       <button
         type="button"
-        aria-label="关闭"
+        aria-label={t("common.close")}
         className="absolute inset-0 bg-black/40"
         onClick={onClose}
       />
@@ -731,7 +746,7 @@ function BranchSheet({
           <button
             type="button"
             onClick={onClose}
-            aria-label="关闭"
+            aria-label={t("common.close")}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-content-muted active:bg-surface-hover"
           >
             <IconX size={16} />
@@ -753,7 +768,7 @@ function BranchSheet({
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                aria-label="清除搜索"
+                aria-label={t("mobile.session.clearSearch")}
                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-content-subtle active:bg-surface-hover"
               >
                 <IconX size={13} />
@@ -789,7 +804,7 @@ function BranchSheet({
                   setCreating(false);
                   setNewName("");
                 }}
-                aria-label="取消新建分支"
+                aria-label={t("mobile.git.cancelNewBranch")}
                 className="flex h-10 w-9 shrink-0 items-center justify-center rounded-xl text-content-muted active:bg-surface-hover"
               >
                 <IconX size={15} />
@@ -888,6 +903,7 @@ function BranchSheet({
  *  pasting the failure into a search / chat) and dismiss affordances. Copy
  *  uses the shared helper so it works over the mobile shell's plain-HTTP
  *  LAN transport, where navigator.clipboard is unavailable. */function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -905,8 +921,8 @@ function BranchSheet({
       <button
         type="button"
         onClick={() => void copy()}
-        aria-label={copied ? "已复制" : "复制错误信息"}
-        title={copied ? "已复制" : "复制错误信息"}
+        aria-label={copied ? t("common.copied") : t("mobile.git.copyError")}
+        title={copied ? t("common.copied") : t("mobile.git.copyError")}
         className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-danger/70 hover:bg-danger/10 hover:text-danger"
       >
         {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
@@ -914,8 +930,8 @@ function BranchSheet({
       <button
         type="button"
         onClick={onDismiss}
-        aria-label="关闭错误提示"
-        title="关闭错误提示"
+        aria-label={t("mobile.git.dismissError")}
+        title={t("mobile.git.dismissError")}
         className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-danger/70 hover:bg-danger/10 hover:text-danger"
       >
         <IconX size={13} />
@@ -933,6 +949,7 @@ function DiffOverlay({
   file: { path: string; staged: boolean };
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [patch, setPatch] = useState("");
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -958,7 +975,7 @@ function DiffOverlay({
           type="button"
           onClick={onClose}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-content-muted hover:bg-surface-muted"
-          aria-label="关闭"
+          aria-label={t("common.close")}
         >
           <IconX size={16} />
         </button>
@@ -968,9 +985,13 @@ function DiffOverlay({
         <span className="w-8" />
       </div>
       {loading ? (
-        <div className="flex flex-1 items-center justify-center text-xs text-content-subtle">加载中…</div>
+        <div className="flex flex-1 items-center justify-center text-xs text-content-subtle">
+          {t("common.loading")}
+        </div>
       ) : rows.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center text-xs text-content-subtle">(无差异)</div>
+        <div className="flex flex-1 items-center justify-center text-xs text-content-subtle">
+          {t("mobile.git.noDiff")}
+        </div>
       ) : (
         <PatchRows rows={rows} />
       )}

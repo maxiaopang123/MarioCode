@@ -2041,6 +2041,23 @@ body:has(.lightbox-root[data-chrome="hidden"]) .lightbox-scrim {
   }
 }
 
+/* ───────────── Keyboard focus ring ─────────────
+ * 主题无关的焦点环兜底。组件层为了压掉浏览器默认框大量写 outline-none
+ * (100 余处,其中 23 个文件没给自己的替代环),键盘可达性信号统一由这里
+ * 提供。:focus-visible 只在键盘 / 辅助技术导航时命中,鼠标点击不出现。
+ *
+ * 层叠:本规则不进 @layer,特异性 0-3-0 压过工具类 .outline-none 的
+ * 0-1-0,且位于文件头 @tailwind utilities 之后 —— 双保险(与 base-ui
+ * 修正、sketch 区块同款手法)。
+ *
+ * 排除 Monaco / xterm 的隐藏输入 textarea:它们是真实焦点宿主但视觉上
+ * 不应有框(:not() 只收复合选择器,按各自根 class 逐一排除)。
+ * 手绘形态只换笔触为铅笔虚线,见下方「Sketch theme」区块。 */
+:focus-visible:not(.inputarea):not(.xterm-helper-textarea) {
+  outline: 2px solid rgb(var(--accent) / 0.55);
+  outline-offset: 2px;
+}
+
 /* ───────────── Sketch theme · 手绘 (ui.themeStyle="sketch") ─────────────
  * prototypes/theme-sketch-redesign.html 的落地(一期纸面 + 二期牛皮纸)。
  * 立场:手绘是「风格」维度,与明暗(ui.theme → html.dark)正交 —— 本区块
@@ -2166,13 +2183,12 @@ html.sketch ::selection {
   background: rgb(var(--accent) / 0.22);
 }
 
-/* 焦点环 = 虚线铅笔描焦点(原型规格;覆盖组件的 outline-none——键盘可达性
- * 信号在手绘形态下换成自己的语言)。排除 Monaco/xterm 的隐藏输入 textarea:
- * 它们是真实焦点宿主但视觉上不应有框(:not() 只收复合选择器,按各自根
- * class 逐一排除)。 */
+/* 焦点环 = 虚线铅笔描焦点(原型规格)——键盘可达性信号在手绘形态下换成
+ * 自己的语言。粗细 / 偏移与 :not() 排除项都继承上方「Keyboard focus ring」
+ * 区块的主题无关兜底,这里只换笔触。 */
 html.sketch :focus-visible:not(.inputarea):not(.xterm-helper-textarea) {
-  outline: 2px dashed rgb(var(--accent) / 0.6);
-  outline-offset: 2px;
+  outline-style: dashed;
+  outline-color: rgb(var(--accent) / 0.6);
 }
 
 /* ── 工具类映射:把 Tailwind 的规则几何翻译成手抖几何 ──────────────────────

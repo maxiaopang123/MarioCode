@@ -201,6 +201,81 @@ function isAllowedUrl(url: string): boolean {
   return /^(https?|file):\/\//i.test(url.trim());
 }
 
+// ── Search-engine guard ──────────────────────────────────────────────
+// The browser tools are for opening KNOWN pages and operating on them, not
+// for web search. Without a dedicated search tool the model falls back to
+// "navigate to a search engine → snapshot → click results → snapshot…", and
+// every snapshot of a link-dense results page is 10K+ tokens that then rides
+// along in the history for the rest of the session (user-reported context
+// blow-up under Pi, which has no native search). Until a bounded `web_search`
+// tool exists, search-engine pages are refused at BOTH ends of the loop:
+// navigate (can't open the engine, homepage included — so the model can't type
+// a query into the box either) and read (snapshot/find/evaluate/screenshot on
+// a view that already sits on an engine, e.g. a tab the user opened manually,
+// or a page reached via a typed form submit). The user's own browsing in the
+// panel is never affected — this guard lives only in the agent tool layer.
+//
+// Host rules are deliberately narrow: only the engine's own search hosts
+// (root / www / regional search subdomains). Product subdomains such as
+// docs.google.com, pan.baidu.com, developer.baidu.com stay reachable.
+const SEARCH_ENGINE_HOST_RULES: ReadonlyArray<{ label: string; test: RegExp }> = [
+  { label: "Google", test: /^(www\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$/ },
+  { label: "Bing", test: /^((www|cn|m|global)\.)?bing\.com$/ },
+  { label: "百度", test: /^((www|m|wap)\.)?baidu\.com$/ },
+  { label: "DuckDuckGo", test: /(^|\.)duckduckgo\.com$/ },
+  { label: "搜狗", test: /^((www|m|wap)\.)?sogou\.com$/ },
+  { label: "360 搜索", test: /^((www|m)\.)?so\.com$/ },
+  { label: "神马搜索", test: /^((www|m|quark)\.)?sm\.cn$/ },
+  { label: "头条搜索", test: /^so\.toutiao\.com$/ },
+  { label: "Yandex", test: /^(www\.)?(yandex\.(com|ru|com\.tr)|ya\.ru)$/ },
+  { label: "Yahoo 搜索", test: /(^|\.)search\.yahoo\.(com|co\.jp)$/ },
+  { label: "Brave Search", test: /^search\.brave\.com$/ },
+  { label: "Startpage", test: /^(www\.)?startpage\.com$/ },
+  { label: "Ecosia", test: /^(www\.)?ecosia\.org$/ },
+  { label: "Kagi", test: /^(www\.)?kagi\.com$/ },
+  { label: "You.com", test: /^(www\.)?you\.com$/ },
+  { label: "Perplexity", test: /^(www\.)?perplexity\.ai$/ },
+];
+
+/** Return the engine label when `url` points at a search engine's search host,
+ *  else null. Only http(s) URLs are inspected; unparsable input → null (the
+ *  caller's own validation reports it). */
+export function matchSearchEngine(url: string): string | null {
+  let host: string;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    host = u.hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  for (const rule of SEARCH_ENGINE_HOST_RULES) {
+    if (rule.test.test(host)) return rule.label;
+  }
+  return null;
+}
+
+/** The refusal text for a blocked engine. Tells the model what to do instead
+ *  (say so to the user / open a known URL directly) and explicitly forbids the
+ *  two natural workarounds (another engine, typing into a search box). */
+function searchEngineBlockedResult(label: string, action: "navigate" | "read", url?: string): ToolResult {
+  const where = action === "navigate" ? `拦截: ${label}` : `当前页面是搜索引擎 ${label}${url ? `: ${url}` : ""}`;
+  return errorResult(
+    `内置浏览器不允许用于搜索引擎检索(${where})。当前没有可用的网页搜索工具:请直接告诉用户你无法联网搜索,` +
+      `让用户提供资料或具体链接;不要换其他搜索引擎、也不要在网页搜索框里输入关键词绕过。已知具体网址时可以直接 browser_navigate 打开该网址。`,
+  );
+}
+
+/** Read-side guard: refuse when the resolved view currently sits on a search
+ *  engine (reached via a typed form submit or opened by the user). Returns the
+ *  refusal result, or null when the page is fine to read. */
+function guardSearchEnginePage(browserId: string): ToolResult | null {
+  const info = BrowserManager.list().find((i) => i.browserId === browserId);
+  const url = info?.url ?? "";
+  const label = matchSearchEngine(url);
+  return label ? searchEngineBlockedResult(label, "read", url) : null;
+}
+
 /** Canonicalize a file URL: backslashes → forward slashes, and the two-slash
  *  drive-letter form `file://D:/x` (drive parsed as a host → Chromium rejects
  *  with ERR_INVALID_URL) or `file://localhost/x` → the three-slash
@@ -320,6 +395,11 @@ export async function browserNavigate(
       `仅支持 http/https/file 协议(收到 "${raw.slice(0, 40)}")。网页用完整 http(s):// 地址;本地文件用 file:/// 绝对路径(Windows 形如 file:///D:/dir/page.html)。`,
     );
   }
+  const engine = matchSearchEngine(url);
+  if (engine) {
+    log.info(`agent browser navigate blocked (search engine ${engine}): ${url.slice(0, 120)}`);
+    return searchEngineBlockedResult(engine, "navigate");
+  }
   const device = coerceDevice(args.device);
 
   let browserId: string;
@@ -383,6 +463,8 @@ export async function browserSnapshot(args: { browserId?: string }): Promise<Too
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
+  const blocked = guardSearchEnginePage(resolved.browserId);
+  if (blocked) return blocked;
   const res = await BrowserManager.snapshot(resolved.browserId);
   if (!res.ok || !res.data) return errorResult(res.error ?? "读取快照失败");
 
@@ -667,6 +749,8 @@ export async function browserFind(args: {
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
+  const blocked = guardSearchEnginePage(resolved.browserId);
+  if (blocked) return blocked;
   const selector = (args.selector ?? "").trim();
   const needle = (args.text ?? "").trim();
   if (!selector && !needle) return errorResult("需要 selector 或 text 参数之一");
@@ -741,6 +825,8 @@ export async function browserEvaluate(args: {
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
+  const blocked = guardSearchEnginePage(resolved.browserId);
+  if (blocked) return blocked;
   const res = await BrowserManager.evaluate(resolved.browserId, script);
   if (!res.ok) return errorResult(res.error ?? "脚本执行失败");
   return text(
@@ -766,6 +852,8 @@ export async function browserScreenshot(
     log.warn(`browserScreenshot resolveBrowserId failed: ${resolved.reason}`);
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
+  const blocked = guardSearchEnginePage(resolved.browserId);
+  if (blocked) return blocked;
   const res = await BrowserManager.screenshot(resolved.browserId, { fullPage: args.fullPage === true });
   if (!res.ok || !res.data) {
     log.warn(`browserScreenshot BrowserManager.screenshot failed: ${res.error}`);
@@ -928,8 +1016,9 @@ export const BROWSER_TOOL_SPECS: Record<string, BrowserToolSpec> = {
     name: "browser_navigate",
     description:
       "在应用内浏览器中导航到指定 URL(支持 http/https 网页与 file:/// 本地文件,本地文件 Windows 形如 file:///D:/dir/page.html)。若没有打开的浏览器视图会自动创建并显示一个;newTab=true 强制新开一个标签页。" +
-      "device 可选——desktop(桌面全宽,默认)/iphone/android(移动端模拟),测试移动端页面时用后两者(仅新建时生效)。导航后需调用 browser_snapshot 读取页面内容。",
-    promptSnippet: "browser_navigate({url, device?, newTab?}): 打开网页或 file:/// 本地文件;device 可选 desktop/iphone/android",
+      "device 可选——desktop(桌面全宽,默认)/iphone/android(移动端模拟),测试移动端页面时用后两者(仅新建时生效)。导航后需调用 browser_snapshot 读取页面内容。" +
+      "不能用于搜索引擎(Google/Bing/百度等搜索站会被拦截):这是打开已知网址的工具,不是搜索工具。",
+    promptSnippet: "browser_navigate({url, device?, newTab?}): 打开已知网址或 file:/// 本地文件(不能用于搜索引擎);device 可选 desktop/iphone/android",
   },
   browser_snapshot: {
     name: "browser_snapshot",
@@ -1046,7 +1135,9 @@ export const BROWSER_TOOL_SPECS: Record<string, BrowserToolSpec> = {
 export const BROWSER_TOOLS_FLOW =
   "browserId 参数全部可选——省略时作用于 agent 当前目标视图(navigate/switch_tab 设置)或第一个已开视图。" +
   "典型流程: navigate → (wait 等内容出现) → snapshot 读内容与元素索引 → 按需 type 填表(接 keys:Enter 提交)/ select 选下拉 / upload_file 传附件 / click 点击 / scroll 翻页 / find 精查 / screenshot 截图 / save_pdf 存档;" +
-  "页面超出快照正文上限时用 scroll+snapshot 或 find 检索,避免整页抓取;触发下载后用 downloads 查看进度与保存路径。";
+  "页面超出快照正文上限时用 scroll+snapshot 或 find 检索,避免整页抓取;触发下载后用 downloads 查看进度与保存路径。" +
+  "禁止把浏览器当搜索引擎用:不要打开 Google/Bing/百度等搜索站输入关键词检索(会被拦截,且搜索结果页快照极大);" +
+  "没有搜索工具时直接告知用户你无法联网搜索,已知具体网址则直接 navigate 打开。";
 
 /**
  * Build the system-prompt section teaching the browser tools — one promptSnippet

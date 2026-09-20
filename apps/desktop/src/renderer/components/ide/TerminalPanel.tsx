@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+﻿import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useSessionStore, selectActiveEnvPath } from "@renderer/stores/sessionStore.js";
 import { cn } from "@renderer/lib/cn.js";
+import { Hint } from "@renderer/components/ui/index.js";
 import { api } from "@renderer/lib/api.js";
 import {
   IconPlus,
@@ -36,7 +37,7 @@ interface TermSession {
  *  each render that would churn downstream selectors). */
 const EMPTY_SESSIONS: TermSession[] = [];
 
-/** Globally-unique tab-key generator. Only guarantees key uniqueness — the
+/** Globally-unique tab-key generator. Only guarantees key uniqueness 鈥?the
  *  displayed ordinal comes from the owning project bucket's `nextSeq`. The
  *  timestamp suffix keeps keys unique across module re-evaluation (HMR) while
  *  the component tree persists. */
@@ -50,7 +51,7 @@ function makeSession(seq: number): TermSession {
 interface ProjectTermState {
   sessions: TermSession[];
   activeKey: string | null;
-  /** Next per-project ordinal handed out for the tab title ("终端 {n}"). */
+  /** Next per-project ordinal handed out for the tab title ("缁堢 {n}"). */
   nextSeq: number;
 }
 
@@ -59,11 +60,11 @@ interface ProjectTermState {
  *
  * - Scoped to the active project's path (cwd = project root).
  * - Supports multiple local sessions (tabs) per project; each mounts a
- *   TerminalView. Tab ordinals ("终端 {n}") are per-project, starting at 1
+ *   TerminalView. Tab ordinals ("缁堢 {n}") are per-project, starting at 1
  *   for each project's first terminal.
- * - The first terminal of a project is created lazily — the first time the
+ * - The first terminal of a project is created lazily 鈥?the first time the
  *   panel is actually OPENED with that project active, not when the project
- *   merely becomes active — so switching projects never spawns hidden PTYs.
+ *   merely becomes active 鈥?so switching projects never spawns hidden PTYs.
  * - Parent BottomTerminalBar keep-alives this component (collapses to height 0
  *   instead of unmounting) so PTYs and scrollback survive the bar toggling.
  * - Cross-project keep-alive: every project that has ever opened a terminal
@@ -78,7 +79,7 @@ export function TerminalPanel({ active }: { active: boolean }) {
   const activeProjectId = useSessionStore((s) => s.activeProjectId);
   const projects = useSessionStore((s) => s.projects);
 
-  // Follows the active session's environment — a worktree session's
+  // Follows the active session's environment 鈥?a worktree session's
   // terminals open IN the isolated checkout (its own bucket, separate from
   // the project-root terminals).
   const projectPath = useSessionStore(selectActiveEnvPath);
@@ -103,7 +104,7 @@ export function TerminalPanel({ active }: { active: boolean }) {
 
   // Create a session in the given project's bucket (creating the bucket if
   // needed) and make it the active tab. Single choke point for every terminal
-  // spawn, so the per-project ordinal stays dense — a shared global counter
+  // spawn, so the per-project ordinal stays dense 鈥?a shared global counter
   // made numbers jump whenever another project silently consumed one.
   const appendSession = useCallback((path: string): TermSession => {
     let st = termsRef.current.get(path);
@@ -123,7 +124,7 @@ export function TerminalPanel({ active }: { active: boolean }) {
   const sessions = current?.sessions ?? EMPTY_SESSIONS;
   const activeKey = current?.activeKey ?? null;
 
-  // Ensure the current project has a terminal bucket — lazily: only once the
+  // Ensure the current project has a terminal bucket 鈥?lazily: only once the
   // panel has actually been OPENED with that project active. Creating on bare
   // project activation would silently spawn (and keep alive) a hidden PTY for
   // every project the user merely switched through. Existing buckets are left
@@ -247,7 +248,7 @@ export function TerminalPanel({ active }: { active: boolean }) {
 
   // Open a NEW terminal tab, switch to it, and run the command there once its
   // PTY is ready. The actual write is deferred until the new TerminalView
-  // reports status "running" (PTY spawn is async) — see the onStatusChange
+  // reports status "running" (PTY spawn is async) 鈥?see the onStatusChange
   // handler in the render list below. This keeps the user's current terminal
   // untouched (e.g. a long-running dev server) while still showing the command
   // output immediately in a fresh tab.
@@ -410,7 +411,7 @@ export function TerminalPanel({ active }: { active: boolean }) {
           </div>
         )}
 
-      {/* Terminal hosts — keep ALL terminals across ALL projects mounted so
+      {/* Terminal hosts 鈥?keep ALL terminals across ALL projects mounted so
           PTYs + scrollback survive both intra-project tab switches and
           inter-project switches. Only the current project's active tab is
           visible; everything else is hidden via CSS (invisible) and its
@@ -475,17 +476,21 @@ function IconBtn({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "rounded p-1 text-content-subtle hover:bg-surface-hover hover:text-content",
-        "disabled:pointer-events-none disabled:opacity-40",
-      )}
-    >
-      {children}
-    </button>
+    // disabled:pointer-events-none stops the hint opening in that state, so
+    // the native title stays as the fallback for it.
+    <Hint label={title}>
+      <button
+        type="button"
+        title={disabled ? title : undefined}
+        disabled={disabled}
+        onClick={onClick}
+        className={cn(
+          "rounded p-1 text-content-subtle hover:bg-surface-hover hover:text-content",
+          "disabled:pointer-events-none disabled:opacity-40",
+        )}
+      >
+        {children}
+      </button>
+    </Hint>
   );
 }

@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useSessionStore, type PlanHandoffTarget } from "@renderer/stores/sessionStore.js";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
-import { Button, Input, Select } from "@renderer/components/ui/index.js";
+import { Button, Hint, Input, Select } from "@renderer/components/ui/index.js";
 import { useSuppressBrowserView } from "@renderer/hooks/useSuppressBrowserView.js";
 import {
   IconRocket,
@@ -244,20 +244,20 @@ export function PlanApprovalPrompt({
   const primaryDisabled = exec !== "current" && !(exec === "remodel" ? remodelSelected : newSessionSelected);
 
   const segButton = (mode: ExecMode, label: string, title: string) => (
-    <button
-      key={mode}
-      type="button"
-      title={title}
-      onClick={() => setExec(mode)}
-      className={cn(
-        "rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
-        exec === mode
-          ? "bg-surface text-accent shadow-sm"
-          : "text-content-muted hover:text-content",
-      )}
-    >
-      {label}
-    </button>
+    <Hint key={mode} label={title} describeOnly>
+      <button
+        type="button"
+        onClick={() => setExec(mode)}
+        className={cn(
+          "rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
+          exec === mode
+            ? "bg-surface text-accent shadow-sm"
+            : "text-content-muted hover:text-content",
+        )}
+      >
+        {label}
+      </button>
+    </Hint>
   );
 
   const renderModelSelect = (

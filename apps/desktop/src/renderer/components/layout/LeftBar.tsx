@@ -48,7 +48,7 @@ import {
 import { useTheme, applyThemeClass } from "@renderer/lib/theme.js";
 import { isMac } from "@renderer/lib/platform.js";
 import { getProviderIcon } from "@renderer/lib/providerIcon.js";
-import { Button, ConfirmDialog, Dialog, Input } from "@renderer/components/ui/index.js";
+import { Button, ConfirmDialog, Dialog, Hint, Input } from "@renderer/components/ui/index.js";
 import { BrandLogo } from "./BrandLogo.js";
 import { SidebarQuickActions } from "./SidebarQuickActions.js";
 import { HoverIconButton, RenameDialog, SessionContextMenu, ArchivedRow } from "./SidebarShared.js";
@@ -603,18 +603,19 @@ function LeftBarBase({
           className="-mt-2 mb-2 flex h-10 items-center gap-1 pl-[70px]"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
-          <button
-            type="button"
-            onClick={() => setLeftOpen(false)}
-            className={cn(
-              "flex h-7 w-7 items-center justify-center rounded text-content-muted transition-colors",
-              "hover:bg-surface-hover hover:text-content",
-            )}
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            title={t("layout.hideLeftPanel")}
-          >
-            <IconLayoutSidebarLeftExpand size={18} className="shrink-0" />
-          </button>
+          <Hint label={t("layout.hideLeftPanel")}>
+            <button
+              type="button"
+              onClick={() => setLeftOpen(false)}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded text-content-muted transition-colors",
+                "hover:bg-surface-hover hover:text-content",
+              )}
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            >
+              <IconLayoutSidebarLeftExpand size={18} className="shrink-0" />
+            </button>
+          </Hint>
           {/* Tree ↔ stream view switch (same spot in both sidebars). */}
           <LeftBarModeSwitch />
         </div>
@@ -673,47 +674,50 @@ function LeftBarBase({
             role="group"
             aria-label={t("layout.projectViewMode")}
           >
-            <button
-              onClick={() => void setProjectView("flat")}
-              className={cn(
-                "flex items-center rounded-l px-1 py-0.5 transition-colors",
-                projectView === "flat"
-                  ? "bg-surface-hover text-content"
-                  : "text-content-subtle hover:bg-surface-hover/60 hover:text-content",
-              )}
-              title={t("layout.viewFlat")}
-              aria-pressed={projectView === "flat"}
-            >
-              <IconList size={13} />
-            </button>
-            <button
-              onClick={() => void setProjectView("grouped")}
-              className={cn(
-                "flex items-center rounded-r border-l border-edge px-1 py-0.5 transition-colors",
-                projectView === "grouped"
-                  ? "bg-surface-hover text-content"
-                  : "text-content-subtle hover:bg-surface-hover/60 hover:text-content",
-              )}
-              title={t("layout.viewGrouped")}
-              aria-pressed={projectView === "grouped"}
-            >
-              <IconCategoryFilled size={13} />
-            </button>
+            <Hint label={t("layout.viewFlat")}>
+              <button
+                onClick={() => void setProjectView("flat")}
+                className={cn(
+                  "flex items-center rounded-l px-1 py-0.5 transition-colors",
+                  projectView === "flat"
+                    ? "bg-surface-hover text-content"
+                    : "text-content-subtle hover:bg-surface-hover/60 hover:text-content",
+                )}
+                aria-pressed={projectView === "flat"}
+              >
+                <IconList size={13} />
+              </button>
+            </Hint>
+            <Hint label={t("layout.viewGrouped")}>
+              <button
+                onClick={() => void setProjectView("grouped")}
+                className={cn(
+                  "flex items-center rounded-r border-l border-edge px-1 py-0.5 transition-colors",
+                  projectView === "grouped"
+                    ? "bg-surface-hover text-content"
+                    : "text-content-subtle hover:bg-surface-hover/60 hover:text-content",
+                )}
+                aria-pressed={projectView === "grouped"}
+              >
+                <IconCategoryFilled size={13} />
+              </button>
+            </Hint>
           </div>
-          <button
-            onClick={() => void addProject()}
-            className={cn(
-              "flex items-center rounded px-1 py-0.5 text-content-muted transition-all",
-              // Always visible when there are no projects so the user has a
-              // clear entry point to add one (no empty placeholder row anymore).
-              projects.length === 0
-                ? "opacity-100 hover:text-accent"
-                : "opacity-0 hover:text-accent group-hover:opacity-100",
-            )}
-            title={t("layout.addProject")}
-          >
-            <IconPlus size={12} />
-          </button>
+          <Hint label={t("layout.addProject")}>
+            <button
+              onClick={() => void addProject()}
+              className={cn(
+                "flex items-center rounded px-1 py-0.5 text-content-muted transition-all",
+                // Always visible when there are no projects so the user has a
+                // clear entry point to add one (no empty placeholder row anymore).
+                projects.length === 0
+                  ? "opacity-100 hover:text-accent"
+                  : "opacity-0 hover:text-accent group-hover:opacity-100",
+              )}
+            >
+              <IconPlus size={12} />
+            </button>
+          </Hint>
         </div>
       </div>
 
@@ -950,42 +954,50 @@ function LeftBarBase({
           <IconSettings size={14} className="shrink-0" />
           {t("layout.settings")}
         </button>
-        <button
-          onClick={() => locateActiveSession(true)}
-          disabled={!activeSessionId}
-          className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-            "hover:bg-surface-hover hover:text-content disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
-          )}
-          title={t("layout.locateSession")}
+        {/* Disabled with no active session, and a disabled button dispatches
+            no pointer events for the hint — keep the native title for it. */}
+        <Hint label={t("layout.locateSession")}>
+          <button
+            onClick={() => locateActiveSession(true)}
+            disabled={!activeSessionId}
+            title={!activeSessionId ? t("layout.locateSession") : undefined}
+            className={cn(
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
+              "hover:bg-surface-hover hover:text-content disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
+            )}
+          >
+            <IconFocus size={14} />
+          </button>
+        </Hint>
+        <Hint
+          label={effectiveTheme === "dark" ? t("layout.themeToLight") : t("layout.themeToDark")}
         >
-          <IconFocus size={14} />
-        </button>
-        <button
-          onClick={toggleTheme}
-          className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-            "hover:bg-surface-hover hover:text-content",
-          )}
-          title={effectiveTheme === "dark" ? t("layout.themeToLight") : t("layout.themeToDark")}
-        >
-          {effectiveTheme === "dark" ? <IconSun size={14} /> : <IconMoon size={14} />}
-        </button>
+          <button
+            onClick={toggleTheme}
+            className={cn(
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
+              "hover:bg-surface-hover hover:text-content",
+            )}
+          >
+            {effectiveTheme === "dark" ? <IconSun size={14} /> : <IconMoon size={14} />}
+          </button>
+        </Hint>
         {/* Collapse-sidebar toggle — win only. On mac it moved to the
             sidebar's top strip (right of the traffic lights). The toolbar
             re-shows its own toggle while the sidebar is CLOSED, since this
             footer button is inside the hidden sidebar then. */}
         {!isMac && (
-          <button
-            onClick={() => setLeftOpen(false)}
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-              "hover:bg-surface-hover hover:text-content",
-            )}
-            title={t("layout.hideLeftPanel")}
-          >
-            <IconLayoutSidebarLeftExpand size={14} />
-          </button>
+          <Hint label={t("layout.hideLeftPanel")}>
+            <button
+              onClick={() => setLeftOpen(false)}
+              className={cn(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
+                "hover:bg-surface-hover hover:text-content",
+              )}
+            >
+              <IconLayoutSidebarLeftExpand size={14} />
+            </button>
+          </Hint>
         )}
       </div>
 

@@ -1,4 +1,5 @@
-import { cn } from "@renderer/lib/cn.js";
+﻿import { cn } from "@renderer/lib/cn.js";
+import { Hint } from "@renderer/components/ui/index.js";
 import {
   IconFolder,
   IconGitBranch,
@@ -19,9 +20,9 @@ import { useI18n } from "@renderer/lib/i18n/index.js";
 
 /** Right panel: a horizontal icon rail docked at the top + a main panel
  *  area (IDE-style). The rail is always visible and holds three icons:
- *    - Files   → shows FilesPanel in the main area
- *    - Git     → shows GitPanel in the main area
- *    - Browser → toggles an embedded browser panel in the main area
+ *    - Files   鈫?shows FilesPanel in the main area
+ *    - Git     鈫?shows GitPanel in the main area
+ *    - Browser 鈫?toggles an embedded browser panel in the main area
  *      (sidebar mode, desktop-sized pages by default). Clicking again closes
  *      it. The PC-fullscreen overlay is a separate container rendered at the
  *      App root; while that overlay is open the right panel isn't visible at
@@ -56,7 +57,7 @@ export function RightPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Horizontal icon rail — always visible, docked at the panel's top
+      {/* Horizontal icon rail 鈥?always visible, docked at the panel's top
           edge. Each icon is a square button; the active one is marked with
           the accent token. */}
       <div className="flex h-9 shrink-0 flex-row items-center gap-1 border-b border-edge bg-surface px-1.5">
@@ -74,7 +75,7 @@ export function RightPanel() {
         >
           <IconGitBranch size={16} className="shrink-0" />
         </RailButton>
-        {/* Browser — toggles the embedded sidebar (mobile-first). */}
+        {/* Browser 鈥?toggles the embedded sidebar (mobile-first). */}
         <div className="relative">
           <RailButton
             active={tab === "browser"}
@@ -89,8 +90,8 @@ export function RightPanel() {
             </span>
           )}
         </div>
-        {/* Turn flow — per-turn visualization of the model's work process
-            (prompt → actions → reply → token cost) from the message stream. */}
+        {/* Turn flow 鈥?per-turn visualization of the model's work process
+            (prompt 鈫?actions 鈫?reply 鈫?token cost) from the message stream. */}
         <RailButton
           active={tab === "turns"}
           onClick={() => setTab("turns")}
@@ -98,7 +99,7 @@ export function RightPanel() {
         >
           <IconListDetails size={16} className="shrink-0" />
         </RailButton>
-        {/* Side chat — quick Q&A beside the running main session. */}
+        {/* Side chat 鈥?quick Q&A beside the running main session. */}
         <RailButton
           active={tab === "sidechat"}
           onClick={() => setTab("sidechat")}
@@ -120,8 +121,7 @@ export function RightPanel() {
               hintFor("layout.toggle-wide-panel")
             }
           >
-            {/* Maximize when entering, minimize (restore) when already wide —
-                the standard expand/collapse affordance pair. */}
+            {/* Maximize when entering, minimize (restore) when already wide 鈥?                the standard expand/collapse affordance pair. */}
             {widePanelOpen ? (
               <IconArrowsMinimize size={16} className="shrink-0" />
             ) : (
@@ -131,7 +131,7 @@ export function RightPanel() {
         </div>
       </div>
 
-      {/* Main panel area — must NOT scroll itself (children own height /
+      {/* Main panel area 鈥?must NOT scroll itself (children own height /
           overflow). Renders the panel matching the active tab. The browser
           sidebar (mobile-first) renders inline here; the PC-fullscreen overlay
           is rendered at the App root and covers the whole workspace. */}
@@ -160,18 +160,19 @@ function RailButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className={cn(
-        "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-        active
-          ? "bg-accent/15 text-accent"
-          : "text-content-muted hover:bg-surface-hover hover:text-content",
-      )}
-    >
-      {children}
-    </button>
+    <Hint label={title}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+          active
+            ? "bg-accent/15 text-accent"
+            : "text-content-muted hover:bg-surface-hover hover:text-content",
+        )}
+      >
+        {children}
+      </button>
+    </Hint>
   );
 }

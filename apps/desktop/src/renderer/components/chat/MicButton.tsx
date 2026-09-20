@@ -1,21 +1,22 @@
-/**
+﻿/**
  * Voice-input mic button for the composer action row.
  *
- * Click once to start dictation, click again to stop — the transcript
+ * Click once to start dictation, click again to stop 鈥?the transcript
  * commits. Microphone audio is streamed to the main-process sherpa-onnx ASR
  * engine via `useVoiceInput`; the transcript is written DIRECTLY into the
  * composer as it streams (each partial rewrites the tail the previous one
- * produced — see `applyLiveText`), so the user sees the text appear in the
+ * produced 鈥?see `applyLiveText`), so the user sees the text appear in the
  * input box while speaking and can edit it right after the listen ends. Esc
  * while listening discards the partial text.
  *
  * Desktop-only: the ASR engine lives in the Electron main process (no bridge
  * exists over the mobile RPC/SSE transport), and the mobile shell serves the
  * page over plain HTTP where browsers withhold `navigator.mediaDevices`
- * entirely — render nothing there instead of a button that can never listen.
+ * entirely 鈥?render nothing there instead of a button that can never listen.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@renderer/lib/cn.js";
+import { Hint } from "@renderer/components/ui/index.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { useToastStore } from "@renderer/stores/toastStore.js";
@@ -33,25 +34,24 @@ import {
 } from "@renderer/lib/icons.js";
 
 /** Matches the "no model" family of engine errors thrown by main
- *  (`尚未选择语音模型…` / `语音模型未下载或不完整…`). */
-const NO_MODEL_ERROR_RE = /尚未选择语音模型|模型未下载|先下载并选择/;
+ *  (`灏氭湭閫夋嫨璇煶妯″瀷鈥 / `璇煶妯″瀷鏈笅杞芥垨涓嶅畬鏁粹€). */
+const NO_MODEL_ERROR_RE = /灏氭湭閫夋嫨璇煶妯″瀷|妯″瀷鏈笅杞絴鍏堜笅杞藉苟閫夋嫨/;
 
 interface MicButtonProps {
-  /** This pane's session — the keyboard shortcut / command palette drives the
+  /** This pane's session 鈥?the keyboard shortcut / command palette drives the
    *  ACTIVE session's mic through the voiceController registry. */
   sessionId: string;
-  /** The composer editor — transcribed text is inserted into it. */
+  /** The composer editor 鈥?transcribed text is inserted into it. */
   editorRef: React.RefObject<ComposerEditorHandle | null>;
   /** True while a bottom prompt (tool approval / plan approval / question)
-   *  owns the input area — the composer is hidden then. A running turn does
+   *  owns the input area 鈥?the composer is hidden then. A running turn does
    *  NOT lock the mic: dictation lands in the still-editable composer for
    *  type-ahead / enqueue, mirroring `textareaLocked`'s rules. */
   disabled: boolean;
 }
 
 export function MicButton(props: MicButtonProps) {
-  // `isElectron` is a module constant, so the branch is stable per bundle —
-  // the web (phone) shell never mounts the hooks below.
+  // `isElectron` is a module constant, so the branch is stable per bundle 鈥?  // the web (phone) shell never mounts the hooks below.
   if (!isElectron) return null;
   return <MicButtonDesktop {...props} />;
 }
@@ -75,18 +75,17 @@ function MicButtonDesktop({
   const lastWrittenRef = useRef("");
 
   /** Write one cumulative transcript update into the composer.
-   *  All insertions are anchored at the DOCUMENT END (never the caret —
-   *  clicking the mic blurs the editor, and Tiptap's focus() can restore the
+   *  All insertions are anchored at the DOCUMENT END (never the caret 鈥?   *  clicking the mic blurs the editor, and Tiptap's focus() can restore the
    *  selection somewhere unexpected; a misplaced delta would trip the tail
    *  check below into re-appending the whole transcript, which is the
    *  "delete then re-dictate duplicates everything" bug).
    *
    *  Paths, in order:
    *  1. Delta append (the norm): the engine's partials are append-only, so
-   *     `text` extends what we last wrote → append just the difference.
+   *     `text` extends what we last wrote 鈫?append just the difference.
    *  2. Tail rewrite (first partial / engine revision): our previous text is
-   *     still the editor's tail → replace it with the new cumulative text.
-   *  3. Diverged (the user deleted/edited our tail): resync SILENTLY — never
+   *     still the editor's tail 鈫?replace it with the new cumulative text.
+   *  3. Diverged (the user deleted/edited our tail): resync SILENTLY 鈥?never
    *     insert the full transcript next to user-modified text (duplication). */
   const applyLiveText = (text: string) => {
     const ed = editorRef.current;
@@ -112,7 +111,7 @@ function MicButtonDesktop({
     },
   });
 
-  // Ref mirrors of the hook/composer state — the voiceController handle and
+  // Ref mirrors of the hook/composer state 鈥?the voiceController handle and
   // the click handler read these synchronously (the `busy` STATE lags by a
   // render, and the async getUserMedia window would otherwise let a quick
   // double-click open two listens).
@@ -120,7 +119,7 @@ function MicButtonDesktop({
   const disabledRef = useRef(false);
   busyRef.current = busy;
   disabledRef.current = disabled;
-  // True from listen kickoff until endListen — covers the async start window
+  // True from listen kickoff until endListen 鈥?covers the async start window
   // where `busy` is still false. Drives the button's active visuals AND the
   // global overlay so feedback is instant on click/keypress.
   const armedRef = useRef(false);
@@ -146,7 +145,7 @@ function MicButtonDesktop({
   }, [stop]);
 
   /** Discard the active listen AND the partial text it already wrote into the
-   *  composer (only if the tail is untouched — user edits always win). */
+   *  composer (only if the tail is untouched 鈥?user edits always win). */
   const cancelListen = useCallback(async () => {
     if (!armedRef.current) return;
     arm(false);
@@ -166,7 +165,7 @@ function MicButtonDesktop({
     });
   }, [cancel, t]);
 
-  /** Visual + logical "listening" — armed covers the async startup window. */
+  /** Visual + logical "listening" 鈥?armed covers the async startup window. */
   const listening = armed || busy;
 
   // Broadcast to the global listening overlay.
@@ -204,7 +203,7 @@ function MicButtonDesktop({
   }, [listening, cancelListen]);
 
   // Surface mic/model errors as toasts once per error (keyed on the message so
-  // repeat failures don't stack toasts). Runs in an effect — the render body
+  // repeat failures don't stack toasts). Runs in an effect 鈥?the render body
   // must not touch the toast store (setState during MicButton's render would
   // re-render Toaster mid-frame).
   const lastToastRef = useRef<string>("");
@@ -231,7 +230,7 @@ function MicButtonDesktop({
     // Mark the permission outcome so the Settings panel can reflect it.
     void setVoiceMicPermission(denied ? "denied" : "granted");
     // A listen that died in its startup window leaves `armed` set with no
-    // capture behind it — reset the visual/global state.
+    // capture behind it 鈥?reset the visual/global state.
     if (armedRef.current) arm(false);
     clearMicError();
   }, [micError, t, setSettingsOpen, setVoiceMicPermission, clearMicError]);
@@ -253,28 +252,32 @@ function MicButtonDesktop({
       : t("chat.voice.toggleTitle");
 
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={handleClick}
-      title={title}
-      aria-label={
-        listening ? t("chat.voice.stopListening") : t("chat.voice.startListening")
-      }
-      className={cn(
-        "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-content-muted transition-all duration-150 ease-out",
-        "hover:scale-110 hover:bg-accent/10 hover:text-accent active:scale-95",
-        listening && "bg-accent/10 text-accent hover:text-accent",
-        "disabled:scale-100 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-content-muted",
-      )}
-    >
-      {listening ? (
-        <IconWaveSine size={18} className="animate-pulse" />
-      ) : disabled ? (
-        <IconMicrophoneOff size={18} />
-      ) : (
-        <IconMicrophone size={18} />
-      )}
-    </button>
+    // The disabled title explains why voice is unavailable, and that is the
+    // one state where no pointer event reaches the hint 鈥?keep it native.
+    <Hint label={title}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={handleClick}
+        title={disabled ? title : undefined}
+        aria-label={
+          listening ? t("chat.voice.stopListening") : t("chat.voice.startListening")
+        }
+        className={cn(
+          "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-content-muted transition-all duration-150 ease-out",
+          "hover:scale-110 hover:bg-accent/10 hover:text-accent active:scale-95",
+          listening && "bg-accent/10 text-accent hover:text-accent",
+          "disabled:scale-100 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-content-muted",
+        )}
+      >
+        {listening ? (
+          <IconWaveSine size={18} className="animate-pulse" />
+        ) : disabled ? (
+          <IconMicrophoneOff size={18} />
+        ) : (
+          <IconMicrophone size={18} />
+        )}
+      </button>
+    </Hint>
   );
 }

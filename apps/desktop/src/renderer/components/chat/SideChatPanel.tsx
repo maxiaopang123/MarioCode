@@ -27,7 +27,7 @@ import {
 } from "@renderer/lib/icons.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { useSessionStore, type Block } from "@renderer/stores/sessionStore.js";
-import { ConfirmDialog } from "@renderer/components/ui/index.js";
+import { ConfirmDialog, Hint } from "@renderer/components/ui/index.js";
 import { ChatPane } from "@renderer/components/chat/ChatPane.js";
 import { MessageBlocks } from "./MessageBlocks.js";
 import { SUBAGENT_STATUS_META, fmtUsage } from "./activityShared.js";
@@ -169,20 +169,24 @@ function SideChatListView({
         <div className="min-w-0 flex-1 truncate text-xs text-content-muted">
           {hasMainSession ? (parentTitle ?? "") : t("sideChat.noMainSession")}
         </div>
-        <button
-          type="button"
-          disabled={!hasMainSession}
-          onClick={onCreate}
-          title={t("sideChat.newChat")}
-          className={cn(
-            "flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
-            hasMainSession
-              ? "bg-accent/15 text-accent hover:bg-accent/25"
-              : "cursor-not-allowed bg-accent/5 text-content-subtle opacity-50",
-          )}
-        >
-          <IconPlus size={14} />
-        </button>
+        {/* Disabled without a main session, and a disabled button dispatches
+            no pointer events for the hint — keep the native title for it. */}
+        <Hint label={t("sideChat.newChat")}>
+          <button
+            type="button"
+            disabled={!hasMainSession}
+            onClick={onCreate}
+            title={!hasMainSession ? t("sideChat.newChat") : undefined}
+            className={cn(
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
+              hasMainSession
+                ? "bg-accent/15 text-accent hover:bg-accent/25"
+                : "cursor-not-allowed bg-accent/5 text-content-subtle opacity-50",
+            )}
+          >
+            <IconPlus size={14} />
+          </button>
+        </Hint>
       </div>
 
       {/* List body. */}
@@ -400,14 +404,15 @@ function SubagentView({
     <div className="flex h-full flex-col">
       {/* Header: back + subagent description + status/usage. */}
       <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-edge bg-surface px-2">
-        <button
-          type="button"
-          onClick={onBack}
-          title={t("sideChat.backToList")}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
-        >
-          <IconArrowLeft size={15} />
-        </button>
+        <Hint label={t("sideChat.backToList")}>
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
+          >
+            <IconArrowLeft size={15} />
+          </button>
+        </Hint>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             {agent.subagentType && (
@@ -462,14 +467,15 @@ function SideChatView({ session, parentRow }: { session: Session; parentRow?: Se
     <div className="flex h-full flex-col">
       {/* Header: back + side chat title + parent jump + delete. */}
       <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-edge bg-surface px-2">
-        <button
-          type="button"
-          onClick={closeSideChatView}
-          title={t("sideChat.backToList")}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
-        >
-          <IconArrowLeft size={15} />
-        </button>
+        <Hint label={t("sideChat.backToList")}>
+          <button
+            type="button"
+            onClick={closeSideChatView}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
+          >
+            <IconArrowLeft size={15} />
+          </button>
+        </Hint>
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-medium text-content">
             {displayTitle(session, t("sideChat.titlePlaceholder"))}

@@ -58,7 +58,7 @@ import { isMac } from "@renderer/lib/platform.js";
 import { formatRelativeTime, formatFullTime } from "@renderer/lib/time.js";
 import { normWorktreeKey, worktreeDisplayName } from "@renderer/lib/worktree.js";
 import { useTheme, applyThemeClass } from "@renderer/lib/theme.js";
-import { Button, ConfirmDialog } from "@renderer/components/ui/index.js";
+import { Button, ConfirmDialog, Hint } from "@renderer/components/ui/index.js";
 import { api } from "@renderer/lib/api.js";
 import { useCursorAnchor } from "@renderer/hooks/useCursorAnchor.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
@@ -89,19 +89,22 @@ export function LeftBarModeSwitch() {
   const mode = useSessionStore((s) => s.leftBarMode);
   const setLeftBarMode = useSessionStore((s) => s.setLeftBarMode);
   return (
-    <button
-      type="button"
-      onClick={() => void setLeftBarMode(mode === "tree" ? "stream" : "tree")}
-      className={cn(
-        "flex h-7 w-7 items-center justify-center rounded text-content-muted transition-colors",
-        "hover:bg-surface-hover hover:text-accent",
-      )}
-      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      title={mode === "tree" ? t("layout.stream.switchToStream") : t("layout.stream.switchToTree")}
+    <Hint
+      label={mode === "tree" ? t("layout.stream.switchToStream") : t("layout.stream.switchToTree")}
     >
-      {/* Destination-view glyph: shows the view clicking leads to, matching the tooltip. */}
-      {mode === "tree" ? <IconInbox size={18} className="shrink-0" /> : <IconListTree size={18} className="shrink-0" />}
-    </button>
+      <button
+        type="button"
+        onClick={() => void setLeftBarMode(mode === "tree" ? "stream" : "tree")}
+        className={cn(
+          "flex h-7 w-7 items-center justify-center rounded text-content-muted transition-colors",
+          "hover:bg-surface-hover hover:text-accent",
+        )}
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        {/* Destination-view glyph: shows the view clicking leads to, matching the tooltip. */}
+        {mode === "tree" ? <IconInbox size={18} className="shrink-0" /> : <IconListTree size={18} className="shrink-0" />}
+      </button>
+    </Hint>
   );
 }
 
@@ -547,18 +550,19 @@ function StreamSidebarBase() {
           className="-mt-2 mb-2 flex h-10 items-center gap-1 pl-[70px]"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
-          <button
-            type="button"
-            onClick={() => setLeftOpen(false)}
-            className={cn(
-              "flex h-7 w-7 items-center justify-center rounded text-content-muted transition-colors",
-              "hover:bg-surface-hover hover:text-content",
-            )}
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            title={t("layout.hideLeftPanel")}
-          >
-            <IconLayoutSidebarLeftExpand size={18} className="shrink-0" />
-          </button>
+          <Hint label={t("layout.hideLeftPanel")}>
+            <button
+              type="button"
+              onClick={() => setLeftOpen(false)}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded text-content-muted transition-colors",
+                "hover:bg-surface-hover hover:text-content",
+              )}
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            >
+              <IconLayoutSidebarLeftExpand size={18} className="shrink-0" />
+            </button>
+          </Hint>
           <LeftBarModeSwitch />
         </div>
       ) : (
@@ -810,38 +814,46 @@ function StreamSidebarBase() {
           <IconSettings size={14} className="shrink-0" />
           {t("layout.settings")}
         </button>
-        <button
-          onClick={() => locateActiveSession(true)}
-          disabled={!activeSessionId}
-          className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-            "hover:bg-surface-hover hover:text-content disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
-          )}
-          title={t("layout.locateSession")}
-        >
-          <IconFocus size={14} />
-        </button>
-        <button
-          onClick={toggleTheme}
-          className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-            "hover:bg-surface-hover hover:text-content",
-          )}
-          title={effectiveTheme === "dark" ? t("layout.themeToLight") : t("layout.themeToDark")}
-        >
-          {effectiveTheme === "dark" ? <IconSun size={14} /> : <IconMoon size={14} />}
-        </button>
-        {!isMac && (
+        {/* Disabled with no active session, and a disabled button dispatches
+            no pointer events for the hint — keep the native title for it. */}
+        <Hint label={t("layout.locateSession")}>
           <button
-            onClick={() => setLeftOpen(false)}
+            onClick={() => locateActiveSession(true)}
+            disabled={!activeSessionId}
+            title={!activeSessionId ? t("layout.locateSession") : undefined}
+            className={cn(
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
+              "hover:bg-surface-hover hover:text-content disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
+            )}
+          >
+            <IconFocus size={14} />
+          </button>
+        </Hint>
+        <Hint
+          label={effectiveTheme === "dark" ? t("layout.themeToLight") : t("layout.themeToDark")}
+        >
+          <button
+            onClick={toggleTheme}
             className={cn(
               "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
               "hover:bg-surface-hover hover:text-content",
             )}
-            title={t("layout.hideLeftPanel")}
           >
-            <IconLayoutSidebarLeftExpand size={14} />
+            {effectiveTheme === "dark" ? <IconSun size={14} /> : <IconMoon size={14} />}
           </button>
+        </Hint>
+        {!isMac && (
+          <Hint label={t("layout.hideLeftPanel")}>
+            <button
+              onClick={() => setLeftOpen(false)}
+              className={cn(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
+                "hover:bg-surface-hover hover:text-content",
+              )}
+            >
+              <IconLayoutSidebarLeftExpand size={14} />
+            </button>
+          </Hint>
         )}
       </div>
 

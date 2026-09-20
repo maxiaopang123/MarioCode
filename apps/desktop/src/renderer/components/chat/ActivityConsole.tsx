@@ -32,6 +32,7 @@
  */
 import { useState, type ComponentType, type ReactNode } from "react";
 import { cn } from "@renderer/lib/cn.js";
+import { Hint } from "@renderer/components/ui/index.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { useNow } from "@renderer/hooks/useNow.js";
 import type { TablerIconProps } from "@renderer/lib/icons.js";
@@ -932,23 +933,25 @@ export function ActivityConsole({
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
           {rightAction && (
+            <Hint label={rightAction.label}>
+              <button
+                type="button"
+                onClick={rightAction.run}
+                className="grid h-6 w-6 place-items-center rounded-[7px] border border-edge bg-surface-muted/60 text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
+              >
+                <IconLayoutSidebarRightExpand size={13} />
+              </button>
+            </Hint>
+          )}
+          <Hint label={t("chatStream.activity.close")}>
             <button
               type="button"
-              onClick={rightAction.run}
-              title={rightAction.label}
+              onClick={onClose}
               className="grid h-6 w-6 place-items-center rounded-[7px] border border-edge bg-surface-muted/60 text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
             >
-              <IconLayoutSidebarRightExpand size={13} />
+              <IconX size={13} />
             </button>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            title={t("chatStream.activity.close")}
-            className="grid h-6 w-6 place-items-center rounded-[7px] border border-edge bg-surface-muted/60 text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
-          >
-            <IconX size={13} />
-          </button>
+          </Hint>
         </span>
       </div>
 

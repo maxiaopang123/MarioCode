@@ -10,7 +10,7 @@ import type { GitRepo, GitStatusResult, GitFileStatus, GitBranchInfo, GitBranchL
 import { EMPTY_TURN_FILES, useSessionStore } from "@renderer/stores/sessionStore.js";
 import type { TurnFileEntry } from "@renderer/lib/turnFiles.js";
 import { lineDiff, diffSummary } from "@renderer/lib/lineDiff.js";
-import { Button, Dialog } from "@renderer/components/ui/index.js";
+import { Button, Dialog, Hint } from "@renderer/components/ui/index.js";
 import { MergeConflictResolveDialog } from "@renderer/components/ide/MergeConflictResolveDialog.js";
 import {
   IconChevronDown,
@@ -1493,18 +1493,22 @@ function ActionButton({
   title: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={cn(
-        "flex h-6 w-6 items-center justify-center rounded text-content-muted transition-colors",
-        "hover:bg-surface-hover hover:text-content disabled:opacity-40",
-      )}
-    >
-      {busy ? <IconLoader2 size={12} className="animate-spin" /> : children}
-    </button>
+    // Pull/push/fetch spend long stretches disabled (no repo, op in flight),
+    // and a disabled button dispatches no pointer events for the hint to see.
+    <Hint label={title}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        title={disabled ? title : undefined}
+        className={cn(
+          "flex h-6 w-6 items-center justify-center rounded text-content-muted transition-colors",
+          "hover:bg-surface-hover hover:text-content disabled:opacity-40",
+        )}
+      >
+        {busy ? <IconLoader2 size={12} className="animate-spin" /> : children}
+      </button>
+    </Hint>
   );
 }
 

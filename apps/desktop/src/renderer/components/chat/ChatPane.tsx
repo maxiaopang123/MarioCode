@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, memo, useCallback } from "react";
 import { cn } from "@renderer/lib/cn.js";
+import { Hint } from "@renderer/components/ui/index.js";
 import {
   IconPlayerStop,
   IconSend2,
@@ -3508,22 +3509,23 @@ function ChatPaneForSession({
           running (updates that landed since the user left the bottom). */}
       {showJumpBottom && (
         <div className="pointer-events-none absolute inset-x-0 bottom-2 z-30 flex justify-center">
-          <button
-            onClick={jumpToBottom}
-            className={cn(
-              "pointer-events-auto flex items-center gap-1 rounded-full",
-              "border border-content-subtle/40 bg-surface-hover px-2.5 py-1.5 shadow-md transition-all",
-              "hover:brightness-95 dark:hover:brightness-110",
-            )}
-            title={t("chat.jumpToBottom")}
-          >
-            <IconArrowDown size={14} className="text-content" />
-            {newWhileAway > 0 && (
-              <span className="animate-[live-badge-in_220ms_ease-out] text-xs tabular-nums text-content-muted">
-                {t("chat.live.newActivity", { n: newWhileAway })}
-              </span>
-            )}
-          </button>
+          <Hint label={t("chat.jumpToBottom")}>
+            <button
+              onClick={jumpToBottom}
+              className={cn(
+                "pointer-events-auto flex items-center gap-1 rounded-full",
+                "border border-content-subtle/40 bg-surface-hover px-2.5 py-1.5 shadow-md transition-all",
+                "hover:brightness-95 dark:hover:brightness-110",
+              )}
+            >
+              <IconArrowDown size={14} className="text-content" />
+              {newWhileAway > 0 && (
+                <span className="animate-[live-badge-in_220ms_ease-out] text-xs tabular-nums text-content-muted">
+                  {t("chat.live.newActivity", { n: newWhileAway })}
+                </span>
+              )}
+            </button>
+          </Hint>
         </div>
       )}
       </div>
@@ -3973,17 +3975,18 @@ function ChatPaneForSession({
                     shell mechanism, leaving the brand icon. */}
                 <ProviderDropdown compact={composerTier >= 1} />
                 {sessionBusy && !hasComposerContent ? (
-                  <button
-                    onClick={() => void interrupt()}
-                    title={t("chat.stopGenerating")}
-                    aria-label={t("chat.stopGenerating")}
-                    className={cn(
-                      "composer-stop inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-danger text-surface transition-all duration-150 ease-out",
-                      "hover:scale-105 hover:brightness-110 active:scale-95 active:brightness-95",
-                    )}
-                  >
-                    <IconPlayerStop size={16} />
-                  </button>
+                  <Hint label={t("chat.stopGenerating")}>
+                    <button
+                      onClick={() => void interrupt()}
+                      aria-label={t("chat.stopGenerating")}
+                      className={cn(
+                        "composer-stop inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-danger text-surface transition-all duration-150 ease-out",
+                        "hover:scale-105 hover:brightness-110 active:scale-95 active:brightness-95",
+                      )}
+                    >
+                      <IconPlayerStop size={16} />
+                    </button>
+                  </Hint>
                 ) : (
                   <button
                     onClick={sessionBusy ? handleEnqueue : handleSend}

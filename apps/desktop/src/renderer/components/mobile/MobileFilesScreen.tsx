@@ -127,6 +127,7 @@ export function MobileFilesScreen() {
             onClick={up}
             className="flex h-6 shrink-0 items-center gap-0.5 rounded px-1 text-content-muted hover:bg-surface-muted"
             title={t("mobile.files.up")}
+            aria-label={t("mobile.files.up")}
           >
             <IconArrowUp size={13} />
           </button>

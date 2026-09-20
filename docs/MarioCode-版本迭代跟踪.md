@@ -6,7 +6,7 @@
 
 ## 功能 TODO
 
-状态：⚪ 未开始　🟡 进行中　🟢 已完成　🔴 阻塞
+状态：⚪ 未开始　🟡 进行中　🟢 已完成　🔴 阻塞　⏸ 暂定（条件不具备，等条件到位再排期）
 
 | ID | 功能 | 进度 | 状态 | 对应 Commit | 备注 |
 |---|---|---:|---|---|---|
@@ -16,9 +16,12 @@
 | `TODO-004` | 外部工具 Skill / MCP 同步（非复制导入） | 0% | ⚪ 未开始 | - | P1。把设备上 Claude Code / Codex / Cursor / Zcode 已有的 skills 与 MCP servers 自动同步进 MarioCode，源头变更自动跟随，替代现有一次性「导入 = 复制」 |
 | `TODO-005` | 内置工具：网页搜索 + 图片生成 | 0% | ⚪ 未开始 | - | P2。三个 provider 共用的 `web_search` / `image_generate`，不依赖模型端点是否原生支持；按 `agentBrowserTools` 模式三端注册 |
 | `TODO-006` | 统一系统提示词 | 0% | ⚪ 未开始 | - | P4（建议提前到 TODO-005 之前）。用户可编辑的全局 + 项目级系统提示词，Claude / Codex / Pi 三端一致注入 |
-| `TODO-007` | 聊天框界面渲染优化（含前端 UI 体检） | 70% | 🟡 进行中 | `baa45a4`…`ee37a59`（11 个） | **P0（原 P3，2026-09-20 上调）**。体检完成并排出 7 项动工顺序；第 1～3 项（焦点环、死代码清场、手机端 i18n）与第 7 项第一步已完成，第 4 项两批替换已落地、余量低频。**第 5、6 项卡在取数**——按文档自己的口径要先量后改，而量行高与分组耗时都得把应用跑起来 |
+| `TODO-007` | 聊天框界面渲染优化（含前端 UI 体检） | 100% | 🟢 已完成 | `baa45a4`…`bf5672b`（11 个） | **P0（原 P3，2026-09-20 上调）**。体检 + 原七项里**静态就能做完的五项**：焦点环、死代码清场、手机端 i18n、`Hint` 提示层两批替换、文件树删除确认框提到树根。原第 5、6 项与第 7 项第二步不是没做完，是**条件不具备**，已拆成 `TODO-010` / `TODO-011` 暂定；第 3 项欠的 lint 规则拆成 `TODO-012`。**运行时验收仍待人工完成**（见规划详情末尾） |
 | `TODO-008` | DeepSeek Harness（dsh）接入为第四个 Provider | 0% | ⚪ 未开始 | - | P3。先做 1–2 天可行性 spike；照 Pi 的「独立 host 进程 + MessageAdapter」模板接入 |
 | `TODO-009` | 禁止 agent 用内置浏览器访问搜索引擎 | 100% | 🟢 已完成 | `81fe292` | TODO-005 落地前的止血：Pi 无搜索工具时模型拿浏览器去搜索引擎翻页，每次 snapshot 10K+ token。三端共用的 `agentBrowserTools` 加守卫——navigate 到搜索站（含首页）拒绝，snapshot/find/evaluate/screenshot 发现当前页是搜索站也拒绝；只拦搜索站自身域名，产品子域不受影响；提示词同步补禁令。写死名单、暂无开关。已通过 tsc 与 28 条域名规则用例 |
+| `TODO-010` | 聊天流渲染性能：行高估值与流式重算（原 TODO-007 第 5、6 项） | 0% | ⏸ 暂定 | - | P1。**解除条件：把应用跑起来采一次数**。两项都按「先量后改」的口径走，而行高分布与分组耗时都拿不到静态答案。文档里备了一段开发者工具即贴即用的行高统计脚本；分组耗时要现加 dev-only `performance.mark`。没有真实数字之前不要改 `estimatedItemSize`，也不要动分组切点——切错会让聊天记录错乱 |
+| `TODO-011` | 文件树 / 会话树拍平虚拟化（原 TODO-007 第 7 项第二步） | 0% | ⏸ 暂定 | - | P3。**解除条件：出现真实的大仓库卡顿反馈**。第一步（删除确认框提到树根）已随 TODO-007 落地；第二步要把递归树拍平交给 LegendList，连带重写展开折叠、键盘导航、拖拽与右键菜单的掌控，估 3～5 天，属于「有人抱怨再做」的那类 |
+| `TODO-012` | 前端 lint 基建：从零搭 ESLint + 禁止 JSX 文本出现 CJK | 0% | ⏸ 暂定 | - | P2。**解除条件：确认要不要引入这套工具链**。本仓库根本没装 ESLint——两个包都没有 `lint` script，也没有任何 `eslint.config.*` / `.eslintrc*`，`turbo.json` 里的 `lint` task 一直在跑空（源码里残留的 `// eslint-disable-next-line` 是上游留下的）。TODO-007 第 3 项欠的那条「挡中文回流」规则要落地，得先把这套装起来 |
 
 ## 规划详情（2026-09-20 待排期）
 
@@ -58,21 +61,16 @@
    **被排除的共享包装**：`SidebarShared.HoverIconButton`、`SessionTabs`、`TurnFlowPanel` 的步骤行、`GitRepoCard.RowActionIcon`、`StreamSidebar.manageButton`、`UsagePanel` —— 全是按行重复渲染或挂在非按钮上的截断 title。
    **剩余**：审计脚本报 65 处，但它判断「是否按行重复」只看 `.map(` 的文本邻近度，**认不出单独定义、再被 map 调用的行组件**（`LeftBar` 1352 行之后的那些就是这样），所以真实剩余比 65 少；余下的主要散在设置页各面板与 IDE 侧的对话框里，单点低频。**不做无差别 codemod。**
 
-5. **`estimatedItemSize={80}` 偏小**（`ChatPane.tsx:3437`，`drawDistance={400}`）—— ⛔ **卡在取数，需要跑起来**
-   一行常是一整张 markdown 回复或工具卡，估值偏小会让未测量区域的滚动条长度与 `scrollToOffset` 都不准——代码里那些 `raf1 → raf2 → scrollToEnd` 双帧补丁与「先瘦一下再瞬间对齐」的写法就是症状。要先采真实行高中位数，再考虑按 `kind` 分档估值（用户消息短 / 工具卡中 / markdown 回复长）。**补丁逐个验证后再摘，不要跟着一起删**，否则出问题分不清是哪一变引起的。
-   **更正**：本文档原写「用 `MessageRow` 现成的 `ResizeObserver`」——渲染层没有这个东西。`components/chat` 里唯一的 `ResizeObserver` 在 `ChatPane.tsx:4229`，量的是折叠用户消息的高度，跟行高统计无关；行的测量归 `@legendapp/list` 自己管。所以取数要么现加埋点，要么开发者工具里直接量已渲染的行。**没有真实分布之前不要改这个数**：上一轮口头说的 160～240 是猜的。
+5. **`estimatedItemSize={80}` 偏小** —— ⏸ **已拆为 `TODO-010`**（条件不具备：要跑起来采数）
 
-6. **流式重算（先量后改，暂不动刀）** —— ⛔ **同样卡在取数**
-   每次 delta flush 后 `messages` 引用即变，`ChatPane.tsx:1314` 的 `groupMessagesForRender` 与 `3336` 的 `listItems` 两遍全历史扫描都会重跑，频率接近 60Hz。另有 `Markdown`（`Markdown.tsx:657`，已 memo）每次拿整段累积文本重解析——`MessageBlocks.tsx:1002` 已做节流铺垫、Shiki 有 fnv1a → HTML 缓存，`sessionStore.ts:4085` 的自适应节流（rAF / 50ms 定时器 / microtask 三档）也已到位。
-   但消息分页（`hasMoreMessagesBySession` / `loadOlderMessages`）已经卡住了内存中的条数，**目前没有证据证明真的卡**；而分组逻辑会跨消息合并（连续纯操作类消息并成一张卡）、liveSpine 有成对哨兵，切点必须落在真正封口的回合边界上，切错会让聊天记录错乱——产品里最贵的那类 bug。正确顺序：先埋 `performance.mark` 量出分组耗时占帧预算多少，超了再做「已封口前缀缓存 + 每帧只重算活跃尾巴」。
+6. **流式重算** —— ⏸ **已拆为 `TODO-010`**（同上）
 
-7. **树虚拟化** —— 🟡 **第一步已完成（2026-09-20），第二步仍建议暂缓**
+7. **树虚拟化** —— 🟢 **第一步已完成 2026-09-20**；第二步 ⏸ **已拆为 `TODO-011`**
    聊天区已由 `@legendapp/list` 虚拟化（本文档原「长时间线虚拟化」一条可划掉），但 `FileTree.tsx` 是递归 `children.map()` 全量渲染已展开子树，`LeftBar` 的项目 / 会话树同理。
    低垂果子已摘：原先**目录行和文件行各自挂一个 `ConfirmDialog`**，展开 300 个节点就是 300 个确认框实例——各带一次 `useI18n()` 的 locale 订阅，以及每次行重渲染都要为一个关着的弹窗跑三次 `t(...)`。现改为树根单实例：新增 `DeleteRequestContext`，行右键「删除」raise 一个 `{ kind, name, confirm }` 请求，根据 `kind` 选文案；`confirm` 闭包留在行里，所以删除后的各自后续（`bumpReload`、关掉受影响的编辑器标签）行为不变。全文件 `ConfirmDialog` 从 2 处降到 1 处。
-   第二步（拍平成 flat list 交给 LegendList）要重写展开折叠、键盘导航、拖拽与右键菜单的掌控，是个真项目，等真有大仓库卡顿反馈再排期。
 
 - **顺带记录**：`@legendapp/list` 钉在 `3.0.0-beta.44`——产品最核心的聊天视窗跑在 beta 库上。`sessionStore.ts` 10341 行、`ChatPane.tsx` 4416 行（本文档原记 216KB），拆分仍是可维护性欠账，但因 selector 纪律好，当前不直接转化为性能问题。
-- **工作量**：1–3 项合计约 1 天；第 4 项分批 1–2 天；5–6 项需先量化再估；第 7 项第一步半天，第二步 3–5 天。
+- **工作量**：1–3 项合计约 1 天；第 4 项分批 1–2 天；第 7 项第一步半天。拆出去的三条见 `TODO-010` / `TODO-011` / `TODO-012`。
 - **1–3 项的验证（2026-09-20，依赖已装好）**：
   - `pnpm typecheck` **通过**（`@mcode/contracts` + `@mcode/desktop`，3 个 task 全绿）。
   - `pnpm build` **通过**（electron-vite 三段全部产出）；抽查构建产物确认两条焦点环规则与迁移后的英文文案都进了 bundle。
@@ -85,6 +83,54 @@
   - 手机端可访问名的扫描是脚本跑的：遍历 `components/mobile` 全部 `<button>`，剥掉图标元素与注释后无可见文本、且无 `aria-label` 的只有 1 处。
   - **仍未验证**：需要启动应用确认的三件事——hint 的浮层位置与手绘主题下的观感；`Titlebar` 三个开关外包了 `Hint` 后 `WebkitAppRegion: no-drag` 的拖拽区域是否仍正确；文件树删除确认框提到根之后，右键删除→确认→列表刷新这条路径端到端可用。
 - **未验证（体检结论本身）**：性能相关结论均由代码路径推导，非 profiler 实测。
+
+### TODO-010 聊天流渲染性能：行高估值与流式重算 · ⏸ 暂定
+
+- **从哪来**：原 TODO-007 的第 5、6 项。两项都不是「没排上」，是**这两项自己的口径就是先量后改**，而需要的数都拿不到静态答案。
+- **解除条件**：把应用跑起来采一次数。下面两段各自说清要采什么。
+
+**① 行高估值**（`ChatPane.tsx:3437` 的 `estimatedItemSize={80}`，配 `drawDistance={400}`）
+
+一行常是一整张 markdown 回复或工具卡，估值偏小会让未测量区域的滚动条长度与 `scrollToOffset` 都不准——代码里那些 `raf1 → raf2 → scrollToEnd` 双帧补丁与「先瘦一下再瞬间对齐」的写法就是症状。**没有真实分布之前不要改这个数**：早先口头说的「160～240」是猜的。
+
+采数最省事的办法是不改代码：开一个长会话、上下滚一遍让行都渲染过，在渲染进程的开发者工具控制台贴这段——
+
+```js
+(() => {
+  const s = [...document.querySelectorAll("div")]
+    .find(e => e.style.overscrollBehavior === "contain");
+  if (!s || !s.firstElementChild) return "没找到聊天列表，先打开一个会话";
+  const h = [...s.firstElementChild.children]
+    .map(e => e.offsetHeight).filter(n => n > 0).sort((a, b) => a - b);
+  const q = p => h[Math.floor((h.length - 1) * p)];
+  return { n: h.length, min: h[0], p25: q(.25), median: q(.5),
+           p75: q(.75), p90: q(.9), max: h.at(-1),
+           mean: Math.round(h.reduce((a, b) => a + b, 0) / h.length) };
+})()
+```
+
+拿到中位数再决定是给一个常数，还是按 `kind` 分档（用户消息短 / 工具卡中 / markdown 回复长）。**那些 raf 补丁逐个验证后再摘，不要跟着一起删**，否则出问题分不清是哪一变引起的。
+
+**更正一处**：本文档原写「用 `MessageRow` 现成的 `ResizeObserver` 采行高」——渲染层没有这个东西。`components/chat` 里唯一的 `ResizeObserver` 在 `ChatPane.tsx:4229`，量的是折叠用户消息的高度，跟行高统计无关；行的测量归 `@legendapp/list` 自己管。
+
+**② 流式重算**
+
+每次 delta flush 后 `messages` 引用即变，`ChatPane.tsx:1314` 的 `groupMessagesForRender` 与 `3336` 的 `listItems` 两遍全历史扫描都会重跑，频率接近 60Hz。另有 `Markdown`（`Markdown.tsx:657`，已 memo）每次拿整段累积文本重解析——`MessageBlocks.tsx:1002` 已做节流铺垫、Shiki 有 fnv1a → HTML 缓存，`sessionStore.ts:4085` 的自适应节流（rAF / 50ms 定时器 / microtask 三档）也已到位。
+
+但消息分页（`hasMoreMessagesBySession` / `loadOlderMessages`）已经卡住了内存中的条数，**目前没有证据证明真的卡**；而分组逻辑会跨消息合并（连续纯操作类消息并成一张卡）、liveSpine 有成对哨兵，切点必须落在真正封口的回合边界上，切错会让聊天记录错乱——产品里最贵的那类 bug。所以顺序是：先加一份只在 dev 构建生效的 `performance.mark`，量出分组耗时占帧预算多少；**超了才**做「已封口前缀缓存 + 每帧只重算活跃尾巴」。这一段没有免改代码的取数办法。
+
+### TODO-011 文件树 / 会话树拍平虚拟化 · ⏸ 暂定
+
+- **从哪来**：原 TODO-007 第 7 项的第二步。第一步（删除确认框提到树根）已随 TODO-007 落地。
+- **解除条件**：出现真实的大仓库卡顿反馈。现在动手属于没有需求驱动的重写。
+- **内容**：`FileTree.tsx` 目前是递归 `children.map()` 全量渲染已展开子树，`LeftBar` 的项目 / 会话树同理。要拍平成 flat list 交给 `@legendapp/list`，连带把展开折叠、键盘导航、拖拽与右键菜单的掌控全部重写一遍，估 3～5 天。
+
+### TODO-012 前端 lint 基建 · ⏸ 暂定
+
+- **从哪来**：TODO-007 第 3 项欠的那条「挡中文回流」规则——禁止 `components/**/*.tsx` 的 JSX 文本节点出现 CJK（注释不管）。
+- **解除条件**：先确认要不要给这个仓库引入 ESLint 工具链。
+- **现状**：**本仓库根本没装 ESLint**。两个包都没有 `lint` script，仓库里也没有任何 `eslint.config.*` / `.eslintrc*`，`turbo.json` 里那个 `lint` task 因此一直在跑空；源码里残留的 `// eslint-disable-next-line react-hooks/exhaustive-deps` 是上游留下的，本地没有任何东西在读它。
+- **真要做**：装依赖（`eslint` + `typescript-eslint` + `eslint-plugin-react-hooks`）、加 flat config、两个包各补 `lint` script，那条 CJK 规则本身用 `no-restricted-syntax` 配一条 `JSXText` 的 esquery 选择器就够，不必写插件。顺带能把 `react-hooks` 那几条真正跑起来。
 
 ### TODO-004 外部工具 Skill / MCP 同步
 

@@ -16,7 +16,7 @@
 | `TODO-004` | 外部工具 Skill / MCP 同步（非复制导入） | 0% | ⚪ 未开始 | - | P1。把设备上 Claude Code / Codex / Cursor / Zcode 已有的 skills 与 MCP servers 自动同步进 MarioCode，源头变更自动跟随，替代现有一次性「导入 = 复制」 |
 | `TODO-005` | 内置工具：网页搜索 + 图片生成 | 0% | ⚪ 未开始 | - | P2。三个 provider 共用的 `web_search` / `image_generate`，不依赖模型端点是否原生支持；按 `agentBrowserTools` 模式三端注册 |
 | `TODO-006` | 统一系统提示词 | 0% | ⚪ 未开始 | - | P4（建议提前到 TODO-005 之前）。用户可编辑的全局 + 项目级系统提示词，Claude / Codex / Pi 三端一致注入 |
-| `TODO-007` | 聊天框界面渲染优化（含前端 UI 体检） | 55% | 🟡 进行中 | `baa45a4`…`9c70d1f`（9 个） | **P0（原 P3，2026-09-20 上调）**。体检完成并排出 7 项动工顺序；第 1～3 项（焦点环、死代码清场、手机端 i18n）已落地，第 4 项落地 `Hint` 与首批窗口常驻栏、第 7 项第一步已摘；第 5～6 项需先跑起来量化 |
+| `TODO-007` | 聊天框界面渲染优化（含前端 UI 体检） | 70% | 🟡 进行中 | `baa45a4`…`5d8ca24`（11 个） | **P0（原 P3，2026-09-20 上调）**。体检完成并排出 7 项动工顺序；第 1～3 项（焦点环、死代码清场、手机端 i18n）与第 7 项第一步已完成，第 4 项两批替换已落地、余量低频。**第 5、6 项卡在取数**——按文档自己的口径要先量后改，而量行高与分组耗时都得把应用跑起来 |
 | `TODO-008` | DeepSeek Harness（dsh）接入为第四个 Provider | 0% | ⚪ 未开始 | - | P3。先做 1–2 天可行性 spike；照 Pi 的「独立 host 进程 + MessageAdapter」模板接入 |
 | `TODO-009` | 禁止 agent 用内置浏览器访问搜索引擎 | 100% | 🟢 已完成 | `81fe292` | TODO-005 落地前的止血：Pi 无搜索工具时模型拿浏览器去搜索引擎翻页，每次 snapshot 10K+ token。三端共用的 `agentBrowserTools` 加守卫——navigate 到搜索站（含首页）拒绝，snapshot/find/evaluate/screenshot 发现当前页是搜索站也拒绝；只拦搜索站自身域名，产品子域不受影响；提示词同步补禁令。写死名单、暂无开关。已通过 tsc 与 28 条域名规则用例 |
 
@@ -53,12 +53,16 @@
    落地方式：新增 `components/ui/hint.tsx`（单 prop `<Hint label="…">`，从 barrel 导出）。它**把 trigger 合并到子元素上而不是包一层**——子元素的 className 改走 Trigger，由 `cn()` 的 twMerge 裁掉 primitive 自带的 `inline-flex`，DOM 节点数不变，`onClick` / `style` / `disabled` 原样保留。子元素自己没有可访问名时，`label` 顺带补成 `aria-label`（有则不覆盖，有可见文本的传 `describeOnly`）。
    首批替换只挑**窗口常驻、不随列表重复**的栏：`BrowserToolbar` 的 `ToolButton`（一处改动覆盖 8 个按钮）、`TabBarChrome` 的 `TabBarChevronButton`（两条标签栏共用）、`Titlebar` 的三个面板开关。**禁用态按钮不派发指针事件、hint 打不开**，所以 `ToolButton` 只在 `disabled` 时保留原生 `title` 兜底（前进/后退长期处于禁用态）。
    **原计划的「① 先替 `components/mobile/*`」这一条作废**：`@base-ui/react@1.6.0` 的 `TooltipTrigger.js:157` 写死 `mouseOnly: true`，tooltip 在触屏上同样不出现，换过去收益为零。手机端真正缺的是可访问名——已按这个口径扫过 8 个文件的全部 `<button>`，只有 `MobileFilesScreen` 的返回上级按钮是纯图标且无名，已补 `aria-label`；其余要么已有 `aria-label`，要么带可见文本。
-   **剩余**：设置页（193 处）、聊天区（114）、IDE（104）、左栏（102）等的纯图标按钮尚未替。按列表行重复渲染的（`RowOpButton`、文件树行、会话行）**暂不替**——每行一个 `Tooltip.Root` 正是第 7 项要摘掉的那种「每行一个实例」。文本截断那种 `title={fullPath}` 是合理用法，保留不动，不做无差别 codemod。
+   **第二批（2026-09-20）**：先把 569 处按元素分了类（脚本审计，排除 `components/mobile`）——**363 处根本不在 `<button>` 上**（绝大多数是截断行的 `title={fullPath}`，保留不动）、**93 处按钮自带可见文本**（title 是补充说明，基本不必换）、**10 处在 `.map(` 行内**（按上面的口径不换），真正「title 是唯一语义来源的纯图标按钮」只有 **77 处**。
+   第二批替掉了其中高频的那些，优先走**共享包装组件**（改一处覆盖多个调用点）：`RightPanel.RailButton`、`TerminalPanel.IconBtn`、`GitRepoCard.ActionButton`、`FontSizeStepper.StepperButton`、`MicButton`、`PlanApprovalPrompt.segButton`；再加两条侧栏的常驻头尾（`LeftBar` 与 `StreamSidebar` 各自的折叠 / 视图切换 / 新建项目 / 定位会话 / 主题开关，以及共用的 `LeftBarModeSwitch`）、`ChatPane` 的停止生成与回到底部、`ActivityConsole` 的头部两个按钮、`SideChatPanel` 的新建与两处返回。全库 `<Hint>` 调用点现为 32 个。
+   **被排除的共享包装**：`SidebarShared.HoverIconButton`、`SessionTabs`、`TurnFlowPanel` 的步骤行、`GitRepoCard.RowActionIcon`、`StreamSidebar.manageButton`、`UsagePanel` —— 全是按行重复渲染或挂在非按钮上的截断 title。
+   **剩余**：审计脚本报 65 处，但它判断「是否按行重复」只看 `.map(` 的文本邻近度，**认不出单独定义、再被 map 调用的行组件**（`LeftBar` 1352 行之后的那些就是这样），所以真实剩余比 65 少；余下的主要散在设置页各面板与 IDE 侧的对话框里，单点低频。**不做无差别 codemod。**
 
-5. **`estimatedItemSize={80}` 偏小**（`ChatPane.tsx:3436`，`drawDistance={400}`）
-   一行常是一整张 markdown 回复或工具卡，估值偏小会让未测量区域的滚动条长度与 `scrollToOffset` 都不准——代码里那些 `raf1 → raf2 → scrollToEnd` 双帧补丁与「先瘦一下再瞬间对齐」的写法就是症状。先用 `MessageRow` 现成的 `ResizeObserver` 采真实行高中位数，再考虑按 `kind` 分档估值（用户消息短 / 工具卡中 / markdown 回复长）。**补丁逐个验证后再摘，不要跟着一起删**，否则出问题分不清是哪一变引起的。
+5. **`estimatedItemSize={80}` 偏小**（`ChatPane.tsx:3437`，`drawDistance={400}`）—— ⛔ **卡在取数，需要跑起来**
+   一行常是一整张 markdown 回复或工具卡，估值偏小会让未测量区域的滚动条长度与 `scrollToOffset` 都不准——代码里那些 `raf1 → raf2 → scrollToEnd` 双帧补丁与「先瘦一下再瞬间对齐」的写法就是症状。要先采真实行高中位数，再考虑按 `kind` 分档估值（用户消息短 / 工具卡中 / markdown 回复长）。**补丁逐个验证后再摘，不要跟着一起删**，否则出问题分不清是哪一变引起的。
+   **更正**：本文档原写「用 `MessageRow` 现成的 `ResizeObserver`」——渲染层没有这个东西。`components/chat` 里唯一的 `ResizeObserver` 在 `ChatPane.tsx:4229`，量的是折叠用户消息的高度，跟行高统计无关；行的测量归 `@legendapp/list` 自己管。所以取数要么现加埋点，要么开发者工具里直接量已渲染的行。**没有真实分布之前不要改这个数**：上一轮口头说的 160～240 是猜的。
 
-6. **流式重算（先量后改，暂不动刀）**
+6. **流式重算（先量后改，暂不动刀）** —— ⛔ **同样卡在取数**
    每次 delta flush 后 `messages` 引用即变，`ChatPane.tsx:1314` 的 `groupMessagesForRender` 与 `3336` 的 `listItems` 两遍全历史扫描都会重跑，频率接近 60Hz。另有 `Markdown`（`Markdown.tsx:657`，已 memo）每次拿整段累积文本重解析——`MessageBlocks.tsx:1002` 已做节流铺垫、Shiki 有 fnv1a → HTML 缓存，`sessionStore.ts:4085` 的自适应节流（rAF / 50ms 定时器 / microtask 三档）也已到位。
    但消息分页（`hasMoreMessagesBySession` / `loadOlderMessages`）已经卡住了内存中的条数，**目前没有证据证明真的卡**；而分组逻辑会跨消息合并（连续纯操作类消息并成一张卡）、liveSpine 有成对哨兵，切点必须落在真正封口的回合边界上，切错会让聊天记录错乱——产品里最贵的那类 bug。正确顺序：先埋 `performance.mark` 量出分组耗时占帧预算多少，超了再做「已封口前缀缓存 + 每帧只重算活跃尾巴」。
 

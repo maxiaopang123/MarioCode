@@ -91,6 +91,20 @@ interface FileClipboardValue {
 }
 const FileClipboardContext = createContext<FileClipboardValue | null>(null);
 
+/** A delete waiting on the user. The FileTree root keeps a single confirm
+ *  dialog and fills it from the request; rows raise one instead of each
+ *  mounting a dialog of their own, which on a wide tree meant a component
+ *  instance and a locale subscription per expanded row for a dialog that is
+ *  shut. `confirm` travels with the request so the row keeps its own
+ *  follow-up (re-scan, closing the editor tabs it invalidates). */
+interface DeleteRequest {
+  kind: NewEntryKind;
+  name: string;
+  confirm: () => void;
+}
+type RequestDelete = (request: DeleteRequest) => void;
+const DeleteRequestContext = createContext<RequestDelete | null>(null);
+
 /* ───────────────────────── context menu ───────────────────────── */
 
 /** Shared popup + item classNames for the file-tree right-click menu. Mirrors
@@ -542,6 +556,10 @@ export function FileTree({ projectPath }: { projectPath: string }) {
     [bumpReload, creating, openFileInIde],
   );
 
+  // The tree's one delete confirmation (see DeleteRequestContext).
+  const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
+  const requestDelete = useCallback<RequestDelete>((request) => setDeleteRequest(request), []);
+
   // Tree-scoped clipboard for the 复制/粘贴 pair (see FileClipboardContext).
   const [copiedFile, setCopiedFile] = useState<string | null>(null);
   const fileClipboard = useMemo(
@@ -698,35 +716,61 @@ export function FileTree({ projectPath }: { projectPath: string }) {
     <FileClipboardContext.Provider value={fileClipboard}>
       <FileNodeRegistryContext.Provider value={registerNode}>
         <FileTreeActionsContext.Provider value={{ reloadSignal, bumpReload }}>
-          {/* NewInParentContext at the root level: a file row whose nearest
-              container IS the project root forwards "新建" here, opening the
-              root-level inline row. Deeper DirNodes override this provider. */}
-          <NewInParentContext.Provider value={startCreating}>
-            <ContextMenu.Root>
-              <ContextMenu.Trigger
-                render={<div className="min-h-full" />}
-              >
-                {treeBody}
-              </ContextMenu.Trigger>
-              <ContextMenu.Portal>
-                <ContextMenu.Positioner>
-                  <ContextMenu.Popup className={MENU_POPUP_CLASS}>
-                    <NewEntryMenuItems onStart={startCreating} />
-                    {copiedFile && (
-                      <>
-                        <MenuSeparator />
-                        <MenuItem
-                          icon={<IconClipboardText size={12} />}
-                          label={t("ide.tree.paste")}
-                          onClick={() => void handlePasteRoot()}
-                        />
-                      </>
-                    )}
-                  </ContextMenu.Popup>
-                </ContextMenu.Positioner>
-              </ContextMenu.Portal>
-            </ContextMenu.Root>
-          </NewInParentContext.Provider>
+          <DeleteRequestContext.Provider value={requestDelete}>
+            {/* NewInParentContext at the root level: a file row whose nearest
+                container IS the project root forwards "新建" here, opening the
+                root-level inline row. Deeper DirNodes override this provider. */}
+            <NewInParentContext.Provider value={startCreating}>
+              <ContextMenu.Root>
+                <ContextMenu.Trigger render={<div className="min-h-full" />}>
+                  {treeBody}
+                </ContextMenu.Trigger>
+                <ContextMenu.Portal>
+                  <ContextMenu.Positioner>
+                    <ContextMenu.Popup className={MENU_POPUP_CLASS}>
+                      <NewEntryMenuItems onStart={startCreating} />
+                      {copiedFile && (
+                        <>
+                          <MenuSeparator />
+                          <MenuItem
+                            icon={<IconClipboardText size={12} />}
+                            label={t("ide.tree.paste")}
+                            onClick={() => void handlePasteRoot()}
+                          />
+                        </>
+                      )}
+                    </ContextMenu.Popup>
+                  </ContextMenu.Positioner>
+                </ContextMenu.Portal>
+              </ContextMenu.Root>
+            </NewInParentContext.Provider>
+            <ConfirmDialog
+              open={deleteRequest != null}
+              title={
+                deleteRequest?.kind === "folder"
+                  ? t("ide.tree.deleteFolderTitle")
+                  : t("ide.tree.deleteFileTitle")
+              }
+              description={
+                <>
+                  {t("ide.tree.deleteConfirmQ", { name: deleteRequest?.name ?? "" })}
+                  <br />
+                  <span className="text-content-subtle">
+                    {deleteRequest?.kind === "folder"
+                      ? t("ide.tree.deleteFolderNote")
+                      : t("ide.tree.deleteFileNote")}
+                  </span>
+                </>
+              }
+              confirmText={t("common.delete")}
+              cancelText={t("common.cancel")}
+              danger
+              onOpenChange={(open) => {
+                if (!open) setDeleteRequest(null);
+              }}
+              onConfirm={() => deleteRequest?.confirm()}
+            />
+          </DeleteRequestContext.Provider>
         </FileTreeActionsContext.Provider>
       </FileNodeRegistryContext.Provider>
     </FileClipboardContext.Provider>
@@ -879,8 +923,8 @@ function DirNode({
   const [creating, setCreating] = useState<NewEntryKind | null>(null);
   // Inline rename mode: when true the directory label is replaced by an input.
   const [renaming, setRenaming] = useState(false);
-  // Pending delete confirmation dialog state.
-  const [pendingDelete, setPendingDelete] = useState(false);
+  // Raises the tree's shared delete confirmation. Null outside a FileTree.
+  const requestDelete = useContext(DeleteRequestContext);
   const { copy: copyWithFeedback, toast: copiedToast } = useCopyFeedback();
   const { reportPasteFailed, toast: pasteFailedToast } = usePasteFailure();
   const fileClipboard = useContext(FileClipboardContext);
@@ -1109,7 +1153,13 @@ function DirNode({
                   icon={<IconTrash size={12} />}
                   label={t("common.delete")}
                   danger
-                  onClick={() => setPendingDelete(true)}
+                  onClick={() =>
+                    requestDelete?.({
+                      kind: "folder",
+                      name: label,
+                      confirm: () => void handleDelete(),
+                    })
+                  }
                 />
               </ContextMenu.Popup>
             </ContextMenu.Positioner>
@@ -1118,24 +1168,6 @@ function DirNode({
         )}
         {copiedToast}
         {pasteFailedToast}
-        <ConfirmDialog
-          open={pendingDelete}
-          title={t("ide.tree.deleteFolderTitle")}
-          description={
-            <>
-              {t("ide.tree.deleteConfirmQ", { name: label })}
-              <br />
-              <span className="text-content-subtle">{t("ide.tree.deleteFolderNote")}</span>
-            </>
-          }
-          confirmText={t("common.delete")}
-          cancelText={t("common.cancel")}
-          danger
-          onOpenChange={(open) => {
-            if (!open) setPendingDelete(false);
-          }}
-          onConfirm={() => void handleDelete()}
-        />
         {isOpen && children && (
           <div>
             {creating && (
@@ -1201,9 +1233,9 @@ function FileNodeRow({
   const siblingNames = useContext(SiblingNamesContext);
   const closeFileInIde = useSessionStore((s) => s.closeFileInIde);
   const renamePathInIde = useSessionStore((s) => s.renamePathInIde);
-  // Inline rename mode and pending-delete confirmation dialog.
+  // Inline rename mode; deletes go through the tree's shared confirmation.
   const [renaming, setRenaming] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState(false);
+  const requestDelete = useContext(DeleteRequestContext);
   // In-flight delete guard so a double-confirm can't fire twice.
   const deletingRef = useRef(false);
 
@@ -1375,7 +1407,13 @@ function FileNodeRow({
                 icon={<IconTrash size={12} />}
                 label={t("common.delete")}
                 danger
-                onClick={() => setPendingDelete(true)}
+                onClick={() =>
+                  requestDelete?.({
+                    kind: "file",
+                    name,
+                    confirm: () => void handleDelete(),
+                  })
+                }
               />
             </ContextMenu.Popup>
           </ContextMenu.Positioner>
@@ -1384,24 +1422,6 @@ function FileNodeRow({
       )}
       {copiedToast}
       {pasteFailedToast}
-      <ConfirmDialog
-        open={pendingDelete}
-        title={t("ide.tree.deleteFileTitle")}
-        description={
-          <>
-            {t("ide.tree.deleteConfirmQ", { name })}
-            <br />
-            <span className="text-content-subtle">{t("ide.tree.deleteFileNote")}</span>
-          </>
-        }
-        confirmText={t("common.delete")}
-        cancelText={t("common.cancel")}
-        danger
-        onOpenChange={(open) => {
-          if (!open) setPendingDelete(false);
-        }}
-        onConfirm={() => void handleDelete()}
-      />
     </div>
   );
 }

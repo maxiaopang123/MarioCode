@@ -18,7 +18,8 @@
 | `TODO-006` | 统一系统提示词 | 0% | ⚪ 未开始 | - | P4（建议提前到 TODO-005 之前）。用户可编辑的全局 + 项目级系统提示词，Claude / Codex / Pi 三端一致注入 |
 | `TODO-007` | 聊天框界面渲染优化（含前端 UI 体检） | 100% | 🟢 已完成 | `baa45a4`…`bf5672b`（11 个） | **P0（原 P3，2026-09-20 上调）**。体检 + 原七项里**静态就能做完的五项**：焦点环、死代码清场、手机端 i18n、`Hint` 提示层两批替换、文件树删除确认框提到树根。原第 5、6 项与第 7 项第二步不是没做完，是**条件不具备**，已拆成 `TODO-010` / `TODO-011` 暂定；第 3 项欠的 lint 规则拆成 `TODO-012`。**运行时验收仍待人工完成**（见规划详情末尾） |
 | `TODO-008` | DeepSeek Harness（dsh）接入为第四个 Provider | 0% | ⚪ 未开始 | - | P3。先做 1–2 天可行性 spike；照 Pi 的「独立 host 进程 + MessageAdapter」模板接入 |
-| `TODO-009` | 禁止 agent 用内置浏览器访问搜索引擎 | 100% | 🟢 已完成 | `81fe292` | TODO-005 落地前的止血：Pi 无搜索工具时模型拿浏览器去搜索引擎翻页，每次 snapshot 10K+ token。三端共用的 `agentBrowserTools` 加守卫——navigate 到搜索站（含首页）拒绝，snapshot/find/evaluate/screenshot 发现当前页是搜索站也拒绝；只拦搜索站自身域名，产品子域不受影响；提示词同步补禁令。写死名单、暂无开关。已通过 tsc 与 28 条域名规则用例 |
+| `TODO-009` | 禁止 agent 用内置浏览器访问搜索引擎 | 100% | 🟢 已完成 | `81fe292` | TODO-005 落地前的止血：Pi 无搜索工具时模型拿浏览器去搜索引擎翻页，每次 snapshot 10K+ token。三端共用的 `agentBrowserTools` 加守卫——navigate 到搜索站（含首页）拒绝，snapshot/find/evaluate/screenshot 发现当前页是搜索站也拒绝；只拦搜索站自身域名，产品子域不受影响；提示词同步补禁令。写死名单、暂无开关。已通过 tsc 与 28 条域名规则用例；**真机验证未做**（需 `pnpm dev` + Pi 跑一轮，确认模型回「无法联网搜索」而非去开浏览器） |
+| `TODO-013` | 内置浏览器 snapshot 瘦身（降 token） | 0% | ⚪ 未开始 | - | 从上一会话「止血」讨论补立项：操作普通网页时每次 `browser_snapshot` 仍 8–15K token（80 个元素 + 整页正文），与 009 是两件事，独立于 TODO-005。裁剪方案见下方规划详情 TODO-013 |
 | `TODO-010` | 聊天流渲染性能：行高估值与流式重算（原 TODO-007 第 5、6 项） | 0% | ⏸ 暂定 | - | P1。**解除条件：把应用跑起来采一次数**。两项都按「先量后改」的口径走，而行高分布与分组耗时都拿不到静态答案。文档里备了一段开发者工具即贴即用的行高统计脚本；分组耗时要现加 dev-only `performance.mark`。没有真实数字之前不要改 `estimatedItemSize`，也不要动分组切点——切错会让聊天记录错乱 |
 | `TODO-011` | 文件树 / 会话树拍平虚拟化（原 TODO-007 第 7 项第二步） | 0% | ⏸ 暂定 | - | P3。**解除条件：出现真实的大仓库卡顿反馈**。第一步（删除确认框提到树根）已随 TODO-007 落地；第二步要把递归树拍平交给 LegendList，连带重写展开折叠、键盘导航、拖拽与右键菜单的掌控，估 3～5 天，属于「有人抱怨再做」的那类 |
 | `TODO-012` | 前端 lint 基建：从零搭 ESLint + 禁止 JSX 文本出现 CJK | 0% | ⏸ 暂定 | - | P2。**解除条件：确认要不要引入这套工具链**。本仓库根本没装 ESLint——两个包都没有 `lint` script，也没有任何 `eslint.config.*` / `.eslintrc*`，`turbo.json` 里的 `lint` task 一直在跑空（源码里残留的 `// eslint-disable-next-line` 是上游留下的）。TODO-007 第 3 项欠的那条「挡中文回流」规则要落地，得先把这套装起来 |
@@ -141,6 +142,13 @@
   2. MCP：多源读取（`~/.claude.json`、`~/.codex/config.toml` 的 `[mcp_servers]`、`~/.cursor/mcp.json`）归一化后合并进 `~/.mcode/.claude.json`，条目打 `source` 标记；源文件 watch 变更增量同步；本地手改优先、同名冲突提示。
   3. 设置页：每个源一个开关 + 最近同步时间 + 冲突列表。
 - **工作量**：中（3–5 天）。**风险**：Windows junction 是否被 claude 二进制 / Codex 正常跟随需实测；各家 MCP 配置字段形状不一致（Codex TOML 的 env / args）需归一化。
+- **实验方案**（补自上一会话，尚未跑）：
+  1. Windows junction 跟随：`mklink /J` 建一个指向 `~/.claude/skills/<x>` 的 junction，Claude 跑一轮 `/<x>`；通过标准＝`/` 菜单列出且模型真的展开了 SKILL.md。(a) 整目录 junction 与 (b) 逐个 skill junction 两种形态分别测。
+  2. `options.plugins` 指向没有 `.claude-plugin/plugin.json` 的目录能否加载（能则省掉合成清单）。
+  3. Codex：`extraRoots` 传 `~/.claude/skills` + `config.toml` 追加一条从 `~/.cursor/mcp.json` 归一化来的 server，跑一轮看工具是否可见；TOML/JSON 样本覆盖 command/args/env/url 四种形状。
+  4. `fs.watch(~/.claude.json)`：CLI 会频繁重写，量触发频率定 debounce 窗口。
+  5. 遮蔽：两个源放同名 skill，确认只加载一份且面板提示正确。
+- **待拍板**：Claude skills 走 (a) 合成插件目录还是 (b) 逐个 junction；要不要支持双向回写（建议不）。
 
 ### TODO-005 内置工具：网页搜索 + 图片生成
 
@@ -152,6 +160,19 @@
   3. 图片生成走 OpenAI 兼容 `images/generations`（GPT-image、DeepSeek / Gemini / SD 的兼容端点），在模型供应商配置里加「图片生成」能力位。
   4. 设置 → MCP 面板加两个内置工具开关（与内置浏览器同一开关组）；结果渲染复用 image block。
 - **工作量**：中大（4–6 天）。**依赖**：TODO-006 的统一提示词里补工具使用指引效果更好。
+- **控上下文设计（重点，避免重演 009 那种撑爆上下文）**：
+  1. 搜与读分开：`web_search(query, n≤5)` 只回 标题 + URL + ≤200 字摘要（一次约 400–600 token）；要全文再调 `web_fetch(url)`，模型不会「顺手」拿到五篇全文。
+  2. `web_fetch` 不回原页：Readability 去导航/广告 → HTML 转 Markdown → 硬上限 4–6K 字；可选 `focus` 参数按相关性只回 top-K 段。
+  3. 溢出落盘：全文存 `userData/web-cache/<sha1>.md`，工具只返「前 4K 字 + 共 N 字 + handle」，续读用 `web_fetch(handle, offset)`。
+  4. 可选二级压缩：便宜小模型按 `focus` 把页面总结成 ≤800 字（复用 `titleGen.ts` 那条副模型通道）。
+  5. 同一轮去重 + 缓存；条数 / 单页字数 / 是否二级压缩三个上限在设置里可调。
+- **实验方案**（补自上一会话，尚未跑）：
+  1. 网络可达性先测：主进程分别探 博查 / 智谱 / Tavily / Brave 的连通与延迟，据此定默认后端（本机连 github 都不通，海外 API 大概率废）。
+  2. 端到端用 Pi 测（无原生能力最干净）：「搜一下 X 并总结」看工具卡片；「画一张 Y」看 image block + 右键「在资源管理器中显示」。
+  3. Claude 自定义端点：`mcp__mcode-tools__web_search` 自动放行；原生 WebSearch 在自定义端点报错时模型是否会自己切到内置。
+  4. Codex 双份工具：原生 webSearch 开着时模型选哪个，定去重策略。
+  5. 零 key 浏览器抓取：10 次查询的成功率 / 耗时 / 反爬，决定能否当兜底。
+- **待拍板**：默认搜索后端（建议博查）；图片生成要不要进审批（花钱）；结果条数与摘要长度上限。
 
 ### TODO-006 统一系统提示词
 
@@ -163,6 +184,13 @@
   3. 设置页「AI 能力」加提示词编辑器（Markdown、字数、预览最终拼接结果）。
   4. 明确与 output-style / CLAUDE.md / AGENTS.md 的叠加顺序并写进文档。
 - **工作量**：小（1–2 天）。基础设施齐全，建议放到 TODO-005 之前。
+- **实验方案**（补自上一会话，尚未跑）：
+  1. Codex per-turn 注入：app-server 的 `thread/start` / `turn/start` 参数里有没有 developer instructions 一类字段；顺带验证 resume 线程是否重读 `AGENTS.md`。
+  2. 三端一致性：同一句可观测指令（如「每次回复末尾加 [MC]」）分别跑 Claude / Pi / Codex。
+  3. 与 output-style 冲突：提示词要英文、output style 要中文，看谁赢，定文案。
+  4. 长提示词开销：2K / 8K 字符对首 token 延迟与 ContextRing 读数的影响。
+- **坑**：Codex 现在是 `ensureCodexHomeIdentity` 写 `CODEX_HOME/AGENTS.md`，那是全局文件、所有会话共用，项目级提示词不能往里写，得找 per-turn 通道。
+- **待拍板**：项目级存文件（`<project>/.mcode/prompt.md`）还是 DB；Codex 走哪条通道；要不要模板库。
 
 ### TODO-008 DeepSeek Harness（dsh）接入
 
@@ -174,6 +202,26 @@
   3. 复用 TODO-005 的共享工具核心注册为 dsh 插件工具。
   4. 模型配置沿用公共供应商模型（`d102f73` 那套）。
 - **工作量**：大（1.5–2 周，含 spike）。**风险**：开发者预览、官方明示会有破坏性变更；版本锚定 + 适配层隔离。
+- **dsh 调研结论（官方文档，补自上一会话）**：不是进程内库，所有形态都经 `dsh --profile <x>` 起子进程；有 `sdk`（`@deepseek-ai/dsh-sdk-app`，JSON-RPC server）、`acp`（ACP 协议，标 automation-only）、`headless` 三种 profile；session 有 id、持久、可 resume/fork；事件分 `session/event`（持久）与 `agent/assistant-stream`（实时 chunk）；有 approval / user-questions / permission-presets；支持 DeepSeek / Anthropic / OpenAI 兼容端点 + 代理。形态最像 Codex app-server（JSON-RPC over stdio），模板改用 `CodexAppServerClient` + `CodexMessageAdapter`。
+- **实验方案（spike 1–2 天，尚未跑）**：
+  1. 安装：`npm i @deepseek-ai/dsh`（走 npmmirror）在 Windows x64 跑通 `dsh --profile sdk --dump-config`，记版本与插件树。
+  2. 协议摸底：手动起 `dsh --profile sdk`，脚本发 JSON-RPC 建会话 → 发 prompt → 收通知；记方法名 / 通知形状 / chunk 格式 / turn 结束信号，对照 TS SDK 的 `.d.ts`。
+  3. 审批链路：执行会触发审批的 shell 命令，看有无 server→client 请求需应答；测 permission-presets 三档。
+  4. 模型接入：用现有公共供应商的 DeepSeek / OpenAI 兼容端点配成 dsh provider，验证代理在国内可用。
+  5. 工具注入：一个最小 stdio MCP server 挂进 dsh，确认工具出现在模型请求里且可调。
+  6. resume/fork：同 session id 二次发消息能否续上；进程崩后重启能否续。
+- **待拍板**：`sdk` 还是 `acp`；一进程一会话（Codex 模式）还是一进程多会话；版本锁定策略。
+
+### TODO-013 内置浏览器 snapshot 瘦身（降 token）
+
+- **目标**：模型操作普通网页时每次 `browser_snapshot` 仍回 8–15K token（80 个可交互元素 + 整页正文），一轮操作累积很快撑大上下文。与 009（禁搜索引擎）是两件事，独立于 TODO-005，不管做不做都值得改。上一会话两次提出但一直未立项，此处补记。
+- **方案要点（改 `agentBrowserTools.ts` / `snapshotScript.ts`，三端自动受惠）**：
+  1. 元素列表压成一行一个（`[n] <a> "名称…" href=…`），去掉 `selector:` 行（要 selector 走 `browser_find`），`text` 与 `name` 重复不重发、name 截 60 字，展示上限 80 → 40。
+  2. 正文上限 8000 → 4000，并给 `browser_snapshot` 加 `maxChars` 参数。
+  3. 加 `mode` 参数：`interactive`（只回元素）/ `text`（只回正文）/ `both`（默认，两边小上限）。
+  4. 正文提主内容：优先 `<article>` / `<main>` / 最大文本块，去 `nav/footer/aside`，不再整页 `innerText`。
+- **相关（可并入 TODO-005 的零 key 兜底）**：新工具 `browser_search(query, engine?)` 自己抽 10 条 标题/URL/摘要（≈1K token）；`browserToolsUsagePrompt` 补一句用法（搜索用 `browser_search`、读文章用 `browser_snapshot mode=text`）。
+- **工作量**：1–4 项纯裁剪约半天；`browser_search` 新工具 + 三端注册再半天到一天。**风险**：低，裁剪逻辑需回归几个典型页面确认不误删正文。
 
 ## Git 版本记录
 

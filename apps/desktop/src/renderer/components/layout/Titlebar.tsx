@@ -10,6 +10,7 @@ import {
   IconFolder,
   IconGitFork,
 } from "@renderer/lib/icons.js";
+import { Hint } from "@renderer/components/ui/index.js";
 import { getProviderIcon } from "@renderer/lib/providerIcon.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { worktreeDisplayName } from "@renderer/lib/worktree.js";
@@ -168,20 +169,21 @@ export function Titlebar({
               // footer button is inside the hidden sidebar, so this is the
               // only mouse path back (beyond the toggle-left shortcut).
               !leftOpen && (
-                <button
-                  onClick={onToggleLeft}
-                  className={cn(
-                    "flex items-center justify-center rounded p-1.5 transition-colors",
-                    "text-content-muted hover:bg-surface-hover hover:text-content",
-                  )}
-                  title={t("layout.showLeftPanel") + hintFor("layout.toggle-left")}
-                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                >
-                  <IconLayoutSidebarLeftExpand
-                    size={18}
-                    className="shrink-0 scale-x-[-1]"
-                  />
-                </button>
+                <Hint label={t("layout.showLeftPanel") + hintFor("layout.toggle-left")}>
+                  <button
+                    onClick={onToggleLeft}
+                    className={cn(
+                      "flex items-center justify-center rounded p-1.5 transition-colors",
+                      "text-content-muted hover:bg-surface-hover hover:text-content",
+                    )}
+                    style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                  >
+                    <IconLayoutSidebarLeftExpand
+                      size={18}
+                      className="shrink-0 scale-x-[-1]"
+                    />
+                  </button>
+                </Hint>
               )
             )}
             <ActiveThreadTitle />
@@ -211,44 +213,50 @@ export function Titlebar({
             {/* Bottom terminal toggle - hidden while the browser overlay is
                 open, same as the side-panel toggles (kept during wide mode). */}
             {!isBrowserOverlay && (
-              <button
-                onClick={onToggleBottomTerminal}
-                className={cn(
-                  "flex items-center justify-center rounded p-1.5 transition-colors",
-                  bottomTerminalOpen
-                    ? "bg-surface-hover text-accent"
-                    : "text-content-muted hover:bg-surface-hover hover:text-content",
-                )}
-                title={(bottomTerminalOpen ? t("layout.hideTerminal") : t("layout.showTerminal")) + hintFor("layout.toggle-bottom-terminal")}
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+              <Hint
+                label={(bottomTerminalOpen ? t("layout.hideTerminal") : t("layout.showTerminal")) + hintFor("layout.toggle-bottom-terminal")}
               >
-                <IconTerminal2 size={18} className="shrink-0" />
-              </button>
+                <button
+                  onClick={onToggleBottomTerminal}
+                  className={cn(
+                    "flex items-center justify-center rounded p-1.5 transition-colors",
+                    bottomTerminalOpen
+                      ? "bg-surface-hover text-accent"
+                      : "text-content-muted hover:bg-surface-hover hover:text-content",
+                  )}
+                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                >
+                  <IconTerminal2 size={18} className="shrink-0" />
+                </button>
+              </Hint>
             )}
             {/* Right-panel toggle - hidden while the browser overlay is open
                 (the browser forces the right panel closed and manages its own
                 restore on exit). During wide mode it stays: it hides/shows the
                 wide mode's right column (chat goes full width when hidden). */}
             {!isBrowserOverlay && (
-              <button
-                onClick={onToggleRight}
-                className={cn(
-                  "flex items-center justify-center rounded p-1.5 transition-colors",
-                  rightOpen
-                    ? "bg-surface-hover text-accent"
-                    : "text-content-muted hover:bg-surface-hover hover:text-content",
-                )}
-                title={(rightOpen ? t("layout.hideRightPanel") : t("layout.showRightPanel")) + hintFor("layout.toggle-right")}
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+              <Hint
+                label={(rightOpen ? t("layout.hideRightPanel") : t("layout.showRightPanel")) + hintFor("layout.toggle-right")}
               >
-                <IconLayoutSidebarRightExpand
-                  size={18}
+                <button
+                  onClick={onToggleRight}
                   className={cn(
-                    "shrink-0 transition-transform",
-                    !rightOpen && "scale-x-[-1]",
+                    "flex items-center justify-center rounded p-1.5 transition-colors",
+                    rightOpen
+                      ? "bg-surface-hover text-accent"
+                      : "text-content-muted hover:bg-surface-hover hover:text-content",
                   )}
-                />
-              </button>
+                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                >
+                  <IconLayoutSidebarRightExpand
+                    size={18}
+                    className={cn(
+                      "shrink-0 transition-transform",
+                      !rightOpen && "scale-x-[-1]",
+                    )}
+                  />
+                </button>
+              </Hint>
             )}
           </>
         )}

@@ -1,5 +1,6 @@
 import { Menu } from "@base-ui/react/menu";
 import { cn } from "@renderer/lib/cn.js";
+import { Hint } from "@renderer/components/ui/index.js";
 import { IconCheck, IconChevronLeft, IconChevronRight, IconDotsVertical } from "@renderer/lib/icons.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 
@@ -26,15 +27,15 @@ interface ChevronButtonProps {
 export function TabBarChevronButton({ dir, onClick, title }: ChevronButtonProps) {
   const Icon = dir === "left" ? IconChevronLeft : IconChevronRight;
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className="mb-0.5 flex h-6 w-5 shrink-0 items-center justify-center rounded text-content-subtle transition-colors hover:bg-surface-muted hover:text-content"
-    >
-      <Icon size={14} />
-    </button>
+    <Hint label={title}>
+      <button
+        type="button"
+        onClick={onClick}
+        className="mb-0.5 flex h-6 w-5 shrink-0 items-center justify-center rounded text-content-subtle transition-colors hover:bg-surface-muted hover:text-content"
+      >
+        <Icon size={14} />
+      </button>
+    </Hint>
   );
 }
 

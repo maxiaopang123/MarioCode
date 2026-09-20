@@ -19,6 +19,7 @@ import {
   IconFolderOpen,
   IconShieldLock,
 } from "@renderer/lib/icons.js";
+import { Hint } from "@renderer/components/ui/index.js";
 import type { BrowserBookmarkEntry, BrowserHistoryEntry } from "@contracts/ipc";
 import type { BrowserMode } from "./BrowserPanel.js";
 import { formatBytes, type DownloadBarItem } from "./DownloadBar.js";
@@ -115,22 +116,26 @@ function ToolButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      aria-label={title}
-      className={cn(
-        "flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors",
-        active
-          ? "bg-accent/20 text-accent"
-          : "text-content-muted hover:bg-surface-hover hover:text-content",
-        "disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-content-muted",
-      )}
-    >
-      {children}
-    </button>
+    // Disabled buttons never fire pointer events, so the hint can't open on
+    // them — back/forward spend much of their life disabled, hence the native
+    // title as a fallback for exactly that state.
+    <Hint label={title}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        title={disabled ? title : undefined}
+        className={cn(
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors",
+          active
+            ? "bg-accent/20 text-accent"
+            : "text-content-muted hover:bg-surface-hover hover:text-content",
+          "disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-content-muted",
+        )}
+      >
+        {children}
+      </button>
+    </Hint>
   );
 }
 

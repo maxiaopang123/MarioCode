@@ -56,6 +56,9 @@ export type {
   TooltipPopupProps,
 } from "./tooltip.js";
 
+export { Hint } from "./hint.js";
+export type { HintProps } from "./hint.js";
+
 export { Kbd } from "./kbd.js";
 export type { KbdProps } from "./kbd.js";
 

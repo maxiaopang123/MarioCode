@@ -28,7 +28,7 @@ import { SettingRepo } from "@main/store/repositories.js";
 import { encrypt, decrypt } from "@main/lib/secretStore.js";
 import { log } from "@main/lib/logger.js";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
-import { sharedRuntimeId, type SharedProviderProtocol } from "@contracts/sharedProvider";
+import { resolveSharedModelInterfaces, sharedRuntimeId, type SharedProviderProtocol } from "@contracts/sharedProvider";
 import { normalizePiRegisteredModel } from "@main/providers/pi-sdk/piRegisteredModel.js";
 
 /** Encrypted apiKey map keyed by provider name. Stored as plain JSON in the
@@ -115,7 +115,8 @@ export const PiModelsStore = {
     // They never get copied into ~/.pi/agent/models.json.
     for (const provider of SharedProviderStore.listPublic()) {
       if (!provider.enabledAgents.includes("pi") || provider.protocols.length === 0) continue;
-      const protocol = provider.protocols[0] as SharedProviderProtocol;
+      const firstModel = provider.models[0];
+      const protocol = (firstModel ? resolveSharedModelInterfaces(provider.protocols, firstModel.interfaces)[0] : provider.protocols[0]) as SharedProviderProtocol;
       const runtimeId = sharedRuntimeId(provider.id);
       const api = protocol === "anthropic" ? "anthropic-messages"
         : protocol === "responses" ? "openai-responses" : "openai-completions";
@@ -124,14 +125,21 @@ export const PiModelsStore = {
         baseUrl: SharedProviderStore.endpointUrl(provider, protocol),
         api,
         authHeader: true,
-        models: provider.models.map((model) => normalizePiRegisteredModel({
+        models: provider.models.map((model) => {
+          const modelProtocol = resolveSharedModelInterfaces(provider.protocols, model.interfaces)[0] as SharedProviderProtocol | undefined;
+          if (!modelProtocol) return null;
+          return normalizePiRegisteredModel({
           id: model.id,
           name: model.label ?? model.id,
+          api: modelProtocol === "anthropic" ? "anthropic-messages"
+            : modelProtocol === "responses" ? "openai-responses" : "openai-completions",
+          baseUrl: SharedProviderStore.endpointUrl(provider, modelProtocol),
           contextWindow: model.contextWindow,
           maxTokens: model.maxTokens,
           reasoning: model.reasoning,
           input: model.input,
-        })),
+          });
+        }).filter((model): model is NonNullable<typeof model> => model !== null),
         hasApiKey: provider.hasApiKey,
       };
     }

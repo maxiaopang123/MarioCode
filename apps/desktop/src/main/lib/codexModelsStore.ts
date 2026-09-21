@@ -28,7 +28,7 @@ import type { CodexModelOption, CodexProviderConfig, CodexProviderPublic } from 
 import { SettingRepo } from "@main/store/repositories.js";
 import { encrypt, decrypt } from "@main/lib/secretStore.js";
 import { log } from "@main/lib/logger.js";
-import { sharedRuntimeId } from "@contracts/sharedProvider";
+import { resolveSharedModelInterfaces, sharedRuntimeId } from "@contracts/sharedProvider";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 
 const PROVIDERS_SETTING_KEY = "codexProviders";
@@ -89,7 +89,7 @@ function sharedCodexProviders(): StoredProvider[] {
       id: sharedRuntimeId(provider.id),
       name: `${provider.name}（共享）`,
       baseUrl: SharedProviderStore.endpointUrl(provider, "responses"),
-      models: provider.models.map((model) => ({
+      models: provider.models.filter((model) => resolveSharedModelInterfaces(provider.protocols, model.interfaces).includes("responses")).map((model) => ({
         id: model.id,
         ...(model.label ? { label: model.label } : {}),
         ...(typeof model.contextWindow === "number" ? { contextWindow: model.contextWindow } : {}),

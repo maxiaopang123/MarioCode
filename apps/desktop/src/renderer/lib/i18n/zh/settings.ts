@@ -31,6 +31,8 @@ export const zh = {
   "settings.shared.modelLabel": "显示名称（可选）",
   "settings.shared.vision": "支持图片输入",
   "settings.shared.reasoning": "支持推理",
+  "settings.shared.modelInterfaces": "此模型支持的接口",
+  "settings.shared.modelInterfaceRequired": "请至少勾选一个接口。",
   "settings.shared.contextWindow": "上下文窗口 tokens（可选）",
   "settings.shared.maxTokens": "最大输出 tokens（可选）",
   "settings.shared.modelsEndpoint": "模型列表地址（可选）",

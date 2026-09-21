@@ -6,6 +6,7 @@ import type {
   SharedProviderPublic,
   SharedProviderSaveInput,
 } from "@contracts/sharedProvider";
+import { resolveSharedModelInterfaces } from "@contracts/sharedProvider";
 import { api } from "@renderer/lib/api.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { useSessionStore, validateComposerSelection } from "@renderer/stores/sessionStore.js";
@@ -18,8 +19,11 @@ import { PanelHeader } from "./PanelHeader.js";
 const PROTOCOLS: SharedProviderProtocol[] = ["anthropic", "chat-completions", "responses"];
 const AGENTS: SharedProviderAgent[] = ["claude", "codex", "pi"];
 const LABELS = { anthropic: "Anthropic Messages", "chat-completions": "OpenAI Chat Completions", responses: "OpenAI Responses", claude: "Claude", codex: "Codex", pi: "Pi" };
-function supports(agent: SharedProviderAgent, protocols: SharedProviderProtocol[]): boolean {
-  return agent === "pi" ? protocols.length > 0 : agent === "codex" ? protocols.includes("responses") : protocols.some((p) => p === "anthropic" || p === "chat-completions");
+function supports(agent: SharedProviderAgent, protocols: SharedProviderProtocol[], models: SharedProviderSaveInput["models"] = [{ id: "" }]): boolean {
+  return models.some((model) => {
+    const interfaces = resolveSharedModelInterfaces(protocols, model.interfaces);
+    return agent === "pi" ? interfaces.length > 0 : agent === "codex" ? interfaces.includes("responses") : interfaces.some((p) => p === "anthropic" || p === "chat-completions");
+  });
 }
 function fresh(): SharedProviderSaveInput {
   return { name: "", baseUrl: "", protocols: ["chat-completions"], models: [{ id: "" }], enabledAgents: ["claude", "pi"], apiKey: "", endpointOverrides: {} };
@@ -118,7 +122,12 @@ export function SharedProvidersPanel() {
     const protocols = draft.protocols.includes(protocol) ? draft.protocols.filter((p) => p !== protocol) : [...draft.protocols, protocol];
     const endpointOverrides = { ...draft.endpointOverrides };
     if (!protocols.includes(protocol)) delete endpointOverrides[protocol];
-    change({ protocols, endpointOverrides, enabledAgents: draft.enabledAgents.filter((agent) => supports(agent, protocols)) });
+    const models = draft.models.map((model) => {
+      if (!model.interfaces) return model;
+      const interfaces = model.interfaces.filter((value) => protocols.includes(value));
+      return { ...model, interfaces: interfaces.length > 0 ? interfaces : protocols.length > 0 ? [] : undefined };
+    });
+    change({ protocols, models, endpointOverrides, enabledAgents: draft.enabledAgents.filter((agent) => supports(agent, protocols, models)) });
   }
   function toggleModelSelection(index: number, checked: boolean) {
     setSelectedModelIndexes((current) => {
@@ -134,7 +143,19 @@ export function SharedProvidersPanel() {
       if (selectedIndex === index) return [];
       return [selectedIndex > index ? selectedIndex - 1 : selectedIndex];
     })));
-    change({ models: draft.models.filter((_, modelIndex) => modelIndex !== index) });
+    const models = draft.models.filter((_, modelIndex) => modelIndex !== index);
+    change({ models, enabledAgents: draft.enabledAgents.filter((agent) => supports(agent, draft.protocols, models)) });
+  }
+  function toggleModelInterface(index: number, protocol: SharedProviderProtocol, checked: boolean) {
+    if (!draft) return;
+    const current = draft.models[index];
+    if (!current) return;
+    const previous = current.interfaces ?? draft.protocols;
+    const interfaces = checked
+      ? [...new Set([...previous, protocol])]
+      : previous.filter((value) => value !== protocol);
+    const models = draft.models.map((model, modelIndex) => modelIndex === index ? { ...model, interfaces } : model);
+    change({ models, enabledAgents: draft.enabledAgents.filter((agent) => supports(agent, draft.protocols, models)) });
   }
   function updateSelectedModels(update: "vision-on" | "vision-off" | "reasoning-on" | "reasoning-off") {
     if (!draft || busy || discovering || selectedModelIndexes.size === 0) return;
@@ -238,8 +259,8 @@ export function SharedProvidersPanel() {
               <p className="text-xs text-content-subtle">{t("settings.shared.protocolHint")}</p>
             </fieldset>
             <fieldset className="space-y-2"><legend className="mb-2 text-xs text-content-muted">{t("settings.shared.agents")}</legend>
-              {AGENTS.map((agent) => <label key={agent} className={cn("mr-4 inline-flex items-center gap-2 text-sm", supports(agent, draft.protocols) ? "text-content" : "text-content-subtle opacity-60")}>
-                <input type="checkbox" checked={draft.enabledAgents.includes(agent)} disabled={busy || !supports(agent, draft.protocols)}
+              {AGENTS.map((agent) => <label key={agent} className={cn("mr-4 inline-flex items-center gap-2 text-sm", supports(agent, draft.protocols, draft.models) ? "text-content" : "text-content-subtle opacity-60")}>
+                <input type="checkbox" checked={draft.enabledAgents.includes(agent)} disabled={busy || !supports(agent, draft.protocols, draft.models)}
                   onChange={() => change({ enabledAgents: draft.enabledAgents.includes(agent) ? draft.enabledAgents.filter((a) => a !== agent) : [...draft.enabledAgents, agent] })} />{LABELS[agent]}
               </label>)}
               <p className="text-xs text-content-subtle">{t("settings.shared.compatibilityHint")}</p>
@@ -288,6 +309,16 @@ export function SharedProvidersPanel() {
                   <label className="flex items-center gap-1"><input type="checkbox" checked={model.reasoning ?? false} disabled={busy}
                     onChange={(e) => change({ models: draft.models.map((m, i) => i === index ? { ...m, reasoning: e.target.checked } : m) })} />{t("settings.shared.reasoning")}</label>
                 </div>
+                <fieldset className="space-y-1 text-xs text-content-muted">
+                  <legend>{t("settings.shared.modelInterfaces")}</legend>
+                  <div className="flex flex-wrap gap-3">
+                    {draft.protocols.map((protocol) => <label key={protocol} className="flex items-center gap-1">
+                      <input type="checkbox" checked={(model.interfaces ?? draft.protocols).includes(protocol)} disabled={busy}
+                        onChange={(e) => toggleModelInterface(index, protocol, e.target.checked)} />{LABELS[protocol]}
+                    </label>)}
+                  </div>
+                  {model.interfaces !== undefined && model.interfaces.length === 0 && <p className="text-danger">{t("settings.shared.modelInterfaceRequired")}</p>}
+                </fieldset>
                 {advanced && <div className="grid grid-cols-2 gap-2">
                   <Field label={t("settings.shared.contextWindow")}><Input type="number" min={1} step={1} value={model.contextWindow ?? ""} disabled={busy}
                     onChange={(e) => change({ models: draft.models.map((m, i) => i === index ? { ...m, contextWindow: e.target.value ? Number(e.target.value) : undefined } : m) })} /></Field>
@@ -316,7 +347,7 @@ export function SharedProvidersPanel() {
             </div>}
             <p className="rounded bg-accent/5 p-3 text-xs text-content-muted">{t("settings.shared.isolation")}</p>
             <div className="flex items-center gap-2">
-              <Button type="submit" variant="primary" size="sm" disabled={busy || discovering || !draft.protocols.length || !draft.enabledAgents.length}>
+              <Button type="submit" variant="primary" size="sm" disabled={busy || discovering || !draft.protocols.length || !draft.enabledAgents.length || draft.models.some((model) => model.interfaces !== undefined && model.interfaces.length === 0) || draft.enabledAgents.some((agent) => !supports(agent, draft.protocols, draft.models))}>
                 {busy && <IconLoader2 size={12} className="animate-spin" />}{t("settings.shared.save")}
               </Button>
               {selected && <Button type="button" variant="danger" size="sm" disabled={busy || discovering} onClick={() => setPendingDelete(selected)}>{t("settings.shared.delete")}</Button>}

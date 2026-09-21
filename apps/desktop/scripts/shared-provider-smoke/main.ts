@@ -42,6 +42,30 @@ const claudeProjection = CustomModelStore.listPublic().find((provider) => provid
 check("Claude projection prefers chat completions", claudeProjection?.protocol === "openai" && claudeProjection.baseUrl === base.baseUrl);
 const codexProjection = (await CodexModelsStore.listPublic()).find((provider) => provider.id === runtimeId);
 check("Codex projection uses responses override", codexProjection?.baseUrl === base.endpointOverrides.responses);
+check("model interfaces must be enabled by the provider", !SharedProviderSaveInputSchema.safeParse({
+  ...base,
+  models: [{ id: "chat-model", interfaces: ["responses"] }],
+  protocols: ["chat-completions"],
+  endpointOverrides: {},
+  enabledAgents: ["claude"],
+}).success);
+SharedProviderStore.save({
+  ...base,
+  id: saved[0]!.id,
+  models: [
+    { id: "chat-model", interfaces: ["chat-completions"] },
+    { id: "responses-model", interfaces: ["responses"] },
+  ],
+  enabledAgents: ["claude", "codex", "pi"],
+  apiKey: "TEST_SECRET_DO_NOT_PERSIST",
+});
+const scopedClaude = CustomModelStore.listPublic().find((provider) => provider.id === runtimeId);
+const scopedCodex = (await CodexModelsStore.listPublic()).find((provider) => provider.id === runtimeId);
+const scopedPi = (await PiModelsStore.listPublic())[runtimeId];
+check("Claude only receives models with a Claude interface", JSON.stringify(scopedClaude?.models.map((model) => model.id)) === JSON.stringify(["chat-model"]));
+check("Codex only receives models with a Responses interface", JSON.stringify(scopedCodex?.models.map((model) => model.id)) === JSON.stringify(["responses-model"]));
+check("Pi keeps the interface on each projected model", scopedPi?.models?.find((model) => model.id === "responses-model")?.api === "openai-responses");
+SharedProviderStore.save({ ...base, id: saved[0]!.id, apiKey: "TEST_SECRET_DO_NOT_PERSIST" });
 let legacyWriteRefused = false;
 try { CustomModelStore.remove(runtimeId); } catch { legacyWriteRefused = true; }
 check("legacy Claude API cannot delete a shared provider", legacyWriteRefused && SharedProviderStore.listPublic().length === 1);

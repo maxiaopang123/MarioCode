@@ -1,3 +1,5 @@
+import type { SharedProviderProtocol } from "./sharedProvider.js";
+
 /**
  * Custom model configuration — lets the user plug in their own Anthropic-
  * compatible endpoint (DeepSeek's `/anthropic`, one-api/new-api gateways,
@@ -118,6 +120,8 @@ export interface CustomModelEntry {
    *  ANTHROPIC_MODEL carries the `[1m]` suffix (the DeepSeek-style gateway
    *  convention). */
   supports1m?: boolean;
+  /** Effective shared-provider interfaces for this model, when applicable. */
+  interfaces?: SharedProviderProtocol[];
 }
 
 /** Fully-resolved config passed to the provider at turn time (main-process

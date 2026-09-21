@@ -21,11 +21,25 @@ const HttpUrlSchema = z.string().trim().max(2_048).url().refine((value) => {
 export const SharedProviderModelSchema = z.object({
   id: z.string().trim().min(1).max(256),
   label: z.string().trim().min(1).max(256).optional(),
+  /** Optional per-model interfaces. Missing means inherit provider protocols. */
+  interfaces: z.array(SharedProviderProtocolSchema).min(1).max(3).optional(),
   contextWindow: z.number().int().positive().optional(),
   maxTokens: z.number().int().positive().optional(),
   reasoning: z.boolean().optional(),
   input: z.array(z.enum(["text", "image"])).min(1).max(2).optional(),
 }).strict();
+
+export type SharedProviderModel = z.infer<typeof SharedProviderModelSchema>;
+
+/** Resolve the effective interfaces for one model, retaining the old
+ * provider-wide behavior for configs written before model-level selection. */
+export function resolveSharedModelInterfaces(
+  providerProtocols: readonly SharedProviderProtocol[],
+  modelInterfaces?: readonly SharedProviderProtocol[],
+): SharedProviderProtocol[] {
+  const source = modelInterfaces ?? providerProtocols;
+  return source.filter((protocol) => providerProtocols.includes(protocol));
+}
 
 const EndpointOverridesSchema = z.object({
   anthropic: HttpUrlSchema.optional(),
@@ -33,12 +47,15 @@ const EndpointOverridesSchema = z.object({
   responses: HttpUrlSchema.optional(),
 }).strict().optional();
 
-function compatible(value: { protocols: SharedProviderProtocol[]; enabledAgents: SharedProviderAgent[] }): boolean {
-  const protocols = new Set(value.protocols);
+function compatible(value: { protocols: SharedProviderProtocol[]; enabledAgents: SharedProviderAgent[]; models: SharedProviderModel[] }): boolean {
   return value.enabledAgents.every((agent) =>
-    agent === "claude" ? protocols.has("anthropic") || protocols.has("chat-completions")
-      : agent === "codex" ? protocols.has("responses")
-        : value.protocols.length > 0);
+    value.models.some((model) => {
+      const protocols = new Set(resolveSharedModelInterfaces(value.protocols, model.interfaces));
+      return agent === "claude" ? protocols.has("anthropic") || protocols.has("chat-completions")
+        : agent === "codex" ? protocols.has("responses")
+          : protocols.size > 0;
+    }),
+  );
 }
 
 const SharedProviderCoreShape = {
@@ -51,10 +68,15 @@ const SharedProviderCoreShape = {
   enabledAgents: z.array(SharedProviderAgentSchema).min(1).max(3),
 };
 
-function validateCore(value: { protocols: SharedProviderProtocol[]; enabledAgents: SharedProviderAgent[]; models: Array<{ id: string }>; endpointOverrides?: Partial<Record<SharedProviderProtocol, string>> }, ctx: z.RefinementCtx): void {
+function validateCore(value: { protocols: SharedProviderProtocol[]; enabledAgents: SharedProviderAgent[]; models: SharedProviderModel[]; endpointOverrides?: Partial<Record<SharedProviderProtocol, string>> }, ctx: z.RefinementCtx): void {
   if (new Set(value.protocols).size !== value.protocols.length) ctx.addIssue({ code: "custom", message: "protocols must be unique" });
   if (new Set(value.enabledAgents).size !== value.enabledAgents.length) ctx.addIssue({ code: "custom", message: "enabledAgents must be unique" });
   if (new Set(value.models.map((model) => model.id)).size !== value.models.length) ctx.addIssue({ code: "custom", message: "model ids must be unique" });
+  for (const model of value.models) {
+    if (model.interfaces?.some((protocol) => !value.protocols.includes(protocol))) {
+      ctx.addIssue({ code: "custom", message: `model interfaces must be enabled by provider: ${model.id}` });
+    }
+  }
   if (!compatible(value)) ctx.addIssue({ code: "custom", message: "enabled agent has no compatible protocol" });
   for (const protocol of Object.keys(value.endpointOverrides ?? {})) {
     if (!value.protocols.includes(protocol as SharedProviderProtocol)) ctx.addIssue({ code: "custom", message: `endpoint override requires enabled protocol: ${protocol}` });

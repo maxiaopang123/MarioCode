@@ -28,6 +28,8 @@ export const en = {
   "settings.shared.modelLabel": "Display name (optional)",
   "settings.shared.vision": "Image input",
   "settings.shared.reasoning": "Reasoning",
+  "settings.shared.modelInterfaces": "Interfaces supported by this model",
+  "settings.shared.modelInterfaceRequired": "Select at least one interface for this model.",
   "settings.shared.contextWindow": "Context window tokens (optional)",
   "settings.shared.maxTokens": "Maximum output tokens (optional)",
   "settings.shared.modelsEndpoint": "Models endpoint (optional)",

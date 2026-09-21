@@ -46,7 +46,7 @@ import { resolveProtocol } from "@contracts/customModel";
 import { sanitizeCustomHeaders } from "@main/providers/upstreamHeaders.js";
 import { SettingRepo } from "@main/store/repositories.js";
 import { log } from "@main/lib/logger.js";
-import { sharedRuntimeId } from "@contracts/sharedProvider";
+import { resolveSharedModelInterfaces, sharedRuntimeId, type SharedProviderProtocol } from "@contracts/sharedProvider";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 
 /** Settings-table key for the encrypted-token map. */
@@ -291,27 +291,35 @@ function sharedClaudeProjection(): CustomModelPublic[] {
   return SharedProviderStore.listPublic()
     .filter((provider) => provider.enabledAgents.includes("claude"))
     .flatMap((provider) => {
+      const models = provider.models
+        .map((model) => ({
+          model,
+          interfaces: resolveSharedModelInterfaces(provider.protocols, model.interfaces)
+            .filter((protocol) => protocol === "anthropic" || protocol === "chat-completions"),
+        }))
+        .filter(({ interfaces }) => interfaces.length > 0);
       // Third-party gateways commonly expose both labels while only their
       // OpenAI-compatible route accepts the gateway's complete model catalog.
       // Prefer that route when both are enabled; a provider that genuinely
       // needs Anthropic Messages can simply omit Chat Completions or give it
       // a separate shared configuration.
-      const protocol = provider.protocols.includes("chat-completions")
+      const upstreamProtocol = models.some(({ interfaces }) => interfaces.includes("chat-completions"))
         ? "openai"
-        : provider.protocols.includes("anthropic")
+        : models.some(({ interfaces }) => interfaces.includes("anthropic"))
           ? "anthropic"
           : null;
-      if (!protocol) return [];
-      const upstreamProtocol = protocol === "anthropic" ? "anthropic" : "chat-completions";
+      if (!upstreamProtocol || models.length === 0) return [];
+      const routeProtocol: SharedProviderProtocol = upstreamProtocol === "anthropic" ? "anthropic" : "chat-completions";
       return [{
         id: sharedRuntimeId(provider.id),
         name: `${provider.name}（共享）`,
-        baseUrl: SharedProviderStore.endpointUrl(provider, upstreamProtocol),
-        authMode: protocol === "anthropic" ? "api_key" : "auth_token",
-        protocol,
+        baseUrl: SharedProviderStore.endpointUrl(provider, routeProtocol),
+        authMode: upstreamProtocol === "anthropic" ? "api_key" : "auth_token",
+        protocol: upstreamProtocol,
         authTokenMasked: provider.hasApiKey ? "***" : "",
-        models: provider.models.map((model) => ({
+        models: models.map(({ model, interfaces }) => ({
           id: model.id,
+          interfaces,
           ...(model.contextWindow && model.contextWindow >= 1_000_000 ? { supports1m: true } : {}),
         })),
         disableNonEssentialTraffic: true,
@@ -451,17 +459,15 @@ export const CustomModelStore = {
       if (!shared.enabledAgents.includes("claude")) {
         throw new Error(`共享提供商 "${shared.name}" 未启用 Claude`);
       }
-      const upstreamProtocol = shared.protocols.includes("chat-completions")
-        ? "chat-completions"
-        : shared.protocols.includes("anthropic")
-          ? "anthropic"
-          : null;
-      if (!upstreamProtocol) {
-        throw new Error(`共享提供商 "${shared.name}" 没有 Claude 可用协议`);
-      }
-      if (!selected || !shared.models.some((model) => model.id === selected)) {
+      const selectedEntry = selected ? shared.models.find((model) => model.id === selected) : undefined;
+      if (!selectedEntry) {
         throw new Error(`共享提供商 "${shared.name}" 中不存在所选模型 "${selected ?? ""}"`);
       }
+      const selectedInterfaces = resolveSharedModelInterfaces(shared.protocols, selectedEntry.interfaces);
+      const upstreamProtocol = selectedInterfaces.includes("chat-completions")
+        ? "chat-completions"
+        : selectedInterfaces.includes("anthropic") ? "anthropic" : null;
+      if (!upstreamProtocol) throw new Error(`共享提供商 "${shared.name}" 的模型 "${selected}" 不支持 Claude 接口`);
       const authToken = SharedProviderStore.resolveApiKey(shared.id);
       if (!authToken) throw new Error(`共享提供商 "${shared.name}" 未配置 API Key`);
       return {
@@ -469,11 +475,15 @@ export const CustomModelStore = {
         authToken,
         authMode: upstreamProtocol === "anthropic" ? "api_key" : "auth_token",
         protocol: upstreamProtocol === "anthropic" ? "anthropic" : "openai",
-        selectedModel: selected,
-        models: shared.models.map((model) => ({
+        selectedModel: selectedEntry.id,
+        models: shared.models
+          .map((model) => ({
           id: model.id,
+          interfaces: resolveSharedModelInterfaces(shared.protocols, model.interfaces)
+            .filter((protocol) => protocol === "anthropic" || protocol === "chat-completions"),
           ...(model.contextWindow && model.contextWindow >= 1_000_000 ? { supports1m: true } : {}),
-        })),
+          }))
+          .filter((model) => model.interfaces.length > 0),
         disableNonEssentialTraffic: true,
       };
     }

@@ -121,7 +121,7 @@ try {
   assert.ok(!JSON.stringify(saved).includes(fixtureKey));
   const runtimeId = `shared_${provider.id.replaceAll("-", "")}`;
   const [claude, codex, pi] = await evaluate("Promise.all([window.api.customModel.list(),window.api.codexModels.list(),window.api.piModels.listAvailable()])");
-  assert.ok(claude.models.some((m) => m.id === runtimeId && m.protocol === "anthropic"));
+  assert.ok(claude.models.some((m) => m.id === runtimeId && m.protocol === "openai"));
   assert.ok(codex.providers.some((p) => p.id === runtimeId));
   assert.ok(pi.models.some((m) => m.id === `${runtimeId}/fixture-model`));
   assert.ok(!JSON.stringify([claude, codex, pi]).includes(fixtureKey));

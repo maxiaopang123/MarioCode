@@ -39,7 +39,7 @@ check("endpoint without override falls back to baseUrl", SharedProviderStore.end
 check("endpoint override wins", SharedProviderStore.endpointUrl(saved[0]!, "anthropic") === base.endpointOverrides.anthropic);
 const runtimeId = sharedRuntimeId(saved[0]!.id);
 const claudeProjection = CustomModelStore.listPublic().find((provider) => provider.id === runtimeId);
-check("Claude projection prefers anthropic", claudeProjection?.protocol === "anthropic" && claudeProjection.baseUrl === base.endpointOverrides.anthropic);
+check("Claude projection prefers chat completions", claudeProjection?.protocol === "openai" && claudeProjection.baseUrl === base.baseUrl);
 const codexProjection = (await CodexModelsStore.listPublic()).find((provider) => provider.id === runtimeId);
 check("Codex projection uses responses override", codexProjection?.baseUrl === base.endpointOverrides.responses);
 let legacyWriteRefused = false;

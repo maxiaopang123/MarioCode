@@ -291,10 +291,15 @@ function sharedClaudeProjection(): CustomModelPublic[] {
   return SharedProviderStore.listPublic()
     .filter((provider) => provider.enabledAgents.includes("claude"))
     .flatMap((provider) => {
-      const protocol = provider.protocols.includes("anthropic")
-        ? "anthropic"
-        : provider.protocols.includes("chat-completions")
-          ? "openai"
+      // Third-party gateways commonly expose both labels while only their
+      // OpenAI-compatible route accepts the gateway's complete model catalog.
+      // Prefer that route when both are enabled; a provider that genuinely
+      // needs Anthropic Messages can simply omit Chat Completions or give it
+      // a separate shared configuration.
+      const protocol = provider.protocols.includes("chat-completions")
+        ? "openai"
+        : provider.protocols.includes("anthropic")
+          ? "anthropic"
           : null;
       if (!protocol) return [];
       const upstreamProtocol = protocol === "anthropic" ? "anthropic" : "chat-completions";
@@ -446,10 +451,10 @@ export const CustomModelStore = {
       if (!shared.enabledAgents.includes("claude")) {
         throw new Error(`共享提供商 "${shared.name}" 未启用 Claude`);
       }
-      const upstreamProtocol = shared.protocols.includes("anthropic")
-        ? "anthropic"
-        : shared.protocols.includes("chat-completions")
-          ? "chat-completions"
+      const upstreamProtocol = shared.protocols.includes("chat-completions")
+        ? "chat-completions"
+        : shared.protocols.includes("anthropic")
+          ? "anthropic"
           : null;
       if (!upstreamProtocol) {
         throw new Error(`共享提供商 "${shared.name}" 没有 Claude 可用协议`);

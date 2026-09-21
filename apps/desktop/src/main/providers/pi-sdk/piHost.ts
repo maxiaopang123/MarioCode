@@ -129,7 +129,7 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
   const strict = req.permissionMode !== "bypassPermissions" && req.permissionMode !== "dontAsk";
   dropFileSnapshot(req.sessionId);
   const snapshot = getFileSnapshot(req.sessionId);
-  const extension = createMcodeExtension({ ctx, cwd: req.cwd, strict, sessionId: req.sessionId, projectPath: req.cwd, turnNumber: req.turnNumber, browserToolsEnabled: config.browserToolsEnabled,
+  const extension = createMcodeExtension({ ctx, cwd: req.cwd, strict, sessionId: req.sessionId, projectPath: req.cwd, turnNumber: req.turnNumber, browserToolsEnabled: config.browserToolsEnabled, userSystemPrompt: config.userSystemPrompt,
     browserBridge: { specs: config.browserToolSpecs, usagePrompt: config.browserUsagePrompt, invoke: (name, args, meta) => reverse(turnId, "browser", { name, args, meta } as never) as never }, snapshot,
     permissionState: (toolName) => reverse(turnId, "permissionState", { toolName } as never) as never });
   const loader = await buildPiSkillLoader({ sdk, cwd: req.cwd, agentDir: config.agentDir, allowNames: req.skills?.length ? req.skills : undefined, extraSkillPaths: config.extraSkillPaths, extensionFactories: [extension] });

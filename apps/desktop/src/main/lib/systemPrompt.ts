@@ -78,3 +78,74 @@ export const CLAUDE_PLAN_MODE_NUDGE = [
   `用户在 MarioCode 界面选择了「计划模式」:先调研、后实施。请先用只读工具(Read/Grep/Glob/WebSearch 等)完成调研,然后调用 EnterPlanMode 工具进入计划模式;形成方案后把计划写入计划文件,并调用 ExitPlanMode 请求用户批准,获得批准后才开始实施。`,
   `等待计划批准期间不要修改任何文件。若用户否决了计划,根据反馈修订后再次调用 ExitPlanMode。`,
 ].join("\n");
+
+/**
+ * Plan-mode tool guide (Pi variant): teaches the model the EnterPlanMode /
+ * ExitPlanMode tools the inline extension registers. Injected every turn via
+ * `before_agent_start` (Pi has no UI-driven plan permission mode to key off).
+ */
+export const PI_PLAN_MODE_PROMPT = [
+  `## 计划模式工具`,
+  `当任务复杂或涉及重要修改时,先制定计划再执行:`,
+  `1. 调用 EnterPlanMode 进入计划模式`,
+  `2. 使用 read/grep/find/ls 等只读工具充分调研;如需验证可写文件/执行命令,但每个修改操作都需用户审批`,
+  `3. 调用 ExitPlanMode({plan: "你的详细计划"}) 提交计划给用户审批`,
+  `4. 用户批准后退出计划模式开始执行;拒绝则留在计划模式修改计划`,
+  `计划文本应为结构化的 Markdown,包含目标、步骤、影响范围。`,
+  `仅当任务复杂、多步或涉及重要修改时才进入计划模式;简单、单步或目标明确的任务直接执行,不要走计划流程。`,
+].join("\n");
+
+/**
+ * Plan-mode tool guide (Codex variant): same flow as Pi's, but the dynamic
+ * tools are snake_case (`enter_plan_mode` / `exit_plan_mode`) and the
+ * "read-only research" step names no concrete tools (codex's toolset differs).
+ * Written into CODEX_HOME/AGENTS.md by the Codex provider.
+ */
+export const CODEX_PLAN_MODE_PROMPT = [
+  `## 计划模式工具`,
+  `当任务复杂或涉及重要修改时,先制定计划再执行:`,
+  `1. 调用 enter_plan_mode 进入计划模式`,
+  `2. 使用只读方式充分调研;如需验证可写文件/执行命令,但每个修改操作都需用户审批`,
+  `3. 调用 exit_plan_mode({plan: "你的详细计划"}) 提交计划给用户审批`,
+  `4. 用户批准后退出计划模式开始执行;拒绝则留在计划模式修改计划`,
+  `计划文本应为结构化的 Markdown,包含目标、步骤、影响范围。`,
+  `仅当任务复杂、多步或涉及重要修改时才进入计划模式;简单、单步或目标明确的任务直接执行,不要走计划流程。`,
+].join("\n");
+
+/** Windows path hint (Codex variant) — static, unlike Claude's which is
+ *  derived from the detected bash flavour (`bashPathHintFor`). */
+export const CODEX_WIN32_PATH_HINT = [
+  `## Windows 路径`,
+  `本机 Windows 下 bash 可能运行在 WSL 或 Git Bash 中。写文件时始终使用 Windows 原生路径(如 D:\\workspace\\file.ts);不要使用 /mnt/<drive>/... 形式的路径。`,
+].join("\n");
+
+/* ── User-authored system prompt (settings → 系统提示词; TODO-006) ──
+ * The user's global + project prompts are provider-neutral text that every
+ * provider appends right AFTER its identity section and BEFORE its tool
+ * guides, so all three engines read the same instructions in the same
+ * position. The headings below wrap the raw text so the model can tell the
+ * two scopes apart; the precedence line is added only when both exist. */
+
+export const USER_GLOBAL_PROMPT_HEADING = `## 用户全局指令`;
+export const USER_PROJECT_PROMPT_HEADING = `## 项目指令`;
+const USER_PROMPT_PRECEDENCE_NOTE = `以下项目指令与上面的用户全局指令冲突时,以项目指令为准。`;
+
+/**
+ * Wrap the user's global / project prompt text into prompt sections. Empty
+ * or whitespace-only scopes are dropped; the returned array is meant to be
+ * spread into `joinPromptSections(identity, ...sections, ...guides)`.
+ */
+export function formatUserPromptSections(globalPrompt: string, projectPrompt: string): string[] {
+  const global = globalPrompt.trim();
+  const project = projectPrompt.trim();
+  const out: string[] = [];
+  if (global) out.push(`${USER_GLOBAL_PROMPT_HEADING}\n${global}`);
+  if (project) {
+    out.push(
+      global
+        ? `${USER_PROJECT_PROMPT_HEADING}\n${USER_PROMPT_PRECEDENCE_NOTE}\n${project}`
+        : `${USER_PROJECT_PROMPT_HEADING}\n${project}`,
+    );
+  }
+  return out;
+}

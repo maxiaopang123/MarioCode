@@ -23,6 +23,7 @@ import { buildCustomEnv, MCODE_CONFIG_DIR, resolveActiveModel } from "./customEn
 import type { ClaudeContextWindowTag } from "./claudeTokenUsage.js";
 import { ASK_SYSTEM_PROMPT } from "@main/lib/askQuestion.js";
 import { CLAUDE_IDENTITY_PROMPT, CLAUDE_PLAN_MODE_NUDGE, joinPromptSections } from "@main/lib/systemPrompt.js";
+import { loadUserSystemPrompt, userSystemPromptSections } from "@main/lib/userSystemPrompt.js";
 import { bashPathHintFor, detectBashEnv } from "@main/lib/bashEnv.js";
 import { getFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
 import {
@@ -1130,6 +1131,9 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     //     wrong-form paths in the first place — including inside Bash commands
     //     (e.g. `cat > /mnt/d/...`), which the guard can't intercept.
     // (2) AskUserQuestion sentinel fallback when the native tool is missing.
+    // (U) The user's own global + project prompt (settings → 系统提示词) is
+    //     spliced in right after the identity — same slot on every provider —
+    //     once the per-turn config batch below has read it.
     // Identity is always present, so the preset+append is always active —
     // the `claude_code` preset (full Claude Code tool guidance + safety rules)
     // becomes the base on every platform, with our fragments appended on top.
@@ -1144,14 +1148,6 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     if (!this.capabilities.supportsAskUserQuestion) {
       appends.push(ASK_SYSTEM_PROMPT);
     }
-    options.systemPrompt = {
-      type: "preset",
-      preset: "claude_code",
-      // Blank-line section separation (shared with the Pi provider's injector)
-      // — a bare space glues the Chinese identity section onto the English
-      // path hint and the model reads them as one run-on paragraph.
-      append: joinPromptSections(...appends),
-    };
 
     // --- In-process MCP server: browser tools ---
     // Exposes `browser_*` tools (navigate/snapshot/click/screenshot/list) as an
@@ -1182,7 +1178,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     // plugin-MCP merge (which accepts a precomputed set to avoid a second
     // directory scan).
     const enabledPluginsPromise = getEnabledPlugins();
-    const [mcpState, browserServer, projectMcpRecord, outputStyle, enabledPlugins, pluginMcp] =
+    const [mcpState, browserServer, projectMcpRecord, outputStyle, enabledPlugins, pluginMcp, userPrompt] =
       await Promise.all([
         getMcpManagement(),
         // Pure constructor after the (cached) SDK import — building it
@@ -1193,7 +1189,22 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
         getOutputStyleSetting(),
         enabledPluginsPromise,
         enabledPluginsPromise.then((plugins) => getPluginMcpServers(plugins)),
+        loadUserSystemPrompt({ cwd: req.cwd, sessionId: req.sessionId }),
       ]);
+
+    // User prompt (global + project) lands right after the identity section
+    // (index 0) and before the path hint / plan nudge / ask fallback, so the
+    // model reads the user's standing instructions before tool guidance —
+    // the same slot Pi's injector and Codex's developerInstructions use.
+    appends.splice(1, 0, ...userSystemPromptSections(userPrompt));
+    options.systemPrompt = {
+      type: "preset",
+      preset: "claude_code",
+      // Blank-line section separation (shared with the Pi provider's injector)
+      // — a bare space glues the Chinese identity section onto the English
+      // path hint and the model reads them as one run-on paragraph.
+      append: joinPromptSections(...appends),
+    };
 
     if (!mcpState.browserDisabled) {
       options.mcpServers = { [BROWSER_MCP_SERVER]: browserServer };

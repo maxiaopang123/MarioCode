@@ -541,6 +541,19 @@ const api = {
       ipcRenderer.invoke(IPC.OUTPUT_STYLE_LIST, input)) as RpcMap["outputStyle.list"],
   },
 
+  /** Unified system prompt (settings panel): project-scope file read/write
+   *  + the layered per-provider preview. The global scope is persisted via
+   *  the generic setting channels; every provider re-reads both scopes at
+   *  turn start, so edits apply from the next turn. */
+  systemPrompt: {
+    readProject: ((input) =>
+      ipcRenderer.invoke(IPC.SYSTEM_PROMPT_READ_PROJECT, input)) as RpcMap["systemPrompt.readProject"],
+    writeProject: ((input) =>
+      ipcRenderer.invoke(IPC.SYSTEM_PROMPT_WRITE_PROJECT, input)) as RpcMap["systemPrompt.writeProject"],
+    preview: ((input) =>
+      ipcRenderer.invoke(IPC.SYSTEM_PROMPT_PREVIEW, input)) as RpcMap["systemPrompt.preview"],
+  },
+
   /** Usage stats (settings panel): aggregated token/cost usage over the
    *  persisted per-turn history (summary + per-model + per-day heatmap). */
   usage: {

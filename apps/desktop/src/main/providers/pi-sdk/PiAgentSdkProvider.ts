@@ -8,6 +8,8 @@ import { resolveGitBash } from "@main/lib/binaryResolve.js";
 import { getEnabledPluginSkillRoots } from "@main/plugins/pluginManager.js";
 import { getMcpManagement } from "@main/lib/mcpConfig.js";
 import { BROWSER_TOOL_SPECS, browserToolsUsagePrompt } from "@main/browser/agentBrowserTools.js";
+import { joinPromptSections } from "@main/lib/systemPrompt.js";
+import { loadUserSystemPrompt, userSystemPromptSections } from "@main/lib/userSystemPrompt.js";
 import { piHostClient } from "./PiHostClient.js";
 
 const PI_PERMISSION_MODES = [
@@ -71,8 +73,12 @@ export class PiAgentSdkProvider implements AgentProvider {
       }
     }
     const turnId = `${req.sessionId}:${randomUUID()}`;
+    // User global + project prompt (settings → 系统提示词): resolved here
+    // because the host process has no DB and no project lookup; the
+    // extension's before_agent_start injector appends it after the identity.
+    const userSystemPrompt = joinPromptSections(...userSystemPromptSections(await loadUserSystemPrompt({ cwd: req.cwd, sessionId: req.sessionId })));
     let running = true;
-    const done = piHostClient.call({ method: "startTurn", params: { turnId, request: req, ...config, browserToolSpecs: BROWSER_TOOL_SPECS, browserUsagePrompt: browserToolsUsagePrompt() } }, ctx, turnId, 24 * 60 * 60_000)
+    const done = piHostClient.call({ method: "startTurn", params: { turnId, request: req, ...config, browserToolSpecs: BROWSER_TOOL_SPECS, browserUsagePrompt: browserToolsUsagePrompt(), userSystemPrompt } }, ctx, turnId, 24 * 60 * 60_000)
       .then(() => {}, (err) => {
         const message = err instanceof Error ? err.message : String(err);
         ctx.log.error(`pi host error: ${message}`);

@@ -167,6 +167,9 @@ export interface CreateMcodeExtensionOptions {
    *  Claude provider's options.mcpServers injection); read per-turn by the
    *  provider, so flipping it lands on the next message. */
   browserToolsEnabled: boolean;
+  /** The user's global + project system prompt, pre-joined main-side
+   *  (`PiHostTurnConfig.userSystemPrompt`). Empty string = nothing to inject. */
+  userSystemPrompt?: string;
   browserBridge: PiBrowserBridge;
   snapshot: FileSnapshot;
   permissionState?(toolName: string): Promise<{ mode?: PermissionMode; alwaysAllowed: boolean }>;
@@ -183,7 +186,7 @@ export interface CreateMcodeExtensionOptions {
  * useful for debugging whether the extension loaded.
  */
 export function createMcodeExtension(opts: CreateMcodeExtensionOptions): InlineExtension {
-  const { ctx, cwd, strict, sessionId, projectPath, turnNumber, browserToolsEnabled, browserBridge, snapshot, permissionState } = opts;
+  const { ctx, cwd, strict, sessionId, projectPath, turnNumber, browserToolsEnabled, userSystemPrompt, browserBridge, snapshot, permissionState } = opts;
 
   // ── Plan mode state (per-turn, in-process) ──────────────────────────
   // Tracked here rather than via ctx.getPermissionMode() because the latter
@@ -209,7 +212,7 @@ export function createMcodeExtension(opts: CreateMcodeExtensionOptions): InlineE
         registerBrowserTools(pi, { ctx, sessionId, projectPath, turnNumber, browserBridge });
       }
       registerPlanModeTools(pi, { ctx, sessionId, planMode });
-      registerSystemPromptInjector(pi, { browserToolsEnabled, browserUsagePrompt: browserBridge.usagePrompt });
+      registerSystemPromptInjector(pi, { browserToolsEnabled, browserUsagePrompt: browserBridge.usagePrompt, userSystemPrompt: userSystemPrompt ?? "" });
     },
   };
 }
@@ -1038,7 +1041,7 @@ const PLAN_MODE_PROMPT = [
  */
 function registerSystemPromptInjector(
   pi: ExtensionAPI,
-  deps: { browserToolsEnabled: boolean; browserUsagePrompt: string },
+  deps: { browserToolsEnabled: boolean; browserUsagePrompt: string; userSystemPrompt: string },
 ): void {
   pi.on(
     "before_agent_start",
@@ -1046,6 +1049,7 @@ function registerSystemPromptInjector(
       const base = event.systemPrompt ?? "";
       const injected = joinPromptSections(
         PI_IDENTITY_PROMPT,
+        ...(deps.userSystemPrompt ? [deps.userSystemPrompt] : []),
         ASK_NATIVE_TOOL_PROMPT,
         PLAN_MODE_PROMPT,
         // Advertise the browser tools only when they are actually registered

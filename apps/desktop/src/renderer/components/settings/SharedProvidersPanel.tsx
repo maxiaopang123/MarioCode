@@ -8,7 +8,7 @@ import type {
 } from "@contracts/sharedProvider";
 import { api } from "@renderer/lib/api.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
-import { useSessionStore } from "@renderer/stores/sessionStore.js";
+import { useSessionStore, validateComposerSelection } from "@renderer/stores/sessionStore.js";
 import { useToastStore } from "@renderer/stores/toastStore.js";
 import { Button, Input, ConfirmDialog, Dialog } from "@renderer/components/ui/index.js";
 import { IconPlus, IconTrash, IconLoader2, IconKey, IconRefresh } from "@renderer/lib/icons.js";
@@ -81,6 +81,11 @@ export function SharedProvidersPanel() {
         id: `${p.id}/${m.id}`, label: m.label ?? m.id, hint: m.hint, supplier: p.name,
       }))), codexModelsLoaded: true,
     });
+    // Saving a shared provider can remove or rename a model that the blank
+    // composer remembered from an earlier catalog. Re-run the same guarded
+    // validation used during startup so Claude/Codex do not send stale
+    // customModelId or provider/model references into their runtimes.
+    validateComposerSelection(useSessionStore.setState, useSessionStore.getState);
   }
   async function save() {
     if (!draft) return;

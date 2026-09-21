@@ -2825,6 +2825,77 @@ export interface OutputStyleEntry {
 export const OutputStyleListSchema = z.object({});
 export type OutputStyleListInput = z.infer<typeof OutputStyleListSchema>;
 
+/* ── Unified system prompt (settings panel · TODO-006) ──
+ *  One user-editable instruction block that every provider (Claude / Pi /
+ *  Codex) appends to its system prompt on each turn, right after the
+ *  MarioCode identity section. Two scopes:
+ *   - global: persisted in the settings table under
+ *     AGENT_SYSTEM_PROMPT_GLOBAL_SETTING_KEY (plain text, read per turn);
+ *   - project: a markdown file at `<project>/.mcode/prompt.md`, read per
+ *     turn from the session's cwd (a worktree checkout falls back to the
+ *     project root when the file is not part of the checkout).
+ *  Changes apply on the NEXT turn (same contract as output style / MCP). */
+
+/** Settings-table key holding the global user system prompt (raw text;
+ *  empty/null = nothing injected). */
+export const AGENT_SYSTEM_PROMPT_GLOBAL_SETTING_KEY = "agent.systemPrompt.global";
+
+/** Project-scope prompt file, relative to the project root. */
+export const PROJECT_SYSTEM_PROMPT_RELATIVE_PATH = ".mcode/prompt.md";
+
+/** Hard cap per scope (characters). The panel refuses longer text; the
+ *  per-turn loader truncates externally edited files at the same bound so a
+ *  runaway file can't swallow the context window. */
+export const SYSTEM_PROMPT_MAX_CHARS = 20000;
+
+/** Read `<projectPath>/.mcode/prompt.md`. Missing file → `exists: false`,
+ *  empty content. */
+export const SystemPromptReadProjectSchema = z.object({
+  projectPath: z.string().min(1),
+});
+export type SystemPromptReadProjectInput = z.infer<typeof SystemPromptReadProjectSchema>;
+
+/** Write `<projectPath>/.mcode/prompt.md` (creating `.mcode/`). Whitespace-only
+ *  content deletes the file instead so an emptied editor leaves no stub. */
+export const SystemPromptWriteProjectSchema = z.object({
+  projectPath: z.string().min(1),
+  content: z.string().max(SYSTEM_PROMPT_MAX_CHARS),
+});
+export type SystemPromptWriteProjectInput = z.infer<typeof SystemPromptWriteProjectSchema>;
+
+/** Compose the layered system prompt one provider would inject for a turn in
+ *  `projectPath` (null = no project scope), as an ordered list of sections. */
+export const SystemPromptPreviewSchema = z.object({
+  providerId: z.string().min(1),
+  projectPath: z.string().min(1).nullable(),
+});
+export type SystemPromptPreviewInput = z.infer<typeof SystemPromptPreviewSchema>;
+
+/** Where a previewed section comes from:
+ *   - engine: text owned by the SDK / CLI that MarioCode cannot read (base
+ *     prompt, output style, CLAUDE.md / AGENTS.md loaded by the engine) —
+ *     `text` is null, the renderer shows a localized note;
+ *   - fixed: MarioCode's own always-on fragment (identity, tool guides);
+ *   - conditional: a MarioCode fragment injected only in some turns (plan
+ *     mode, Windows path hint, AskUserQuestion fallback);
+ *   - user: the global / project prompt this panel edits. */
+export type SystemPromptSectionKind = "engine" | "fixed" | "conditional" | "user";
+
+/** One layer of the composed prompt. `id` is a stable identifier the renderer
+ *  maps to a localized title (unknown ids render verbatim); `meta` carries
+ *  interpolation values for that title (e.g. `{ path }`, `{ style }`). */
+export interface SystemPromptPreviewSection {
+  id: string;
+  kind: SystemPromptSectionKind;
+  text: string | null;
+  meta?: Record<string, string>;
+}
+
+export interface SystemPromptPreviewResult {
+  providerId: string;
+  sections: SystemPromptPreviewSection[];
+}
+
 /* ── MCP management (settings panel) ──
  *  The settings panel's "MCP" section lists three MCP server sources and lets
  *  the user toggle, add, remove and import them:
@@ -4465,6 +4536,18 @@ export interface RpcMap {
   "outputStyle.list": (
     input: OutputStyleListInput,
   ) => Promise<{ styles: OutputStyleEntry[] }>;
+  /** Unified system prompt (settings panel). The global scope rides the
+   *  generic setting channels under AGENT_SYSTEM_PROMPT_GLOBAL_SETTING_KEY;
+   *  these three cover the project file and the layered preview. */
+  "systemPrompt.readProject": (
+    input: SystemPromptReadProjectInput,
+  ) => Promise<{ path: string; exists: boolean; content: string }>;
+  "systemPrompt.writeProject": (
+    input: SystemPromptWriteProjectInput,
+  ) => Promise<{ path: string; exists: boolean }>;
+  "systemPrompt.preview": (
+    input: SystemPromptPreviewInput,
+  ) => Promise<SystemPromptPreviewResult>;
   // Usage stats (settings panel)
   /** Aggregate the persisted per-turn usage history into summary / per-model /
    *  per-day views for the requested time range. Read-only. */
@@ -4824,6 +4907,10 @@ export const IPC = {
   MCP_IMPORT: "mcp:import",
   // Output styles (settings panel): list built-in + user styles
   OUTPUT_STYLE_LIST: "outputStyle:list",
+  // Unified system prompt (settings panel): project file + layered preview
+  SYSTEM_PROMPT_READ_PROJECT: "systemPrompt:readProject",
+  SYSTEM_PROMPT_WRITE_PROJECT: "systemPrompt:writeProject",
+  SYSTEM_PROMPT_PREVIEW: "systemPrompt:preview",
   // Usage stats (settings panel): aggregated token/cost usage over time ranges
   USAGE_STATS: "usage:stats",
   // Language servers (LSP): install/enable/sync/request

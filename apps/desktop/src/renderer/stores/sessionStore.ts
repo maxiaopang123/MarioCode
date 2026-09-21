@@ -3258,7 +3258,7 @@ function isValidRememberedModel(
  * stale choice on the next launch. Sessions that already have messages are
  * skipped: their config is row-authoritative and re-synced on select.
  */
-function validateComposerSelection(
+export function validateComposerSelection(
   set: (partial: Partial<SessionState> | ((s: SessionState) => Partial<SessionState>)) => void,
   get: () => SessionState,
 ): void {

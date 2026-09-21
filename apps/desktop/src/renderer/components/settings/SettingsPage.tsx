@@ -21,6 +21,7 @@ import {
   IconPackage,
   IconPuzzle,
   IconCalendar,
+  IconMessageChatbot,
   McpIcon,
   type TablerIconProps,
 } from "@renderer/lib/icons.js";
@@ -42,6 +43,7 @@ import { VoicePanel } from "./VoicePanel.js";
 import { UsagePanel } from "./UsagePanel.js";
 import { AboutPanel } from "./AboutPanel.js";
 import { ScheduledTasksPanel } from "./ScheduledTasksPanel.js";
+import { SystemPromptPanel } from "./SystemPromptPanel.js";
 
 /**
  * Settings page with a left functional menu + right content panel layout.
@@ -59,7 +61,7 @@ import { ScheduledTasksPanel } from "./ScheduledTasksPanel.js";
  * Note: the legacy “Claude CLI 路径” panel was removed - the Agent SDK bundles
  * its own claude binary, so an externally-configured path is no longer used.
  */
-type SectionId = "general" | "runtimes" | "custom-models" | "skills" | "mcp" | "plugins" | "appearance" | "shortcuts" | "gestures" | "voice" | "notifications" | "scheduled-tasks" | "git" | "terminal" | "browser" | "lsp-languages" | "usage" | "about";
+type SectionId = "general" | "runtimes" | "custom-models" | "system-prompt" | "skills" | "mcp" | "plugins" | "appearance" | "shortcuts" | "gestures" | "voice" | "notifications" | "scheduled-tasks" | "git" | "terminal" | "browser" | "lsp-languages" | "usage" | "about";
 
 interface NavItem {
   id: SectionId;
@@ -91,6 +93,7 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: "settings.navGroup.ai",
     items: [
       { id: "custom-models", labelKey: "settings.nav.customModels", icon: IconRobot },
+      { id: "system-prompt", labelKey: "settings.nav.systemPrompt", icon: IconMessageChatbot },
       { id: "runtimes", labelKey: "settings.nav.runtimes", icon: IconPackage },
       { id: "plugins", labelKey: "settings.nav.plugins", icon: IconPuzzle },
       { id: "skills", labelKey: "settings.nav.skills", icon: IconSparkles },
@@ -226,6 +229,7 @@ export function SettingsPage() {
           {active === "general" && <GeneralPanel />}
           {active === "appearance" && <AppearancePanel />}
           {active === "custom-models" && <CustomModelsPanel />}
+          {active === "system-prompt" && <SystemPromptPanel />}
           {active === "shortcuts" && <ShortcutsPanel />}
           {active === "gestures" && <GesturesPanel />}
           {active === "voice" && <VoicePanel />}

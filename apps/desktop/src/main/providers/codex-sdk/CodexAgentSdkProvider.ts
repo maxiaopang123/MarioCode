@@ -63,6 +63,7 @@ import { getOrSetFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
 import { getMcpManagement } from "@main/lib/mcpConfig.js";
 import { CODEX_IDENTITY_PROMPT, joinPromptSections } from "@main/lib/systemPrompt.js";
 import { ASK_NATIVE_TOOL_PROMPT } from "@main/lib/askQuestion.js";
+import { loadUserSystemPrompt, userSystemPromptSections } from "@main/lib/userSystemPrompt.js";
 import {
   parseQuestions,
   formatAnswersForModel,
@@ -234,6 +235,9 @@ export class CodexAgentSdkProvider implements AgentProvider {
     }
     await CodexModelsStore.ensureConfigMaterialized(req.cwd);
     await ensureCodexHomeIdentity();
+    const userSystemPrompt = joinPromptSections(
+      ...userSystemPromptSections(await loadUserSystemPrompt({ cwd: req.cwd, sessionId: req.sessionId })),
+    );
     const mcpManagement = await getMcpManagement();
     const browserToolsEnabled = !mcpManagement.browserDisabled;
 
@@ -398,6 +402,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
           approvalPolicy,
           model: modelId,
           modelProvider: providerId,
+          ...(userSystemPrompt ? { developerInstructions: userSystemPrompt } : {}),
           // Experimental (requires initialize capabilities.experimentalApi):
           // register Mcode's host-side tools (ask/plan/browser).
           dynamicTools: buildDynamicTools(browserToolsEnabled),
@@ -419,6 +424,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
               approvalPolicy,
               model: modelId,
               modelProvider: providerId,
+              ...(userSystemPrompt ? { developerInstructions: userSystemPrompt } : {}),
             })) as { thread?: { id?: string } } | undefined;
             threadId = resumed?.thread?.id ?? null;
           } catch (err) {
@@ -627,16 +633,20 @@ function skillRootsFor(cwd: string): string[] {
 
 /** Write CODEX_HOME/AGENTS.md — Codex's global instructions file, which we
  *  own inside the isolated home. Idempotent (writes only on drift). */
-async function ensureCodexHomeIdentity(): Promise<void> {
-  const dir = codexHomePath();
-  await fs.mkdir(dir, { recursive: true });
-  const content = `${joinPromptSections(
+export function codexHomeAgentsMarkdown(): string {
+  return joinPromptSections(
     CODEX_IDENTITY_PROMPT,
     ASK_NATIVE_TOOL_PROMPT,
     PLAN_MODE_PROMPT,
     browserToolsUsagePrompt(),
     process.platform === "win32" ? WIN32_PATH_HINT : "",
-  )}\n`;
+  );
+}
+
+async function ensureCodexHomeIdentity(): Promise<void> {
+  const dir = codexHomePath();
+  await fs.mkdir(dir, { recursive: true });
+  const content = `${codexHomeAgentsMarkdown()}\n`;
   const file = path.join(dir, "AGENTS.md");
   try {
     const prev = await fs.readFile(file, "utf-8");

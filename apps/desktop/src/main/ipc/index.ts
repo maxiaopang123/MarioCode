@@ -19,6 +19,7 @@ import { registerUpdaterHandlers } from "./updater.js";
 import { registerSkillsHandlers } from "./skills.js";
 import { registerMcpHandlers } from "./mcp.js";
 import { registerOutputStyleHandlers } from "./outputStyle.js";
+import { registerSystemPromptHandlers } from "./systemPrompt.js";
 import { registerUsageHandlers } from "./usage.js";
 import { registerLspHandlers } from "./lsp.js";
 import { registerRuntimesHandlers } from "./runtimes.js";
@@ -76,6 +77,7 @@ export function registerIpcHandlers(): void {
   registerSkillsHandlers(ipc);
   registerMcpHandlers(ipc);
   registerOutputStyleHandlers(ipc);
+  registerSystemPromptHandlers(ipc);
   registerUsageHandlers(ipc);
   registerLspHandlers(ipc);
   registerRuntimesHandlers(ipc);

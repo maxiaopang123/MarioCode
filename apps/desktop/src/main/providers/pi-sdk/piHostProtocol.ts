@@ -21,6 +21,11 @@ export interface PiHostTurnConfig {
   browserToolsEnabled: boolean;
   browserToolSpecs: Record<string, { description: string; promptSnippet?: string }>;
   browserUsagePrompt: string;
+  /** The user's global + project system prompt, already formatted into
+   *  sections and joined (see `userSystemPromptSections`); "" when unset.
+   *  Resolved main-side (settings DB + project file) because the host
+   *  process has neither. */
+  userSystemPrompt: string;
   agentDir: string;
 }
 
@@ -66,7 +71,8 @@ export function isMainToPiHost(value: unknown): value is MainToPiHost {
     && (p.gitBash === null || typeof p.gitBash === "string")
     && typeof p.browserToolsEnabled === "boolean"
     && typeof p.agentDir === "string" && p.agentDir.length > 0
-    && isRecord(p.browserToolSpecs) && typeof p.browserUsagePrompt === "string";
+    && isRecord(p.browserToolSpecs) && typeof p.browserUsagePrompt === "string"
+    && typeof p.userSystemPrompt === "string";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

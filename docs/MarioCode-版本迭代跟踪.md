@@ -2,11 +2,17 @@
 
 > 只记录功能 TODO 进度和 Git 版本，保持简单。
 
-最后更新：2026-09-20
+最后更新：2026-09-22
 
 ## 功能 TODO
 
 状态：⚪ 未开始　🟡 进行中　🟢 已完成　🔴 阻塞　⏸ 暂定（条件不具备，等条件到位再排期）
+
+## 当前进度（2026-09-22）
+
+核心多 Agent 链路已经完成一轮闭环：共享提供商支持按模型分别勾选 Claude / Codex / Pi 接口；Claude、Codex、Pi 会按各自协议生成运行配置；共享提供商在已有回合运行时更新不会再阻塞或误切断旧回合；Codex 的 Responses 回合也已补上最终消息兜底，解决网关漏发流式文本时的空回问题。
+
+本轮验证已通过 `pnpm --filter @mcode/desktop typecheck`、`pnpm build`，开发版已启动。当前仍需要人工验收的内容主要是 TODO-006 三端提示词一致性、TODO-007 的运行时视觉检查，以及 TODO-009 的真实 Pi 会话验证。
 
 | ID | 功能 | 进度 | 状态 | 对应 Commit | 备注 |
 |---|---|---:|---|---|---|
@@ -15,7 +21,7 @@
 | `TODO-003` | 微信 ClawBot 对话接入 MarioCode | 100% | 🟢 已完成 | `dbdab86` | 已实现绑定者私聊纯文本接入、专用微信助手项目、按会话隔离、Agent/模型选择、`新会话` 指令及安全恢复；已通过冷构建、启动检查、回归测试与独立代码审查 |
 | `TODO-004` | 外部工具 Skill / MCP 同步（非复制导入） | 0% | ⚪ 未开始 | - | P1。把设备上 Claude Code / Codex / Cursor / Zcode 已有的 skills 与 MCP servers 自动同步进 MarioCode，源头变更自动跟随，替代现有一次性「导入 = 复制」 |
 | `TODO-005` | 内置工具：网页搜索 + 图片生成 | 0% | ⚪ 未开始 | - | P2。三个 provider 共用的 `web_search` / `image_generate`，不依赖模型端点是否原生支持；按 `agentBrowserTools` 模式三端注册 |
-| `TODO-006` | 统一系统提示词 | 0% | ⚪ 未开始 | - | P4（建议提前到 TODO-005 之前）。用户可编辑的全局 + 项目级系统提示词，Claude / Codex / Pi 三端一致注入 |
+| `TODO-006` | 统一系统提示词 | 100% | 🟢 已完成 | `8aaa72a`（功能）+ 本次（预览对齐 + 文档） | P4（原建议提前到 TODO-005 之前，已兑现）。用户可编辑的全局（settings 表）+ 项目级（`<project>/.mcode/prompt.md`）系统提示词，Claude / Codex / Pi 三端同位注入（身份之后、工具指引之前）；设置页新增「系统提示词」面板：两级编辑器、字数上限 20000、按 Agent 分层预览。三个待拍板已定：项目级存文件、Codex 走 `thread/start|resume.developerInstructions`、模板库不做。叠加顺序已写进 `AGENTS.md`「统一系统提示词」节。已通过 `pnpm typecheck`；**真机三端一致性验证未做**（见规划详情） |
 | `TODO-007` | 聊天框界面渲染优化（含前端 UI 体检） | 100% | 🟢 已完成 | `baa45a4`…`bf5672b`（11 个） | **P0（原 P3，2026-09-20 上调）**。体检 + 原七项里**静态就能做完的五项**：焦点环、死代码清场、手机端 i18n、`Hint` 提示层两批替换、文件树删除确认框提到树根。原第 5、6 项与第 7 项第二步不是没做完，是**条件不具备**，已拆成 `TODO-010` / `TODO-011` 暂定；第 3 项欠的 lint 规则拆成 `TODO-012`。**运行时验收仍待人工完成**（见规划详情末尾） |
 | `TODO-008` | DeepSeek Harness（dsh）接入为第四个 Provider | 0% | ⚪ 未开始 | - | P3。先做 1–2 天可行性 spike；照 Pi 的「独立 host 进程 + MessageAdapter」模板接入 |
 | `TODO-009` | 禁止 agent 用内置浏览器访问搜索引擎 | 100% | 🟢 已完成 | `81fe292` | TODO-005 落地前的止血：Pi 无搜索工具时模型拿浏览器去搜索引擎翻页，每次 snapshot 10K+ token。三端共用的 `agentBrowserTools` 加守卫——navigate 到搜索站（含首页）拒绝，snapshot/find/evaluate/screenshot 发现当前页是搜索站也拒绝；只拦搜索站自身域名，产品子域不受影响；提示词同步补禁令。写死名单、暂无开关。已通过 tsc 与 28 条域名规则用例；**真机验证未做**（需 `pnpm dev` + Pi 跑一轮，确认模型回「无法联网搜索」而非去开浏览器） |
@@ -174,23 +180,23 @@
   5. 零 key 浏览器抓取：10 次查询的成功率 / 耗时 / 反爬，决定能否当兜底。
 - **待拍板**：默认搜索后端（建议博查）；图片生成要不要进审批（花钱）；结果条数与摘要长度上限。
 
-### TODO-006 统一系统提示词
+### TODO-006 统一系统提示词 · 🟢 已完成（2026-09-21 功能落地，2026-09-22 收尾）
 
 - **目标**：一份用户可编辑的全局系统提示词（+ 可选项目级），三端一致注入，与现有身份提示、输出风格并存。
-- **现状**：`lib/systemPrompt.ts` 已集中放 provider 中立片段（三份 IDENTITY、Plan nudge、`joinPromptSections`）；注入点各自就位——Claude `options.systemPrompt.append`、Pi `before_agent_start` 注入器、Codex `instructions`；Claude 另有 output-style（`~/.mcode/output-styles`）。
-- **方案要点**：
-  1. settings 表加 `agent.systemPrompt.global`；项目级存 `<project>/.mcode/prompt.md` 或挂在 projects 表。
-  2. 三端 `startTurn` 统一经 `joinPromptSections(identity, userGlobal, userProject, …)` 拼接。
-  3. 设置页「AI 能力」加提示词编辑器（Markdown、字数、预览最终拼接结果）。
-  4. 明确与 output-style / CLAUDE.md / AGENTS.md 的叠加顺序并写进文档。
-- **工作量**：小（1–2 天）。基础设施齐全，建议放到 TODO-005 之前。
-- **实验方案**（补自上一会话，尚未跑）：
-  1. Codex per-turn 注入：app-server 的 `thread/start` / `turn/start` 参数里有没有 developer instructions 一类字段；顺带验证 resume 线程是否重读 `AGENTS.md`。
-  2. 三端一致性：同一句可观测指令（如「每次回复末尾加 [MC]」）分别跑 Claude / Pi / Codex。
-  3. 与 output-style 冲突：提示词要英文、output style 要中文，看谁赢，定文案。
-  4. 长提示词开销：2K / 8K 字符对首 token 延迟与 ContextRing 读数的影响。
-- **坑**：Codex 现在是 `ensureCodexHomeIdentity` 写 `CODEX_HOME/AGENTS.md`，那是全局文件、所有会话共用，项目级提示词不能往里写，得找 per-turn 通道。
-- **待拍板**：项目级存文件（`<project>/.mcode/prompt.md`）还是 DB；Codex 走哪条通道；要不要模板库。
+- **落地方式**（`8aaa72a`，19 个文件 +971）：
+  1. 存储：全局进 settings 表 `agent.systemPrompt.global`（复用通用 setting.get/set，不开专用 IPC）；项目级存 **文件** `<project>/.mcode/prompt.md`（`lib/userSystemPrompt.ts`），选文件不选 DB 是为了能像 CLAUDE.md / AGENTS.md 一样随仓库提交；清空即删文件。每级上限 20000 字符（`SYSTEM_PROMPT_MAX_CHARS`），面板拒存、加载端同界截断。每 turn 现读不缓存；工作树会话先探 cwd 再回退项目根。
+  2. 注入：三端同位——身份之后、工具指引之前。Claude `appends.splice(1, 0, …)` 进 `systemPrompt.append`；Pi 主进程 join 后经 host 协议 `userSystemPrompt` 字段送给 `before_agent_start` 注入器；Codex 走 `thread/start` 与 `thread/resume` 的 **`developerInstructions`**（全局 + 项目合并为一条 developer message），`CODEX_HOME/AGENTS.md` 保持只放身份与工具指引。格式统一由 `systemPrompt.ts` 的 `formatUser*Section` 生成：`## 用户全局指令` / `## 项目指令`，两级同在时项目段带一句「冲突以项目指令为准」。
+  3. 设置页新增「系统提示词」面板（`SystemPromptPanel.tsx`）：全局 / 项目两个编辑器（项目可切换）、字数、保存反馈；「提示词预览」按 Agent 列出模型实际收到的层级（`lib/systemPromptPreview.ts`），引擎自有层只标位置不伪造文本，MarioCode 自有层直接 import provider 用的同一常量。
+  4. 叠加顺序（含 output-style / CLAUDE.md / AGENTS.md 的位置）已写进 `AGENTS.md`「统一系统提示词」节，改注入必须同步改预览。
+- **本次收尾（2026-09-22）**：预览面板此前手拼 `user.*` 两段标题，漏掉了两级同在时的「冲突以项目指令为准」那一行——与实际注入不一致；把 `formatUserPromptSections` 拆成 `formatUserGlobalSection` / `formatUserProjectSection` 两个 helper，provider 与预览共用，消掉手拼。`pnpm typecheck` 通过（contracts + desktop 两包全绿）。
+- **原实验方案的结论**：
+  1. Codex per-turn 通道 ✅ 已定：对 0.153.4 `codex.exe` 串表 `rg -a` 实测，`developerInstructions`（连同 `baseInstructions`）存在于 thread start / resume / fork 三组 params 中，另有 "developerInstructions override was provided and ignored while running" 警告——线程运行中传覆盖无效，所以只在 start/resume 传，不在 `turn/start` 传。`turn/start` 侧无此字段（与协议硬事实⑬「静默丢弃未知字段」一致）。resume 是否重读项目 `AGENTS.md` **未验**。
+  2. 三端一致性（同一句可观测指令分别跑 Claude / Pi / Codex）⏳ **真机未做**。
+  3. 与 output-style 冲突（提示词英文 vs output style 中文谁赢）⏳ **真机未做**，胜负决定是否要在面板加提示文案。
+  4. 长提示词开销（2K / 8K 对首 token 延迟与 ContextRing 读数）⏳ **真机未做**。
+  - 2–4 的验收手法：`pnpm dev` → 设置 → 系统提示词，全局填「每次回复末尾加 [MC]」，项目填「回复用英文」，分别用三个 Agent 各发一句「你好」；预期三端都带 `[MC]` 且英文回复；再在预览面板核对三端 `user.*` 两段文本一致且项目段带冲突说明。
+- **已定的拍板**：项目级 = 文件；Codex = `developerInstructions`；模板库 = 不做（待有需求再立项）。
+- **副作用面**：`.mcode/prompt.md` 是新落盘文件，随项目提交与否由用户仓库的 `.gitignore` 决定（本仓库未忽略 `.mcode/`）；未改任何 provider 的既有身份 / 工具提示文本。
 
 ### TODO-008 DeepSeek Harness（dsh）接入
 
@@ -227,6 +233,11 @@
 
 | 版本 | 日期 | Commit | 主要更新 | 状态 |
 |---|---|---|---|---|
+| 开发版 | 2026-09-22 | `5b12b1e` | 修复 Codex Responses 网关漏发最终文本时的空回：回合结束读取最终线程消息，兼容 `text` / `content` 响应，并对真实空响应显示警告 | 已提交、未推送 |
+| 开发版 | 2026-09-22 | `5c7f96e` | 共享提供商更新支持已有回合继续运行；新旧桥接配置按版本并存，避免改配置时中断旧回合 | 已提交、未推送 |
+| 开发版 | 2026-09-22 | `ddcd191` | 共享提供商支持按模型配置 Claude / Codex / Pi 接口，模型列表按接口过滤 | 已提交、未推送 |
+| 开发版 | 2026-09-21 | `bdcfecf` | 共享 Claude 端点优先使用 Chat Completions 协议，修复协议路由不匹配 | 已提交、未推送 |
+| 开发版 | 2026-09-21 | `8aaa72a` | 完成统一系统提示词和共享提供商刷新链路 | 已提交、未推送 |
 | 开发版 | 2026-09-20 | `baa45a4`…`ee37a59` | 前端 UI 体检与前四轮修复（TODO-007 第 1～4、7 项）：主题无关焦点环、死代码清场与 `flushDeltas` 改不可变、手机端 131 条文案接入 i18n、`Hint` 提示层两批替换（共享包装组件 + 窗口常驻栏，32 个调用点）、文件树删除确认框提到树根 | 已提交、未推送 |
 | 开发版 | 2026-09-20 | `81fe292` | 禁止 agent 用内置浏览器访问搜索引擎（TODO-009） | 已提交、未推送 |
 | 开发版 | 2026-09-18 | `dbdab86` | 微信 ClawBot 对话接入、后台 Agent 执行、会话隔离与安全恢复 | 已提交、未推送 |

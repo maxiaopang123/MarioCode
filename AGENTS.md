@@ -75,6 +75,9 @@ apps/desktop/src/
     lib/
       logger.ts                # 文件+stderr 日志(userData/logs/main.log)
       askQuestion.ts           # ★ 共享:parseQuestions / formatAnswersForModel / ASK_SYSTEM_PROMPT(Claude + Pi 共用)
+      systemPrompt.ts          # ★ 共享:三份 *_IDENTITY_PROMPT / 计划提示 / joinPromptSections / formatUser*Section(三端共用,改前读「统一系统提示词」节)
+      userSystemPrompt.ts      # 用户系统提示词加载:设置表 agent.systemPrompt.global + <project>/.mcode/prompt.md,每 turn 现读不缓存
+      systemPromptPreview.ts   # 设置页「提示词预览」分层拼装(与注入同源,不得手拼文本)
     store/{db,repositories}.ts # SQLite 持久化(better-sqlite3,2026-09-14 从 sql.js 迁移)
   preload/index.ts             # contextBridge 白名单 API
   renderer/                    # 前端(React)
@@ -139,6 +142,16 @@ pnpm build
 - 非 React 模块(store、lib 纯函数):用 `lib/i18n/core.ts` 的 `translate(locale, key, params)`(locale 从 `useSessionStore.getState().locale` 取)。**不要从 index.js 导入 translate 到 store/store 相关模块**——index 导入 store,会成环;core.ts 无依赖
 - 词典:`lib/i18n/zh/` 与 `en/` 按功能分区(common/layout/lib/chat-stream/chat-composer/ide/browser/settings/store),zh 是源(`MessageId` 由 zh 键派生),en 镜像同一类型——**缺键过不了 typecheck**。新词条 zh/en 同步加,键用分区前缀
 - **禁止硬编码新的用户可见中文/英文文案**;只翻 UI 文案,代码注释、console 日志、发给模型的 prompt、持久化标识符不进词典。模块级常量数组存 `labelKey: MessageId`,渲染时 `t()`
+
+### 统一系统提示词(TODO-006,2026-09-21;设置 → 系统提示词)
+- **两级用户提示词,三端一致注入**:全局 = settings 表 `agent.systemPrompt.global`(`AGENT_SYSTEM_PROMPT_GLOBAL_SETTING_KEY`,走通用 setting.get/set,无专用 IPC);项目 = `<project>/.mcode/prompt.md`(`PROJECT_SYSTEM_PROMPT_RELATIVE_PATH`,选文件不选 DB——为了能像 CLAUDE.md / AGENTS.md 一样随仓库提交;清空编辑器即删文件,不留空壳)。每级上限 `SYSTEM_PROMPT_MAX_CHARS`=20000 字符:面板拒存超长,`loadUserSystemPrompt` 对外部改大的文件同界截断并附截断说明。**每 turn 现读不缓存**,改完下一条消息即生效。工作树会话:先探 cwd(工作树检出),没文件再回退项目根(`.mcode/` 常被 gitignore)。
+- **拼接格式**(`systemPrompt.ts` 的 `formatUserPromptSections`):`## 用户全局指令\n<global>`,`## 项目指令\n<project>`;**两级同时存在时项目段开头加一句「与全局冲突以项目指令为准」**——只有 `formatUserGlobalSection` / `formatUserProjectSection` 两个 helper 能生成这两段,provider 与预览面板都从它们取,**禁止在别处手拼标题**,否则预览与实际注入漂移。
+- **叠加顺序(模型实际看到的先后)**——用户提示词固定落在「MarioCode 身份」之后、各种工具指引之前,三端同位:
+  - **Claude**:CLI `claude_code` preset 基础提示(含 output style,`~/.mcode/output-styles`)→ `CLAUDE_IDENTITY_PROMPT` → **用户全局 → 用户项目** → win32 路径提示(条件)→ 计划模式 nudge(仅 UI 选了计划模式)→ AskUserQuestion 降级说明(仅 SDK 无原生工具)→ CLI 自己加载的 CLAUDE.md / memory。实现:`appends.splice(1, 0, ...userSystemPromptSections(...))`,整体经 `options.systemPrompt.append`。
+  - **Pi**:Pi 基础提示 → `PI_IDENTITY_PROMPT` → **用户全局 → 用户项目** → AskUserQuestion 原生工具说明 → 计划工具说明 → 浏览器工具说明(仅内置浏览器开着)。用户段在主进程 `PiAgentSdkProvider.startTurn` 里 join 好、经 host 协议 `PiHostTurnConfig.userSystemPrompt` 送进 host,`mcodeExtension` 的 `before_agent_start` 注入器拼接(host 进程没有 DB 也没有项目查找,不要在 host 侧读)。
+  - **Codex**:codex 基础指令 → **用户全局 + 用户项目(合并为一条 developer message)** → `CODEX_HOME/AGENTS.md`(身份 + ASK/PLAN/浏览器指引 + win32 路径,`ensureCodexHomeIdentity` 写,**全局共享文件,项目级内容绝不能往里写**)→ 项目 `AGENTS.md`(codex 自己加载)→ codex 环境指令。per-turn 通道 = `thread/start` 与 `thread/resume` 的 **`developerInstructions`** 参数(0.153.4 二进制串表实测存在于 thread start/resume/fork 三组 params,同组还有 `baseInstructions`;二进制另有 "developerInstructions override was provided and ignored while running" 警告——线程运行中传覆盖会被忽略,所以只在 start/resume 传,不在 turn/start 传)。
+- **预览面板**(`systemPromptPreview.ts` → `SystemPromptPanel.tsx`)按上表逐 provider 列层:`engine` 层(CLI/SDK 自有,MarioCode 读不到)只标位置 `text:null`,`fixed` / `conditional` 层直接 import provider 用的同一常量,`user` 层用同两个 helper——**新增一段注入必须同步加进预览的 sections,否则面板说谎**;层 id → 文案在 `SystemPromptPanel.LAYER_LABELS`(`settings.systemPrompt.layer.*`,zh/en 同步加)。
+- **不做**:模板库(待有需求)、按 provider 差异化的用户提示词(刻意三端同文,保证「同一句指令三端同效」可验证)。**真机三端一致性验证未做**:同一句可观测指令(如「每次回复末尾加 [MC]」)分别跑 Claude / Pi / Codex,以及 output-style 与用户提示词冲突时谁赢,都要在 `pnpm dev` 下人工跑。
 
 ### claude 解析(SdkMessageAdapter)
 - `SdkMessageAdapter.dispatch()` 将 SDK 的 `SDKMessage` 归一化为 `RuntimeEvent`

@@ -130,22 +130,34 @@ export const USER_GLOBAL_PROMPT_HEADING = `## 用户全局指令`;
 export const USER_PROJECT_PROMPT_HEADING = `## 项目指令`;
 const USER_PROMPT_PRECEDENCE_NOTE = `以下项目指令与上面的用户全局指令冲突时,以项目指令为准。`;
 
+/** The global scope as one prompt section, or null when empty/whitespace. */
+export function formatUserGlobalSection(globalPrompt: string): string | null {
+  const global = globalPrompt.trim();
+  return global ? `${USER_GLOBAL_PROMPT_HEADING}\n${global}` : null;
+}
+
+/**
+ * The project scope as one prompt section, or null when empty/whitespace.
+ * `hasGlobal` adds the precedence line so the model knows which scope wins
+ * when the two conflict — only meaningful when a global section precedes it.
+ */
+export function formatUserProjectSection(projectPrompt: string, hasGlobal: boolean): string | null {
+  const project = projectPrompt.trim();
+  if (!project) return null;
+  return hasGlobal
+    ? `${USER_PROJECT_PROMPT_HEADING}\n${USER_PROMPT_PRECEDENCE_NOTE}\n${project}`
+    : `${USER_PROJECT_PROMPT_HEADING}\n${project}`;
+}
+
 /**
  * Wrap the user's global / project prompt text into prompt sections. Empty
  * or whitespace-only scopes are dropped; the returned array is meant to be
  * spread into `joinPromptSections(identity, ...sections, ...guides)`.
+ * The settings preview builds its `user.*` sections from the same two
+ * helpers above, so what it shows is byte-for-byte what gets injected.
  */
 export function formatUserPromptSections(globalPrompt: string, projectPrompt: string): string[] {
-  const global = globalPrompt.trim();
-  const project = projectPrompt.trim();
-  const out: string[] = [];
-  if (global) out.push(`${USER_GLOBAL_PROMPT_HEADING}\n${global}`);
-  if (project) {
-    out.push(
-      global
-        ? `${USER_PROJECT_PROMPT_HEADING}\n${USER_PROMPT_PRECEDENCE_NOTE}\n${project}`
-        : `${USER_PROJECT_PROMPT_HEADING}\n${project}`,
-    );
-  }
-  return out;
+  const global = formatUserGlobalSection(globalPrompt);
+  const project = formatUserProjectSection(projectPrompt, global !== null);
+  return [global, project].filter((section): section is string => section !== null);
 }

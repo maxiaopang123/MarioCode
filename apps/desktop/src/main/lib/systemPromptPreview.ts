@@ -26,8 +26,8 @@ import {
   CLAUDE_PLAN_MODE_NUDGE,
   PI_IDENTITY_PROMPT,
   PI_PLAN_MODE_PROMPT,
-  USER_GLOBAL_PROMPT_HEADING,
-  USER_PROJECT_PROMPT_HEADING,
+  formatUserGlobalSection,
+  formatUserProjectSection,
 } from "./systemPrompt.js";
 import {
   loadGlobalUserPrompt,
@@ -40,19 +40,19 @@ import { codexHomeAgentsMarkdown } from "@main/providers/codex-sdk/CodexAgentSdk
 import path from "node:path";
 
 /** The two user layers, identical for every provider. `text: null` marks an
- *  unset scope so the renderer can show "(未设置)" in place. */
+ *  unset scope so the renderer can show "(未设置)" in place. Built with the
+ *  same formatters the providers spread into `joinPromptSections`, so the
+ *  precedence line that appears when both scopes are set shows up here too. */
 function userSections(prompt: UserSystemPrompt, projectPath: string | null): SystemPromptPreviewSection[] {
   const projectFile = prompt.projectFile ?? (projectPath ? projectPromptFile(projectPath) : null);
+  const global = formatUserGlobalSection(prompt.global);
+  const project = formatUserProjectSection(prompt.project, global !== null);
   return [
-    {
-      id: "user.global",
-      kind: "user",
-      text: prompt.global ? `${USER_GLOBAL_PROMPT_HEADING}\n${prompt.global}` : null,
-    },
+    { id: "user.global", kind: "user", text: global },
     {
       id: "user.project",
       kind: "user",
-      text: prompt.project ? `${USER_PROJECT_PROMPT_HEADING}\n${prompt.project}` : null,
+      text: project,
       ...(projectFile ? { meta: { path: projectFile } } : {}),
     },
   ];

@@ -97,7 +97,7 @@ export function registerCustomModelHandlers(ipcMain: IpcMain): void {
       try {
         return await probeEndpoint({ ...cfg, baseUrl: handle.localUrl });
       } finally {
-        BridgeRegistry.release(probeId);
+        BridgeRegistry.release(probeId, handle.localUrl);
       }
     }
     return probeEndpoint(cfg);

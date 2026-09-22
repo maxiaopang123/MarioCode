@@ -20,7 +20,7 @@ function normalizedUrl(value: string): string {
   return parsed.toString();
 }
 
-function routingFingerprint(value: Pick<SharedProviderSaveInput, "baseUrl" | "modelsEndpoint" | "endpointOverrides" | "protocols">): string {
+function routingFingerprint(value: Pick<SharedProviderSaveInput, "baseUrl" | "modelsEndpoint" | "endpointOverrides" | "protocols" | "models">): string {
   const endpointOverrides = Object.entries(value.endpointOverrides ?? {})
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([protocol, url]) => [protocol, normalizedUrl(url)]);
@@ -29,6 +29,9 @@ function routingFingerprint(value: Pick<SharedProviderSaveInput, "baseUrl" | "mo
     modelsEndpoint: value.modelsEndpoint ? normalizedUrl(value.modelsEndpoint) : null,
     endpointOverrides,
     protocols: [...value.protocols].sort(),
+    modelInterfaces: value.models
+      .map((model) => ({ id: model.id, interfaces: model.interfaces ?? null }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
   });
 }
 

@@ -21,18 +21,16 @@ import { startBridge, type BridgeHandle } from "./bridgeServer.js";
 
 interface Entry {
   handle: BridgeHandle;
-  /** The upstream config the server was built from. Used to detect config
-   *  drift — if a saved config's token/URL changed, the next acquire rebuilds
-   *  the server rather than serving a stale upstream. */
+  /** The upstream fingerprint this server was built from. */
   fingerprint: string;
   refCount: number;
 }
 
-/** A minimal fingerprint of the upstream bits that affect the running server.
- *  If any of these change, the existing server is stale and must be rebuilt. */
+/** A minimal fingerprint of the upstream bits that affect the running server. */
 function fingerprint(cfg: ApiConfig): string {
   return JSON.stringify({
     baseUrl: cfg.baseUrl,
+    protocol: cfg.protocol,
     authToken: cfg.authToken,
     authMode: cfg.authMode,
     timeoutMs: cfg.timeoutMs ?? null,
@@ -44,51 +42,76 @@ function fingerprint(cfg: ApiConfig): string {
 }
 
 class BridgeRegistryImpl {
-  private entries = new Map<string, Entry>();
+  /**
+   * Keep old and new revisions alive at the same time. A provider can be
+   * edited while a turn is using its bridge; replacing the entry in place
+   * would close the old listener underneath that turn.
+   */
+  private entries = new Map<string, Map<string, Entry>>();
 
-  /** Acquire a bridge for the given config id. Reuses an existing server when
-   *  the config hasn't changed; rebuilds when the fingerprint drifts; creates
-   *  fresh when none exists. Always bumps the ref count for the caller, who
-   *  MUST pair this with {@link release}. */
+  private entriesFor(customModelId: string): Map<string, Entry> {
+    let entries = this.entries.get(customModelId);
+    if (!entries) {
+      entries = new Map<string, Entry>();
+      this.entries.set(customModelId, entries);
+    }
+    return entries;
+  }
+
+  /** Whether a caller already holds the bridge for this exact config. */
+  matches(customModelId: string, upstream: ApiConfig, localUrl: string): boolean {
+    const fp = fingerprint(upstream);
+    return this.entries.get(customModelId)?.get(fp)?.handle.localUrl === localUrl;
+  }
+
+  /** Acquire a bridge for the given config revision. Always bumps the ref
+   *  count for the caller, who MUST pair this with {@link release}. */
   async acquire(customModelId: string, upstream: ApiConfig): Promise<BridgeHandle> {
     const fp = fingerprint(upstream);
-    const existing = this.entries.get(customModelId);
+    const entries = this.entriesFor(customModelId);
+    const existing = entries.get(fp);
     if (existing) {
-      if (existing.fingerprint !== fp) {
-        // Config changed under us (user edited token/URL). Rebuild.
-        log.info(`bridge: config ${customModelId} changed, rebuilding server`);
-        existing.handle.close();
-        const handle = await startBridge(upstream);
-        this.entries.set(customModelId, { handle, fingerprint: fp, refCount: 1 });
-        return handle;
-      }
       existing.refCount += 1;
       return existing.handle;
     }
+    // A different fingerprint is intentionally not destructive. Existing
+    // turns keep their old listener; new turns receive this fresh revision.
+    if (entries.size > 0) log.info(`bridge: config ${customModelId} changed, starting a new server revision`);
     const handle = await startBridge(upstream);
-    this.entries.set(customModelId, { handle, fingerprint: fp, refCount: 1 });
+    entries.set(fp, { handle, fingerprint: fp, refCount: 1 });
     return handle;
   }
 
   /** Release a previously-acquired bridge. Decrements the ref count; closes the
    *  server only when the last holder releases. Safe to call without a prior
    *  acquire (no-op). */
-  release(customModelId: string): void {
-    const entry = this.entries.get(customModelId);
-    if (!entry) return;
+  release(customModelId: string, localUrl: string): void {
+    const entries = this.entries.get(customModelId);
+    if (!entries) return;
+    let entry: Entry | undefined;
+    let entryKey: string | undefined;
+    for (const [key, candidate] of entries) {
+      if (candidate.handle.localUrl === localUrl) {
+        entryKey = key;
+        entry = candidate;
+        break;
+      }
+    }
+    if (!entry || !entryKey) return;
     entry.refCount -= 1;
     if (entry.refCount <= 0) {
       entry.handle.close();
-      this.entries.delete(customModelId);
+      entries.delete(entryKey);
+      if (entries.size === 0) this.entries.delete(customModelId);
     }
   }
 
   /** Close every bridge, regardless of ref count. Called at app shutdown. */
   disposeAll(): void {
-    for (const [id, entry] of this.entries) {
-      entry.handle.close();
-      this.entries.delete(id);
+    for (const entries of this.entries.values()) {
+      for (const entry of entries.values()) entry.handle.close();
     }
+    this.entries.clear();
   }
 }
 

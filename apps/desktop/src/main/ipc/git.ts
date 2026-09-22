@@ -307,7 +307,7 @@ export async function resolveModelForGitOp(
         // RuntimeManager does for a live turn. Everything downstream (auth env
         // vars, ANTHROPIC_MODEL, the [1m] suffix) is unaffected by the rewrite.
         config: { ...cfg, baseUrl: handle.localUrl },
-        releaseBridge: () => BridgeRegistry.release(customModelId),
+        releaseBridge: () => BridgeRegistry.release(customModelId, handle.localUrl),
       };
     } catch (err) {
       const msg = (err as Error).message || String(err);

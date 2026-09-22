@@ -388,6 +388,19 @@ class RuntimeManager {
     return [...ids];
   }
 
+  /** Release exactly the bridge revision held by this session. A provider can
+   * be edited while another turn is still using its previous revision, so a
+   * release must identify the local listener rather than only the config id. */
+  private releaseBridge(rt: SessionRuntime): void {
+    if (!rt.bridgeConfigId) return;
+    rt.bridgeStatusUnsubscribe?.();
+    rt.bridgeStatusUnsubscribe = undefined;
+    const localUrl = rt.bridgeHandle?.localUrl;
+    if (localUrl) BridgeRegistry.release(rt.bridgeConfigId, localUrl);
+    rt.bridgeConfigId = undefined;
+    rt.bridgeHandle = undefined;
+  }
+
   /** Provider-level completion promise for callers that cannot rely solely
    *  on streamed events (for example a background scheduled task). */
   turnCompletion(sessionId: string): Promise<void> | null {
@@ -562,28 +575,33 @@ class RuntimeManager {
       const cfg = CustomModelStore.resolveApiConfig(session.customModelId, session.model);
       if (!cfg) {
         log.warn(`sendTurn: custom model ${session.customModelId} not found, token undecryptable, or no model configured; falling back to default endpoint`);
+        this.releaseBridge(rt);
       } else {
         // OpenAI-protocol endpoints need an in-process bridge that impersonates
         // Anthropic /v1/messages. We rewrite the apiConfig to point at the
         // local bridge, so the rest of the pipeline (buildCustomEnv, the binary)
         // is completely unaware anything special is happening — it just sees an
         // Anthropic-compatible endpoint on localhost. The bridge is shared
-        // across sessions via the registry (keyed by config id, ref-counted).
+        // across sessions via the registry (grouped by config id and revision,
+        // then reference-counted).
         if (cfg.protocol === "openai") {
-          // Release any bridge we're holding for a DIFFERENT config (the user
-          // may have switched custom models mid-session), then acquire for the
-          // current one. We hold exactly one bridge per session; same-config
-          // repeats across turns reuse the existing handle without bumping the
-          // ref count again.
-          if (rt.bridgeConfigId && rt.bridgeConfigId !== session.customModelId) {
-            rt.bridgeStatusUnsubscribe?.();
-            rt.bridgeStatusUnsubscribe = undefined;
-            BridgeRegistry.release(rt.bridgeConfigId);
-            rt.bridgeConfigId = undefined;
-            rt.bridgeHandle = undefined;
-          }
-          if (!rt.bridgeConfigId) {
+          // A saved provider may have a newer revision while this session is
+          // still holding the old one. Acquire the new listener first so a
+          // failed startup leaves the old revision usable, then release the
+          // old revision. Same revision turns reuse the existing lease.
+          const current = rt.bridgeConfigId === session.customModelId && rt.bridgeHandle;
+          const hasCurrentRevision = Boolean(
+            current && BridgeRegistry.matches(session.customModelId, cfg, current.localUrl),
+          );
+          if (!hasCurrentRevision) {
+            const previousConfigId = rt.bridgeConfigId;
+            const previousLocalUrl = rt.bridgeHandle?.localUrl;
             const handle = await BridgeRegistry.acquire(session.customModelId, cfg);
+            if (previousConfigId) {
+              rt.bridgeStatusUnsubscribe?.();
+              rt.bridgeStatusUnsubscribe = undefined;
+              if (previousLocalUrl) BridgeRegistry.release(previousConfigId, previousLocalUrl);
+            }
             rt.bridgeConfigId = session.customModelId;
             rt.bridgeHandle = { localUrl: handle.localUrl };
             // Surface transient upstream-transport retries (connect timeout /
@@ -610,6 +628,7 @@ class RuntimeManager {
           // it just sees an Anthropic-compatible endpoint on localhost.
           apiConfig = { ...cfg, baseUrl: localUrl ?? cfg.baseUrl };
         } else {
+          this.releaseBridge(rt);
           apiConfig = cfg;
         }
         modelForReq = undefined; // env pins ANTHROPIC_MODEL via buildCustomEnv
@@ -688,13 +707,7 @@ class RuntimeManager {
     approvalBridge.rejectAll(sessionId);
     // Release any OpenAI bridge this session was holding, so the ref count
     // drops and the shared server can shut down when no session needs it.
-    if (rt.bridgeConfigId) {
-      rt.bridgeStatusUnsubscribe?.();
-      rt.bridgeStatusUnsubscribe = undefined;
-      BridgeRegistry.release(rt.bridgeConfigId);
-      rt.bridgeConfigId = undefined;
-      rt.bridgeHandle = undefined;
-    }
+    this.releaseBridge(rt);
     // Drop the snapshot too — keep memory bounded as sessions come
     // and go. The registry holds onto the per-session FileSnapshot
     // for the lifetime of the app otherwise.

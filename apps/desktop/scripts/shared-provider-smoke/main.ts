@@ -233,6 +233,25 @@ for (const mutation of protectedRouteMutations) {
   catch (error) { if (error instanceof Error && error.message.includes("enter the API key again")) protectedRouteChanges++; }
 }
 check("models endpoint, endpoint overrides, and protocol changes each require a new key", protectedRouteChanges === protectedRouteMutations.length);
+const interfaceFingerprintProvider = SharedProviderStore.save({
+  ...base,
+  name: "Interface Fingerprint Provider",
+  enabledAgents: ["claude"],
+  apiKey: "INTERFACE_FINGERPRINT_SECRET",
+}).find((provider) => provider.name === "Interface Fingerprint Provider")!;
+let modelInterfaceChangeBlocked = false;
+try {
+  SharedProviderStore.save({
+    ...base,
+    id: interfaceFingerprintProvider.id,
+    enabledAgents: ["claude"],
+    models: [{ id: "synthetic-model", interfaces: ["chat-completions"] }],
+  });
+} catch (error) {
+  modelInterfaceChangeBlocked = error instanceof Error && error.message.includes("enter the API key again");
+}
+check("model interface changes cannot silently reuse the saved key", modelInterfaceChangeBlocked);
+SharedProviderStore.remove(interfaceFingerprintProvider.id);
 SharedProviderStore.save({
   ...base,
   id: saved[0]!.id,

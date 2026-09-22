@@ -301,7 +301,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
     // fallback when the server never reports modelContextWindow (third-party
     // endpoints often don't) — the adapter's hardcoded default would
     // understate usage for smaller windows.
-    const adapter = new CodexMessageAdapter(ctx, req.sessionId, snapshot, contextWindow, async (threadId) => {
+    const adapter = new CodexMessageAdapter(ctx, req.sessionId, snapshot, contextWindow, async (threadId, turnId) => {
       // thread/read bootstrap for subagent transcripts (see adapter). The
       // client isn't constructed yet when the adapter is — resolve lazily.
       const client = clientRef;
@@ -310,8 +310,11 @@ export class CodexAgentSdkProvider implements AgentProvider {
         threadId,
         includeTurns: true,
       })) as { thread?: { turns?: Array<{ items?: unknown[] }> } } | undefined;
+      const turns = turnId
+        ? (res?.thread?.turns ?? []).filter((turn) => (turn as { id?: string }).id === turnId)
+        : (res?.thread?.turns ?? []);
       const items: unknown[] = [];
-      for (const turn of res?.thread?.turns ?? []) {
+      for (const turn of turns) {
         for (const it of turn.items ?? []) items.push(it);
       }
       return items as import("./CodexMessageAdapter.js").ThreadItem[];

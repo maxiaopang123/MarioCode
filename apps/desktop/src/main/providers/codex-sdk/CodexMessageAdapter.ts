@@ -56,6 +56,7 @@ export class CodexMessageAdapter {
   /** Set when the user interrupts; late notifications are dropped. */
   private aborted = false;
   private turnEnded = false;
+  private turnCompleting = false;
   /** Resolved when the turn reaches a terminal state (drives the provider's
    *  done promise — turn/start returns before the turn completes). */
   private turnDoneResolve: ((reason: TurnDoneReason) => void) | null = null;
@@ -82,6 +83,9 @@ export class CodexMessageAdapter {
    *  `item/completed` fallback that materializes item.text for transports
    *  that skip deltas entirely. */
   private agentTextSeen = new Set<string>();
+  /** Prevents a thread/read reconciliation from completing the same agent
+   *  message twice after its live item/completed notification already landed. */
+  private completedAgentItems = new Set<string>();
   /** Subagent threads with a pending (throttled) transcript flush. */
   private transcriptFlushPending = new Set<string>();
   private transcriptFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -117,10 +121,9 @@ export class CodexMessageAdapter {
     private readonly sessionId: string,
     private readonly snapshots: CodexFileSnapshot,
     contextWindowFallback?: number,
-    /** Bootstrap fetcher for a subagent thread's items (thread/read). Used
-     *  only while the live notification path has emitted nothing for the
-     *  thread — see handleSubAgentActivity. */
-    private readonly readSubagentItems?: (threadId: string) => Promise<ThreadItem[]>,
+    /** Bootstrap fetcher for thread items (thread/read). Used for subagent
+     *  transcript fallback and for the terminal main-turn reconciliation. */
+    private readonly readSubagentItems?: (threadId: string, turnId?: string) => Promise<ThreadItem[]>,
   ) {
     this.contextWindowFallback = contextWindowFallback;
   }
@@ -257,10 +260,10 @@ export class CodexMessageAdapter {
       case "turn/completed": {
         const turn = p.turn as { id?: string; status?: string } | undefined;
         const status = turn?.status ?? "completed";
-        this.emitTurnEndSnapshot();
-        const reason: TurnDoneReason =
-          status === "failed" ? "error" : status === "interrupted" ? "interrupted" : "end_turn";
-        this.finishTurn(reason);
+        // Some Responses gateways make app-server complete the turn without
+        // delivering the final item/delta notifications. Reconcile the
+        // terminal turn from thread/read before freezing the renderer state.
+        void this.completeTurn(status, turn?.id);
         break;
       }
       // thread/started, turn/started, thread/status/changed, item/* output
@@ -279,6 +282,8 @@ export class CodexMessageAdapter {
     switch (item.type) {
       case "agentMessage":
         if (completed) {
+          if (this.completedAgentItems.has(item.id)) break;
+          this.completedAgentItems.add(item.id);
           // Flush any held-back partial `<think>` tag bytes from the splitter,
           // then finalize. No splitter and no streamed text = the transport
           // skipped deltas entirely — materialize the item's full text (via a
@@ -288,9 +293,12 @@ export class CodexMessageAdapter {
           if (splitter) {
             this.emitAgentSegments(item.id, splitter.flush());
             this.agentSplitters.delete(item.id);
-          } else if (!this.agentTextSeen.has(item.id) && typeof item.text === "string" && item.text.length > 0) {
-            const sp = new ThinkTagSplitter();
-            this.emitAgentSegments(item.id, [...sp.push(item.text), ...sp.flush()]);
+          } else if (!this.agentTextSeen.has(item.id)) {
+            const text = extractAgentMessageText(item);
+            if (text) {
+              const sp = new ThinkTagSplitter();
+              this.emitAgentSegments(item.id, [...sp.push(text), ...sp.flush()]);
+            }
           }
           this.emit({ type: "message.complete", sessionId: this.sessionId, messageId: item.id });
         }
@@ -823,6 +831,32 @@ export class CodexMessageAdapter {
 
   /* ── turn lifecycle ── */
 
+  private async completeTurn(status: string, turnId?: string): Promise<void> {
+    if (this.turnEnded || this.turnCompleting) return;
+    this.turnCompleting = true;
+    if (this.mainThreadId && this.readSubagentItems) {
+      try {
+        const items = await this.readSubagentItems(this.mainThreadId, turnId);
+        for (const item of items) this.handleItem(item, true);
+      } catch (err) {
+        this.ctx.log.warn(`codex: terminal thread/read reconciliation failed: ${(err as Error).message}`);
+      }
+    }
+    if (status === "completed" && this.agentTextSeen.size === 0) {
+      this.ctx.log.warn("codex: turn completed without assistant text");
+      this.emit({
+        type: "turn.incomplete",
+        sessionId: this.sessionId,
+        kind: "empty-response",
+        pendingToolCalls: [],
+      });
+    }
+    this.emitTurnEndSnapshot();
+    const reason: TurnDoneReason =
+      status === "failed" ? "error" : status === "interrupted" ? "interrupted" : "end_turn";
+    this.finishTurn(reason);
+  }
+
   private finishTurn(reason: TurnDoneReason): void {
     if (this.turnEnded) return;
     this.turnEnded = true;
@@ -1060,7 +1094,7 @@ function resolveGeneratedImage(
 /* ── app-server payload shapes (calibrated against 0.153.4 live + schema) ── */
 
 export type ThreadItem =
-  | { type: "agentMessage"; id: string; text?: string }
+  | { type: "agentMessage"; id: string; text?: string; content?: unknown }
   | { type: "reasoning"; id: string; content?: unknown[]; summary?: unknown[] }
   | { type: "commandExecution"; id: string; command?: string; aggregatedOutput?: string | null; exitCode?: number | null; status?: string; cwd?: string | null }
   | { type: "fileChange"; id: string; changes?: Array<{ path: string; kind?: unknown; diff?: string }>; status?: string }
@@ -1118,3 +1152,21 @@ export type ThreadItem =
     };
 
 export const newCodexRequestId = randomUUID;
+
+/** Extract the final assistant text across app-server payload variants. The
+ *  0.153.x schema normally exposes `text`, while Responses adapters may put
+ *  output blocks under `content` instead. */
+function extractAgentMessageText(item: Extract<ThreadItem, { type: "agentMessage" }>): string {
+  if (typeof item.text === "string") return item.text;
+  return extractTextValue(item.content);
+}
+
+function extractTextValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(extractTextValue).filter(Boolean).join("");
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  if (typeof record.text === "string") return record.text;
+  if ("content" in record) return extractTextValue(record.content);
+  return "";
+}

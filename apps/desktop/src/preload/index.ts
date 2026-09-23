@@ -541,6 +541,18 @@ const api = {
       ipcRenderer.invoke(IPC.MCP_SCAN_IMPORT, input)) as RpcMap["mcp.scanImport"],
     import: ((input) =>
       ipcRenderer.invoke(IPC.MCP_IMPORT, input)) as RpcMap["mcp.import"],
+    syncList: ((input) =>
+      ipcRenderer.invoke(IPC.MCP_SYNC_LIST, input)) as RpcMap["mcp.syncList"],
+    syncScan: ((input) =>
+      ipcRenderer.invoke(IPC.MCP_SYNC_SCAN, input)) as RpcMap["mcp.syncScan"],
+    syncAdd: ((input) =>
+      ipcRenderer.invoke(IPC.MCP_SYNC_ADD, input)) as RpcMap["mcp.syncAdd"],
+    syncSetEnabled: ((input) =>
+      ipcRenderer.invoke(IPC.MCP_SYNC_SET_ENABLED, input)) as RpcMap["mcp.syncSetEnabled"],
+    syncRemove: ((input) =>
+      ipcRenderer.invoke(IPC.MCP_SYNC_REMOVE, input)) as RpcMap["mcp.syncRemove"],
+    syncRescan: ((input) =>
+      ipcRenderer.invoke(IPC.MCP_SYNC_RESCAN, input)) as RpcMap["mcp.syncRescan"],
   },
 
   /** Output styles (settings panel): list built-in + user styles. The

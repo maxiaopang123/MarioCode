@@ -24,11 +24,26 @@ import {
   McpImportSchema,
   McpAuthorizeSchema,
   McpUnauthorizeSchema,
+  McpSyncListSchema,
+  McpSyncScanSchema,
+  McpSyncAddSchema,
+  McpSyncSetEnabledSchema,
+  McpSyncRemoveSchema,
+  McpSyncRescanSchema,
   MCP_RESERVED_NAME,
   type McpScope,
   type McpServerConfig,
   type McpServerEntry,
 } from "@contracts/ipc";
+import {
+  listMcpSync,
+  scanMcpSyncCandidates,
+  addMcpSyncSource,
+  setMcpSyncEnabled,
+  removeMcpSyncSource,
+  rescanMcpSync,
+  clearOwnershipFor,
+} from "@main/lib/mcpSync.js";
 import { ProjectRepo } from "@main/store/repositories.js";
 import { samePath } from "@main/lib/pathGuard.js";
 import { log } from "@main/lib/logger.js";
@@ -759,6 +774,9 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
       fileServers[input.name] = input.config;
       cfg.mcpServers = fileServers;
       await writeUserClaudeJson(cfg);
+      // The user now owns this name locally — a later sync pass must never
+      // retract or overwrite it (see mcpSync.clearOwnershipFor).
+      clearOwnershipFor(input.name);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: (err as Error).message };
@@ -819,6 +837,7 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
         }
         fileServers[item.name] = item.config;
         imported.push(item.name);
+        clearOwnershipFor(item.name);
         changed = true;
       }
       if (changed) {
@@ -833,5 +852,38 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
         errors: [...errors, { name: "(批量写入)", error: (err as Error).message }],
       };
     }
+  });
+
+  // ── External MCP config sync (TODO-004): list / scan / add / toggle /
+  //    remove / rescan. The engine (lib/mcpSync.ts) owns the merge into
+  //    ~/.mcode/.claude.json; these handlers are thin pass-throughs. ──
+  ipcMain.handle(IPC.MCP_SYNC_LIST, async (_evt, raw) => {
+    McpSyncListSchema.parse(raw);
+    return { sources: await listMcpSync() };
+  });
+
+  ipcMain.handle(IPC.MCP_SYNC_SCAN, async (_evt, raw) => {
+    McpSyncScanSchema.parse(raw);
+    return { candidates: await scanMcpSyncCandidates() };
+  });
+
+  ipcMain.handle(IPC.MCP_SYNC_ADD, async (_evt, raw) => {
+    const input = McpSyncAddSchema.parse(raw);
+    return addMcpSyncSource(input.file, input.kind, input.label);
+  });
+
+  ipcMain.handle(IPC.MCP_SYNC_SET_ENABLED, async (_evt, raw) => {
+    const input = McpSyncSetEnabledSchema.parse(raw);
+    return setMcpSyncEnabled(input.id, input.enabled);
+  });
+
+  ipcMain.handle(IPC.MCP_SYNC_REMOVE, async (_evt, raw) => {
+    const input = McpSyncRemoveSchema.parse(raw);
+    return removeMcpSyncSource(input.id);
+  });
+
+  ipcMain.handle(IPC.MCP_SYNC_RESCAN, async (_evt, raw) => {
+    const input = McpSyncRescanSchema.parse(raw);
+    return rescanMcpSync(input.id);
   });
 }

@@ -140,6 +140,9 @@ importers:
       simple-git:
         specifier: ^3.36.0
         version: 3.36.0(supports-color@7.2.0)
+      smol-toml:
+        specifier: ^1.8.0
+        version: 1.8.0
       ssh2:
         specifier: ^1.17.0
         version: 1.17.0
@@ -4101,6 +4104,10 @@ packages:
   smart-buffer@4.2.0:
     resolution: {integrity: sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==}
     engines: {node: '>= 6.0.0', npm: '>= 3.0.0'}
+
+  smol-toml@1.8.0:
+    resolution: {integrity: sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==}
+    engines: {node: '>= 18'}
 
   socks-proxy-agent@6.1.1:
     resolution: {integrity: sha512-t8J0kG3csjA4g6FTbsMOWws+7R7vuRC8aQ/wy3/1OWmsgwA68zs/+cExQ0koSitUDXqhufF/YJr9wtNMZHw5Ew==}
@@ -9101,6 +9108,8 @@ snapshots:
     optional: true
 
   smart-buffer@4.2.0: {}
+
+  smol-toml@1.8.0: {}
 
   socks-proxy-agent@6.1.1(supports-color@7.2.0):
     dependencies:

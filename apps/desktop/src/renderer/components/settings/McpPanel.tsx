@@ -36,6 +36,7 @@ import {
   IconFolder,
   IconExternalLink,
   IconLockOpen,
+  IconRefresh,
 } from "@renderer/lib/icons.js";
 import {
   MCP_RESERVED_NAME,
@@ -44,6 +45,9 @@ import {
   type McpScope,
   type McpServerConfig,
   type McpServerEntry,
+  type McpSyncCandidate,
+  type McpSyncSource,
+  type McpSyncStatus,
 } from "@contracts/ipc";
 
 /** MCP server name charset — mirrored from the zod schema in the contract. */
@@ -51,6 +55,10 @@ const MCP_NAME_RE = /^[A-Za-z0-9_-]+$/;
 
 /** Stable empty array (avoids per-render new references — store convention). */
 const EMPTY_SERVERS: McpServerEntry[] = [];
+const EMPTY_SYNC_ROWS: Array<McpSyncSource & { status: McpSyncStatus }> = [];
+const EMPTY_SYNC_CANDIDATES: McpSyncCandidate[] = [];
+
+type SyncRow = McpSyncSource & { status: McpSyncStatus };
 
 /** Row identity across reloads (a name can exist under multiple scopes). */
 function rowKey(s: { scope: McpScope; name: string }): string {
@@ -179,6 +187,101 @@ export function McpPanel() {
   const [importOpen, setImportOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<McpServerEntry | null>(null);
 
+  // External config sync sources (TODO-004): watch ~/.claude.json /
+  // ~/.codex/config.toml / ~/.cursor/mcp.json … and mirror their servers
+  // into the user config file so every provider picks them up.
+  const [syncRows, setSyncRows] = useState<SyncRow[]>(EMPTY_SYNC_ROWS);
+  const [syncCandidates, setSyncCandidates] = useState<McpSyncCandidate[]>(EMPTY_SYNC_CANDIDATES);
+  const [syncAddOpen, setSyncAddOpen] = useState(false);
+
+  const loadSync = useCallback(async () => {
+    try {
+      const { sources } = await api.mcp.syncList({});
+      setSyncRows(sources.length ? sources : EMPTY_SYNC_ROWS);
+    } catch (err) {
+      console.error("McpPanel syncList failed:", err);
+      setSyncRows(EMPTY_SYNC_ROWS);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSync();
+  }, [loadSync]);
+
+  const openSyncAdd = async () => {
+    setSyncAddOpen(true);
+    try {
+      const { candidates } = await api.mcp.syncScan({});
+      setSyncCandidates(candidates.length ? candidates : EMPTY_SYNC_CANDIDATES);
+    } catch (err) {
+      setError((err as Error).message);
+      setSyncCandidates(EMPTY_SYNC_CANDIDATES);
+    }
+  };
+
+  const addSyncCandidate = async (c: McpSyncCandidate) => {
+    setError(null);
+    try {
+      const res = await api.mcp.syncAdd({ file: c.file, kind: c.kind, label: c.label });
+      if (!res.ok) setError(res.error ?? t("settings.operationFailed"));
+      setSyncAddOpen(false);
+      await loadSync();
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const addSyncPickedFile = async () => {
+    setError(null);
+    try {
+      const { paths } = await api.pickFiles({ title: t("settings.mcpSync.pickFileTitle") });
+      if (paths.length === 0) return; // user cancelled
+      const addRes = await api.mcp.syncAdd({ file: paths[0] });
+      if (!addRes.ok) setError(addRes.error ?? t("settings.operationFailed"));
+      setSyncAddOpen(false);
+      await loadSync();
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const toggleSyncSource = async (row: SyncRow, enabled: boolean) => {
+    setError(null);
+    try {
+      const res = await api.mcp.syncSetEnabled({ id: row.id, enabled });
+      if (!res.ok) setError(res.error ?? t("settings.operationFailed"));
+      await loadSync();
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const removeSyncSource = async (row: SyncRow) => {
+    setError(null);
+    try {
+      const res = await api.mcp.syncRemove({ id: row.id });
+      if (!res.ok) setError(res.error ?? t("settings.operationFailed"));
+      await loadSync();
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const rescanSyncSources = async () => {
+    setError(null);
+    try {
+      await api.mcp.syncRescan({});
+      await loadSync();
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -300,6 +403,80 @@ export function McpPanel() {
           {error}
         </div>
       )}
+
+      {/* ───────── 外部配置源同步 (TODO-004) ───────── */}
+      {/* Watch external tool config files (~/.claude.json, ~/.codex/config.toml,
+          ~/.cursor/mcp.json …) and mirror their servers into the user config
+          file — one mirror serves Claude (binary loads it), Codex (config.toml
+          materialization reads it) and Pi. Disabling retracts the synced
+          entries; removing a source retracts them too. */}
+      <SettingsSection
+        title={t("settings.mcpSync.title")}
+        desc={t("settings.mcpSync.desc")}
+      >
+        <div className="flex justify-end gap-2 px-4 py-2.5">
+          <Button variant="ghost" size="sm" onClick={() => void rescanSyncSources()} className="gap-1">
+            <IconRefresh size={12} />
+            {t("settings.mcpSync.rescan")}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => void openSyncAdd()} className="gap-1">
+            <IconPlus size={12} />
+            {t("settings.mcpSync.addSource")}
+          </Button>
+        </div>
+        {syncRows.length === 0 ? (
+          <div className="px-4 py-4 text-center text-[0.7143em] leading-relaxed text-content-subtle">
+            {t("settings.mcpSync.empty")}
+          </div>
+        ) : (
+          <ul className="space-y-1 px-4 pb-3">
+            {syncRows.map((row) => (
+              <li
+                key={row.id}
+                className="flex items-center gap-2 rounded border border-edge/60 bg-surface/60 px-2 py-1.5"
+              >
+                <Switch
+                  checked={row.enabled}
+                  onCheckedChange={(checked) => void toggleSyncSource(row, checked)}
+                  label={row.label}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="truncate text-[0.7857em] font-medium text-content">
+                      {row.label}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-[0.7143em] text-content-subtle">
+                      {t("settings.mcpSync.serverCount", { n: row.status.serverNames.length })}
+                    </span>
+                  </div>
+                  <div className="truncate font-mono text-[0.7143em] text-content-subtle" title={row.file}>
+                    {row.file}
+                  </div>
+                  <div className="text-[0.7143em] text-content-subtle">
+                    {row.status.lastError ? (
+                      <span className="text-warning">{row.status.lastError}</span>
+                    ) : (
+                      t("settings.mcpSync.lastSync", {
+                        time: row.status.lastSyncAt
+                          ? new Date(row.status.lastSyncAt).toLocaleString()
+                          : t("settings.mcpSync.never"),
+                      })
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={t("settings.mcpSync.removeSource")}
+                  onClick={() => void removeSyncSource(row)}
+                >
+                  <IconTrash size={12} />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SettingsSection>
 
       {/* ───────── 用户级 ───────── */}
       <SettingsSection
@@ -550,7 +727,92 @@ export function McpPanel() {
         onOpenChange={setImportOpen}
         onImported={() => void load()}
       />
+      <McpSyncAddDialog
+        open={syncAddOpen}
+        onOpenChange={setSyncAddOpen}
+        candidates={syncCandidates}
+        onAddCandidate={(c) => void addSyncCandidate(c)}
+        onPickFile={() => void addSyncPickedFile()}
+      />
     </section>
+  );
+}
+
+/* ───────── Add sync source dialog (TODO-004) ───────── */
+
+/** Pick an external MCP config file to mirror: detected well-known sources
+ *  (Claude Code / Codex / Cursor / Zcode) as one-click rows, or a manual
+ *  file pick for anything else. */
+function McpSyncAddDialog({
+  open,
+  onOpenChange,
+  candidates,
+  onAddCandidate,
+  onPickFile,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  candidates: McpSyncCandidate[];
+  onAddCandidate: (c: McpSyncCandidate) => void;
+  onPickFile: () => void;
+}) {
+  const { t } = useI18n();
+  const available = candidates.filter((c) => !c.added);
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Backdrop />
+        <Dialog.Popup className="flex max-h-[80vh] w-[520px] flex-col p-0">
+          <Dialog.Title className="px-4 pt-4">{t("settings.mcpSync.addTitle")}</Dialog.Title>
+          <Dialog.Description className="px-4 pt-1">
+            {t("settings.mcpSync.addDesc")}
+          </Dialog.Description>
+          <Dialog.Close />
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+            {available.length === 0 ? (
+              <div className="py-6 text-center text-[0.7857em] leading-relaxed text-content-subtle">
+                {t("settings.mcpSync.noCandidates")}
+              </div>
+            ) : (
+              <ul className="space-y-1">
+                {available.map((c) => (
+                  <li key={c.file}>
+                    <button
+                      type="button"
+                      onClick={() => onAddCandidate(c)}
+                      className="flex w-full items-center gap-2 rounded border border-edge/60 bg-surface/60 px-2.5 py-2 text-left transition-colors hover:border-accent/50 hover:bg-accent/5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-[0.7857em] font-medium text-content">{c.label}</span>
+                          <span className="shrink-0 tabular-nums text-[0.7143em] text-content-subtle">
+                            {t("settings.mcpSync.serverCount", { n: c.serverCount })}
+                          </span>
+                        </div>
+                        <div className="truncate font-mono text-[0.7143em] text-content-subtle" title={c.file}>
+                          {c.file}
+                        </div>
+                      </div>
+                      <IconPlus size={13} className="shrink-0 text-content-subtle" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="flex items-center gap-2 border-t border-edge px-4 py-3">
+            <Button variant="ghost" size="sm" onClick={onPickFile} className="gap-1">
+              <IconFolder size={12} />
+              {t("settings.mcpSync.pickFile")}
+            </Button>
+            <div className="flex-1" />
+            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+              {t("common.cancel")}
+            </Button>
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

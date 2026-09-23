@@ -24,6 +24,7 @@ import { clawBotService } from "@main/clawbot/ClawBotService.js";
 import { clawBotChatGateway } from "@main/clawbot/ClawBotChatGateway.js";
 import { setManagedRuntimeRoot } from "@main/runtimes/managedRuntimeRoots.js";
 import { startSkillSyncEngine, setSkillSyncChangeListener } from "@main/lib/skillSync.js";
+import { startMcpSyncEngine, setMcpSyncChangeListener } from "@main/lib/mcpSync.js";
 import { join } from "node:path";
 
 let clawBotStartupPromise: Promise<void> | null = null;
@@ -161,6 +162,13 @@ app.whenReady().then(async () => {
   setSkillSyncChangeListener(() => sendToRenderer(IPC.SKILLS_SYNC_CHANGED, {}));
   void awaitDb().then(() => startSkillSyncEngine()).catch((err) =>
     log.error(`skill sync engine failed to start: ${(err as Error).message}`),
+  );
+  // External MCP config sync engine (TODO-004): watch + mirror external
+  // tool configs (~/.claude.json, ~/.codex/config.toml, ...) into the user
+  // config file so every provider picks them up.
+  setMcpSyncChangeListener(() => sendToRenderer(IPC.MCP_SYNC_CHANGED, {}));
+  void awaitDb().then(() => startMcpSyncEngine()).catch((err) =>
+    log.error(`mcp sync engine failed to start: ${(err as Error).message}`),
   );
   clawBotStartupPromise = awaitDb().then(async () => {
     if (clawBotQuitRequested) return;

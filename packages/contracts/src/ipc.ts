@@ -2853,6 +2853,95 @@ export const SkillsSyncRescanSchema = z.object({
 });
 export type SkillsSyncRescanInput = z.infer<typeof SkillsSyncRescanSchema>;
 
+/* ── External MCP config sync (settings panel) ──
+ *  TODO-004 (MCP half): besides the one-shot import above, the user can
+ *  attach external tool config files (Claude CLI ~/.claude.json, Codex
+ *  ~/.codex/config.toml, Cursor ~/.cursor/mcp.json, Zcode ~/.zcode/mcp.json)
+ *  as SYNC sources. The engine reads each source file (read-only — never
+ *  written), normalizes every recognized server into McpServerConfig and
+ *  mirrors the set into ~/.mcode/.claude.json's `mcpServers`, so the Claude
+ *  binary loads them directly and the Codex config.toml materialization
+ *  picks them up from the same place. Sync is one-way (source → mirror);
+ *  removing a source retracts the entries it synced in; entries the user
+ *  edited locally after sync are left alone (local wins). */
+
+/** Setting key under which the configured MCP sync sources are persisted.
+ *  Value = JSON.stringify(McpSyncSource[]). */
+export const MCP_SYNC_SOURCES_SETTING_KEY = "mcpSync.sources";
+
+/** Source kind — preset detectors try to discover these automatically. */
+export type McpSyncKind = "claude" | "codex" | "cursor" | "zcode" | "other";
+
+/** One configured external MCP config file source. */
+export interface McpSyncSource {
+  /** Stable id (auto-derived from the file path). */
+  id: string;
+  /** User-facing label. */
+  label: string;
+  kind: McpSyncKind;
+  /** Absolute path of the config file being mirrored. */
+  file: string;
+  /** Whether this source is currently being mirrored + watched. */
+  enabled: boolean;
+}
+
+/** Runtime sync status of one source. */
+export interface McpSyncStatus {
+  /** Server names synced in from this source on the last pass. */
+  serverNames: string[];
+  /** ISO timestamp of the last completed sync, or null. */
+  lastSyncAt: string | null;
+  /** Last sync error message, or null when the last sync succeeded. */
+  lastError: string | null;
+}
+
+/** An external MCP config file that exists on disk and could be added as a
+ *  sync source (returned by mcp.syncScan). */
+export interface McpSyncCandidate {
+  kind: McpSyncKind;
+  label: string;
+  file: string;
+  /** Number of parseable servers currently in the file. */
+  serverCount: number;
+  /** True when the file is already registered as a sync source. */
+  added: boolean;
+}
+
+/** List configured MCP sync sources with live status. */
+export const McpSyncListSchema = z.object({});
+export type McpSyncListInput = z.infer<typeof McpSyncListSchema>;
+
+/** Scan well-known external config locations for addable sources. */
+export const McpSyncScanSchema = z.object({});
+export type McpSyncScanInput = z.infer<typeof McpSyncScanSchema>;
+
+/** Add a sync source (a scanned candidate's file, or any picked path). */
+export const McpSyncAddSchema = z.object({
+  file: z.string().min(1),
+  kind: z.enum(["claude", "codex", "cursor", "zcode", "other"]).optional(),
+  label: z.string().min(1).max(80).optional(),
+});
+export type McpSyncAddInput = z.infer<typeof McpSyncAddSchema>;
+
+/** Toggle a source's enabled flag. */
+export const McpSyncSetEnabledSchema = z.object({
+  id: z.string().min(1),
+  enabled: z.boolean(),
+});
+export type McpSyncSetEnabledInput = z.infer<typeof McpSyncSetEnabledSchema>;
+
+/** Remove a source (retracts the entries it synced in). */
+export const McpSyncRemoveSchema = z.object({
+  id: z.string().min(1),
+});
+export type McpSyncRemoveInput = z.infer<typeof McpSyncRemoveSchema>;
+
+/** Force a resync of one source (or all when id omitted). */
+export const McpSyncRescanSchema = z.object({
+  id: z.string().min(1).optional(),
+});
+export type McpSyncRescanInput = z.infer<typeof McpSyncRescanSchema>;
+
 /* ── Output style (settings panel) ──
  *  Claude sessions can run with a different "output style" — the CLI rewrites
  *  its system prompt to change HOW the model responds (default / Explanatory /
@@ -4608,6 +4697,21 @@ export interface RpcMap {
     skipped: string[];
     errors: Array<{ name: string; error: string }>;
   }>;
+  /** External MCP config sync (settings panel): list configured sources with
+   *  live status. */
+  "mcp.syncList": (input: McpSyncListInput) => Promise<{
+    sources: Array<McpSyncSource & { status: McpSyncStatus }>;
+  }>;
+  /** Scan well-known external config locations for addable sync sources. */
+  "mcp.syncScan": (input: McpSyncScanInput) => Promise<{ candidates: McpSyncCandidate[] }>;
+  /** Attach an external config file as a watched sync source. */
+  "mcp.syncAdd": (input: McpSyncAddInput) => Promise<{ ok: boolean; error?: string; id?: string }>;
+  /** Enable/disable a sync source (disabling retracts its synced entries). */
+  "mcp.syncSetEnabled": (input: McpSyncSetEnabledInput) => Promise<{ ok: boolean; error?: string }>;
+  /** Remove a sync source and retract its synced entries. */
+  "mcp.syncRemove": (input: McpSyncRemoveInput) => Promise<{ ok: boolean; error?: string }>;
+  /** Force a resync of one source (or all when id omitted). */
+  "mcp.syncRescan": (input: McpSyncRescanInput) => Promise<{ ok: boolean; error?: string }>;
   /** Output styles (settings panel): list built-in + user styles. The
    *  selection itself is persisted via the generic setting.get/set channels
    *  under AGENT_OUTPUT_STYLE_SETTING_KEY. */
@@ -4991,6 +5095,15 @@ export const IPC = {
   MCP_REMOVE: "mcp:remove",
   MCP_SCAN_IMPORT: "mcp:scanImport",
   MCP_IMPORT: "mcp:import",
+  // External MCP config sync (settings panel): watch external tool config
+  // files and mirror their servers into ~/.mcode/.claude.json (TODO-004)
+  MCP_SYNC_LIST: "mcp:syncList",
+  MCP_SYNC_SCAN: "mcp:syncScan",
+  MCP_SYNC_ADD: "mcp:syncAdd",
+  MCP_SYNC_SET_ENABLED: "mcp:syncSetEnabled",
+  MCP_SYNC_REMOVE: "mcp:syncRemove",
+  MCP_SYNC_RESCAN: "mcp:syncRescan",
+  MCP_SYNC_CHANGED: "mcp:syncChanged",
   // Output styles (settings panel): list built-in + user styles
   OUTPUT_STYLE_LIST: "outputStyle:list",
   // Unified system prompt (settings panel): project file + layered preview

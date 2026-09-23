@@ -508,6 +508,16 @@ const api = {
       ipcRenderer.invoke(IPC.SKILLS_SCAN_SOURCES, input)) as RpcMap["skills.scanSources"],
     import: ((input) =>
       ipcRenderer.invoke(IPC.SKILLS_IMPORT, input)) as RpcMap["skills.import"],
+    syncList: ((input) =>
+      ipcRenderer.invoke(IPC.SKILLS_SYNC_LIST, input)) as RpcMap["skills.syncList"],
+    syncAdd: ((input) =>
+      ipcRenderer.invoke(IPC.SKILLS_SYNC_ADD, input)) as RpcMap["skills.syncAdd"],
+    syncSetEnabled: ((input) =>
+      ipcRenderer.invoke(IPC.SKILLS_SYNC_SET_ENABLED, input)) as RpcMap["skills.syncSetEnabled"],
+    syncRemove: ((input) =>
+      ipcRenderer.invoke(IPC.SKILLS_SYNC_REMOVE, input)) as RpcMap["skills.syncRemove"],
+    syncRescan: ((input) =>
+      ipcRenderer.invoke(IPC.SKILLS_SYNC_RESCAN, input)) as RpcMap["skills.syncRescan"],
   },
 
   /** MCP server management (settings panel): list the three server sources

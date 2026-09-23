@@ -2788,6 +2788,71 @@ export const SkillsImportSchema = z.object({
 });
 export type SkillsImportInput = z.infer<typeof SkillsImportSchema>;
 
+/* ── External skill sync (settings panel) ──
+ *  TODO-004: instead of the one-shot "Import = copy" flow above, the user
+ *  can attach external skill directories (Claude Code ~/.claude/skills,
+ *  Codex ~/.codex/skills, Zcode ~/.agents/skills, or any picked folder) as
+ *  SYNC sources. Each enabled source is mirrored by copy into
+ *  ~/.mcode/skills-sync/<sourceKey>/ and followed in real time (fs.watch);
+ *  the composer `/` menu scans that mirror as an additional root. Sync is
+ *  one-way (source → mirror); the mirror directory is managed by the app
+ *  and must not be hand-edited. */
+
+/** Setting key under which the configured sync sources are persisted. */
+export const SKILL_SYNC_SOURCES_SETTING_KEY = "skillSync.sources";
+
+/** One configured external skill source. */
+export interface SkillSyncSource {
+  /** Stable id (auto-derived from the source path). */
+  id: string;
+  /** User-facing label (defaults to a friendly name for the source). */
+  label: string;
+  /** Absolute path of the source skills root being mirrored. */
+  sourceDir: string;
+  /** Whether this source is currently being mirrored + watched. */
+  enabled: boolean;
+}
+
+/** Runtime sync status of one source. */
+export interface SkillSyncStatus {
+  /** Number of skill directories currently present in the mirror. */
+  skillCount: number;
+  /** ISO timestamp of the last completed sync, or null. */
+  lastSyncAt: string | null;
+  /** Last sync error message, or null when the last sync succeeded. */
+  lastError: string | null;
+}
+
+/** List configured sync sources with live status. */
+export const SkillsSyncListSchema = z.object({});
+export type SkillsSyncListInput = z.infer<typeof SkillsSyncListSchema>;
+
+/** Add a new sync source (or re-add an existing sourceDir). */
+export const SkillsSyncAddSchema = z.object({
+  sourceDir: z.string().min(1),
+  label: z.string().min(1).max(80).optional(),
+});
+export type SkillsSyncAddInput = z.infer<typeof SkillsSyncAddSchema>;
+
+/** Toggle a source's enabled flag. */
+export const SkillsSyncSetEnabledSchema = z.object({
+  id: z.string().min(1),
+  enabled: z.boolean(),
+});
+export type SkillsSyncSetEnabledInput = z.infer<typeof SkillsSyncSetEnabledSchema>;
+
+/** Remove a source (and delete its mirror directory). */
+export const SkillsSyncRemoveSchema = z.object({
+  id: z.string().min(1),
+});
+export type SkillsSyncRemoveInput = z.infer<typeof SkillsSyncRemoveSchema>;
+
+/** Force a rescan of one source (or all when id omitted). */
+export const SkillsSyncRescanSchema = z.object({
+  id: z.string().min(1).optional(),
+});
+export type SkillsSyncRescanInput = z.infer<typeof SkillsSyncRescanSchema>;
+
 /* ── Output style (settings panel) ──
  *  Claude sessions can run with a different "output style" — the CLI rewrites
  *  its system prompt to change HOW the model responds (default / Explanatory /
@@ -4503,6 +4568,19 @@ export interface RpcMap {
     skipped: string[];
     errors: Array<{ name: string; error: string }>;
   }>;
+  /** External skill sync (settings panel): list configured sources with live
+   *  mirror status (skill count / last sync / last error). */
+  "skills.syncList": (input: SkillsSyncListInput) => Promise<{
+    sources: Array<SkillSyncSource & { status: SkillSyncStatus }>;
+  }>;
+  /** Attach an external skills directory as a watched sync source. */
+  "skills.syncAdd": (input: SkillsSyncAddInput) => Promise<{ ok: boolean; error?: string; id?: string }>;
+  /** Enable/disable a sync source. */
+  "skills.syncSetEnabled": (input: SkillsSyncSetEnabledInput) => Promise<{ ok: boolean; error?: string }>;
+  /** Remove a sync source and delete its mirror directory. */
+  "skills.syncRemove": (input: SkillsSyncRemoveInput) => Promise<{ ok: boolean; error?: string }>;
+  /** Force a rescan of one source (or all when id omitted). */
+  "skills.syncRescan": (input: SkillsSyncRescanInput) => Promise<{ ok: boolean; error?: string }>;
   // MCP management (settings panel)
   /** List all MCP servers across the three sources (user config file, project
    *  .mcp.json, built-in mcode-browser) with their enabled state. */
@@ -4896,6 +4974,14 @@ export const IPC = {
   // Skill import (settings panel): scan external tools + copy into ~/.mcode/skills
   SKILLS_SCAN_SOURCES: "skills:scanSources",
   SKILLS_IMPORT: "skills:import",
+  // External skill sync (settings panel): attach external skill directories as
+  // watched sources mirrored into ~/.mcode/skills-sync (TODO-004)
+  SKILLS_SYNC_LIST: "skills:syncList",
+  SKILLS_SYNC_ADD: "skills:syncAdd",
+  SKILLS_SYNC_SET_ENABLED: "skills:syncSetEnabled",
+  SKILLS_SYNC_REMOVE: "skills:syncRemove",
+  SKILLS_SYNC_RESCAN: "skills:syncRescan",
+  SKILLS_SYNC_CHANGED: "skills:syncChanged",
   // MCP management (settings panel): list / toggle / add / remove / import
   MCP_LIST: "mcp:list",
   MCP_TOGGLE: "mcp:toggle",

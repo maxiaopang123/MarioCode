@@ -969,6 +969,18 @@ export const zh = {
   "settings.skills.newSkillGlobalIntro1": "填写名称、描述和正文,保存时会自动生成标准 frontmatter。全局 skill 存放到 ",
   "settings.skills.newSkillGlobalIntro2": ",所有项目可用。之后可在编辑模式补充 ",
 
+  // ── SkillsPanel · 外部源同步 (TODO-004) ──
+  "settings.skillsSync.title": "外部源同步",
+  "settings.skillsSync.desc": "选择其他工具的技能目录(如 ~/.codex/skills),单向复制同步到 MarioCode,并实时跟随源目录变化。同步出的 skill 对 Claude / Pi / Codex 三个 agent 均可用,优先级最低,不会覆盖同名 skill。",
+  "settings.skillsSync.addDir": "添加目录",
+  "settings.skillsSync.rescan": "重新同步",
+  "settings.skillsSync.remove": "移除此源",
+  "settings.skillsSync.empty": "尚未添加同步源。点击下方「添加目录」选择一个包含 SKILL.md 子目录的技能根目录。",
+  "settings.skillsSync.skillCount": "{n} 个 skill",
+  "settings.skillsSync.lastSync": "上次同步:{time}",
+  "settings.skillsSync.never": "从未",
+  "settings.skillsSync.frozen": "已停用,镜像冻结保留",
+
   // ── TerminalPanel ──
   "settings.terminal.title": "终端",
   "settings.terminal.desc": "配置终端使用的 Shell 与按项目保存的常用快捷命令。",

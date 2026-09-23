@@ -496,6 +496,11 @@ const skills: Api["skills"] = {
   delete: () => webUnsupported("skills.delete"),
   scanSources: () => webUnsupported("skills.scanSources"),
   import: () => webUnsupported("skills.import"),
+  syncList: () => webUnsupported("skills.syncList"),
+  syncAdd: () => webUnsupported("skills.syncAdd"),
+  syncSetEnabled: () => webUnsupported("skills.syncSetEnabled"),
+  syncRemove: () => webUnsupported("skills.syncRemove"),
+  syncRescan: () => webUnsupported("skills.syncRescan"),
 };
 
 const file: Api["file"] = {

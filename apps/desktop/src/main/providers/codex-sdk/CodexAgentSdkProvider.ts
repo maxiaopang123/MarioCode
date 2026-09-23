@@ -61,6 +61,7 @@ import {
 } from "@main/lib/codexModelsStore.js";
 import { getOrSetFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
 import { getMcpManagement } from "@main/lib/mcpConfig.js";
+import { skillSyncMirrorRootsSync } from "@main/lib/skillSync.js";
 import { CODEX_IDENTITY_PROMPT, joinPromptSections } from "@main/lib/systemPrompt.js";
 import { ASK_NATIVE_TOOL_PROMPT } from "@main/lib/askQuestion.js";
 import { loadUserSystemPrompt, userSystemPromptSections } from "@main/lib/userSystemPrompt.js";
@@ -624,7 +625,7 @@ async function buildCodexEnv(ctx: ProviderContext): Promise<Record<string, strin
  *  the project's .claude/skills (same pair the Claude provider exposes via
  *  Options.skills discovery). Only existing dirs are sent. */
 function skillRootsFor(cwd: string): string[] {
-  const roots = [path.join(homedir(), ".mcode", "skills"), path.join(cwd, ".claude", "skills")];
+  const roots = [path.join(homedir(), ".mcode", "skills"), path.join(cwd, ".claude", "skills"), ...skillSyncMirrorRootsSync()];
   return roots.filter((r) => {
     try {
       return statSync(r).isDirectory();

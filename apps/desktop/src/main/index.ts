@@ -1,5 +1,5 @@
 import { app, BrowserWindow, session } from "electron";
-import { createMainWindow } from "@main/window.js";
+import { createMainWindow, sendToRenderer } from "@main/window.js";
 import { registerIpcHandlers } from "@main/ipc/index.js";
 import { initDb, closeDb, awaitDb } from "@main/store/db.js";
 import { initTheme } from "@main/lib/theme.js";
@@ -10,6 +10,7 @@ import { BrowserManager } from "@main/browser/BrowserManager.js";
 import { startMobileServer, stopMobileServer } from "@main/mobile/MobileHttpServer.js";
 import { relayManager } from "@main/relay/RelayManager.js";
 import { RELAY_AUTO_START_SETTING_KEY } from "@contracts/relay";
+import { IPC } from "@contracts/ipc";
 import { SettingRepo } from "@main/store/repositories.js";
 import { initUpdater } from "@main/updater.js";
 import { initAutoArchiver } from "@main/session/AutoArchiver.js";
@@ -22,6 +23,7 @@ import { schedulerService } from "@main/scheduler/SchedulerService.js";
 import { clawBotService } from "@main/clawbot/ClawBotService.js";
 import { clawBotChatGateway } from "@main/clawbot/ClawBotChatGateway.js";
 import { setManagedRuntimeRoot } from "@main/runtimes/managedRuntimeRoots.js";
+import { startSkillSyncEngine, setSkillSyncChangeListener } from "@main/lib/skillSync.js";
 import { join } from "node:path";
 
 let clawBotStartupPromise: Promise<void> | null = null;
@@ -154,6 +156,11 @@ app.whenReady().then(async () => {
   // occurrence of overdue tasks.
   void awaitDb().then(() => schedulerService.start()).catch((err) =>
     log.error(`scheduler failed to start: ${(err as Error).message}`),
+  );
+  // External skill sync engine (TODO-004): mirror + watch enabled sources.
+  setSkillSyncChangeListener(() => sendToRenderer(IPC.SKILLS_SYNC_CHANGED, {}));
+  void awaitDb().then(() => startSkillSyncEngine()).catch((err) =>
+    log.error(`skill sync engine failed to start: ${(err as Error).message}`),
   );
   clawBotStartupPromise = awaitDb().then(async () => {
     if (clawBotQuitRequested) return;

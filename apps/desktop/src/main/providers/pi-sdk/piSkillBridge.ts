@@ -28,7 +28,10 @@
  *     `additionalSkillPaths` pulls in the two Mcode roots (Pi's own defaults are
  *     kept so existing `~/.pi` users aren't disrupted), and whose
  *     `skillsOverride` narrows the discovered set to the user-selected names
- *     when `req.skills` is non-empty.
+ *     when `req.skills` is non-empty. External sync mirrors (TODO-004) reach
+ *     the Pi host through `extraSkillPaths` (the host config protocol), NOT
+ *     by importing skillSync.ts here — that module pulls in the Electron DB,
+ *     which the isolated Pi host bundle must not depend on.
  *   - {@link rewriteSkillPrefix} rewrites a leading `/name` to `/skill:name` for
  *     the names the loader actually resolved, so Pi's `_expandSkillCommand`
  *     recognizes the invocation.

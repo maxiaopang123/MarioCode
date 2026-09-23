@@ -34,11 +34,24 @@ import {
   SkillsDeleteSchema,
   SkillsScanSourcesSchema,
   SkillsImportSchema,
+  SkillsSyncListSchema,
+  SkillsSyncAddSchema,
+  SkillsSyncSetEnabledSchema,
+  SkillsSyncRemoveSchema,
+  SkillsSyncRescanSchema,
 } from "@contracts/ipc";
 import type { SkillInfo, SkillSource, ExternalSkillInfo, SkillTool } from "@contracts/ipc";
 import { ProjectRepo } from "@main/store/repositories.js";
 import { log } from "@main/lib/logger.js";
 import { getEnabledPluginSkillRoots } from "@main/plugins/pluginManager.js";
+import {
+  listSkillSync,
+  addSkillSyncSource,
+  setSkillSyncEnabled,
+  removeSkillSyncSource,
+  rescanSkillSync,
+  skillSyncMirrorRoots,
+} from "@main/lib/skillSync.js";
 
 /** Case-insensitive, normalized equality for project-root matching — same
  *  helper logic the file handlers use (they inline it as `samePath`). Paths
@@ -437,6 +450,20 @@ export async function listSkillsForProject(projectPath: string | undefined): Pro
   } catch (err) {
     log.warn(`plugin skills scan failed: ${(err as Error).message}`);
   }
+  // Synced external skills (TODO-004): one mirror dir per enabled source,
+  // lowest precedence after plugins — a synced skill never overrides a
+  // same-named user/project/plugin skill.
+  try {
+    const syncByName = new Map<string, SkillInfo>();
+    for (const dir of await skillSyncMirrorRoots()) {
+      await scanSkillsRoot(dir, "plugin", syncByName);
+    }
+    for (const [name, info] of syncByName) {
+      if (!byName.has(name)) byName.set(name, info);
+    }
+  } catch (err) {
+    log.warn(`skill sync scan failed: ${(err as Error).message}`);
+  }
   // Stable ordering: project-first then global, alphabetical within each,
   // so the menu doesn't reshuffle between renders.
   return [...byName.values()].sort((a, b) => {
@@ -677,5 +704,31 @@ export function registerSkillsHandlers(ipcMain: IpcMain): void {
       }
     }
     return { imported, skipped, errors };
+  });
+
+  // ── External skill sync (TODO-004) ──
+  ipcMain.handle(IPC.SKILLS_SYNC_LIST, async (_evt, raw) => {
+    SkillsSyncListSchema.parse(raw);
+    return { sources: await listSkillSync() };
+  });
+
+  ipcMain.handle(IPC.SKILLS_SYNC_ADD, async (_evt, raw) => {
+    const input = SkillsSyncAddSchema.parse(raw);
+    return addSkillSyncSource(input.sourceDir, input.label);
+  });
+
+  ipcMain.handle(IPC.SKILLS_SYNC_SET_ENABLED, async (_evt, raw) => {
+    const input = SkillsSyncSetEnabledSchema.parse(raw);
+    return setSkillSyncEnabled(input.id, input.enabled);
+  });
+
+  ipcMain.handle(IPC.SKILLS_SYNC_REMOVE, async (_evt, raw) => {
+    const input = SkillsSyncRemoveSchema.parse(raw);
+    return removeSkillSyncSource(input.id);
+  });
+
+  ipcMain.handle(IPC.SKILLS_SYNC_RESCAN, async (_evt, raw) => {
+    const input = SkillsSyncRescanSchema.parse(raw);
+    return rescanSkillSync(input.id);
   });
 }

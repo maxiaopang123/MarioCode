@@ -970,6 +970,18 @@ export const en = {
   "settings.skills.newSkillGlobalIntro1": "Fill in the name, description and body; a standard frontmatter is generated on save. Global skills are stored in ",
   "settings.skills.newSkillGlobalIntro2": " and are available to every project. Later you can add advanced fields such as ",
 
+  // ── SkillsPanel · external source sync (TODO-004) ──
+  "settings.skillsSync.title": "External source sync",
+  "settings.skillsSync.desc": "Pick a skill directory from another tool (e.g. ~/.codex/skills) to mirror into MarioCode one-way, with live watching of the source. Synced skills work in Claude, Pi and Codex with the lowest precedence — they never override same-named skills.",
+  "settings.skillsSync.addDir": "Add directory",
+  "settings.skillsSync.rescan": "Resync",
+  "settings.skillsSync.remove": "Remove this source",
+  "settings.skillsSync.empty": "No sync sources yet. Click \"Add directory\" below and choose a skills root containing SKILL.md subdirectories.",
+  "settings.skillsSync.skillCount": "{n} skills",
+  "settings.skillsSync.lastSync": "Last synced: {time}",
+  "settings.skillsSync.never": "never",
+  "settings.skillsSync.frozen": "disabled, mirror kept frozen",
+
   // ── TerminalPanel ──
   "settings.terminal.title": "Terminal",
   "settings.terminal.desc": "Configure the terminal shell and per-project quick commands.",

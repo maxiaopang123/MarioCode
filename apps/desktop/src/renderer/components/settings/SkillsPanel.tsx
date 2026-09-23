@@ -47,7 +47,7 @@ import { cn } from "@renderer/lib/cn.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { api } from "@renderer/lib/api.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
-import { Button, ConfirmDialog, Dialog, Select } from "@renderer/components/ui/index.js";
+import { Button, ConfirmDialog, Dialog, Select, Switch } from "@renderer/components/ui/index.js";
 import { PanelHeader } from "./PanelHeader.js";
 import {
   IconPlus,
@@ -57,8 +57,9 @@ import {
   IconDownload,
   IconFolder,
   IconFileText,
+  IconRefresh,
 } from "@renderer/lib/icons.js";
-import type { SkillInfo, SkillSource, ExternalSkillInfo, SkillTool } from "@contracts/ipc";
+import type { SkillInfo, SkillSource, ExternalSkillInfo, SkillTool, SkillSyncSource, SkillSyncStatus } from "@contracts/ipc";
 
 /** Skill name charset — mirrored from the zod schema in the contract. The
  *  editor disables the name field for existing skills, so this only gates the
@@ -100,6 +101,12 @@ function emptyNewForm(scope: EditableSkillSource): NewForm {
 function skillKey(s: { source: SkillSource; name: string }): string {
   return `${s.source}:${s.name}`;
 }
+
+/** One external sync source joined with its live status, as returned by
+ *  skills.syncList. */
+type SyncRow = SkillSyncSource & { status: SkillSyncStatus };
+
+const EMPTY_SYNC_ROWS: SyncRow[] = [];
 
 export function SkillsPanel() {
   const { t } = useI18n();
@@ -176,6 +183,61 @@ export function SkillsPanel() {
   const [pendingDelete, setPendingDelete] = useState<{ source: EditableSkillSource; name: string } | null>(null);
   // Import dialog open state.
   const [importOpen, setImportOpen] = useState(false);
+  // External sync sources (TODO-004): user directories mirrored into
+  // ~/.mcode/skills-sync and injected into Claude / Pi / Codex.
+  const [syncRows, setSyncRows] = useState<SyncRow[]>(EMPTY_SYNC_ROWS);
+
+  const loadSyncRows = useCallback(async () => {
+    try {
+      const { sources } = await api.skills.syncList({});
+      setSyncRows(sources.length ? sources : EMPTY_SYNC_ROWS);
+    } catch (err) {
+      console.error("SkillsPanel syncList failed:", err);
+      setSyncRows(EMPTY_SYNC_ROWS);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSyncRows();
+  }, [loadSyncRows]);
+
+  const pickSyncDir = async () => {
+    try {
+      const res = await api.pickFolder();
+      if (!res.path) return; // user cancelled
+      await api.skills.syncAdd({ sourceDir: res.path });
+      await loadSyncRows();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const toggleSyncSource = async (row: SyncRow, enabled: boolean) => {
+    try {
+      await api.skills.syncSetEnabled({ id: row.id, enabled });
+      await loadSyncRows();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const removeSyncSource = async (row: SyncRow) => {
+    try {
+      await api.skills.syncRemove({ id: row.id });
+      await loadSyncRows();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const rescanSyncSources = async () => {
+    try {
+      await api.skills.syncRescan({});
+      await loadSyncRows();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
 
   // After any mutation: refresh this panel's list, and (if the managed project
   // is also the workspace's active one) refresh the store cache so the
@@ -329,6 +391,92 @@ export function SkillsPanel() {
         className="mb-3"
         title="Skills"
       />
+
+      {/* ───────── External skill source sync (TODO-004) ───────── */}
+      {/* One-way mirror of user-chosen skill directories into
+          ~/.mcode/skills-sync, kept up to date by a file watcher. The mirror
+          is injected into Claude (synthesized local plugins), Pi
+          (additionalSkillPaths) and Codex (skill roots), so skills authored
+          in other tools (e.g. ~/.codex/skills) show up here and in the
+          composer `/` menu of all three agents. Disabling a source freezes
+          its mirror instead of deleting it. */}
+      <div className="mb-3 rounded-md border border-edge bg-surface/40 p-2.5">
+        <div className="flex items-center gap-2">
+          <IconFolder size={14} className="shrink-0 text-content-subtle" />
+          <span className="text-[0.7857em] font-medium text-content-muted">
+            {t("settings.skillsSync.title")}
+          </span>
+          <div className="flex-1" />
+          <Button variant="ghost" size="sm" onClick={() => void rescanSyncSources()}>
+            <IconRefresh size={12} />
+            {t("settings.skillsSync.rescan")}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => void pickSyncDir()}>
+            <IconPlus size={12} />
+            {t("settings.skillsSync.addDir")}
+          </Button>
+        </div>
+        <p className="mt-1 text-[0.7143em] leading-relaxed text-content-subtle">
+          {t("settings.skillsSync.desc")}
+        </p>
+        {syncRows.length === 0 ? (
+          <p className="mt-1.5 text-[0.7143em] text-content-subtle">
+            {t("settings.skillsSync.empty")}
+          </p>
+        ) : (
+          <ul className="mt-1.5 space-y-1">
+            {syncRows.map((row) => (
+              <li
+                key={row.id}
+                className="flex items-center gap-2 rounded border border-edge/60 bg-surface/60 px-2 py-1.5"
+              >
+                <Switch
+                  checked={row.enabled}
+                  onCheckedChange={(checked) => void toggleSyncSource(row, checked)}
+                  label={row.label}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="truncate text-[0.7857em] font-medium text-content">
+                      {row.label}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-[0.7143em] text-content-subtle">
+                      {t("settings.skillsSync.skillCount", { n: row.status.skillCount })}
+                    </span>
+                  </div>
+                  <div className="truncate text-[0.7143em] text-content-subtle" title={row.sourceDir}>
+                    {row.sourceDir}
+                  </div>
+                  <div className="text-[0.7143em] text-content-subtle">
+                    {row.status.lastError ? (
+                      <span className="text-warning">{row.status.lastError}</span>
+                    ) : (
+                      t("settings.skillsSync.lastSync", {
+                        time: row.status.lastSyncAt
+                          ? new Date(row.status.lastSyncAt).toLocaleString()
+                          : t("settings.skillsSync.never"),
+                      })
+                    )}
+                    {!row.enabled && (
+                      <span className="ml-1.5 text-content-subtle/70">
+                        · {t("settings.skillsSync.frozen")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => void removeSyncSource(row)}
+                  title={t("settings.skillsSync.remove")}
+                >
+                  <IconTrash size={12} />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       {/* ───────── Project selector ───────── */}
       {/* Makes the project binding explicit: project-scoped skills always

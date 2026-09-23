@@ -6,6 +6,7 @@ import type { PiProviderPublic } from "@contracts/piModel";
 import { PiModelsStore } from "@main/lib/piModelsStore.js";
 import { resolveGitBash } from "@main/lib/binaryResolve.js";
 import { getEnabledPluginSkillRoots } from "@main/plugins/pluginManager.js";
+import { skillSyncMirrorRoots } from "@main/lib/skillSync.js";
 import { getMcpManagement } from "@main/lib/mcpConfig.js";
 import { BROWSER_TOOL_SPECS, browserToolsUsagePrompt } from "@main/browser/agentBrowserTools.js";
 import { joinPromptSections } from "@main/lib/systemPrompt.js";
@@ -32,7 +33,11 @@ async function loadHostConfiguration(): Promise<{ providers: Record<string, PiPr
     if (key) apiKeys[name] = key;
   }
   const mcp = await getMcpManagement();
-  return { providers, apiKeys, extraSkillPaths: await getEnabledPluginSkillRoots(), gitBash: process.platform === "win32" ? resolveGitBash() : null, browserToolsEnabled: !mcp.browserDisabled, agentDir: piPrivateAgentDir() };
+  // extraSkillPaths = enabled plugin skill roots + external sync mirrors
+  // (TODO-004). The Pi host learns the sync mirrors through THIS config
+  // channel — it cannot read the sync source list itself because the host
+  // bundle runs without the Electron DB.
+  return { providers, apiKeys, extraSkillPaths: [...(await getEnabledPluginSkillRoots()), ...(await skillSyncMirrorRoots())], gitBash: process.platform === "win32" ? resolveGitBash() : null, browserToolsEnabled: !mcp.browserDisabled, agentDir: piPrivateAgentDir() };
 }
 
 export class PiAgentSdkProvider implements AgentProvider {

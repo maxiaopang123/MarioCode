@@ -71,13 +71,13 @@ export function ThreePaneLayout({
     <>
       {/* Left sidebar — only used by the settings page since the workspace
          moved its full-height sidebar up to App.tsx. Square corners (no
-         arcs). bg-surface-muted matches the settings overlay backdrop so the
+         arcs). bg-surface-base matches the settings overlay backdrop so the
          nav reads as one continuous block. Its hover/active states use the
          surface-hover family (see LeftBar.tsx), which is clearly visible on
-         this muted base. */}
+         this ground color. */}
       {leftOpen && (
         <aside
-          className="flex h-full shrink-0 flex-col bg-surface-muted"
+          className="flex h-full shrink-0 flex-col bg-surface-base"
           style={{ width: leftWidth }}
         >
           <div className="min-h-0 flex-1 overflow-y-auto">{left}</div>

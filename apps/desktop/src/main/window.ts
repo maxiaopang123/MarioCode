@@ -10,12 +10,12 @@ let mainWindow: BrowserWindow | null = null;
 
 /** Background color matching the effective theme, so the first frame (before
  *  React mounts) doesn't flash the wrong color. Mirrors --surface in CSS
- *  (styles.css): light = #ffffff (sketch paper #fcfaf3), dark = #1a1d24
+ *  (styles.css): light = #ffffff (sketch paper #fcfaf3), dark = #17181b
  *  (sketch kraft #3b3126) — the pre-DB fallback below is an imperceptible
  *  delta. */
 function bgColor(): string {
   const sketch = getThemeStylePreference() === "sketch";
-  if (getEffectiveTheme() === "dark") return sketch ? "#3b3126" : "#1a1d24";
+  if (getEffectiveTheme() === "dark") return sketch ? "#3b3126" : "#17181b";
   return sketch ? "#fcfaf3" : "#ffffff";
 }
 
@@ -23,7 +23,7 @@ function bgColor(): string {
  *  behind the native min/max/close buttons when `titleBarStyle: 'hidden'` is
  *  active, so it must visually blend with the custom titlebar in the renderer.
  *
- *  `color` mirrors --surface-muted (the toolbar's background — it matches the
+ *  `color` mirrors --surface-base (the toolbar's background — it matches the
  *  full-height sidebar so they read as one frame); `symbolColor` mirrors
  *  --content-subtle so the button glyphs match the dim UI text tone. Values
  *  must stay in sync with styles.css (.dark block + the sketch section's
@@ -37,8 +37,8 @@ function overlayColors() {
   const dark = getEffectiveTheme() === "dark";
   const sketch = getThemeStylePreference() === "sketch";
   return {
-    color: dark ? (sketch ? "#332a20" : "#2c313c") : sketch ? "#f6f2e7" : "#f4f4f5",
-    symbolColor: dark ? (sketch ? "#aca089" : "#9ea2ab") : sketch ? "#8d8371" : "#71717a",
+    color: dark ? (sketch ? "#332a20" : "#0e0f11") : sketch ? "#f6f2e7" : "#f3f4f6",
+    symbolColor: dark ? (sketch ? "#aca089" : "#868b95") : sketch ? "#8d8371" : "#6e737e",
     height: 40,
   };
 }

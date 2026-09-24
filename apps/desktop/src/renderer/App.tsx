@@ -198,10 +198,10 @@ export function App() {
   };
 
   return (
-    // bg-surface-muted (matching the sidebar/toolbar/track) so the left
+    // bg-surface-base (matching the sidebar/toolbar/track) so the left
     // divider's transparent 1px layout slot blends in — a bg-surface root
     // showed through it as a stray light/dark hairline cutting the frame.
-    <div ref={rootRef} className="flex h-full w-full bg-surface-muted text-content">
+    <div ref={rootRef} className="flex h-full w-full bg-surface-base text-content">
       {/* Command palette + file search dialog overlay both workspace and
           settings views. The browser panel overlay mounts here too - it
           covers the workspace with a fixed inset overlay (z-40, below the
@@ -231,7 +231,7 @@ export function App() {
         While the settings view is open the aside is hidden via CSS too
         (stays mounted to preserve scroll) so settings renders FULL-WIDTH
         below the toolbar instead of only over the right column.
-        bg-surface-muted matches the toolbar to the right and the panel track,
+        bg-surface-base matches the toolbar to the right and the panel track,
         so all three read as one continuous frame — no right-edge rounding;
         rounded-tl alone carries the window-corner arc on macOS.
       */}
@@ -242,7 +242,7 @@ export function App() {
           // session title, which contributes its full text width to
           // min-content) propped the aside open no matter how small
           // leftWidthPct got.
-          "flex h-full min-w-0 shrink-0 flex-col rounded-tl-3xl bg-surface-muted",
+          "flex h-full min-w-0 shrink-0 flex-col rounded-tl-3xl bg-surface-base",
           (!leftOpen || settingsOpen) && "hidden",
         )}
         style={{ flexGrow: 0, flexBasis: `${leftWidthPct}%` }}
@@ -297,13 +297,13 @@ export function App() {
           onToggleRight={() => setRightOpen(!rightOpen)}
           onToggleBottomTerminal={() => setBottomTerminalOpen(!bottomTerminalOpen)}
         />
-        {/* Main panel row — bg-surface-muted as the contrasting track so the
+        {/* Main panel row — bg-surface-base as the contrasting track so the
             center pane's rounded left-edge corners (in ThreePaneLayout)
-            reveal this muted color through the notches and read as clean
-            arcs. The left sidebar (bg-surface-muted) blends into the track
+            reveal this ground color through the notches and read as clean
+            arcs. The left sidebar (bg-surface-base) blends into the track
             on its side; the center pane (bg-surface) separates from the
             track by the flat color step alone (no shadow). */}
-        <div className="relative flex min-h-0 flex-1 bg-surface-muted">
+        <div className="relative flex min-h-0 flex-1 bg-surface-base">
           {/*
             Center is ONE stable tree across wide mode (CenterPane takes the
             wide flag as a render variation) — the old ternary swap
@@ -344,7 +344,7 @@ export function App() {
             settings is open, so this overlay (inset-0 of the panel row, which
             now spans the whole window) covers everything below the toolbar.
             The workspace still mounts underneath, keeping terminals alive,
-            just not visible. bg-surface-muted is opaque (no bleed-through)
+            just not visible. bg-surface-base is opaque (no bleed-through)
             and doubles as the settings "track": it shows through the content
             pane's rounded-tl/bl notches so the settings arcs read exactly
             like the workspace center pane against its frame.
@@ -355,7 +355,7 @@ export function App() {
             renders.
           */}
           {settingsOpen && (
-            <div className="settings-root absolute inset-0 z-30 flex bg-surface-muted">
+            <div className="settings-root absolute inset-0 z-30 flex bg-surface-base">
               <SettingsPage />
             </div>
           )}

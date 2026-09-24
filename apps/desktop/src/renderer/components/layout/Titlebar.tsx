@@ -43,7 +43,7 @@ interface Props {
  *  bar draggable; the buttons opt out with -webkit-app-region: no-drag so
  *  clicks pass through. The left sidebar runs the FULL window height beside
  *  it (see App.tsx), so this bar no longer has a sidebar-aligned left strip;
- *  bg-surface-muted matches the sidebar so the two read as one continuous
+ *  bg-surface-base matches the sidebar so the two read as one continuous
  *  frame around the center + right panes.
  *
  *  Leading content by mode:
@@ -110,7 +110,7 @@ export function Titlebar({
     >
       <div
         className={cn(
-          "flex flex-1 items-center bg-surface-muted px-1.5",
+          "flex flex-1 items-center bg-surface-base px-1.5",
           !isMac && "pr-[138px]",
           // macOS traffic lights sit at the window's top-left. They overlay
           // the full-height sidebar while it's visible (LeftBar's header

@@ -95,7 +95,7 @@ export const EDITOR_THEME_PRESETS: EditorThemePreset[] = [
     mode: "dark",
     labelKey: "settings.appearance.schemeMcodeDark",
     swatch: {
-      background: "#1a1d24",
+      background: "#17181b",
       keyword: "#569cd6",
       string: "#ce9178",
       number: "#b5cea8",
@@ -106,36 +106,36 @@ export const EDITOR_THEME_PRESETS: EditorThemePreset[] = [
       inherit: true,
       rules: [],
       colors: {
-        // Chrome mirrors styles.css .dark tokens (slate ramp). Keep in sync.
-        "editor.background": "#1a1d24", // --surface
-        "editor.foreground": "#e7e8ec", // --content
-        "editorLineNumber.foreground": "#9ea2ab", // --content-subtle
-        "editorLineNumber.activeForeground": "#bcbfc6", // --content-muted
-        "editorCursor.foreground": "#e7e8ec",
+        // Chrome mirrors styles.css .dark tokens (near-black ramp). Keep in sync.
+        "editor.background": "#17181b", // --surface
+        "editor.foreground": "#ecedf0", // --content
+        "editorLineNumber.foreground": "#868b95", // --content-subtle
+        "editorLineNumber.activeForeground": "#acb0b9", // --content-muted
+        "editorCursor.foreground": "#ecedf0",
         "editor.selectionBackground": "#264f78aa",
         "editor.inactiveSelectionBackground": "#264f7840",
-        "editor.lineHighlightBackground": "#3a404e22",
+        "editor.lineHighlightBackground": "#2b2e3455",
         "editor.lineHighlightBorder": "#00000000",
-        "editorIndentGuide.background1": "#3a404e40",
-        "editorIndentGuide.activeBackground1": "#9ea2ab80",
+        "editorIndentGuide.background1": "#2b2e3466",
+        "editorIndentGuide.activeBackground1": "#868b9580",
         "editorBracketMatch.background": "#10b9812a", // --accent tint
         "editorBracketMatch.border": "#10b98188",
-        "editorGutter.background": "#1a1d24",
-        "editorWidget.background": "#2c313c", // --surface-muted
-        "editorWidget.border": "#2d3340", // --edge
-        "editorSuggestWidget.background": "#2c313c",
-        "editorSuggestWidget.border": "#2d3340",
-        "editorSuggestWidget.selectedBackground": "#3a404e", // --surface-hover
-        "editorHoverWidget.background": "#2c313c",
-        "editorHoverWidget.border": "#2d3340",
+        "editorGutter.background": "#17181b",
+        "editorWidget.background": "#1d1f23", // --surface-muted
+        "editorWidget.border": "#27292f", // --edge
+        "editorSuggestWidget.background": "#1d1f23",
+        "editorSuggestWidget.border": "#27292f",
+        "editorSuggestWidget.selectedBackground": "#2b2e34", // --surface-hover
+        "editorHoverWidget.background": "#1d1f23",
+        "editorHoverWidget.border": "#27292f",
         "editorError.foreground": "#f87171",
         "editorWarning.foreground": "#fbbf24",
         "editorInfo.foreground": "#a78bfa",
-        "scrollbarSlider.background": "#3a404e66",
-        "scrollbarSlider.hoverBackground": "#3a404e",
-        "scrollbarSlider.activeBackground": "#4a5162",
-        "minimap.background": "#1a1d24",
-        "minimapSlider.background": "#3a404e77",
+        "scrollbarSlider.background": "#373a4199", // --input-edge
+        "scrollbarSlider.hoverBackground": "#373a41",
+        "scrollbarSlider.activeBackground": "#454952",
+        "minimap.background": "#17181b",
+        "minimapSlider.background": "#373a4177",
         "diffEditor.insertedTextBackground": "#10b98122",
         "diffEditor.removedTextBackground": "#f8717122",
         "diffEditor.insertedLineBackground": "#10b98114",

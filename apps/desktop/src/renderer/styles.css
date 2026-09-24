@@ -96,11 +96,14 @@ div:has(> [role="menu"]) {
   font-weight: 400;
 
   /* surfaces (backgrounds). Neutral with a slight cool bias (B channel a
-   * few units above R/G), shared by both themes. --surface-muted doubles as
-   * the sidebar track AND the inset well inside white cards (code blocks,
-   * table heads), so it stays a single soft step below white. */
+   * few units above R/G), shared by both themes. --surface-base is the
+   * window ground (sidebar track, titlebar, settings backdrop); --surface-muted
+   * is the inset well inside cards (code blocks, table heads). In light both
+   * sit one soft step below white; dark splits them in opposite directions
+   * (ground darker than the cards, wells lighter). */
   --surface: 255 255 255; /* white — center pane, right panel, popups */
-  --surface-muted: 243 244 246; /* sidebar track, titlebar, inset wells */
+  --surface-base: 243 244 246; /* window ground: sidebar track, titlebar */
+  --surface-muted: 243 244 246; /* inset wells */
   /* Hover/active fill. Must stay visible on BOTH white and --surface-muted
    * (sidebar rows hover on the track), and must NOT equal --edge — a hover
    * row next to a same-valued border reads as one blob. */
@@ -205,67 +208,33 @@ div:has(> [role="menu"]) {
    * Microsoft YaHei keeps its Regular face (see :root). */
   font-weight: 450;
 
-  /* Slate-tinted dark ramp (VS Code Dark+ / GitHub Dark style). The whole
-   * ramp carries a slight cool bias — the B channel runs a few units above
-   * R/G — so the base surface, recesses, hovers and borders all share ONE
-   * color temperature. The previous neutral-zinc ground (#18181b) read as a
-   * flat void next to the blue-gray wells once --surface-muted was moved to
-   * slate, which made the center pane look harshly black against the left
-   * sidebar. The base stays dark (≈#1a1d24) for immersion; muted/hover step
-   * up from there keeping the same cool proportion so the three panes (left
-   * = muted track, center/right = surface) read as one cool palette with
-   * brightness hierarchy, not a warm/cold split. Text stays neutral
-   * white/gray — it doesn't follow the tint, keeping contrast clean. */
-  --surface: 26 29 36; /* #1a1d24 — slate-tinted near-black; the base app
-                        * background (center pane, right sidebar, popups,
-                        * titlebar). B channel sits ~10 above R so the cool
-                        * bias matches --surface-muted. */
-  --surface-muted: 44 49 60; /* #2c313c — slate-tinted recess: inset panels /
-                              * track / left sidebar / code-block & tool-result
-                              * wells in the data stream. Tinted cool (B channel
-                              * runs higher than R/G) so recesses read as a calm
-                              * blue-gray instead of flat neutral — the VS Code
-                              * Dark+ look. The gap to --surface is ~20, enough
-                              * that /40 /60 alpha variants still resolve as a
-                              * visible layer. */
-  --surface-hover: 58 64 78; /* #3a404e — hover/active states, lifted in step
-                              * and keeping the same slate tint so the three
-                              * layers (surface → muted → hover) stay on one
-                              * cool ramp. */
-  --content: 231 232 236; /* soft off-white (#e7e8ec) — ~14.5:1 on the new
-                           * surface, still well above WCAG AAA (7:1) */
-  /* Secondary/tertiary text — brightened one step from the old
-   * #aaadb4 / #848891. On a near-black surface a mid-gray at a "passing"
-   * ratio still reads perceptually dimmer than the same ratio on white
-   * (white-on-dark loses apparent contrast to the eye), and model replies
-   * are dominated by bullet lists / tables / tool cards rendered at muted —
-   * the whole reply body read one tier dimmer than its intro paragraph.
-   * New values: muted ≈9.2:1, subtle ≈6.6:1 on the base surface (both clear
-   * WCAG AA for body text). Tier gaps stay wide (content 231 → muted 188 →
-   * subtle 158) so the three levels still resolve as distinct. */
-  --content-muted: 188 191 198; /* #bcbfc6 — lists / tables / thinking body /
-                                 * tool-card labels */
-  --content-subtle: 158 162 171; /* #9ea2ab — metadata: paths / summaries /
-                                  * timestamps / markers / hints */
-  --edge: 45 51 64; /* #2d3340 — slate-tinted to match the muted/hover ramp;
-                     * one notch below hover so borders read as separators,
-                     * not highlights. */
-  --panel-edge: 45 51 64; /* mirrors dark --edge — the lighter structural
+  /* Near-black ramp with a slight cool bias, three brightness layers (界面焕新
+   * prototypes/ui-refresh.html): the window ground (sidebar, titlebar) is the
+   * darkest, the floating work cards sit one step up, and inset wells inside
+   * cards (code blocks, tool results) one more step up. Hover sits above all
+   * three and must not equal --edge. */
+  --surface-base: 14 15 17; /* #0e0f11 — window ground: sidebar track, titlebar */
+  --surface: 23 24 27; /* #17181b — center pane, right panel, popups */
+  --surface-muted: 29 31 35; /* #1d1f23 — inset wells inside cards */
+  --surface-hover: 43 46 52; /* #2b2e34 — hover/active fills on all three layers */
+  --content: 236 237 240; /* ≈16:1 on --surface */
+  /* Secondary/tertiary text. --content-subtle carries 11–12px metadata
+   * (paths, timestamps, hints), so it stays ≥5:1 on --surface — a notch
+   * brighter than the prototype's #7c818b, which only just cleared 4.5:1. */
+  --content-muted: 172 176 185; /* #acb0b9 — ≈9:1; lists / tables / tool-card labels */
+  --content-subtle: 134 139 149; /* #868b95 — ≈5.2:1; metadata / markers / hints */
+  --edge: 39 41 47; /* #27292f — card outlines, in-panel separators */
+  --panel-edge: 39 41 47; /* mirrors dark --edge — the lighter structural
                            * divider is a light-mode-only concern */
-  --input-edge: 95 99 110; /* cool gray — brighter than --edge so the
-                            * composer box outline stays visible on the
-                            * background. Tuned to read clearly without
-                            * being as bright as the muted-text color. */
+  --input-edge: 55 58 65; /* #373a41 — composer outline, the strongest border */
   --accent: 16 185 129; /* emerald-500 */
-  --accent-strong: 16 185 129; /* emerald-500 — dark accent is already ~6.6:1
-                                 * on the slate surface, so the small-text
-                                 * variant can simply mirror it */
+  --accent-strong: 52 211 153; /* emerald-400 — small accent TEXT on near-black */
   --danger: 248 113 113; /* red-400 */
   --warning: 251 191 36; /* amber-400 */
   --info: 167 139 250; /* violet-400 */
-  /* Fixed git "additions" green — dark counterpart of :root's --success
-   * (mirrors the default dark accent, emerald-500). See :root for rationale. */
-  --success: 16 185 129; /* emerald-500 */
+  /* Fixed git "additions" green — dark counterpart of :root's --success.
+   * See :root for rationale. */
+  --success: 52 211 153; /* emerald-400 */
 
   /* Git graph lanes — dark counterparts of :root's palette (400 shades for
    * contrast on the slate surface). See :root for rationale. */
@@ -284,10 +253,9 @@ div:has(> [role="menu"]) {
    * is density-driven (--chat-md-leading) and shared across themes. */
   --chat-font-weight: 450;
   --user-bubble: 113 113 122; /* default = zinc-500 (\#71717a) */
-  /* Low-alpha gray over #1a1d24 barely moves: 15% ≈ 1.1:1, indistinguishable
-   * from the chat surface. 25% lands the bubble at ~1.30:1 — the same
-   * layering step as --surface-muted vs --surface (sidebar track vs main),
-   * which reads as a clear-but-calm layer in the dark ramp. Applies to ANY
+  /* Low-alpha gray over #17181b barely moves: 15% ≈ 1.1:1, indistinguishable
+   * from the chat surface. 25% lands the bubble at ~1.30:1 — a clear-but-calm
+   * layer in the dark ramp, a little above the inset wells. Applies to ANY
    * user-picked bubble color, not just the default (the tint strength is the
    * problem, not the default hue). */
   --user-bubble-alpha: 0.25;
@@ -320,9 +288,9 @@ div:has(> [role="menu"]) {
  * near-background. Brightening is scoped to the settings overlay wrapper
  * (.settings-root on the App.tsx overlay div) so chat / IDE chrome keeps
  * the global ramp. Values lift both tiers while staying below --content
- * (231 232 236) so the three-level hierarchy still resolves:
- *   muted  #bcbfc6 → #d0d3d9  ≈9.2:1 → ≈11.2:1 on --surface
- *   subtle #9ea2ab → #b8bcc4  ≈6.6:1 → ≈8.9:1  on --surface
+ * (236 237 240) so the three-level hierarchy still resolves:
+ *   muted  #acb0b9 → #c4c8d0  ≈9:1   → ≈10.6:1 on --surface
+ *   subtle #868b95 → #a0a5af  ≈5.2:1 → ≈7.2:1  on --surface
  * Custom properties cascade — Tailwind's text-content-* utilities read
  * them at the element, so all settings panels pick this up at once.
  * (Portaled dialogs/tooltips outside this subtree keep global tokens.) */
@@ -330,22 +298,22 @@ div:has(> [role="menu"]) {
  * 会冷暖打架;kraft 自己的 muted 对比度(≈7.2:1)不需要提亮。见文件末
  * 「Sketch theme」区块的牛皮纸配色。 */
 .dark:not(.sketch) .settings-root {
-  --content-muted: 208 211 217; /* #d0d3d9 */
-  --content-subtle: 184 188 196; /* #b8bcc4 */
+  --content-muted: 196 200 208; /* #c4c8d0 */
+  --content-subtle: 160 165 175; /* #a0a5af */
 }
 
 /* ───────────── Chat markdown list lift (dark only) ─────────────
  * Model replies are dominated by bullet/numbered lists, which render at
  * --content-muted — one full tier below paragraph text. Objectively that is
- * ~9.2:1 (well past AA), but perceptually the whole reply body reads dimmer
+ * ~9:1 (well past AA), but perceptually the whole reply body reads dimmer
  * than its intro sentences, and the full-bright `strong` labels inside
  * bullets (Markdown.tsx renders strong at --content) make the regular list
  * text look dimmer still by simultaneous contrast. Scoped to .chat-md (the
  * Markdown root) so only the chat stream shifts while chrome/settings keep
  * the global ramp; light mode is unaffected (the text-content-muted
  * utilities stay in place as the light fallback).
- *   list body  #bcbfc6 → 60% muted + 40% content ≈ #cfcfd5  ≈9.2:1 → ≈10.8:1
- *   li strong  #e7e8ec → 70% content + 30% muted ≈ #dcdce1 — narrows the
+ *   list body  #acb0b9 → 60% muted + 40% content ≈ #c6c8cf  ≈9:1 → ≈10.7:1
+ *   li strong  #ecedf0 → 70% content + 30% muted ≈ #d9dbe0 — narrows the
  *              in-line white/gray jump; the weight bump still marks emphasis
  * Nested lists recompute the mix from the static RGB vars, not from the
  * inherited color, so it doesn't compound at depth. Markers stay at
@@ -2037,6 +2005,7 @@ body:has(.lightbox-root[data-chrome="hidden"]) .lightbox-scrim {
  * token 名与 :root/.dark 完全同集,rgb(var()) 消费端零改动。 */
 html.sketch:not(.dark) {
   --surface: 252 250 243; /* #fcfaf3 暖纸 — 主面 */
+  --surface-base: 246 242 231; /* #f6f2e7 侧栏轨道/标题栏,与内衬同色 */
   --surface-muted: 246 242 231; /* #f6f2e7 内衬/侧栏轨道/代码井 */
   --surface-hover: 238 233 219; /* #eee9db hover 填充 */
   --content: 58 52 44; /* #3a342c 墨色 */
@@ -2064,6 +2033,7 @@ html.sketch:not(.dark) {
  * 方案——手绘只接管 chrome,数据流保持自己的可读性调优。 */
 html.sketch.dark {
   --surface: 59 49 38; /* #3b3126 暖深底 — 主面 */
+  --surface-base: 51 42 32; /* #332a20 侧栏轨道/标题栏,与内衬同色 */
   --surface-muted: 51 42 32; /* #332a20 内衬/侧栏轨道/代码井 */
   --surface-hover: 70 59 46; /* #463b2e hover 填充 */
   --content: 240 231 213; /* #f0e7d5 粉笔白 */

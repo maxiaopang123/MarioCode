@@ -43,6 +43,7 @@ export default {
         // Definitions live in styles.css (:root = light, .dark = dark).
         surface: {
           DEFAULT: "rgb(var(--surface) / <alpha-value>)",
+          base: "rgb(var(--surface-base) / <alpha-value>)",
           muted: "rgb(var(--surface-muted) / <alpha-value>)",
           hover: "rgb(var(--surface-hover) / <alpha-value>)",
         },

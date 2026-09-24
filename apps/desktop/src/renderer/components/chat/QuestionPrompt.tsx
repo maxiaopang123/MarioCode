@@ -5,13 +5,22 @@ import { Button, Input } from "@renderer/components/ui/index.js";
 import {
   IconCheck,
   IconX,
-  IconQuestionMark,
+  IconHelpCircle,
   IconSend2,
   IconChevronLeft,
   IconChevronRight,
 } from "@renderer/lib/icons.js";
 import type { AskUserQuestionItem } from "@contracts/runtime";
 import type { UserInputAnswers } from "@contracts/provider";
+import {
+  DOCK_BODY,
+  DOCK_BUTTON,
+  DOCK_CARD,
+  DOCK_FOOT,
+  DOCK_HEAD,
+  DOCK_HEAD_ICON,
+  DOCK_MUTED,
+} from "./dockStyles.js";
 
 /**
  * Prompt card shown when claude invokes the AskUserQuestion tool.
@@ -41,11 +50,10 @@ import type { UserInputAnswers } from "@contracts/provider";
  *     it to `claude:respondQuestion`, which resolves the provider's pending
  *     user-input Deferred — the SAME turn then continues.
  *
- * Styling uses the `accent` (emerald) token for all interactive/emphasis
- * states — selected options, the header accent, focus — plus neutral
- * surface/edge tokens for the card frame. This matches the composer's own
- * `focus-within:border-accent` treatment and works in both light and dark
- * themes. No violet/purple is used.
+ * Styling is the shared dock frame (dockStyles.ts, ui-refresh prototype
+ * `.dock`). A picked option is marked the neutral way — stronger border on
+ * the hover fill — and only its radio / check mark carries the accent, as
+ * does the primary 下一题 / 提交 button.
  */
 export function QuestionPrompt({
   questions,
@@ -162,47 +170,26 @@ export function QuestionPrompt({
       role="dialog"
       aria-modal="false"
       aria-label={t("chat.question.aria")}
-      className={cn(
-        "mb-2 flex max-h-[60vh] flex-col overflow-hidden rounded-2xl",
-        "border border-edge-input bg-surface text-xs text-content shadow-2xl",
-        "animate-[qa-sheet-in_140ms_ease-out]",
-      )}
+      className={cn(DOCK_CARD, "max-h-[60vh]")}
     >
-        {/* Header — fixed at top */}
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-edge px-4 py-2.5">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <IconQuestionMark size={14} className="shrink-0 text-accent" />
-            <span className="truncate font-semibold text-accent">
-              {questions.length === 1
-                ? t("chat.question.titleOne")
-                : t("chat.question.titleN", { n: questions.length })}
-            </span>
-            {questions.length > 1 && (
-              <span className="shrink-0 rounded bg-surface-muted px-1.5 py-0.5 text-[11px] tabular-nums text-content-muted">
-                {t("chat.question.step", { cur: step + 1, total: questions.length })}
-              </span>
-            )}
-          </div>
-          {/* Step dots: answered (dim) / current (accent) / upcoming (edge). */}
+        <div className={DOCK_HEAD}>
+          <IconHelpCircle size={14} className={DOCK_HEAD_ICON} />
+          <span className="truncate">
+            {questions.length === 1
+              ? t("chat.question.titleOne")
+              : t("chat.question.titleN", { n: questions.length })}
+          </span>
           {questions.length > 1 && (
-            <div className="flex shrink-0 items-center gap-1" aria-hidden>
-              {questions.map((_, i) => (
-                <span
-                  key={i}
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full transition-colors",
-                    i === step ? "bg-accent" : isAnswered(i) ? "bg-accent/40" : "bg-edge",
-                  )}
-                />
-              ))}
-            </div>
+            <span className={cn(DOCK_MUTED, "shrink-0 tabular-nums")}>
+              {t("chat.question.step", { cur: step + 1, total: questions.length })}
+            </span>
           )}
           <button
             type="button"
             onClick={onDismiss}
             title={t("chat.question.dismiss")}
             aria-label={t("chat.question.dismiss")}
-            className="shrink-0 rounded p-0.5 text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
+            className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-content-subtle transition-colors hover:bg-surface-hover hover:text-content"
           >
             <IconX size={14} />
           </button>
@@ -210,21 +197,19 @@ export function QuestionPrompt({
 
         {/* Body — only the current question renders; the rest is reached via
             the footer stepper (or auto-advance on answering). */}
-        <div className="overflow-y-auto">
-          <div className="px-4 py-3">
-            {/* Question header + text */}
-            <div className="mb-2 leading-relaxed text-content">
-              <span className="mr-1 font-semibold text-accent">{q.header}:</span>
+        <div className="min-h-0 overflow-y-auto">
+          <div className={DOCK_BODY}>
+            <p className="mb-2.5 text-sm font-medium leading-normal">
+              {q.header && <span className="mr-1.5 font-normal text-content-subtle">{q.header}</span>}
               {q.question}
               {q.multiSelect && (
-                <span className="ml-1.5 rounded bg-surface-muted px-1.5 py-0.5 text-[11px] text-content-muted">
+                <span className="ml-1.5 rounded bg-surface-muted px-1.5 py-0.5 text-[11px] font-normal text-content-muted">
                   {t("chat.question.multiSelect")}
                 </span>
               )}
-            </div>
+            </p>
 
-            {/* Options */}
-            <div className="space-y-1.5">
+            <div className="flex flex-col gap-1.5">
               {q.options.map((opt, oi) => {
                 const selected = a.selected.includes(opt.label);
                 return (
@@ -233,30 +218,36 @@ export function QuestionPrompt({
                     type="button"
                     onClick={() => toggle(step, opt.label)}
                     className={cn(
-                      "flex w-full items-start gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors",
-                      selected
-                        ? "border-accent bg-accent/10"
-                        : "border-edge bg-surface hover:border-accent/60 hover:bg-accent/5",
+                      "flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors",
+                      selected ? "border-edge-input bg-surface-hover" : "border-edge hover:bg-surface-hover",
                     )}
                     title={opt.description}
                   >
+                    {/* Radio (single) / check (multi) — the one accent mark. */}
                     <span
                       className={cn(
-                        "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center border transition-colors",
-                        q.multiSelect ? "rounded-sm" : "rounded-full",
+                        "mt-[3px] flex h-3.5 w-3.5 shrink-0 items-center justify-center border-[1.5px] transition-colors",
+                        q.multiSelect ? "rounded" : "rounded-full",
                         selected
-                          ? "border-accent bg-accent text-surface"
-                          : "border-edge text-transparent",
+                          ? q.multiSelect
+                            ? "border-accent bg-accent text-surface"
+                            : "border-accent"
+                          : "border-edge-input",
                       )}
                     >
-                      <IconCheck size={10} />
+                      {selected &&
+                        (q.multiSelect ? (
+                          <IconCheck size={10} stroke={3} />
+                        ) : (
+                          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                        ))}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-[13px] font-medium text-content">
                         {opt.label}
                       </span>
                       {opt.description && (
-                        <span className="mt-0.5 block text-[11px] leading-snug text-content-subtle">
+                        <span className="block text-xs leading-snug text-content-subtle">
                           {opt.description}
                         </span>
                       )}
@@ -266,31 +257,30 @@ export function QuestionPrompt({
               })}
             </div>
 
-            {/* Free-text input */}
             <Input
               type="text"
               value={a.text}
               onChange={(e) => setFreeText(step, e.target.value)}
               placeholder={t("chat.question.customAnswer")}
-              className="mt-2 font-sans"
+              className="mt-2.5 font-sans"
             />
           </div>
         </div>
 
-        {/* Footer — fixed at bottom: progress + stepper nav / submit */}
-        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-edge bg-surface-muted/40 px-4 py-2.5">
-          <span className="text-[11px] tabular-nums text-content-subtle">
+        {/* Footer — progress + stepper nav / submit */}
+        <div className={DOCK_FOOT}>
+          <span className="text-xs tabular-nums text-content-subtle">
             {t("chat.question.answered", { answered: answeredCount, total: questions.length })}
           </span>
-          <div className="flex items-center gap-1.5">
+          <div className="ml-auto flex items-center gap-2">
             {questions.length > 1 ? (
               <>
                 <Button
-                  variant="secondary"
-                  size="sm"
+                  variant="ghost"
                   onClick={() => setStep((s) => Math.max(0, s - 1))}
                   disabled={step === 0}
                   title={t("chat.question.prevTitle")}
+                  className={DOCK_BUTTON}
                 >
                   <IconChevronLeft size={12} />
                   {t("chat.question.prev")}
@@ -298,20 +288,20 @@ export function QuestionPrompt({
                 {isLast ? (
                   <Button
                     variant="primary"
-                    size="sm"
                     onClick={submit}
                     disabled={!allAnswered}
                     title={allAnswered ? t("chat.question.submitTitle") : t("chat.question.submitDisabled")}
+                    className={DOCK_BUTTON}
                   >
                     <IconSend2 size={12} />
                     {t("chat.question.submit")}
                   </Button>
                 ) : (
                   <Button
-                    variant="secondary"
-                    size="sm"
+                    variant="primary"
                     onClick={() => setStep((s) => Math.min(questions.length - 1, s + 1))}
                     title={t("chat.question.nextTitle")}
+                    className={DOCK_BUTTON}
                   >
                     {t("chat.question.next")}
                     <IconChevronRight size={12} />
@@ -321,10 +311,10 @@ export function QuestionPrompt({
             ) : (
               <Button
                 variant="primary"
-                size="sm"
                 onClick={submit}
                 disabled={!allAnswered}
                 title={allAnswered ? t("chat.question.submitTitle") : t("chat.question.submitDisabled")}
+                className={DOCK_BUTTON}
               >
                 <IconSend2 size={12} />
                 {t("chat.question.submit")}

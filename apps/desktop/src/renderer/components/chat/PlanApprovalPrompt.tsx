@@ -7,8 +7,17 @@ import { useSuppressBrowserView } from "@renderer/hooks/useSuppressBrowserView.j
 import {
   IconRocket,
   IconEye,
-  IconX,
+  IconListCheck,
 } from "@renderer/lib/icons.js";
+import {
+  DOCK_BODY,
+  DOCK_BUTTON,
+  DOCK_CARD,
+  DOCK_FOOT,
+  DOCK_HEAD,
+  DOCK_HEAD_ICON,
+  DOCK_SECONDARY,
+} from "./dockStyles.js";
 
 /** Execution-mode choice in the approval sheet's 执行方式 row. */
 type ExecMode = "current" | "remodel" | "newSession";
@@ -249,9 +258,9 @@ export function PlanApprovalPrompt({
         type="button"
         onClick={() => setExec(mode)}
         className={cn(
-          "rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
+          "h-[22px] rounded-md px-2 text-xs transition-colors",
           exec === mode
-            ? "bg-surface text-accent shadow-sm"
+            ? "bg-surface font-medium text-content shadow-sm dark:bg-surface-hover"
             : "text-content-muted hover:text-content",
         )}
       >
@@ -294,119 +303,112 @@ export function PlanApprovalPrompt({
   );
 
   return (
-    <div
-      className={cn(
-        "mb-2 rounded-2xl border border-edge-input bg-surface px-4 py-2.5 text-xs text-content shadow-2xl",
-        "animate-[qa-sheet-in_140ms_ease-out]",
-      )}
-    >
-      {/* Compact header - always visible */}
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <IconRocket size={14} className="shrink-0 text-accent" />
-          <span className="font-semibold text-accent">{t("chat.planApproval.title")}</span>
-        </div>
-        <span className="shrink-0 text-[11px] text-content-subtle">{hint}</span>
-      </div>
-
-      {/* Execution picker - where the approved plan runs. Default: this
-          thread, in place. The alternatives end the blocked turn and re-fire
-          the plan with a different executor (see component docs). */}
-      <div className="mb-2.5 flex flex-wrap items-center gap-2">
-        <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-content-subtle">
-          {t("chat.planApproval.execLabel")}
-        </span>
-        <div className="flex items-center gap-0.5 rounded-lg bg-surface-muted p-0.5">
-          {segButton("current", t("chat.planApproval.execCurrent"), t("chat.planApproval.execCurrentTitle"))}
-          {canRemodel && segButton("remodel", t("chat.planApproval.execRemodel"), t("chat.planApproval.execRemodelTitle"))}
-          {segButton("newSession", t("chat.planApproval.execNewSession"), t("chat.planApproval.execNewSessionTitle"))}
-        </div>
-        {exec === "remodel" && renderModelSelect(remodelSelected, remodelOptions, setRemodelKey)}
-        {exec === "newSession" && (
-          <>
-            {providers.length > 1 && (
-              <Select.Root
-                value={handoffProviderId}
-                onValueChange={(v) => {
-                  const id = v as string;
-                  setHandoffProviderId(id);
-                  // The model surface is per-provider — drop the stale pick so
-                  // the default re-resolves against the new provider's list.
-                  setNewSessionKey(null);
-                }}
-                onOpenChange={(o) => setMenuOpen(o)}
-              >
-                <Select.Trigger className="h-6 gap-1 px-2 py-0 text-[11px]">
-                  <Select.Value placeholder={t("chat.planApproval.pickProvider")}>
-                    {(val: string) => providers.find((p) => p.id === val)?.displayName ?? val}
-                  </Select.Value>
-                </Select.Trigger>
-                <Select.Portal>
-                  <Select.Positioner align="start">
-                    <Select.Popup ref={providerPopupRef}>
-                      <Select.List>
-                        {providers.map((p) => (
-                          <Select.Item key={p.id} value={p.id}>
-                            <span className="min-w-0 truncate">{p.displayName}</span>
-                          </Select.Item>
-                        ))}
-                      </Select.List>
-                    </Select.Popup>
-                  </Select.Positioner>
-                </Select.Portal>
-              </Select.Root>
-            )}
-            {renderModelSelect(newSessionSelected, newSessionOptions, setNewSessionKey)}
-          </>
-        )}
-      </div>
-
-      {/* Adjustment-feedback input (always visible). The text rides along with
-          whichever decision the user makes - approve delivers it to the model
-          as an adjustment instruction, reject sends it as the reason, a
-          handoff appends it to the kickoff prompt. Enter fires the primary
-          action (mirrors QuestionPrompt's Enter-to-submit). */}
-      <Input
-        type="text"
-        value={feedback}
-        onChange={(e) => setFeedback(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            handlePrimary();
-          }
-        }}
-        placeholder={t("chat.planApproval.feedbackPlaceholder")}
-        className="mb-2.5 font-sans"
-      />
-
-      {/* Action footer */}
-      <div className="flex items-center justify-between gap-2 border-t border-edge pt-2">
+    <div className={DOCK_CARD}>
+      <div className={DOCK_HEAD}>
+        <IconListCheck size={14} className={DOCK_HEAD_ICON} />
+        <span className="truncate">{t("chat.planApproval.title")}</span>
         <Button
           variant="ghost"
-          size="sm"
           onClick={onViewPlan}
           title={t("chat.planApproval.viewInEditor")}
+          className={cn(DOCK_BUTTON, "ml-auto shrink-0")}
         >
           <IconEye size={12} />
           {edited ? t("chat.planApproval.viewEdited") : t("chat.plan.view")}
         </Button>
-        <div className="flex items-center gap-1.5">
+      </div>
+
+      <div className={DOCK_BODY}>
+        {/* Execution picker - where the approved plan runs. Default: this
+            thread, in place. The alternatives end the blocked turn and re-fire
+            the plan with a different executor (see component docs). */}
+        <div className="mb-2.5 flex flex-wrap items-center gap-2">
+          <span className="shrink-0 text-xs text-content-subtle">
+            {t("chat.planApproval.execLabel")}
+          </span>
+          <div className="flex items-center gap-0.5 rounded-lg bg-surface-muted p-0.5">
+            {segButton("current", t("chat.planApproval.execCurrent"), t("chat.planApproval.execCurrentTitle"))}
+            {canRemodel && segButton("remodel", t("chat.planApproval.execRemodel"), t("chat.planApproval.execRemodelTitle"))}
+            {segButton("newSession", t("chat.planApproval.execNewSession"), t("chat.planApproval.execNewSessionTitle"))}
+          </div>
+          {exec === "remodel" && renderModelSelect(remodelSelected, remodelOptions, setRemodelKey)}
+          {exec === "newSession" && (
+            <>
+              {providers.length > 1 && (
+                <Select.Root
+                  value={handoffProviderId}
+                  onValueChange={(v) => {
+                    const id = v as string;
+                    setHandoffProviderId(id);
+                    // The model surface is per-provider — drop the stale pick so
+                    // the default re-resolves against the new provider's list.
+                    setNewSessionKey(null);
+                  }}
+                  onOpenChange={(o) => setMenuOpen(o)}
+                >
+                  <Select.Trigger className="h-6 gap-1 px-2 py-0 text-[11px]">
+                    <Select.Value placeholder={t("chat.planApproval.pickProvider")}>
+                      {(val: string) => providers.find((p) => p.id === val)?.displayName ?? val}
+                    </Select.Value>
+                  </Select.Trigger>
+                  <Select.Portal>
+                    <Select.Positioner align="start">
+                      <Select.Popup ref={providerPopupRef}>
+                        <Select.List>
+                          {providers.map((p) => (
+                            <Select.Item key={p.id} value={p.id}>
+                              <span className="min-w-0 truncate">{p.displayName}</span>
+                            </Select.Item>
+                          ))}
+                        </Select.List>
+                      </Select.Popup>
+                    </Select.Positioner>
+                  </Select.Portal>
+                </Select.Root>
+              )}
+              {renderModelSelect(newSessionSelected, newSessionOptions, setNewSessionKey)}
+            </>
+          )}
+        </div>
+
+        {/* Adjustment-feedback input (always visible). The text rides along with
+            whichever decision the user makes - approve delivers it to the model
+            as an adjustment instruction, reject sends it as the reason, a
+            handoff appends it to the kickoff prompt. Enter fires the primary
+            action (mirrors QuestionPrompt's Enter-to-submit). */}
+        <Input
+          type="text"
+          value={feedback}
+          onChange={(e) => setFeedback(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handlePrimary();
+            }
+          }}
+          placeholder={t("chat.planApproval.feedbackPlaceholder")}
+          className="font-sans"
+        />
+      </div>
+
+      {/* Action footer — what the primary action will do, then the
+          decision pair. */}
+      <div className={DOCK_FOOT}>
+        <span className="min-w-0 truncate text-xs text-content-subtle">{hint}</span>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <Button
-            variant="ghost"
-            size="sm"
             onClick={handleReject}
             title={hasFeedback ? t("chat.planApproval.rejectFeedbackTitle") : t("chat.planApproval.rejectTitle")}
+            className={cn(DOCK_BUTTON, DOCK_SECONDARY)}
           >
-            <IconX size={12} />
             {t("chat.planApproval.reject")}
           </Button>
           <Button
             variant="primary"
-            size="sm"
             onClick={handlePrimary}
             disabled={primaryDisabled}
             title={primaryTitle}
+            className={DOCK_BUTTON}
           >
             <IconRocket size={12} />
             {primaryLabel}

@@ -2,12 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { Button } from "@renderer/components/ui/index.js";
+import { IconChevronDown, IconShield } from "@renderer/lib/icons.js";
 import {
-  IconAlertTriangle,
-  IconChevronDown,
-  IconCheck,
-  IconX,
-} from "@renderer/lib/icons.js";
+  DOCK_BODY,
+  DOCK_BUTTON,
+  DOCK_CARD,
+  DOCK_FOOT,
+  DOCK_HEAD,
+  DOCK_HEAD_ICON,
+  DOCK_KBD,
+  DOCK_MUTED,
+  DOCK_SECONDARY,
+  DOCK_WELL,
+} from "./dockStyles.js";
 
 /**
  * Composer-area tool-approval card.
@@ -20,12 +27,11 @@ import {
  * visible below but is locked (`textareaLocked`) while a decision is
  * pending, so the user can't type a competing prompt.
  *
- * Styling mirrors QuestionPrompt: a single rounded, bordered, elevated
- * card on neutral surface tokens, with the `warning` (amber) token used
- * sparingly for the accent/attention elements (header label, tool-name
- * code, the "允许" primary button). Amber remains the semantic signal for
- * "needs your permission", but the frame is otherwise neutral so the card
- * reads cleanly in both light and dark themes. No violet/purple is used.
+ * Styling is the shared dock frame (dockStyles.ts, ui-refresh prototype
+ * `.dock`) shared with QuestionPrompt and PlanApprovalPrompt: header with a
+ * neutral shield, the tool name + summary in an inset well, and a footer
+ * holding the always-allow check and the 拒绝 / 允许 pair with their key
+ * hints. The only accent is the primary 允许 button and the check mark.
  *
  * Queuing: when several approval.request events arrive in quick succession
  * (e.g. the model wants to run three Bash commands in one turn), the store
@@ -92,112 +98,89 @@ export function ApprovalPrompt({
     onDecide(granted, granted ? always : undefined);
   };
 
-  // Rendered in-flow above the composer (see ChatPane). `mb-2` lifts the card
-  // off the input box below so the rounded corners + shadow read as a floating
-  // card, mirroring PlanApprovalPrompt.
+  // Rendered in-flow above the composer (see ChatPane).
   return (
-    <div
-      ref={cardRef}
-      role="alertdialog"
-      aria-label={t("chat.approval.aria")}
-      className={cn(
-        "mb-2 rounded-2xl border border-edge-input bg-surface px-4 py-3 text-xs text-content shadow-2xl",
-        "animate-[qa-sheet-in_140ms_ease-out]",
-      )}
-    >
-      {/* Header */}
-      <div className="mb-2.5 flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <IconAlertTriangle size={14} className="shrink-0 text-warning" />
-          <span className="font-semibold text-warning">{t("chat.approval.title")}</span>
-          {queueTotal > 1 && (
-            <span
-              className="rounded-full border border-warning/60 bg-warning/15 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-warning"
-              title={t("chat.approval.queueTitle", { n: queueTotal - queuePosition })}
-            >
-              {queuePosition} / {queueTotal}
-            </span>
-          )}
-        </div>
-        <button
-          type="button"
+    <div ref={cardRef} role="alertdialog" aria-label={t("chat.approval.aria")} className={DOCK_CARD}>
+      <div className={DOCK_HEAD}>
+        <IconShield size={14} className={DOCK_HEAD_ICON} />
+        <span className="truncate">{t("chat.approval.title")}</span>
+        {queueTotal > 1 && (
+          <span
+            className={cn(DOCK_MUTED, "shrink-0 tabular-nums")}
+            title={t("chat.approval.queueTitle", { n: queueTotal - queuePosition })}
+          >
+            {queuePosition} / {queueTotal}
+          </span>
+        )}
+        <Button
+          variant="ghost"
           onClick={() => setOpen((v) => !v)}
-          className={cn(
-            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors",
-            "text-content-muted hover:bg-surface-hover hover:text-content",
-          )}
+          className={cn(DOCK_BUTTON, "ml-auto shrink-0")}
           title={open ? t("chat.approval.collapseTitle") : t("chat.approval.expandTitle")}
         >
+          {open ? t("chat.approval.collapse") : t("chat.approval.details")}
           <IconChevronDown
             size={12}
             className={cn("transition-transform", open && "rotate-180")}
           />
-          {open ? t("chat.approval.collapse") : t("chat.approval.details")}
-        </button>
+        </Button>
       </div>
 
-      {/* Tool name + summary */}
-      <div className="mb-2.5 rounded-lg border border-edge bg-surface-muted/40 px-3 py-2">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <code className="rounded bg-warning/15 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-warning">
-            {toolName}
-          </code>
+      <div className={DOCK_BODY}>
+        {/* Tool name + one-line summary of what it will do */}
+        <div className={cn(DOCK_WELL, "flex items-baseline gap-2.5 px-3 py-2.5")}>
+          <span className="shrink-0 text-xs font-medium text-content-subtle">{toolName}</span>
           {summary && (
-            <span className="line-clamp-2 break-all text-content-muted">{summary}</span>
+            <span className="line-clamp-2 min-w-0 break-all font-mono text-[12.5px] leading-relaxed">
+              {summary}
+            </span>
           )}
         </div>
-        {description && <div className="mt-1 text-[11px] text-content-muted">{description}</div>}
-      </div>
-
-      {/* Expandable input */}
-      {open && (
-        <div className="mb-2.5">
-          <div className="mb-0.5 text-[11px] uppercase tracking-wide text-content-subtle">Input</div>
-          <pre className="max-h-40 overflow-auto rounded-lg bg-surface-muted/60 p-2 text-[11px] text-content-muted">
+        {description && (
+          <p className="mx-0.5 mt-2 text-xs leading-relaxed text-content-muted">{description}</p>
+        )}
+        {open && (
+          <pre
+            className={cn(
+              DOCK_WELL,
+              "mt-2 max-h-40 overflow-auto px-3 py-2.5 font-mono text-xs leading-relaxed text-content-muted",
+            )}
+          >
             {safeStringify(input)}
           </pre>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Footer: always-allow checkbox + buttons. Stays on a single row at
-          the bottom of the card. */}
-      <div className="flex items-center justify-between gap-2 border-t border-edge pt-2.5">
-        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-content-muted">
+      {/* Footer: always-allow check + the decision pair, one row. */}
+      <div className={DOCK_FOOT}>
+        <label className="flex min-w-0 cursor-pointer items-center gap-2 text-xs text-content-muted">
           <input
             type="checkbox"
             checked={always}
             onChange={(e) => setAlways(e.target.checked)}
-            className="h-3 w-3 cursor-pointer accent-warning"
+            className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-accent"
           />
-          {t("chat.approval.alwaysAllow", { tool: toolName })}
+          <span className="truncate">{t("chat.approval.alwaysAllow", { tool: toolName })}</span>
         </label>
-        <div className="flex items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <Button
-            variant="ghost"
-            size="sm"
             onClick={() => decide(false)}
             title={t("chat.approval.denyTitle")}
+            className={cn(DOCK_BUTTON, DOCK_SECONDARY)}
           >
-            <IconX size={12} />
             {t("chat.approval.deny")}
+            <kbd className={DOCK_KBD}>Esc</kbd>
           </Button>
-          {/* Primary confirm action uses the warning token (amber) to keep the
-              "permission grant" semantic distinct from QuestionPrompt's green
-              submit — the Button component has no warning variant, so this is
-              a single purpose-built button rather than <Button variant>. */}
-          <button
+          <Button
             ref={allowRef}
-            type="button"
+            variant="primary"
             onClick={() => decide(true)}
             title={t("chat.approval.allowTitle")}
-            className={cn(
-              "inline-flex h-6 items-center gap-1 rounded px-2 text-[11px] font-medium transition-colors",
-              "bg-warning text-surface hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-warning/50",
-            )}
+            className={cn(DOCK_BUTTON, "focus-visible:ring-2 focus-visible:ring-accent/50")}
           >
-            <IconCheck size={12} />
             {t("chat.approval.allow")}
-          </button>
+            <kbd className={DOCK_KBD}>Enter</kbd>
+          </Button>
         </div>
       </div>
     </div>

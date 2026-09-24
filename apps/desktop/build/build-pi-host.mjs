@@ -25,7 +25,9 @@ const result = await build({
   metafile: true,
   write: false,
 });
-require("node:fs").writeFileSync(
+const fs = require("node:fs");
+fs.mkdirSync(resolve(desktop, "out/pi-host"), { recursive: true });
+fs.writeFileSync(
   resolve(desktop, "out/pi-host/metafile.json"),
   JSON.stringify(result.metafile, null, 2),
 );
@@ -49,4 +51,7 @@ for (const [outputFile, output] of Object.entries(result.metafile.outputs)) {
     );
   }
 }
+// With `write: false` esbuild writes nothing; emit only after the Electron
+// check so a rejected bundle never replaces the last good host.
+for (const file of result.outputFiles) fs.writeFileSync(file.path, file.contents);
 console.log("Built isolated Node Pi host: out/pi-host/piHost.mjs");

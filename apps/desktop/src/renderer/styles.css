@@ -88,45 +88,39 @@ div:has(> [role="menu"]) {
  * symptom. So: keep these in sync with tailwind.config.js token names.
  */
 :root {
-  /* Base font weight lifted for perceived contrast. On a light background
-   * weight-400 gray text can read as low-contrast (anti-aliasing softens
-   * thin strokes), so the inherited base is set to 500. The matching
-   * .font-* ladder shift below keeps relative hierarchy intact. The dark
-   * scope (.dark) overrides this with its own heavier 600 base. */
-  font-weight: 500;
+  /* Base font weight (界面焕新 prototypes/ui-refresh.html): 400 light / 450
+   * dark. Contrast comes from the text color ramp, not from stroke weight —
+   * Microsoft YaHei only ships Light/Regular/Bold, so any base ≥ 550 flips
+   * every CJK glyph to the Bold face. Tailwind's stock font-* ladder
+   * (400/500/600/700) already sits above these bases, so no ladder shift. */
+  font-weight: 400;
 
-  /* surfaces (backgrounds). Muted/hover carry a slight cool bias (B channel
-   * above R/G — the light counterpart of the dark ramp's slate tint) so all
-   * three panes share one color temperature across themes. Muted sits one
-   * stop deeper than zinc-100: at zinc-100 the sidebar track resolved to
-   * ~1.10:1 against the white main surface — visually one continuous sheet;
-   * the deeper step (~1.16:1) plus the darker --edge below restores the
-   * track/recess layering without touching the white "paper" work area. */
+  /* surfaces (backgrounds). Neutral with a slight cool bias (B channel a
+   * few units above R/G), shared by both themes. --surface-muted doubles as
+   * the sidebar track AND the inset well inside white cards (code blocks,
+   * table heads), so it stays a single soft step below white. */
   --surface: 255 255 255; /* white — center pane, right panel, popups */
-  --surface-muted: 240 242 246; /* cool zinc-100/150 — sidebar track, inset wells */
-  --surface-hover: 226 229 235; /* cool zinc-200 — hover/active fills */
-  /* content (text) — deepened one stop for stronger contrast on white.
-   * Body stays at near-black zinc-950; muted/subtle drop one shade each
-   * (zinc-700 / zinc-500) so secondary text doesn't wash out. */
-  --content: 9 9 11; /* zinc-950 — near-black, max contrast on white */
-  --content-muted: 63 63 70; /* zinc-700 — one stop darker than before */
-  --content-subtle: 113 113 122; /* zinc-500 — one stop darker than before */
-  /* borders. --edge is a cool zinc-300, one stop DEEPER than --surface-hover:
-   * borders must read as separators on white (~1.46:1) — the old zinc-200
-   * equaled the hover fill, so panel dividers / card outlines washed out and
-   * hover feedback had the same value as the border it sat next to. */
-  --edge: 213 216 222; /* cool zinc-300 */
-  /* Structural pane dividers (three-pane shell borders, the draggable
-   * splitter hairlines, the tab-strip underline) — one stop LIGHTER than
-   * --edge: these lines run the full window height, and at the card-border
-   * value they read as heavy rules across the whole UI. Cards and in-panel
-   * separators keep --edge. */
-  --panel-edge: 222 225 231; /* cool zinc-250 (~1.35:1 on white) */
-  /* Composer input box outline — one stop deeper than --edge so the box
-   * reads clearly at a glance in both themes (dark needs the brighter-than-
-   * edge direction, light the deeper-than-edge direction). Only the composer
-   * container uses it — panel dividers / cards keep --edge. */
-  --input-edge: 202 205 212;
+  --surface-muted: 243 244 246; /* sidebar track, titlebar, inset wells */
+  /* Hover/active fill. Must stay visible on BOTH white and --surface-muted
+   * (sidebar rows hover on the track), and must NOT equal --edge — a hover
+   * row next to a same-valued border reads as one blob. */
+  --surface-hover: 234 236 240;
+  /* content (text). --content-subtle carries 11px metadata, so it is held
+   * at ≥4.5:1 on white (≈4.8:1; ≈4.3:1 on the muted track). */
+  --content: 17 19 24;
+  --content-muted: 73 78 89; /* ≈8.3:1 on white */
+  --content-subtle: 110 115 126;
+  /* borders. Ordered deepest → lightest: --input-edge > --edge > --panel-edge,
+   * all deeper than --surface-hover so separators never read as hover. */
+  --edge: 226 228 233; /* card outlines, in-panel separators */
+  /* Structural pane dividers (three-pane shell borders, splitter hairlines,
+   * tab-strip underline) run the full window height, so they sit one step
+   * lighter than card borders. */
+  --panel-edge: 231 233 237;
+  /* Composer input box outline — the strongest border, so the box reads at
+   * a glance (dark needs the brighter-than-edge direction, light the
+   * deeper-than-edge direction). Only the composer container uses it. */
+  --input-edge: 213 216 222;
   /* accent + status. Light text-bearing tokens sit at the 700 stop: the 600
    * shades resolved to ~3.2:1 (amber) / ~3.8:1 (emerald) on white — below
    * the 4.5:1 AA bar for the small colored text they feed (approval prompts,
@@ -173,15 +167,11 @@ div:has(> [role="menu"]) {
    *   --user-bubble is a neutral gray (zinc-500) so user prompts read as a
    *     calm, non-distracting bubble; presets in Settings offer color picks. */
   --chat-font-size: 14px; /* default = text-sm */
-  /* Chat prose base weight. A weight lifted toward the global base (450 vs
-   * the 400 of the original design) gives comfortable, airy reading on both
-   * themes — 400 read as visibly thinner than the app chrome (base 500 light
-   * / 600 dark), which washed out on dark backgrounds. The dark scope below
-   * raises the weight one more step (500) since white-on-dark thins
-   * optically. Prose line-height is density-driven (--chat-md-leading in the
-   * chat-density section below). Consumed by the Markdown container in
-   * Markdown.tsx. */
-  --chat-font-weight: 450;
+  /* Chat prose base weight — tracks the chrome base (400 light / 450 dark)
+   * so replies never read heavier or thinner than the UI around them. Prose
+   * line-height is density-driven (--chat-md-leading in the chat-density
+   * section below). Consumed by the Markdown container in Markdown.tsx. */
+  --chat-font-weight: 400;
   --user-bubble: 82 82 91; /* default = zinc-500 (neutral gray), R G B triplet */
   /* Bubble tint strength is theme-scoped (consumed via .user-bubble-fill):
    * one alpha can't serve both themes. 15% of the default over white lands
@@ -196,6 +186,15 @@ div:has(> [role="menu"]) {
    * Overridden at runtime by lib/appearance.ts. The derived --rp-fs-* variants
    * (below) track this via calc. */
   --right-panel-font-size: 14px;
+
+  /* Elevation scale — three tiers only, consumed through Tailwind's
+   * shadow-* utilities (tailwind.config.js maps sm/DEFAULT → 1,
+   * md/lg/xl/2xl → 2, `shadow-dialog` → 3):
+   *   1 = resting cards, 2 = menus / popovers / floating prompts,
+   *   3 = modal dialogs and the command palette. */
+  --shadow-1: 0 1px 2px rgb(16 24 40 / 0.05);
+  --shadow-2: 0 6px 16px -6px rgb(16 24 40 / 0.12), 0 2px 4px -2px rgb(16 24 40 / 0.05);
+  --shadow-3: 0 24px 48px -16px rgb(16 24 40 / 0.24), 0 6px 12px -6px rgb(16 24 40 / 0.08);
 
   color-scheme: light;
 }

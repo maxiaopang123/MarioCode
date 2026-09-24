@@ -651,7 +651,7 @@ function StreamSidebarBase() {
                         onClick={() => setScope(p.id)}
                       >
                         <span
-                          className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-[8px] font-bold text-white"
+                          className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[11px] font-bold text-white"
                           style={{ backgroundColor: projectDisplayColor(p, projectColors) }}
                           aria-hidden
                         >
@@ -667,7 +667,7 @@ function StreamSidebarBase() {
                 {knownGroups.length > 0 && (
                   <>
                     <Menu.Separator className="my-1 h-px bg-edge" />
-                    <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-content-subtle">
+                    <div className="px-3 py-1 text-[11px] uppercase tracking-wide text-content-subtle">
                       {t("layout.stream.scopeGroupCap")}
                     </div>
                     {/* Each group stays directly selectable (filters the
@@ -692,7 +692,7 @@ function StreamSidebarBase() {
                                 onClick={() => setScope(p.id)}
                               >
                                 <span
-                                  className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-[8px] font-bold text-white"
+                                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[11px] font-bold text-white"
                                   style={{ backgroundColor: projectDisplayColor(p, projectColors) }}
                                   aria-hidden
                                 >
@@ -1070,17 +1070,17 @@ function StreamCard({
       {/* L1 — project identity + status (status yields to hover actions). */}
       <div className="flex h-4 min-w-0 items-center gap-1.5">
         <span
-          className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-[8px] font-bold text-white"
+          className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[11px] font-bold text-white"
           style={{ backgroundColor: projectColor }}
           aria-hidden
         >
           {projectInitial(projectName)}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[10.5px] font-medium text-content-subtle">
+        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-content-subtle">
           {projectName}
         </span>
         {pinned && <IconPinnedFilled size={10} className="shrink-0 text-accent/70" aria-label={t("layout.pinned")} />}
-        <span className="ml-auto flex h-4 min-w-8 shrink-0 items-center justify-end text-[10.5px]">
+        <span className="ml-auto flex h-4 min-w-8 shrink-0 items-center justify-end text-[11px]">
           {!showActions && statusLabel}
           {showActions && (
             <span className="flex items-center gap-0.5">
@@ -1167,15 +1167,15 @@ function StreamCard({
           (or before the probe lands) skips the line entirely — an empty
           flex-1 spacer + a lone provider icon read as a blank row. */}
       {hasMetaLine && (
-        <div className="flex h-3.5 min-w-0 items-center gap-1.5 text-[10.5px] text-content-subtle">
+        <div className="flex h-3.5 min-w-0 items-center gap-1.5 text-[11px] text-content-subtle">
           {session.worktreePath ? (
             <span className="flex min-w-0 items-center gap-1">
               <IconGitFork size={10} className="shrink-0 text-accent/80" />
-              <span className="min-w-0 truncate font-mono text-[9.5px]" title={session.worktreePath}>
+              <span className="min-w-0 truncate font-mono text-[11px]" title={session.worktreePath}>
                 {worktreeBranch || session.worktreePath.split(/[/\\/]/).pop()}
               </span>
               {worktreeUnmerged && (
-                <span className="flex shrink-0 items-center gap-1 text-[9.5px] text-[#b45309] dark:text-[#fbbf24]" title={t("layout.stream.unmerged")}>
+                <span className="flex shrink-0 items-center gap-1 text-[11px] text-[#b45309] dark:text-[#fbbf24]" title={t("layout.stream.unmerged")}>
                   <span className="h-[5px] w-[5px] rounded-full bg-[#d97706] dark:bg-[#f59e0b]" aria-hidden />
                   {t("layout.stream.unmerged")}
                 </span>
@@ -1184,7 +1184,7 @@ function StreamCard({
           ) : (
             <span className="flex min-w-0 items-center gap-1" title={localBranch ?? undefined}>
               <IconGitBranch size={10} className="shrink-0 text-content-subtle/80" />
-              <span className="min-w-0 truncate font-mono text-[9.5px]">{localBranch}</span>
+              <span className="min-w-0 truncate font-mono text-[11px]">{localBranch}</span>
             </span>
           )}
           <span className="ml-auto flex shrink-0 items-center" title={providerLabel || undefined}>

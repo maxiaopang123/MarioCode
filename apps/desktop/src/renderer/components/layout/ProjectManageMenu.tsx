@@ -80,7 +80,7 @@ export function ProjectManageMenuPopup({
             )}
 
             {/* Group membership — join a known group or create a new one. */}
-            <div className="px-3 pb-0.5 pt-1.5 text-[9px] uppercase tracking-wide text-content-subtle">
+            <div className="px-3 pb-0.5 pt-1.5 text-[11px] uppercase tracking-wide text-content-subtle">
               {t("layout.moveToGroup")}
             </div>
             {knownGroups.map((g) => (
@@ -104,7 +104,7 @@ export function ProjectManageMenuPopup({
                 live WITHOUT closing the menu (closing would unmount the
                 input and kill the native dialog mid-pick). Dismiss with
                 Escape / an outside click as usual. */}
-            <div className="px-3 pb-0.5 pt-1.5 text-[9px] uppercase tracking-wide text-content-subtle">
+            <div className="px-3 pb-0.5 pt-1.5 text-[11px] uppercase tracking-wide text-content-subtle">
               {t("layout.projectColor")}
             </div>
             <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5">

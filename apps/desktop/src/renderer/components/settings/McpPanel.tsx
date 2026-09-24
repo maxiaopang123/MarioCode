@@ -92,7 +92,7 @@ function KindBadge({ kind }: { kind: McpKind }) {
   return (
     <span
       className={cn(
-        "shrink-0 rounded px-1 text-[9px] leading-tight",
+        "shrink-0 rounded px-1 text-[11px] leading-tight",
         KIND_BADGE_CLS[kind],
       )}
     >
@@ -122,7 +122,7 @@ function OAuthRowActions({
       <>
         <span
           title={t("settings.mcp.unauthorizeHint")}
-          className="shrink-0 rounded bg-emerald-500/15 px-1 text-[9px] leading-tight text-emerald-500"
+          className="shrink-0 rounded bg-emerald-500/15 px-1 text-[11px] leading-tight text-emerald-500"
         >
           {t("settings.mcp.authorized")}
         </span>
@@ -145,7 +145,7 @@ function OAuthRowActions({
     <>
       <span
         title={t("settings.mcp.authorizeHint")}
-        className="shrink-0 rounded bg-amber-500/15 px-1 text-[9px] leading-tight text-amber-500"
+        className="shrink-0 rounded bg-amber-500/15 px-1 text-[11px] leading-tight text-amber-500"
       >
         {t("settings.mcp.needsAuth")}
       </span>
@@ -829,7 +829,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     <label className="mb-2 block w-full">
       <span className="mb-0.5 block text-[0.7857em] font-medium text-content-muted">{label}</span>
       {children}
-      {hint && <p className="mt-0.5 text-[10px] text-content-subtle">{hint}</p>}
+      {hint && <p className="mt-0.5 text-[11px] text-content-subtle">{hint}</p>}
     </label>
   );
 }
@@ -1213,7 +1213,7 @@ function ImportMcpDialog({
                     <div className="mb-1 flex items-center gap-1.5">
                       <span
                         className={cn(
-                          "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                          "rounded px-1.5 py-0.5 text-[11px] font-medium",
                           origin === "全局"
                             ? "bg-accent/12 text-accent"
                             : "bg-surface-hover text-content-subtle",
@@ -1259,7 +1259,7 @@ function ImportMcpDialog({
                                 </span>
                                 <KindBadge kind={s.kind} />
                                 {isExisting && (
-                                  <span className="shrink-0 rounded bg-surface-hover px-1 text-[9px] text-content-subtle">
+                                  <span className="shrink-0 rounded bg-surface-hover px-1 text-[11px] text-content-subtle">
                                     {t("settings.importExisting")}
                                   </span>
                                 )}

@@ -136,7 +136,7 @@ export function ContextRing({
               visible at every width); everywhere else (row layout, future
               hosts) no compact ancestor exists and the label shows. */}
           <span className="composer-lblwrap">
-            <span className="text-[10px] font-medium leading-none">{pct}%</span>
+            <span className="text-[11px] font-medium leading-none">{pct}%</span>
           </span>
         </Tooltip.Trigger>
         <Tooltip.Portal>
@@ -216,13 +216,13 @@ export function ContextTooltipBody({
       <div className="mb-1.5 flex items-baseline justify-between gap-3 border-b border-edge/70 pb-1.5">
         <div>
           <div className="text-[11px] font-semibold text-content">{breakdown.title}</div>
-          <div className={cn("mt-0.5 text-[10px] tabular-nums", colorClass)}>
+          <div className={cn("mt-0.5 text-[11px] tabular-nums", colorClass)}>
             {breakdown.subtitle}
           </div>
         </div>
         <div
           className={cn(
-            "rounded-full px-1.5 py-0.5 text-[10px] font-medium tabular-nums",
+            "rounded-full px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
             snapshot.warning === "critical" && "bg-danger/15 text-danger",
             snapshot.warning === "near-window" && "bg-warning/15 text-warning",
             snapshot.warning === "ok" && "bg-surface-muted text-content-muted",
@@ -247,7 +247,7 @@ export function ContextTooltipBody({
         })}
       </ul>
       {snapshot.model && (
-        <div className="mt-1.5 border-t border-edge/70 pt-1.5 text-[10px] text-content-subtle">
+        <div className="mt-1.5 border-t border-edge/70 pt-1.5 text-[11px] text-content-subtle">
           {t("chat.context.modelLine", { model: snapshot.model })}
         </div>
       )}
@@ -264,7 +264,7 @@ export function ContextTooltipBody({
             <IconChartBar size={12} className="shrink-0 opacity-70" />
             <span className="min-w-0 flex-1 truncate">{t("chat.context.viewDetails")}</span>
             {historyCount != null && (
-              <span className="rounded-full bg-surface-muted px-1.5 py-0.5 text-[10px] tabular-nums text-content-subtle">
+              <span className="rounded-full bg-surface-muted px-1.5 py-0.5 text-[11px] tabular-nums text-content-subtle">
                 {t("chat.context.turns", { n: historyCount })}
               </span>
             )}

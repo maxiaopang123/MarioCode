@@ -376,7 +376,7 @@ export function ModelDropdown({
                                   <span className="flex min-w-0 items-baseline gap-2">
                                     <span className="truncate font-medium">{b.label}</span>
                                     {b.hint && (
-                                      <span className="shrink-0 rounded bg-accent/15 px-1 text-[10px] text-accent">1M</span>
+                                      <span className="shrink-0 rounded bg-accent/15 px-1 text-[11px] text-accent">1M</span>
                                     )}
                                   </span>
                                   {active && <IconCheck size={14} className="shrink-0" />}
@@ -451,7 +451,7 @@ export function ModelDropdown({
                                   <span className="flex min-w-0 items-baseline gap-2">
                                     <span className="truncate font-medium">{b.label}</span>
                                     {b.hint && (
-                                      <span className="shrink-0 rounded bg-accent/15 px-1 text-[10px] text-accent">{b.hint}</span>
+                                      <span className="shrink-0 rounded bg-accent/15 px-1 text-[11px] text-accent">{b.hint}</span>
                                     )}
                                   </span>
                                   {active && <IconCheck size={14} className="shrink-0" />}
@@ -485,7 +485,7 @@ export function ModelDropdown({
                       <span className="flex min-w-0 items-center gap-2">
                         <span className="truncate font-medium">{m.name}</span>
                         {m.protocol === "openai" && (
-                          <span className="shrink-0 rounded bg-surface-muted px-1 text-[10px] text-content-subtle">OpenAI</span>
+                          <span className="shrink-0 rounded bg-surface-muted px-1 text-[11px] text-content-subtle">OpenAI</span>
                         )}
                         {cfgActive && <IconCheck size={14} className="shrink-0" />}
                       </span>
@@ -536,7 +536,7 @@ export function ModelDropdown({
                                   <span className="flex min-w-0 items-baseline gap-2">
                                     <span className="truncate">{entry.id}</span>
                                     {entry.supports1m && (
-                                      <span className="shrink-0 rounded bg-accent/15 px-1 text-[10px] text-accent">1M</span>
+                                      <span className="shrink-0 rounded bg-accent/15 px-1 text-[11px] text-accent">1M</span>
                                     )}
                                   </span>
                                   {active && <IconCheck size={14} className="shrink-0" />}

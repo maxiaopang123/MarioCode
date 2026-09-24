@@ -393,7 +393,7 @@ export function SortableSessionTab({
       {!isActive && unreadCount > 0 && (
         <span
           className={cn(
-            "shrink-0 rounded-full bg-accent px-1 text-center text-[9px] font-medium leading-[14px] text-white",
+            "shrink-0 rounded-full bg-accent px-1 text-center text-[11px] font-medium leading-[14px] text-white",
             "min-w-[14px] group-hover:hidden",
           )}
         >

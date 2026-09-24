@@ -178,7 +178,7 @@ export function QuestionPrompt({
                 : t("chat.question.titleN", { n: questions.length })}
             </span>
             {questions.length > 1 && (
-              <span className="shrink-0 rounded bg-surface-muted px-1.5 py-0.5 text-[10px] tabular-nums text-content-muted">
+              <span className="shrink-0 rounded bg-surface-muted px-1.5 py-0.5 text-[11px] tabular-nums text-content-muted">
                 {t("chat.question.step", { cur: step + 1, total: questions.length })}
               </span>
             )}
@@ -217,7 +217,7 @@ export function QuestionPrompt({
               <span className="mr-1 font-semibold text-accent">{q.header}:</span>
               {q.question}
               {q.multiSelect && (
-                <span className="ml-1.5 rounded bg-surface-muted px-1.5 py-0.5 text-[10px] text-content-muted">
+                <span className="ml-1.5 rounded bg-surface-muted px-1.5 py-0.5 text-[11px] text-content-muted">
                   {t("chat.question.multiSelect")}
                 </span>
               )}
@@ -256,7 +256,7 @@ export function QuestionPrompt({
                         {opt.label}
                       </span>
                       {opt.description && (
-                        <span className="mt-0.5 block text-[10px] leading-snug text-content-subtle">
+                        <span className="mt-0.5 block text-[11px] leading-snug text-content-subtle">
                           {opt.description}
                         </span>
                       )}
@@ -279,7 +279,7 @@ export function QuestionPrompt({
 
         {/* Footer — fixed at bottom: progress + stepper nav / submit */}
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-edge bg-surface-muted/40 px-4 py-2.5">
-          <span className="text-[10px] tabular-nums text-content-subtle">
+          <span className="text-[11px] tabular-nums text-content-subtle">
             {t("chat.question.answered", { answered: answeredCount, total: questions.length })}
           </span>
           <div className="flex items-center gap-1.5">

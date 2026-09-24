@@ -164,7 +164,7 @@ function CurrentView({
         >
           <IconChartBar size={12} className="shrink-0 opacity-70" />
           <span className="min-w-0 flex-1 truncate">{t("chat.context.history")}</span>
-          <span className="rounded-full bg-surface-muted px-1.5 py-0.5 text-[10px] tabular-nums text-content-subtle">
+          <span className="rounded-full bg-surface-muted px-1.5 py-0.5 text-[11px] tabular-nums text-content-subtle">
             {t("chat.context.turns", { n: historyCount })}
           </span>
         </button>
@@ -239,7 +239,7 @@ function HistoryView({
         </div>
       ) : (
         <div className="max-h-80 overflow-y-auto">
-          <table className="w-full border-collapse text-[10px] tabular-nums">
+          <table className="w-full border-collapse text-[11px] tabular-nums">
             <thead className="sticky top-0 bg-surface text-content-subtle">
               <tr className="border-b border-edge/70">
                 <th className="px-1.5 py-1 text-left font-medium">{t("chat.context.colTurn")}</th>
@@ -318,7 +318,7 @@ function HistoryView({
           {/* Footer legend: time/duration/model aren't columns in the table —
               surfaced here as a muted hint so the user knows they live in each
               row's tooltip. */}
-          <div className="flex items-center gap-3 px-2 py-1 text-[9px] text-content-subtle">
+          <div className="flex items-center gap-3 px-2 py-1 text-[11px] text-content-subtle">
             <span className="inline-flex items-center gap-0.5">
               <IconCalendarStats size={10} /> {t("chat.context.timeDuration")}
             </span>

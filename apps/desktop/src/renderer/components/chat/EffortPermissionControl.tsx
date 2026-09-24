@@ -212,7 +212,7 @@ function SectionHeader({
 }) {
   return (
     <header className="mb-2 flex items-center justify-between">
-      <span className="text-[10px] font-semibold tracking-wide text-content-subtle uppercase">
+      <span className="text-[11px] font-semibold tracking-wide text-content-subtle uppercase">
         {title}
       </span>
       <span
@@ -349,7 +349,7 @@ export function EffortChip({
                   <span className="max-w-full truncate text-[11.5px] leading-tight font-semibold text-content">
                     {m.label}
                   </span>
-                  <span className="max-w-full truncate text-[9.5px] leading-tight text-content-subtle">
+                  <span className="max-w-full truncate text-[11px] leading-tight text-content-subtle">
                     {tileOf(m)}
                   </span>
                   {active && (
@@ -482,7 +482,7 @@ export function PermissionChip({
                     {resolveIcon(m, 11)}
                     <span className="truncate">{m.label}</span>
                   </span>
-                  <span className="max-w-full truncate text-[9.5px] leading-tight text-content-subtle">
+                  <span className="max-w-full truncate text-[11px] leading-tight text-content-subtle">
                     {tileOf(m)}
                   </span>
                   {active && (

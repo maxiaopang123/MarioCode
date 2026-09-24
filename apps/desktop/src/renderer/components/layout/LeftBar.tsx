@@ -2016,7 +2016,7 @@ function GroupNode({
                   "transition-[transform,opacity] duration-100",
                 )}
               >
-                <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-content-subtle">
+                <div className="px-3 py-1 text-[11px] uppercase tracking-wide text-content-subtle">
                   {t("layout.groupColor")}
                 </div>
                 <div className="flex flex-wrap gap-1.5 px-3 py-1">
@@ -2181,7 +2181,7 @@ function ProjectContextMenu({
                 name with a check on the currently-assigned one. */}
             {knownGroups.length > 0 && (
               <>
-                <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-content-subtle">
+                <div className="px-3 py-1 text-[11px] uppercase tracking-wide text-content-subtle">
                   {t("layout.moveToGroup")}
                 </div>
                 {knownGroups.map((g) => (

@@ -479,7 +479,7 @@ export function MobileGitScreen() {
                   <div key={f.path} className="flex items-center gap-2 border-b border-edge px-1 py-2">
                     <span
                       className={cn(
-                        "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold",
+                        "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold",
                         STATUS_COLOR[code] ?? "bg-surface-hover text-content-muted",
                       )}
                     >
@@ -847,7 +847,7 @@ function BranchSheet({
             groups?.map(({ label, items }) =>
               items.length === 0 ? null : (
                 <div key={label}>
-                  <div className="px-4 pb-0.5 pt-2 text-[10px] font-medium uppercase tracking-wide text-content-subtle">
+                  <div className="px-4 pb-0.5 pt-2 text-[11px] font-medium uppercase tracking-wide text-content-subtle">
                     {label}
                   </div>
                   {items.map((b) => {
@@ -880,7 +880,7 @@ function BranchSheet({
                             {b.name}
                           </span>
                           {b.label && (
-                            <span className="block truncate text-[10px] text-content-subtle">
+                            <span className="block truncate text-[11px] text-content-subtle">
                               {b.commit} {b.label}
                             </span>
                           )}

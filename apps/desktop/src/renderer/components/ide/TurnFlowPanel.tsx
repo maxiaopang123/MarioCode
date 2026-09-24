@@ -234,7 +234,7 @@ export function TurnFlowPanel() {
           <IconListDetails size={12} className="opacity-80" />
           {t("ide.turns.title")}
         </span>
-        <span className="ml-auto flex items-center gap-1.5 text-[10px] tabular-nums text-content-subtle">
+        <span className="ml-auto flex items-center gap-1.5 text-[11px] tabular-nums text-content-subtle">
           <span>{t("ide.turns.summaryTurns", { n: groups.length })}</span>
           {totals.tokens > 0 && <span>· {fmtTokens(totals.tokens)} tokens</span>}
           {cacheHitPct != null && (
@@ -384,28 +384,28 @@ function TurnSection({
           #{group.index}
         </span>
         {live ? (
-          <span className="flex shrink-0 items-center gap-1 text-[10px] font-medium text-warning">
+          <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-warning">
             <IconLoader2 size={10} className="animate-spin" />
             {waitingModel ? t("ide.turns.waitingModel") : t("ide.turns.statusRunning")}
           </span>
         ) : hasError ? (
-          <span className="shrink-0 text-[10px] font-medium text-danger">
+          <span className="shrink-0 text-[11px] font-medium text-danger">
             {t("ide.turns.statusError")}
           </span>
         ) : (
-          <span className="flex shrink-0 items-center gap-0.5 text-[10px] font-medium text-accent">
+          <span className="flex shrink-0 items-center gap-0.5 text-[11px] font-medium text-accent">
             <IconCheck size={10} />
             {t("ide.turns.statusDone")}
           </span>
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[10px] tabular-nums text-content-subtle">
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] tabular-nums text-content-subtle">
           {typeof startedAt === "number" && <span>{fmtClockTime(startedAt)}</span>}
           {durationMs !== null && <span>· {fmtDuration(durationMs)}</span>}
         </span>
       </button>
 
       {!expanded && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-edge/50 px-2.5 py-1.5 text-[10px] text-content-subtle">
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-edge/50 px-2.5 py-1.5 text-[11px] text-content-subtle">
           {collapsedChips.length > 0 ? (
             collapsedChips.map((c) => (
               <span key={c} className="rounded-full bg-surface-muted px-1.5 py-0.5">
@@ -461,7 +461,7 @@ function TurnSection({
             <UsageBar record={usage} />
           ) : (
             !live && (
-              <div className="pt-2 text-center text-[10px] text-content-subtle">
+              <div className="pt-2 text-center text-[11px] text-content-subtle">
                 {t("ide.turns.noUsage")}
               </div>
             )
@@ -510,9 +510,9 @@ function UserStep({ message, onJump }: { message: ChatMessage; onJump: (messageI
       </StepGlyph>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-semibold text-accent">{t("ide.turns.userNode")}</span>
+          <span className="text-[11px] font-semibold text-accent">{t("ide.turns.userNode")}</span>
           {attachments > 0 && (
-            <span className="flex items-center gap-0.5 text-[10px] text-content-subtle">
+            <span className="flex items-center gap-0.5 text-[11px] text-content-subtle">
               <IconPaperclip size={9} />
               {attachments}
             </span>
@@ -586,7 +586,7 @@ function BlockStep({
           <IconMessage size={11} />
         </StepGlyph>
         <div className="min-w-0 flex-1">
-          <span className="text-[10px] font-semibold text-emerald-500">
+          <span className="text-[11px] font-semibold text-emerald-500">
             {t("ide.turns.replyNode")}
           </span>
           <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[11px] leading-snug text-content-muted">
@@ -605,7 +605,7 @@ function BlockStep({
           <IconBrain size={11} />
         </StepGlyph>
         <div className="min-w-0 flex-1">
-          <span className="text-[10px] font-semibold text-violet-400">
+          <span className="text-[11px] font-semibold text-violet-400">
             {t("ide.turns.thinkingNode")}
           </span>
           <p className="mt-0.5 line-clamp-1 whitespace-pre-wrap break-words text-[11px] leading-snug text-content-subtle">
@@ -637,14 +637,14 @@ function BlockStep({
               <IconCheck size={10} className="shrink-0 text-accent" />
             )}
             {imageCount > 0 && (
-              <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-content-subtle">
+              <span className="flex shrink-0 items-center gap-0.5 text-[11px] text-content-subtle">
                 <IconPhoto size={9} />
                 {imageCount}
               </span>
             )}
           </div>
           {summary && !lane && (
-            <p className="truncate text-[10px] leading-snug text-content-subtle" title={summary}>
+            <p className="truncate text-[11px] leading-snug text-content-subtle" title={summary}>
               {summary}
             </p>
           )}
@@ -666,7 +666,7 @@ function BlockStep({
           <IconClipboard size={11} />
         </StepGlyph>
         <span className="text-[11px] font-medium text-content">{t("ide.turns.planNode")}</span>
-        <span className="rounded-full bg-indigo-400/15 px-1.5 py-0.5 text-[10px] text-indigo-400">
+        <span className="rounded-full bg-indigo-400/15 px-1.5 py-0.5 text-[11px] text-indigo-400">
           {t(phaseKey)}
         </span>
       </StepRow>
@@ -681,11 +681,11 @@ function BlockStep({
           <IconFileCode size={11} />
         </StepGlyph>
         <span className="text-[11px] font-medium text-content">{t("ide.turns.filesNode")}</span>
-        <span className="text-[10px] text-content-subtle">
+        <span className="text-[11px] text-content-subtle">
           {t("ide.turns.filesCount", { n: totals.files })}
         </span>
-        <span className="text-[10px] tabular-nums text-accent">+{totals.adds}</span>
-        <span className="text-[10px] tabular-nums text-danger">−{totals.dels}</span>
+        <span className="text-[11px] tabular-nums text-accent">+{totals.adds}</span>
+        <span className="text-[11px] tabular-nums text-danger">−{totals.dels}</span>
       </StepRow>
     );
   }
@@ -699,7 +699,7 @@ function BlockStep({
         <span className="text-[11px] font-medium text-content">
           {t("ide.turns.compactNode")}
         </span>
-        <span className="text-[10px] tabular-nums text-content-subtle">
+        <span className="text-[11px] tabular-nums text-content-subtle">
           {fmtTokens(block.preTokens)} → {block.postTokens != null ? fmtTokens(block.postTokens) : "—"}
         </span>
       </StepRow>
@@ -714,7 +714,7 @@ function BlockStep({
         </StepGlyph>
         <div className="min-w-0 flex-1">
           <span className="text-[11px] font-medium text-danger">{t("ide.turns.errorNode")}</span>
-          <p className="line-clamp-2 break-words text-[10px] leading-snug text-content-subtle">
+          <p className="line-clamp-2 break-words text-[11px] leading-snug text-content-subtle">
             {block.message}
           </p>
         </div>
@@ -818,23 +818,23 @@ function SubagentLane({
       >
         <IconGitFork size={10} className="shrink-0 text-content-subtle" />
         {description && (
-          <span className="truncate text-[10px] font-medium text-content-muted" title={description}>
+          <span className="truncate text-[11px] font-medium text-content-muted" title={description}>
             {description}
           </span>
         )}
         {snapshot?.subagentType && (
-          <span className="shrink-0 rounded-full bg-fuchsia-400/15 px-1.5 py-0.5 text-[9px] text-fuchsia-400">
+          <span className="shrink-0 rounded-full bg-fuchsia-400/15 px-1.5 py-0.5 text-[11px] text-fuchsia-400">
             {snapshot.subagentType}
           </span>
         )}
         {snapshot?.isBackgrounded && (
-          <span className="shrink-0 rounded-full bg-surface-muted px-1.5 py-0.5 text-[9px] text-content-subtle">
+          <span className="shrink-0 rounded-full bg-surface-muted px-1.5 py-0.5 text-[11px] text-content-subtle">
             {t("ide.turns.backgroundTag")}
           </span>
         )}
         <span
           className={cn(
-            "ml-auto flex shrink-0 items-center gap-0.5 text-[10px] font-medium",
+            "ml-auto flex shrink-0 items-center gap-0.5 text-[11px] font-medium",
             meta.cls,
           )}
         >
@@ -843,20 +843,20 @@ function SubagentLane({
         </span>
       </div>
       {snapshot?.lastToolName && (
-        <div className="truncate px-1 text-[10px] leading-snug text-content-subtle">
+        <div className="truncate px-1 text-[11px] leading-snug text-content-subtle">
           {t("ide.turns.subagentLast", { tool: snapshot.lastToolName })}
         </div>
       )}
       {snapshot?.summary && (
         <div
-          className="truncate px-1 text-[10px] leading-snug text-content-subtle"
+          className="truncate px-1 text-[11px] leading-snug text-content-subtle"
           title={snapshot.summary}
         >
           {snapshot.summary}
         </div>
       )}
       {(snapshot?.totalTokens != null || snapshot?.toolUses != null || snapshot?.durationMs != null) && (
-        <div className="px-1 text-[10px] tabular-nums leading-snug text-content-subtle">
+        <div className="px-1 text-[11px] tabular-nums leading-snug text-content-subtle">
           {t("ide.turns.subagentDetail", {
             tokens: snapshot?.totalTokens != null ? fmtTokens(snapshot.totalTokens) : "—",
             tools: snapshot?.toolUses ?? "—",
@@ -865,7 +865,7 @@ function SubagentLane({
         </div>
       )}
       {status !== "running" && (
-        <div className={cn("flex items-center gap-1 px-1 py-0.5 text-[9px]", joinCls)}>
+        <div className={cn("flex items-center gap-1 px-1 py-0.5 text-[11px]", joinCls)}>
           <IconGitMerge size={9} className="shrink-0" />
           {snapshot?.endedAt != null
             ? t("ide.turns.joinAt", { time: fmtClockTime(snapshot.endedAt) })
@@ -896,7 +896,7 @@ function ParallelBatchRow({
   const { t } = useI18n();
   return (
     <div className="relative my-1 ml-3 rounded-md border border-edge/70 bg-surface-muted/40 pb-0.5 pl-1 pr-1 pt-2">
-      <span className="absolute -top-[7px] left-2 z-10 flex items-center gap-0.5 rounded-full border border-edge bg-surface px-1 text-[9px] font-medium text-content-subtle">
+      <span className="absolute -top-[7px] left-2 z-10 flex items-center gap-0.5 rounded-full border border-edge bg-surface px-1 text-[11px] font-medium text-content-subtle">
         <IconArrowsSplit size={9} />
         {t("ide.turns.parallelBatch", { n: row.steps.length })}
       </span>
@@ -944,7 +944,7 @@ function UsageBar({ record }: { record: TurnUsageRecord }) {
             />
           ))}
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-content-subtle">
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-content-subtle">
         {parts.map((p) => (
           <span key={p.label} className="flex items-center gap-1 tabular-nums">
             <span className={cn("h-1.5 w-1.5 rounded-full", p.cls)} />
@@ -952,7 +952,7 @@ function UsageBar({ record }: { record: TurnUsageRecord }) {
           </span>
         ))}
       </div>
-      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] tabular-nums text-content-subtle">
+      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] tabular-nums text-content-subtle">
         <span className="font-medium text-content-muted">
           {t("ide.turns.usageTotal", { n: fmtTokens(record.totalProcessedTokens) })}
         </span>

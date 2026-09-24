@@ -85,7 +85,7 @@ export function RightPanel() {
             <IconWorld size={16} className="shrink-0" />
           </RailButton>
           {browserTabCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold leading-none text-white">
+            <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[11px] font-bold leading-none text-white">
               {browserTabCount}
             </span>
           )}

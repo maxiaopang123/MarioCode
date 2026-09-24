@@ -149,7 +149,7 @@ function EntryFavicon({ url }: { url: string }) {
   return (
     <span
       aria-hidden
-      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[9px] font-bold text-white"
+      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[11px] font-bold text-white"
       style={{ background: `hsl(${Math.abs(hash) % 360} 42% 42%)` }}
     >
       {letter}
@@ -163,7 +163,7 @@ function DownloadExtBadge({ filename }: { filename: string }) {
   return (
     <span
       aria-hidden
-      className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-surface-muted text-[7px] font-bold text-content-muted"
+      className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded bg-surface-muted px-0.5 text-[11px] font-bold leading-none text-content-muted"
     >
       {ext}
     </span>
@@ -319,7 +319,7 @@ function MenuActionRow({
 /** Small neutral count pill for tree-node headers. */
 function CountPill({ n }: { n: number }) {
   return (
-    <span className="shrink-0 rounded-full bg-surface-muted px-1.5 text-[10px] leading-4 text-content-subtle">
+    <span className="shrink-0 rounded-full bg-surface-muted px-1.5 text-[11px] leading-4 text-content-subtle">
       {n}
     </span>
   );
@@ -575,7 +575,7 @@ export function BrowserToolbar({
               "max-h-72 overflow-y-auto rounded-md border border-edge bg-surface shadow-xl",
             )}
           >
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wide text-content-subtle">
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wide text-content-subtle">
               <IconClock size={11} />
               {t("browser.history")}
             </div>
@@ -751,7 +751,7 @@ export function BrowserToolbar({
                   <>
                     {historyGroups.map((group) => (
                       <div key={group.key}>
-                        <div className="pb-0.5 pl-[26px] pr-2.5 pt-1 text-[10px] uppercase tracking-wide text-content-subtle">
+                        <div className="pb-0.5 pl-[26px] pr-2.5 pt-1 text-[11px] uppercase tracking-wide text-content-subtle">
                           {t(group.key)}
                         </div>
                         {group.entries.map((entry) => (
@@ -798,7 +798,7 @@ export function BrowserToolbar({
                   label={t("browser.downloads")}
                   trailing={
                     activeDownloadCount > 0 ? (
-                      <span className="flex shrink-0 items-center gap-1 text-[10px] text-amber-500">
+                      <span className="flex shrink-0 items-center gap-1 text-[11px] text-amber-500">
                         <IconLoader2 size={10} className="animate-spin" />
                         {t("browser.downloadActive", { n: activeDownloadCount })}
                       </span>

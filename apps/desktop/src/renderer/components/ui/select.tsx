@@ -234,7 +234,7 @@ function SelectGroupLabel({ className, ...props }: SelectGroupLabelProps) {
   return (
     <BaseSelect.GroupLabel
       className={cn(
-        "px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-content-subtle",
+        "px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-content-subtle",
         className,
       )}
       {...props}

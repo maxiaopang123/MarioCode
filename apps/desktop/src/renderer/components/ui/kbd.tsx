@@ -31,7 +31,7 @@ const keycapVariants = cva(
   {
     variants: {
       size: {
-        xs: "h-4 min-w-4 px-1 text-[10px] leading-none",
+        xs: "h-4 min-w-4 px-1 text-[11px] leading-none",
         sm: "h-5 min-w-5 px-1.5 text-[11px] leading-none",
       },
     },

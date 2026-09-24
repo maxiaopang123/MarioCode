@@ -188,7 +188,7 @@ export function PlanViewer({
         <IconClipboard size={15} className="shrink-0 text-content-subtle" />
         <span className="text-xs font-semibold text-content">{t("chat.planViewer.title")}</span>
         {isApprovalPending && (
-          <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+          <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[11px] font-medium text-accent">
             {t("chat.plan.pendingReview")}
           </span>
         )}

@@ -503,7 +503,7 @@ export function SearchDialog() {
           </div>
 
           {/* Footer: keybind hints + result count. Styles mirror CommandPalette. */}
-          <div className="flex shrink-0 items-center justify-between border-t border-edge px-3 py-1.5 text-[10px] text-content-subtle">
+          <div className="flex shrink-0 items-center justify-between border-t border-edge px-3 py-1.5 text-[11px] text-content-subtle">
             <span className="flex items-center gap-2">
               <span>
                 <kbd className="rounded border border-edge px-1">↑</kbd>
@@ -725,7 +725,7 @@ function ContentSearchResults({
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
               {g.fileName}
             </span>
-            <span className="shrink-0 rounded bg-surface-muted px-1 text-[10px] text-content-subtle">
+            <span className="shrink-0 rounded bg-surface-muted px-1 text-[11px] text-content-subtle">
               {g.lines.length}
             </span>
           </button>
@@ -748,7 +748,7 @@ function ContentSearchResults({
                 )}
                 title={m.path}
               >
-                <span className="shrink-0 select-none text-[10px] leading-6 text-content-subtle">
+                <span className="shrink-0 select-none text-[11px] leading-6 text-content-subtle">
                   {m.lineNumber}
                 </span>
                 <span className="min-w-0 flex-1 truncate font-mono text-[12px] leading-6">

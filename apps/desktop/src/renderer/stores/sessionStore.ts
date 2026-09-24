@@ -2299,7 +2299,7 @@ export const CHAT_FONT_SIZE_MAX = 20;
 
 /** Clamp a font-size value to the allowed slider range. */
 export function clampFontSize(px: number): number {
-  if (!Number.isFinite(px)) return 14;
+  if (!Number.isFinite(px)) return 15;
   return Math.min(CHAT_FONT_SIZE_MAX, Math.max(CHAT_FONT_SIZE_MIN, Math.round(px)));
 }
 
@@ -4395,9 +4395,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // `ui.projectGroups` JSON blob; groups not present here fall back to default
   // color and first-appearance order.
   groupMeta: {},
-  // Persisted in `settings` table; init() overwrites from the DB. Defaults
-  // mirror the CSS var defaults in styles.css (14px = text-sm).
-  chatFontSize: 14,
+  // Persisted in `settings` table; init() overwrites from the DB. Default
+  // 15px mirrors the --chat-font-size CSS var in styles.css.
+  chatFontSize: 15,
   // Persisted in `settings` table; init() overwrites from the DB. Default
   // 14px mirrors the --right-panel-font-size CSS var in styles.css.
   rightPanelFontSize: 14,

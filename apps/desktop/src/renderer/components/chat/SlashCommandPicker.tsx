@@ -244,14 +244,14 @@ export function SlashCommandPicker({
                   <span className="block truncate font-medium">
                     /{name}
                     {argumentHint ? (
-                      <span className="ml-0.5 text-[10px] text-content-subtle">{argumentHint}</span>
+                      <span className="ml-0.5 text-[11px] text-content-subtle">{argumentHint}</span>
                     ) : null}
                   </span>
-                  <span className="block truncate text-[10px] text-content-subtle">
+                  <span className="block truncate text-[11px] text-content-subtle">
                     {description || t("chat.slash.noDescription")}
                   </span>
                 </span>
-                <span className="shrink-0 text-[10px] text-content-subtle">
+                <span className="shrink-0 text-[11px] text-content-subtle">
                   {isBuiltin
                     ? t("chat.slash.builtin")
                     : (entry as SkillInfo).source === "project"
@@ -266,7 +266,7 @@ export function SlashCommandPicker({
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-edge px-2.5 py-1 text-[10px] text-content-subtle">
+      <div className="flex items-center justify-between border-t border-edge px-2.5 py-1 text-[11px] text-content-subtle">
         <span>
           <kbd className="rounded border border-edge px-1">↑</kbd>
           <kbd className="ml-0.5 rounded border border-edge px-1">↓</kbd>

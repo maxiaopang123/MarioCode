@@ -259,7 +259,7 @@ export function FileMentionPicker({
           {selected.size > 0 && (
             <button
               type="button"
-              className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[10px] font-medium text-surface hover:brightness-110"
+              className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[11px] font-medium text-surface hover:brightness-110"
               onClick={confirmAttach}
             >
               {t("chat.mention.addN", { n: selected.size })}
@@ -287,7 +287,7 @@ export function FileMentionPicker({
         >
           <IconUpload size={14} className="shrink-0" />
           <span className="flex-1">{t("chat.mention.externalPick")}</span>
-          <span className="text-[10px] text-content-subtle">{t("chat.mention.externalHint")}</span>
+          <span className="text-[11px] text-content-subtle">{t("chat.mention.externalHint")}</span>
         </button>
       )}
 
@@ -335,7 +335,7 @@ export function FileMentionPicker({
                 {mode === "attach" && (
                   <span
                     className={cn(
-                      "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px]",
+                      "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[11px]",
                       isSel || already
                         ? "border-accent bg-accent text-surface"
                         : "border-edge text-transparent",
@@ -347,12 +347,12 @@ export function FileMentionPicker({
                 <IconFile size={14} className="shrink-0 text-content-muted" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{f.name}</span>
-                  <span className="block truncate text-[10px] text-content-subtle">
+                  <span className="block truncate text-[11px] text-content-subtle">
                     {f.relativePath}
                   </span>
                 </span>
                 {already && (
-                  <span className="shrink-0 text-[10px] text-content-subtle">{t("chat.mention.added")}</span>
+                  <span className="shrink-0 text-[11px] text-content-subtle">{t("chat.mention.added")}</span>
                 )}
               </button>
             );
@@ -360,7 +360,7 @@ export function FileMentionPicker({
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-edge px-2.5 py-1 text-[10px] text-content-subtle">
+      <div className="flex items-center justify-between border-t border-edge px-2.5 py-1 text-[11px] text-content-subtle">
         <span>
           <kbd className="rounded border border-edge px-1">↑</kbd>
           <kbd className="ml-0.5 rounded border border-edge px-1">↓</kbd>

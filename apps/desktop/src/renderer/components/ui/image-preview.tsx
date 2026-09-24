@@ -334,7 +334,7 @@ export function ImageWithPreview({
           className="block object-contain transition-transform duration-200 group-hover:scale-[1.03]"
         />
         {/* Hover affordance: a small maximize badge that appears on hover. */}
-        <span className="pointer-events-none absolute right-1.5 top-1.5 flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+        <span className="pointer-events-none absolute right-1.5 top-1.5 flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[11px] font-medium text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
           <IconArrowsMaximize size={12} />
           {t("layout.image.view")}
         </span>

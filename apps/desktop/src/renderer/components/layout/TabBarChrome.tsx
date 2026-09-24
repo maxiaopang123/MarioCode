@@ -98,7 +98,7 @@ export function TabBarOverflowMenu({
               "transition-[transform,opacity] duration-100",
             )}
           >
-            <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-content-subtle">
+            <div className="px-2 py-1 text-[11px] uppercase tracking-wide text-content-subtle">
               {heading}
             </div>
             {/* Pinned display options — stay visible above the scrolling

@@ -570,7 +570,7 @@ export function SkillsPanel() {
                     </span>
                     <span
                       className={cn(
-                        "shrink-0 rounded px-1 text-[9px] leading-tight",
+                        "shrink-0 rounded px-1 text-[11px] leading-tight",
                         s.source === "project"
                           ? "bg-accent/12 text-accent"
                           : "bg-surface-hover text-content-subtle",
@@ -731,7 +731,7 @@ function SkillSourceEditor({
           <span className="text-[0.8571em] font-medium text-content">/{skill.name}</span>
           <span
             className={cn(
-              "rounded px-1 text-[9px]",
+              "rounded px-1 text-[11px]",
               skill.source === "project"
                 ? "bg-accent/12 text-accent"
                 : "bg-surface-hover text-content-subtle",
@@ -878,7 +878,7 @@ function NewSkillForm({
           spellCheck={false}
           autoFocus
         />
-        <p className="mt-0.5 text-[10px] text-content-subtle">
+        <p className="mt-0.5 text-[11px] text-content-subtle">
           {t("settings.skills.fieldNameHintPre")}
           <code className="rounded bg-surface-muted px-0.5">/name</code>
           {t("settings.skills.fieldNameHintPost")}
@@ -1297,7 +1297,7 @@ function ImportSkillsDialog({
                       >
                         <span
                           className={cn(
-                            "rounded px-1 text-[10px] font-medium leading-tight",
+                            "rounded px-1 text-[11px] font-medium leading-tight",
                             TOOL_BADGE_CLS[tool],
                           )}
                         >
@@ -1307,7 +1307,7 @@ function ImportSkillsDialog({
                           {items.length}
                         </span>
                         {picked > 0 && (
-                          <span className="rounded-full bg-accent/15 px-1.5 text-[10px] font-medium leading-tight text-accent tabular-nums">
+                          <span className="rounded-full bg-accent/15 px-1.5 text-[11px] font-medium leading-tight text-accent tabular-nums">
                             {picked}
                           </span>
                         )}
@@ -1367,7 +1367,7 @@ function ImportSkillsDialog({
                                   {s.name}
                                 </span>
                                 {isExisting && (
-                                  <span className="shrink-0 rounded bg-surface-hover px-1 text-[9px] text-content-subtle">
+                                  <span className="shrink-0 rounded bg-surface-hover px-1 text-[11px] text-content-subtle">
                                     {t("settings.importExisting")}
                                   </span>
                                 )}

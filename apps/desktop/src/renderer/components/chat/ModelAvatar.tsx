@@ -28,7 +28,7 @@ export function ModelAvatar({
   return (
     <span
       className={cn(
-        "inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md text-[10px] font-bold text-white",
+        "inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md text-[11px] font-bold text-white",
         className,
       )}
       style={{ backgroundColor: modelAvatarColor(name) }}

@@ -905,7 +905,7 @@ function SessionRow({
         {isRunning ? (
           <IconLoader2 size={14} className="shrink-0 animate-spin text-accent" />
         ) : unreadCount > 0 ? (
-          <span className="shrink-0 min-w-[18px] rounded-full bg-accent/85 px-1 text-center text-[10px] font-medium leading-[18px] text-surface">
+          <span className="shrink-0 min-w-[18px] rounded-full bg-accent/85 px-1 text-center text-[11px] font-medium leading-[18px] text-surface">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         ) : null}

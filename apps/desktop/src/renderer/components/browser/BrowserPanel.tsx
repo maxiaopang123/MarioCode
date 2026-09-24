@@ -1380,7 +1380,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
               <div className="text-[11px] font-medium leading-tight">
                 {mode === "sidebar" ? t("browser.addedToInput") : t("browser.pickedToList")}
               </div>
-              <div className="max-w-[240px] truncate text-[10px] leading-tight text-white/80">
+              <div className="max-w-[240px] truncate text-[11px] leading-tight text-white/80">
                 {flashPreview.preview || flashPreview.selector}
               </div>
             </div>

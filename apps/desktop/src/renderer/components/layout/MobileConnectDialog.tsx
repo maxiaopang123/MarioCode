@@ -95,7 +95,7 @@ export function MobileConnectButton() {
         <span className="flex-1 text-left font-medium">{t("layout.connectPhone")}</span>
         {activeCount > 0 && (
           <span
-            className="shrink-0 rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-accent"
+            className="shrink-0 rounded-full bg-accent/15 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-accent"
             title={t("layout.activeDevices", { n: activeCount })}
           >
             ×{activeCount}
@@ -349,7 +349,7 @@ function MobileConnectPanel({ open }: { open: boolean }) {
                     key={ip}
                     type="button"
                     onClick={() => void rebindEndpoint(ip)}
-                    className="rounded border border-edge px-1.5 py-0.5 font-mono text-[10px] text-content-subtle hover:bg-surface-hover hover:text-content"
+                    className="rounded border border-edge px-1.5 py-0.5 font-mono text-[11px] text-content-subtle hover:bg-surface-hover hover:text-content"
                     title={t("layout.regenerateWithIp", { ip })}
                   >
                     {ip}

@@ -305,7 +305,7 @@ export function ClawBotPanel() {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-content">{t("settings.clawbot.title")}</h3>
-            <span className={`rounded-full px-2 py-0.5 text-[10px] ${status.ready ? "bg-success/10 text-success" : status.state === "error" ? "bg-danger/10 text-danger" : "bg-surface-muted text-content-subtle"}`}>{stateLabel}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] ${status.ready ? "bg-success/10 text-success" : status.state === "error" ? "bg-danger/10 text-danger" : "bg-surface-muted text-content-subtle"}`}>{stateLabel}</span>
           </div>
           <p className="mt-1 text-xs leading-relaxed text-content-muted">{t("settings.clawbot.description")}</p>
         </div>

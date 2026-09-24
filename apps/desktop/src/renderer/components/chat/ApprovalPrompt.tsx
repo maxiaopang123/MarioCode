@@ -112,7 +112,7 @@ export function ApprovalPrompt({
           <span className="font-semibold text-warning">{t("chat.approval.title")}</span>
           {queueTotal > 1 && (
             <span
-              className="rounded-full border border-warning/60 bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-warning"
+              className="rounded-full border border-warning/60 bg-warning/15 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-warning"
               title={t("chat.approval.queueTitle", { n: queueTotal - queuePosition })}
             >
               {queuePosition} / {queueTotal}
@@ -123,7 +123,7 @@ export function ApprovalPrompt({
           type="button"
           onClick={() => setOpen((v) => !v)}
           className={cn(
-            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors",
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors",
             "text-content-muted hover:bg-surface-hover hover:text-content",
           )}
           title={open ? t("chat.approval.collapseTitle") : t("chat.approval.expandTitle")}
@@ -152,7 +152,7 @@ export function ApprovalPrompt({
       {/* Expandable input */}
       {open && (
         <div className="mb-2.5">
-          <div className="mb-0.5 text-[10px] uppercase tracking-wide text-content-subtle">Input</div>
+          <div className="mb-0.5 text-[11px] uppercase tracking-wide text-content-subtle">Input</div>
           <pre className="max-h-40 overflow-auto rounded-lg bg-surface-muted/60 p-2 text-[11px] text-content-muted">
             {safeStringify(input)}
           </pre>

@@ -350,7 +350,7 @@ function InlineNewEntryRow({
         )}
       />
       {error && (
-        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-full whitespace-nowrap rounded bg-danger/90 px-1.5 py-0.5 text-[10px] text-white shadow">
+        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-full whitespace-nowrap rounded bg-danger/90 px-1.5 py-0.5 text-[11px] text-white shadow">
           {error}
         </span>
       )}
@@ -481,7 +481,7 @@ function InlineRenameRow({
         )}
       />
       {error && (
-        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-full whitespace-nowrap rounded bg-danger/90 px-1.5 py-0.5 text-[10px] text-white shadow">
+        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-full whitespace-nowrap rounded bg-danger/90 px-1.5 py-0.5 text-[11px] text-white shadow">
           {error}
         </span>
       )}

@@ -129,7 +129,7 @@ function FilterChip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold transition-colors",
+        "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors",
         active
           ? "border-edge bg-surface-muted text-content"
           : "border-transparent text-content-subtle hover:bg-surface-muted/70 hover:text-content",
@@ -139,7 +139,7 @@ function FilterChip({
       {typeof n === "number" && (
         <span
           className={cn(
-            "rounded-full px-1 text-[9px] tabular-nums",
+            "rounded-full px-1 text-[11px] tabular-nums",
             active ? "bg-accent/15 text-accent-strong" : "bg-surface-muted text-content-muted",
           )}
         >
@@ -153,7 +153,7 @@ function FilterChip({
 /** Sticky group header inside the body ("运行中 · 3"). */
 function GroupHead({ label, n }: { label: string; n: number }) {
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-2 bg-surface/95 px-3 py-1.5 text-[10px] font-bold tracking-wide text-content-subtle backdrop-blur-sm">
+    <div className="sticky top-0 z-10 flex items-center gap-2 bg-surface/95 px-3 py-1.5 text-[11px] font-bold tracking-wide text-content-subtle backdrop-blur-sm">
       {label}
       <span className="ml-auto tabular-nums">{n}</span>
     </div>
@@ -227,16 +227,16 @@ function SubagentRow({
       )}
       <div className="flex items-center gap-1.5">
         {agent.subagentType && (
-          <span className="rounded bg-info/20 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-info">
+          <span className="rounded bg-info/20 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-info">
             {agent.subagentType}
           </span>
         )}
-        <span className={cn("flex items-center gap-1 text-[10px] font-semibold", meta.cls)}>
+        <span className={cn("flex items-center gap-1 text-[11px] font-semibold", meta.cls)}>
           {meta.spin && <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />}
           <StatusIcon size={11} className={cn(meta.spin && "animate-spin")} />
           {t(meta.labelKey)}
         </span>
-        <span className="ml-auto shrink-0 text-[9.5px] tabular-nums text-content-subtle">
+        <span className="ml-auto shrink-0 text-[11px] tabular-nums text-content-subtle">
           {formatClock(win.start)} → {running ? t("chatStream.activity.now") : formatClock(win.end)}
         </span>
       </div>
@@ -244,27 +244,27 @@ function SubagentRow({
         {agent.description || t("chatStream.activity.noDescription")}
       </p>
       {agent.error ? (
-        <p className="mt-0.5 text-[10px] text-danger">{agent.error}</p>
+        <p className="mt-0.5 text-[11px] text-danger">{agent.error}</p>
       ) : (
         agent.summary && (
-          <p className="mt-0.5 truncate text-[10px] italic text-content-subtle" title={agent.summary}>
+          <p className="mt-0.5 truncate text-[11px] italic text-content-subtle" title={agent.summary}>
             {agent.summary}
           </p>
         )
       )}
       <div className="mt-1 flex flex-wrap items-center gap-1">
         {running && agent.lastToolName && (
-          <span className="rounded bg-surface-muted px-1.5 py-0.5 text-[9px] font-medium tabular-nums text-content-muted">
+          <span className="rounded bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-content-muted">
             {agent.lastToolName}
           </span>
         )}
         {chips.map((c) => (
-          <span key={c} className="rounded bg-surface-muted px-1.5 py-0.5 text-[9px] tabular-nums text-content-subtle">
+          <span key={c} className="rounded bg-surface-muted px-1.5 py-0.5 text-[11px] tabular-nums text-content-subtle">
             {c}
           </span>
         ))}
         {onPick && (
-          <span className="ml-auto text-[10px] font-semibold text-accent-strong opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="ml-auto text-[11px] font-semibold text-accent-strong opacity-0 transition-opacity group-hover:opacity-100">
             {t("chatStream.activity.viewSubagent")}
           </span>
         )}
@@ -387,7 +387,7 @@ function TasksBody({ todos, tab, t }: { todos: TodoItem[]; tab: string; t: Trans
                     {td.content}
                   </span>
                   {td.status === "pending" && (
-                    <span className="ml-auto shrink-0 rounded px-1 py-0.5 text-[9px] text-content-subtle">
+                    <span className="ml-auto shrink-0 rounded px-1 py-0.5 text-[11px] text-content-subtle">
                       {t(PRIORITY_LABEL_KEY[td.priority])}
                     </span>
                   )}
@@ -435,7 +435,7 @@ function PlansBody({
             >
               <span
                 className={cn(
-                  "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md text-[9.5px] font-bold tabular-nums",
+                  "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md text-[11px] font-bold tabular-nums",
                   latest ? "bg-accent/15 text-accent-strong" : "bg-surface-muted text-content-muted",
                 )}
               >
@@ -445,18 +445,18 @@ function PlansBody({
                 <span className="flex items-center gap-1.5">
                   <span className="truncate text-[11.5px] font-semibold text-content">{title}</span>
                   {latest && (
-                    <span className="shrink-0 rounded bg-accent/15 px-1 py-0.5 text-[9px] font-bold text-accent-strong">
+                    <span className="shrink-0 rounded bg-accent/15 px-1 py-0.5 text-[11px] font-bold text-accent-strong">
                       {t("chatStream.activity.latestChip")}
                     </span>
                   )}
                 </span>
                 {excerpt && (
-                  <span className="mt-1 line-clamp-2 text-[10.5px] leading-relaxed text-content-subtle">
+                  <span className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-content-subtle">
                     {excerpt}
                   </span>
                 )}
               </span>
-              <span className="mt-0.5 shrink-0 text-[10px] font-semibold text-accent-strong opacity-0 transition-opacity group-hover:opacity-100">
+              <span className="mt-0.5 shrink-0 text-[11px] font-semibold text-accent-strong opacity-0 transition-opacity group-hover:opacity-100">
                 {t("chatStream.activity.openPlan")}
               </span>
             </button>
@@ -536,11 +536,11 @@ function BookmarkRow({
               {label}
             </span>
             {stale ? (
-              <span className="shrink-0 rounded bg-surface-muted px-1 text-[9px] text-content-subtle">
+              <span className="shrink-0 rounded bg-surface-muted px-1 text-[11px] text-content-subtle">
                 {t("chatStream.bookmark.stale")}
               </span>
             ) : (
-              <span className="shrink-0 text-[9px] tabular-nums text-content-subtle">
+              <span className="shrink-0 text-[11px] tabular-nums text-content-subtle">
                 {formatClock(bookmark.createdAt).slice(0, 5)}
               </span>
             )}
@@ -782,7 +782,7 @@ export function ActivityConsole({
           style={{ background: `conic-gradient(rgb(var(--accent)) ${todoPct}%, rgb(var(--surface-hover)) 0)` }}
         >
           <span className="absolute inset-[4px] rounded-full bg-surface" />
-          <span className="relative text-[9.5px] font-bold tabular-nums">{todoPct}%</span>
+          <span className="relative text-[11px] font-bold tabular-nums">{todoPct}%</span>
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-1 text-[11px] text-content-muted">
@@ -790,7 +790,7 @@ export function ActivityConsole({
               {doneTodos.length} / {todos.length}
             </b>
             {t("chatStream.activity.tasksDoneSuffix")}
-            <span className="ml-auto text-[10px] text-content-subtle">
+            <span className="ml-auto text-[11px] text-content-subtle">
               {t("chatStream.activity.tasksRest", { n: todos.length - doneTodos.length })}
             </span>
           </span>
@@ -929,7 +929,7 @@ export function ActivityConsole({
         </span>
         <span className="min-w-0 flex-1">
           <b className="block truncate text-[12.5px] font-bold tracking-tight">{t(meta.labelKey)}</b>
-          <span className="block truncate text-[10.5px] text-content-subtle">{subtitle}</span>
+          <span className="block truncate text-[11px] text-content-subtle">{subtitle}</span>
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
           {rightAction && (
@@ -956,7 +956,7 @@ export function ActivityConsole({
       </div>
 
       {/* Aggregate numbers for this kind. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-y border-edge/50 bg-surface-muted/40 px-3 py-2 text-[10.5px] tabular-nums text-content-subtle">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-y border-edge/50 bg-surface-muted/40 px-3 py-2 text-[11px] tabular-nums text-content-subtle">
         {stats}
       </div>
 
@@ -978,11 +978,11 @@ export function ActivityConsole({
       {/* Body — the panel's only scroll area. */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{body}</div>
 
-      <div className="flex shrink-0 items-center gap-1.5 border-t border-edge/50 bg-surface-muted/30 px-3 py-2 text-[10px] text-content-subtle">
+      <div className="flex shrink-0 items-center gap-1.5 border-t border-edge/50 bg-surface-muted/30 px-3 py-2 text-[11px] text-content-subtle">
         {footer}
         {showKeyHint && (
           <span className="ml-auto flex shrink-0 items-center gap-1">
-            <kbd className="rounded border border-edge bg-surface px-1 text-[9px]">Esc</kbd>
+            <kbd className="rounded border border-edge bg-surface px-1 text-[11px]">Esc</kbd>
             {t("chatStream.activity.close")}
           </span>
         )}

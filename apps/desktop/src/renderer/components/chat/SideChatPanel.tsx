@@ -195,7 +195,7 @@ function SideChatListView({
             transcripts behind each row. */}
         {orderedSubagents && orderedSubagents.length > 0 && (
           <div className="mb-2">
-            <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-content-subtle">
+            <div className="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-content-subtle">
               {t("sideChat.subagentsSection")}
             </div>
             <ul className="space-y-0.5">
@@ -274,7 +274,7 @@ function SubagentRow({
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             {agent.subagentType && (
-              <span className="shrink-0 rounded bg-info/20 px-1 text-[9px] font-medium uppercase tracking-wide text-info">
+              <span className="shrink-0 rounded bg-info/20 px-1 text-[11px] font-medium uppercase tracking-wide text-info">
                 {agent.subagentType}
               </span>
             )}
@@ -283,7 +283,7 @@ function SubagentRow({
             </span>
           </span>
           {(agent.lastToolName || usage) && (
-            <span className="mt-0.5 block truncate text-[10px] text-content-subtle">
+            <span className="mt-0.5 block truncate text-[11px] text-content-subtle">
               {[agent.lastToolName, usage].filter(Boolean).join(" · ")}
             </span>
           )}
@@ -332,7 +332,7 @@ function SideChatRow({
         <span className="min-w-0 flex-1 truncate text-xs text-content">
           {displayTitle(session, t("sideChat.titlePlaceholder"))}
         </span>
-        <span className="shrink-0 text-[10px] text-content-subtle">
+        <span className="shrink-0 text-[11px] text-content-subtle">
           {formatRelativeTime(session.createdAt)}
         </span>
       </button>
@@ -416,7 +416,7 @@ function SubagentView({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             {agent.subagentType && (
-              <span className="shrink-0 rounded bg-info/20 px-1 text-[9px] font-medium uppercase tracking-wide text-info">
+              <span className="shrink-0 rounded bg-info/20 px-1 text-[11px] font-medium uppercase tracking-wide text-info">
                 {agent.subagentType}
               </span>
             )}
@@ -424,7 +424,7 @@ function SubagentView({
               {agent.description || t("sideChat.titlePlaceholder")}
             </span>
           </div>
-          <div className="flex items-center gap-1 text-[10px] text-content-subtle">
+          <div className="flex items-center gap-1 text-[11px] text-content-subtle">
             <span className={cn("flex items-center gap-1", meta.cls)}>
               {running && (
                 <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
@@ -487,7 +487,7 @@ function SideChatView({ session, parentRow }: { session: Session; parentRow?: Se
               onClick={() => void openTab(session.parentSessionId as string)}
               title={parentGone ? t("sideChat.parentDeleted") : t("sideChat.goToParent")}
               className={cn(
-                "block max-w-full truncate text-left text-[10px]",
+                "block max-w-full truncate text-left text-[11px]",
                 parentGone
                   ? "cursor-default text-content-subtle"
                   : "text-accent hover:underline",
@@ -497,7 +497,7 @@ function SideChatView({ session, parentRow }: { session: Session; parentRow?: Se
               {parentGone ? t("sideChat.parentDeleted") : (parentRow?.title ?? "")}
             </button>
           ) : (
-            <span className="block truncate text-[10px] text-content-subtle">
+            <span className="block truncate text-[11px] text-content-subtle">
               {t("sideChat.parentDeleted")}
             </span>
           )}

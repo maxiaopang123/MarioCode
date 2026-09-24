@@ -198,7 +198,7 @@ function ScreenShell({ title, children }: { title: string; children: React.React
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-edge px-3">
         <span className="text-sm font-medium text-content">{title}</span>
         <span className="flex-1" />
-        <span className="flex items-center gap-1 text-[10px] text-content-subtle">
+        <span className="flex items-center gap-1 text-[11px] text-content-subtle">
           <IconFolderOpen size={12} />
           {t("mobile.files.readOnly")}
         </span>

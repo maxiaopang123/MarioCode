@@ -200,14 +200,14 @@ export function TagPopover({
     >
       {/* Header: char count + copy/close */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-edge bg-surface-muted px-2 py-1">
-        <span className="text-[10px] text-content-muted">
+        <span className="text-[11px] text-content-muted">
           {t("chat.tagPopover.charCount", { n: tag.content.length.toLocaleString() })}
         </span>
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={handleCopy}
-            className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
+            className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
             title={t("chat.tagPopover.copyFull")}
           >
             {copyState === "copied" ? (
@@ -229,7 +229,7 @@ export function TagPopover({
                 onExpand();
                 onClose();
               }}
-              className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
+              className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
               title={t("chat.tagPopover.expandTitle")}
             >
               <IconArrowsMaximize size={11} /> {t("chat.tagPopover.expand")}

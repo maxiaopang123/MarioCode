@@ -114,7 +114,7 @@ export function TerminalCommandsMenu({
                 "transition-[transform,opacity] duration-100",
               )}
             >
-              <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-content-subtle">
+              <div className="px-3 py-1 text-[11px] uppercase tracking-wide text-content-subtle">
                 {t("ide.term.customCommands")}
               </div>
 
@@ -141,7 +141,7 @@ export function TerminalCommandsMenu({
                       <span className="shrink-0 text-[11px] font-medium text-content">
                         {cmd.name}
                       </span>
-                      <span className="min-w-0 truncate font-mono text-[10px] text-content-subtle">
+                      <span className="min-w-0 truncate font-mono text-[11px] text-content-subtle">
                         {cmd.command}
                       </span>
                     </button>

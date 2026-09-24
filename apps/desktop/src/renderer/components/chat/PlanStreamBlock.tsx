@@ -77,7 +77,7 @@ export function PlanStreamBlock({
         {label && (
           <span
             className={cn(
-              "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+              "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium",
               hasApproval
                 ? "bg-accent/15 text-accent"
                 : "bg-surface-hover text-content-subtle",

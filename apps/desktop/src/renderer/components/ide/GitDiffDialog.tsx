@@ -350,7 +350,7 @@ function SidebarFileGroup({
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
-        className="flex w-full items-center gap-1 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-content-subtle"
+        className="flex w-full items-center gap-1 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-content-subtle"
       >
         {collapsed ? <IconChevronRight size={10} /> : <IconChevronDown size={10} />}
         {t(labelKey)} ({files.length})
@@ -446,7 +446,7 @@ function StatusCodeIcon({ code }: { code: GitFileStatus["index"] }) {
   return (
     <span
       className={cn(
-        "w-3 shrink-0 text-center font-mono text-[10px] font-bold",
+        "w-3 shrink-0 text-center font-mono text-[11px] font-bold",
         color,
       )}
       title={code}

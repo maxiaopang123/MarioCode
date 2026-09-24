@@ -139,7 +139,7 @@ export function SessionDirectoryChip({ sessionId }: { sessionId: string | null }
             title={t("chat.directory.chipTitle")}
           >
             <span
-              className="flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] text-[7px] font-bold text-white"
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[11px] font-bold text-white"
               style={{ backgroundColor: projectDisplayColor(current, projectColors) }}
               aria-hidden
             >
@@ -175,7 +175,7 @@ export function SessionDirectoryChip({ sessionId }: { sessionId: string | null }
                       title={t("chat.directory.rowHint")}
                     >
                       <span
-                        className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-[8px] font-bold text-white"
+                        className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[11px] font-bold text-white"
                         style={{ backgroundColor: projectDisplayColor(p, projectColors) }}
                         aria-hidden
                       >
@@ -183,7 +183,7 @@ export function SessionDirectoryChip({ sessionId }: { sessionId: string | null }
                       </span>
                       <span className="min-w-0 flex-1 truncate">{p.name}</span>
                       {p.group && !active && (
-                        <span className="shrink-0 text-[9px] text-content-subtle/70">{p.group}</span>
+                        <span className="shrink-0 text-[11px] text-content-subtle/70">{p.group}</span>
                       )}
                       {active && <IconCheck size={13} className="shrink-0" />}
                       {/* Manage affordance — always faintly visible at the
@@ -205,7 +205,7 @@ export function SessionDirectoryChip({ sessionId }: { sessionId: string | null }
                     </Menu.Item>
                   );
                 })}
-                <div className="px-3 pb-1 pt-0.5 text-[9px] text-content-subtle/60">
+                <div className="px-3 pb-1 pt-0.5 text-[11px] text-content-subtle/60">
                   {t("chat.directory.manageHint")}
                 </div>
               </Menu.Popup>

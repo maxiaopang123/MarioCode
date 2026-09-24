@@ -263,7 +263,7 @@ function TimelineDash({
               {fmtClock(message.createdAt)}
             </span>
             {active && !bookmarked && (
-              <span className="ml-auto rounded bg-accent/15 px-1 text-[9px] text-accent">{t("chatStream.timeline.current")}</span>
+              <span className="ml-auto rounded bg-accent/15 px-1 text-[11px] text-accent">{t("chatStream.timeline.current")}</span>
             )}
           </div>
           {title && (

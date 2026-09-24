@@ -101,7 +101,7 @@ export function WorktreeManagerPanel({ repos }: { repos: GitRepo[] }) {
                   {repo.name}
                 </span>
                 {main?.branch && (
-                  <span className="ml-auto shrink-0 text-[10px] text-content-subtle">
+                  <span className="ml-auto shrink-0 text-[11px] text-content-subtle">
                     {t("chat.worktree.mainIs", { branch: main.branch })}
                   </span>
                 )}
@@ -190,28 +190,28 @@ function WorktreeManagerRow({
             // show it ahead of the abbreviated SHA (detached rows show the
             // SHA alone, as before).
             <span
-              className="flex shrink-0 items-center gap-0.5 font-mono text-[10px] text-content-subtle"
+              className="flex shrink-0 items-center gap-0.5 font-mono text-[11px] text-content-subtle"
               title={info.branch}
             >
               <IconGitBranch size={10} className="shrink-0" />
               {info.branch}
             </span>
           ) : (
-            <span className="shrink-0 font-mono text-[10px] text-content-subtle">{info.head}</span>
+            <span className="shrink-0 font-mono text-[11px] text-content-subtle">{info.head}</span>
           )}
           {badge && (
-            <span className={cn("shrink-0 text-[10px]", badge.cls)}>{badge.text}</span>
+            <span className={cn("shrink-0 text-[11px]", badge.cls)}>{badge.text}</span>
           )}
           {info.referencedBy > 0 && (
             <span
-              className="shrink-0 text-[10px] text-content-subtle"
+              className="shrink-0 text-[11px] text-content-subtle"
               title={t("chat.worktree.badgeRefTitle")}
             >
               ×{info.referencedBy}
             </span>
           )}
         </div>
-        <div className="truncate text-[10px] text-content-subtle" title={info.path}>
+        <div className="truncate text-[11px] text-content-subtle" title={info.path}>
           {info.path}
         </div>
       </div>

@@ -241,7 +241,7 @@ export function UsagePanel() {
                     {[0, 1, 2, 3, 4, 5, 6].map((row) => (
                       <span
                         key={row}
-                        className="flex items-center text-[9px] leading-none text-content-subtle"
+                        className="flex items-center text-[11px] leading-none text-content-subtle"
                       >
                         {row === 0
                           ? t("settings.usage.heatmap.weekdayMon")
@@ -262,7 +262,7 @@ export function UsagePanel() {
                       {weeks.map((_, i) => (
                         <span
                           key={i}
-                          className="whitespace-nowrap text-[9px] leading-none text-content-subtle"
+                          className="whitespace-nowrap text-[11px] leading-none text-content-subtle"
                         >
                           {monthLabels[i] ?? ""}
                         </span>

@@ -3668,14 +3668,14 @@ function ChatPaneForSession({
             {queue.length > 0 && (
               <div className="border-b border-edge px-2 pt-2 pb-1.5">
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-content-subtle">
+                  <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-content-subtle">
                     {t("chat.queue.header")}
                   </span>
                   <button
                     type="button"
                     onClick={() => clearPromptQueue(sessionId)}
                     title={t("chat.queue.clearTitle")}
-                    className="shrink-0 rounded px-1 py-0.5 text-[10px] text-content-subtle transition-colors hover:bg-surface-muted hover:text-content"
+                    className="shrink-0 rounded px-1 py-0.5 text-[11px] text-content-subtle transition-colors hover:bg-surface-muted hover:text-content"
                   >
                     {t("chat.queue.clear")}
                   </button>
@@ -3755,7 +3755,7 @@ function ChatPaneForSession({
                               <IconChevronRight size={11} />
                             )}
                           </button>
-                          <span className="shrink-0 text-[10px] text-content-subtle">
+                          <span className="shrink-0 text-[11px] text-content-subtle">
                             {idx + 1}.
                           </span>
                           <span className={cn("min-w-0 flex-1", !expanded && "truncate")}>
@@ -3764,7 +3764,7 @@ function ChatPaneForSession({
                           {item.attachments && item.attachments.length > 0 && (
                             <span className="flex shrink-0 items-center gap-0.5 text-content-subtle">
                               <IconPaperclip size={11} />
-                              <span className="text-[10px]">{item.attachments.length}</span>
+                              <span className="text-[11px]">{item.attachments.length}</span>
                             </span>
                           )}
                           {!expanded && (
@@ -4388,7 +4388,7 @@ const MessageRow = memo(function MessageRow({
                 onClick={() => onStartEdit?.(msg)}
                 title={t("common.edit")}
                 aria-label={t("common.edit")}
-                className="inline-flex items-center rounded px-1 py-0.5 text-[10px] text-content-subtle transition-colors hover:bg-surface-hover hover:text-content-muted"
+                className="inline-flex items-center rounded px-1 py-0.5 text-[11px] text-content-subtle transition-colors hover:bg-surface-hover hover:text-content-muted"
               >
                 <IconPencil size={12} />
               </button>
@@ -4443,7 +4443,7 @@ function CopyButton({ text }: { text: string }) {
       onClick={onCopy}
       title={t("common.copy")}
       aria-label={t("common.copy")}
-      className="inline-flex items-center rounded px-1 py-0.5 text-[10px] text-content-subtle transition-colors hover:bg-surface-hover hover:text-content-muted"
+      className="inline-flex items-center rounded px-1 py-0.5 text-[11px] text-content-subtle transition-colors hover:bg-surface-hover hover:text-content-muted"
     >
       {copied ? <IconCheck size={12} className="text-accent" /> : <IconCopy size={12} />}
     </button>

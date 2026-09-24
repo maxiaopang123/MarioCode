@@ -82,7 +82,7 @@ export function DeviceToolbar({
 
   return (
     <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-edge bg-surface-muted/60 px-2">
-      <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-content-subtle">
+      <span className="shrink-0 text-[11px] font-medium uppercase tracking-wider text-content-subtle">
         {t("browser.device")}
       </span>
 
@@ -106,7 +106,7 @@ export function DeviceToolbar({
               <span className="truncate text-[11px] font-medium text-content">
                 {displayLabel}
               </span>
-              <span className="shrink-0 text-[10px] text-content-subtle">{dimsLabel}</span>
+              <span className="shrink-0 text-[11px] text-content-subtle">{dimsLabel}</span>
             </span>
           </Select.Trigger>
           <Select.Portal>
@@ -124,7 +124,7 @@ export function DeviceToolbar({
                           )}
                           <span>{presetLabel(p.id, p.label)}</span>
                           {p.id !== "desktop" && p.id !== "custom" && (
-                            <span className="ml-auto pl-3 text-[10px] text-content-subtle">
+                            <span className="ml-auto pl-3 text-[11px] text-content-subtle">
                               {landscape
                                 ? `${p.height}×${p.width}`
                                 : `${p.width}×${p.height}`}
@@ -155,9 +155,9 @@ export function DeviceToolbar({
             }}
             title={t("browser.customWidthTitle")}
             aria-label={t("browser.customWidthAria")}
-            className="h-6 w-14 rounded border border-edge bg-surface px-1 text-center text-[10px] text-content outline-none focus:border-accent"
+            className="h-6 w-14 rounded border border-edge bg-surface px-1 text-center text-[11px] text-content outline-none focus:border-accent"
           />
-          <span className="text-[10px] text-content-subtle">×</span>
+          <span className="text-[11px] text-content-subtle">×</span>
           <input
             type="number"
             min={1}
@@ -168,9 +168,9 @@ export function DeviceToolbar({
             }}
             title={t("browser.customHeightTitle")}
             aria-label={t("browser.customHeightAria")}
-            className="h-6 w-14 rounded border border-edge bg-surface px-1 text-center text-[10px] text-content outline-none focus:border-accent"
+            className="h-6 w-14 rounded border border-edge bg-surface px-1 text-center text-[11px] text-content outline-none focus:border-accent"
           />
-          <span className="text-[10px] text-content-subtle">px</span>
+          <span className="text-[11px] text-content-subtle">px</span>
         </div>
       )}
 
@@ -207,7 +207,7 @@ export function DeviceToolbar({
         onClick={onClose}
         title={t("browser.collapseDeviceToolbar")}
         aria-label={t("browser.collapseDeviceToolbar")}
-        className="flex h-7 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
+        className="flex h-7 shrink-0 items-center gap-1 rounded px-1.5 text-[11px] text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
       >
         <IconChevronDown size={13} className="rotate-180" />
         {t("browser.collapse")}

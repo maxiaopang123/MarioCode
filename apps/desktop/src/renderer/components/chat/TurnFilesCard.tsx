@@ -135,7 +135,7 @@ export function TurnFilesCard({
           {modified > 0 ? t("chatStream.turnFiles.modified", { n: modified }) : ""})
         </span>
         {/* Aggregate change tallies - the headline number reviewers care about. */}
-        <span className="ml-2 inline-flex items-center gap-1 rounded-md bg-surface-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
+        <span className="ml-2 inline-flex items-center gap-1 rounded-md bg-surface-muted px-1.5 py-0.5 font-mono text-[11px] tabular-nums">
           <span className="text-success">+{totals.adds}</span>
           <span className="text-danger">-{totals.dels}</span>
         </span>
@@ -310,7 +310,7 @@ function FileRow({ entry }: { entry: TurnFileEntry }) {
         {entry.filePath}
       </span>
       {/* Per-file change tallies. */}
-      <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] tabular-nums">
+      <span className="flex shrink-0 items-center gap-1 font-mono text-[11px] tabular-nums">
         {entry.adds > 0 && <span className="text-success">+{entry.adds}</span>}
         {entry.dels > 0 && <span className="text-danger">-{entry.dels}</span>}
         {entry.adds === 0 && entry.dels === 0 && (

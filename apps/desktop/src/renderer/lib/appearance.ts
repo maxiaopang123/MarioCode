@@ -36,16 +36,18 @@ import type { ChatDensity } from "@contracts/ipc";
  * `applyThemeClass` is the closest precedent (DOM mutation on <html>).
  */
 
-/** Stylesheet default for both font-size vars (styles.css :root/.dark).
- *  When the store value equals it we REMOVE the inline property instead of
- *  writing it, so a theme-scoped stylesheet default can differ — html.sketch
- *  raises the base to 15px for the handwriting face (kaiti smears below
- *  ~13px). An explicit user choice still wins via the inline write. */
-const DEFAULT_FONT_SIZE_PX = 14;
+/** Stylesheet defaults for the two font-size vars (styles.css :root/.dark).
+ *  When the store value equals its default we REMOVE the inline property
+ *  instead of writing it, so a theme-scoped stylesheet default can differ —
+ *  html.sketch raises the base to 15px for the handwriting face (kaiti
+ *  smears below ~13px). An explicit user choice still wins via the inline
+ *  write. Must match the store defaults in sessionStore. */
+const DEFAULT_CHAT_FONT_SIZE_PX = 15;
+const DEFAULT_PANEL_FONT_SIZE_PX = 14;
 
 /** Write the chat font size as `--chat-font-size` on <html>. */
 export function applyChatFontSize(px: number): void {
-  if (px === DEFAULT_FONT_SIZE_PX) {
+  if (px === DEFAULT_CHAT_FONT_SIZE_PX) {
     document.documentElement.style.removeProperty("--chat-font-size");
   } else {
     document.documentElement.style.setProperty("--chat-font-size", `${px}px`);
@@ -69,7 +71,7 @@ export function applyChatDensity(mode: ChatDensity): void {
  *  automatically. Also mirrored into the xterm terminal fontSize directly
  *  from the store (see TerminalView). */
 export function applyRightPanelFontSize(px: number): void {
-  if (px === DEFAULT_FONT_SIZE_PX) {
+  if (px === DEFAULT_PANEL_FONT_SIZE_PX) {
     document.documentElement.style.removeProperty("--right-panel-font-size");
   } else {
     document.documentElement.style.setProperty("--right-panel-font-size", `${px}px`);

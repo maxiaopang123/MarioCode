@@ -306,14 +306,14 @@ export function PlanApprovalPrompt({
           <IconRocket size={14} className="shrink-0 text-accent" />
           <span className="font-semibold text-accent">{t("chat.planApproval.title")}</span>
         </div>
-        <span className="shrink-0 text-[10px] text-content-subtle">{hint}</span>
+        <span className="shrink-0 text-[11px] text-content-subtle">{hint}</span>
       </div>
 
       {/* Execution picker - where the approved plan runs. Default: this
           thread, in place. The alternatives end the blocked turn and re-fire
           the plan with a different executor (see component docs). */}
       <div className="mb-2.5 flex flex-wrap items-center gap-2">
-        <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-content-subtle">
+        <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-content-subtle">
           {t("chat.planApproval.execLabel")}
         </span>
         <div className="flex items-center gap-0.5 rounded-lg bg-surface-muted p-0.5">

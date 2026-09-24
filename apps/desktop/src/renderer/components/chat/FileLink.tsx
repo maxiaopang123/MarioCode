@@ -185,7 +185,7 @@ export function FileLink({
                 </div>
               ) : (
                 <>
-                  <div className="px-2.5 py-1 text-[10px] uppercase tracking-wide text-content-subtle">
+                  <div className="px-2.5 py-1 text-[11px] uppercase tracking-wide text-content-subtle">
                     {t("chatStream.fileLink.matchCount", { n: candidates.length })}
                   </div>
                   {candidates.map((c) => (
@@ -197,7 +197,7 @@ export function FileLink({
                       <FileTypeIcon path={c.path} size={14} className="shrink-0" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium text-content">{basename(c.path)}</span>
-                        <span className="block truncate text-[10px] text-content-subtle">{c.relativePath}</span>
+                        <span className="block truncate text-[11px] text-content-subtle">{c.relativePath}</span>
                       </span>
                     </Menu.Item>
                   ))}

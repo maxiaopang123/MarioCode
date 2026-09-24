@@ -308,7 +308,7 @@ function BranchGroup({
   };
   return (
     <div className="py-0.5">
-      <div className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-content-subtle">
+      <div className="px-2 py-0.5 text-[11px] uppercase tracking-wide text-content-subtle">
         {label}
       </div>
       {items.map((b) => (
@@ -325,7 +325,7 @@ function BranchGroup({
           <span className="min-w-0 flex-1 truncate font-mono">{b.name}</span>
           {b.label && (
             <span
-              className="min-w-0 max-w-[120px] truncate text-[10px] text-content-subtle"
+              className="min-w-0 max-w-[120px] truncate text-[11px] text-content-subtle"
               title={b.label}
             >
               {b.label}

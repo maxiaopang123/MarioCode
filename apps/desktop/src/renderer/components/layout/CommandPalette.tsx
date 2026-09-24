@@ -501,7 +501,7 @@ export function CommandPalette() {
                   <Combobox.Group key={group} className="flex flex-col gap-0.5">
                     <Combobox.GroupLabel
                       className={cn(
-                        "flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
+                        "flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide",
                         "text-content-subtle",
                       )}
                     >
@@ -529,7 +529,7 @@ export function CommandPalette() {
             <div
               className={cn(
                 "flex items-center justify-between border-t border-edge px-3 py-1.5",
-                "text-[10px] text-content-subtle",
+                "text-[11px] text-content-subtle",
               )}
             >
               <span className="flex items-center gap-2">
@@ -600,7 +600,7 @@ function ScopeTabs({
           </button>
         );
       })}
-      <span className="ml-auto flex items-center gap-1 text-[10px] text-content-subtle">
+      <span className="ml-auto flex items-center gap-1 text-[11px] text-content-subtle">
         <kbd className="rounded border border-edge px-1">←</kbd>
         <kbd className="rounded border border-edge px-1">→</kbd>{" "}
         {t("layout.palette.switchScope")}
@@ -702,7 +702,7 @@ function CommandRowContent({ cmd }: { cmd: CommandDef }) {
       )}
       <span className="min-w-0 flex-1 truncate">{cmd.label}</span>
       {cmd.shortcutHint && (
-        <kbd className="shrink-0 rounded border border-edge bg-surface-muted px-1 py-0.5 text-[10px] text-content-subtle">
+        <kbd className="shrink-0 rounded border border-edge bg-surface-muted px-1 py-0.5 text-[11px] text-content-subtle">
           {cmd.shortcutHint}
         </kbd>
       )}
@@ -771,7 +771,7 @@ function GrepRowContent({ match }: { match: FileGrepEntry }) {
       <span className="min-w-0 flex-1 leading-tight">
         <span className="flex items-center gap-1">
           <span className="truncate font-medium">{fileName}</span>
-          <span className="shrink-0 rounded bg-surface-muted px-1 text-[10px] text-content-subtle">
+          <span className="shrink-0 rounded bg-surface-muted px-1 text-[11px] text-content-subtle">
             L{match.lineNumber}
           </span>
         </span>

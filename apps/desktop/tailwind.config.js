@@ -25,6 +25,14 @@ export default {
           "monospace",
         ],
       },
+      // Radius scale 4 / 6 / 8 / 12 / 16 / full. md, lg, xl and 2xl keep
+      // Tailwind's stock values; sm, DEFAULT and 3xl are pulled onto the scale
+      // (3xl = the 16px work-area arc, not 24).
+      borderRadius: {
+        sm: "4px",
+        DEFAULT: "6px",
+        "3xl": "16px",
+      },
       // Three elevation tiers; per-theme values are --shadow-1/2/3 in
       // styles.css. Tier 3 is only for modal dialogs and the command palette.
       boxShadow: {

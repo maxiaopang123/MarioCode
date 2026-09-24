@@ -361,21 +361,31 @@ div:has(> [role="menu"]) {
   --rp-fs-xxs: calc(var(--right-panel-font-size) * 0.7143);
 }
 
-/* Thin scrollbars that follow the theme. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgb(var(--surface-hover)) transparent;
-}
+/* Thin pill scrollbars tinted from the text color, so the thumb reads the
+ * same on every surface layer in both themes. The transparent border insets
+ * the 4px pill inside a 10px hit area. Don't set scrollbar-width /
+ * scrollbar-color globally: since Chromium 121 either one disables every
+ * ::-webkit-scrollbar rule below. */
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgb(var(--surface-hover));
-  border-radius: 4px;
+  background: rgb(var(--content) / 0.14);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--content-subtle));
+  background-color: rgb(var(--content) / 0.26);
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::selection {
+  background: rgb(var(--accent) / 0.22);
 }
 
 /* Hide the scrollbar on a specific element while keeping it scrollable.
@@ -437,8 +447,9 @@ body,
    * stack>` so an uninstalled family degrades to the stock look). The
    * fallback here IS the default stack — keep the two in sync. */
   font-family: var(--app-font,
-    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "PingFang SC",
-    "Microsoft YaHei UI", "Microsoft YaHei", sans-serif);
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI",
+    "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC",
+    system-ui, sans-serif);
   -webkit-font-smoothing: antialiased;
 }
 

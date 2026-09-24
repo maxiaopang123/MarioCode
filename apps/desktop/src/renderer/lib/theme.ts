@@ -33,7 +33,7 @@ const UI_FONT_CACHE_KEY = "mcode-ui-font";
  *  an uninstalled family degrades to the stock look, never the raw browser
  *  default. */
 export const UI_FONT_FALLBACK_STACK =
-  '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif';
+  '-apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif';
 
 /** Make a font family name safe to interpolate into a CSS font-family
  *  string: strip quotes/backslashes, trim, cap length. Shared by the store

@@ -114,6 +114,7 @@ export const en = {
   "layout.noOpenFiles": "No open files",
   "layout.tabFiles": "Files",
   "layout.tabTurns": "Turn Flow",
+  "layout.tabBrowser": "Browser",
   "layout.openBrowser": "Open browser",
   "layout.closeSidebarBrowser": "Close sidebar browser",
 

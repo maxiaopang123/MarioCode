@@ -117,6 +117,7 @@ export const zh = {
   "layout.noOpenFiles": "无打开的文件",
   "layout.tabFiles": "文件",
   "layout.tabTurns": "轮次流程",
+  "layout.tabBrowser": "浏览器",
   "layout.openBrowser": "打开浏览器",
   "layout.closeSidebarBrowser": "关闭侧边栏浏览器",
 

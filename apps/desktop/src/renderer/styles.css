@@ -1314,6 +1314,51 @@ button.chat-ledger-head:hover {
   }
 }
 
+/* ───────────── Right-panel tab header (responsive) ─────────────
+ * The segmented control atop the right panel (RightPanel.tsx) holds five
+ * tabs. As the card narrows their labels give way to icons, rather than
+ * wrapping or pushing the wide-mode toggle off the card. The header itself
+ * is the query container, so the tiers follow the card's real width (wide
+ * 3:7 mode included). Each threshold is the fixed chrome (icons, paddings,
+ * badge, toggle) in px plus the label text in em — em in a container query
+ * resolves against the CONTAINER's font size (var(--rp-fs-sm)), so the text
+ * part tracks the global font-size setting. Sized for the wider English
+ * labels, with ~8px to spare:
+ *   ≥ 250px + 7.25em (337px at the default size; the 360px default card
+ *     lands here)  文件 / Git / 浏览器 keep their labels, 轮次流程 / 子会话
+ *     show only their icons
+ *   ≥ 262px + 17.5em (472px)  all five labels
+ *   narrower                  icons only; the hover hint names each tab
+ * Label display and segment padding are set here only — the component puts
+ * no display / padding utility on them, so stylesheet order can't decide. */
+.rp-tabs {
+  container-type: inline-size;
+}
+
+.rp-tab {
+  padding-inline: 8px;
+}
+
+.rp-tab-label,
+.rp-tab-label-extra {
+  display: none;
+}
+
+@container (width >= calc(250px + 7.25em)) {
+  .rp-tab {
+    padding-inline: 10px;
+  }
+  .rp-tab-label {
+    display: inline;
+  }
+}
+
+@container (width >= calc(262px + 17.5em)) {
+  .rp-tab-label-extra {
+    display: inline;
+  }
+}
+
 /* ───────────── Chat message-stream density ─────────────
  * The message stream's vertical rhythm is user-configurable (Settings →
  * 常规 → 对话紧凑度). Three density presets, each setting two groups of vars:

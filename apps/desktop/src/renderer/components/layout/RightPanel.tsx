@@ -1,4 +1,4 @@
-﻿import { cn } from "@renderer/lib/cn.js";
+import { cn } from "@renderer/lib/cn.js";
 import { Hint } from "@renderer/components/ui/index.js";
 import {
   IconFolder,
@@ -18,20 +18,24 @@ import { BrowserPanel } from "@renderer/components/browser/BrowserPanel.js";
 import { SideChatPanel } from "@renderer/components/chat/SideChatPanel.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 
-/** Right panel: a horizontal icon rail docked at the top + a main panel
- *  area (IDE-style). The rail is always visible and holds three icons:
- *    - Files   鈫?shows FilesPanel in the main area
- *    - Git     鈫?shows GitPanel in the main area
- *    - Browser 鈫?toggles an embedded browser panel in the main area
+/** Right panel: a tab header docked at the top + a main panel area
+ *  (IDE-style). The header is a segmented control (ui-refresh prototype
+ *  `.insp-head`) with five tabs, plus the wide-mode toggle at its far right:
+ *    - Files     → shows FilesPanel in the main area
+ *    - Git       → shows GitPanel in the main area
+ *    - Browser   → toggles an embedded browser panel in the main area
  *      (sidebar mode, desktop-sized pages by default). Clicking again closes
  *      it. The PC-fullscreen overlay is a separate container rendered at the
  *      App root; while that overlay is open the right panel isn't visible at
  *      all.
+ *    - Turn flow → TurnFlowPanel
+ *    - Side chat → SideChatPanel
+ *  Tab labels give way to icons as the card narrows (.rp-tabs in styles.css).
  *
  *  The active panel (files / git) is read from / written to the session store
  *  (persisted in the settings table), so it survives restarts. The browser tab
  *  is session-only (hydrate ignores a persisted "browser" value so the browser
- *  never auto-opens at boot). The browser icon shows a badge with the open-tab
+ *  never auto-opens at boot). The browser tab shows a badge with the open-tab
  *  count. */
 export function RightPanel() {
   const { t } = useI18n();
@@ -57,81 +61,83 @@ export function RightPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Horizontal icon rail 鈥?always visible, docked at the panel's top
-          edge. Each icon is a square button; the active one is marked with
-          the accent token. */}
-      <div className="flex h-9 shrink-0 flex-row items-center gap-1 border-b border-edge bg-surface px-1.5">
-        <RailButton
-          active={tab === "files"}
-          onClick={() => setTab("files")}
-          title={t("layout.tabFiles")}
-        >
-          <IconFolder size={16} className="shrink-0" />
-        </RailButton>
-        <RailButton
-          active={tab === "git"}
-          onClick={() => setTab("git")}
-          title="Git" /* brand name */
-        >
-          <IconGitBranch size={16} className="shrink-0" />
-        </RailButton>
-        {/* Browser 鈥?toggles the embedded sidebar (mobile-first). */}
-        <div className="relative">
-          <RailButton
+      {/* Tab header — always visible, docked at the panel's top edge. The
+          selected tab is the raised segment; like every selection outside
+          the prototype's accent list it stays neutral. */}
+      <div className="rp-tabs flex shrink-0 items-center gap-1 border-b border-edge p-2 [font-size:var(--rp-fs-sm)]">
+        <div role="tablist" className="flex shrink-0 items-center rounded-lg bg-surface-muted p-0.5">
+          <PanelTab
+            active={tab === "files"}
+            onClick={() => setTab("files")}
+            icon={<IconFolder size={14} className="shrink-0" />}
+            label={t("layout.tabFiles")}
+          />
+          <PanelTab
+            active={tab === "git"}
+            onClick={() => setTab("git")}
+            icon={<IconGitBranch size={14} className="shrink-0" />}
+            label="Git" /* brand name */
+          />
+          {/* Browser — toggles the embedded sidebar (mobile-first). */}
+          <PanelTab
             active={tab === "browser"}
             onClick={toggleBrowser}
-            title={tab === "browser" ? t("layout.closeSidebarBrowser") : t("layout.openBrowser")}
-          >
-            <IconWorld size={16} className="shrink-0" />
-          </RailButton>
-          {browserTabCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[11px] font-bold leading-none text-white">
-              {browserTabCount}
-            </span>
-          )}
+            icon={<IconWorld size={14} className="shrink-0" />}
+            label={t("layout.tabBrowser")}
+            hint={tab === "browser" ? t("layout.closeSidebarBrowser") : t("layout.openBrowser")}
+            badge={browserTabCount}
+          />
+          {/* Turn flow — per-turn visualization of the model's work process
+              (prompt → actions → reply → token cost) from the message stream. */}
+          <PanelTab
+            active={tab === "turns"}
+            onClick={() => setTab("turns")}
+            icon={<IconListDetails size={14} className="shrink-0" />}
+            label={t("layout.tabTurns")}
+            extra
+          />
+          {/* Side chat — quick Q&A beside the running main session. */}
+          <PanelTab
+            active={tab === "sidechat"}
+            onClick={() => setTab("sidechat")}
+            icon={<IconMessages size={14} className="shrink-0" />}
+            label={t("layout.tabSideChat")}
+            hint={t("layout.tabSideChat") + hintFor("sidechat.open")}
+            extra
+          />
         </div>
-        {/* Turn flow 鈥?per-turn visualization of the model's work process
-            (prompt 鈫?actions 鈫?reply 鈫?token cost) from the message stream. */}
-        <RailButton
-          active={tab === "turns"}
-          onClick={() => setTab("turns")}
-          title={t("layout.tabTurns")}
-        >
-          <IconListDetails size={16} className="shrink-0" />
-        </RailButton>
-        {/* Side chat 鈥?quick Q&A beside the running main session. */}
-        <RailButton
-          active={tab === "sidechat"}
-          onClick={() => setTab("sidechat")}
-          title={t("layout.tabSideChat") + hintFor("sidechat.open")}
-        >
-          <IconMessages size={16} className="shrink-0" />
-        </RailButton>
         {/* Wide-panel (3:7) mode - hide the left sidebar + center editor and
             split the workspace into this right panel (7/10) + the chat column
             (3/10). Toggled here, via the command palette / shortcut, or the
-            titlebar back button. Pushed to the rail's far right with ml-auto. */}
-        <div className="ml-auto flex items-center gap-1">
-          <div className="h-5 w-px bg-edge" />
-          <RailButton
-            active={widePanelOpen}
+            titlebar back button. Maximize when entering, minimize (restore)
+            when already wide — the standard expand/collapse pair. */}
+        <Hint
+          label={
+            (widePanelOpen ? t("layout.exitWideMode") : t("layout.wideMode")) +
+            hintFor("layout.toggle-wide-panel")
+          }
+        >
+          <button
+            type="button"
+            aria-pressed={widePanelOpen}
             onClick={() => setWidePanelOpen(!widePanelOpen)}
-            title={
-              (widePanelOpen ? t("layout.exitWideMode") : t("layout.wideMode")) +
-              hintFor("layout.toggle-wide-panel")
-            }
-          >
-            {/* Maximize when entering, minimize (restore) when already wide 鈥?                the standard expand/collapse affordance pair. */}
-            {widePanelOpen ? (
-              <IconArrowsMinimize size={16} className="shrink-0" />
-            ) : (
-              <IconArrowsMaximize size={16} className="shrink-0" />
+            className={cn(
+              "ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
+              widePanelOpen
+                ? "bg-surface-hover text-content"
+                : "text-content-subtle hover:bg-surface-hover hover:text-content",
             )}
-          </RailButton>
-        </div>
+          >
+            {widePanelOpen ? (
+              <IconArrowsMinimize size={14} className="shrink-0" />
+            ) : (
+              <IconArrowsMaximize size={14} className="shrink-0" />
+            )}
+          </button>
+        </Hint>
       </div>
 
-      {/* Main panel area 鈥?must NOT scroll itself (children own height /
+      {/* Main panel area — must NOT scroll itself (children own height /
           overflow). Renders the panel matching the active tab. The browser
           sidebar (mobile-first) renders inline here; the PC-fullscreen overlay
           is rendered at the App root and covers the whole workspace. */}
@@ -146,32 +152,52 @@ export function RightPanel() {
   );
 }
 
-/** A square icon button in the panel's rail. Active state uses the accent
- *  token; idle state uses the muted content token with a hover surface. */
-function RailButton({
+/** One segment of the tab header. Its label's display and its horizontal
+ *  padding are owned by the .rp-tabs container queries (no display / padding
+ *  utility here); `extra` tabs are the first to drop to icon-only. The hint
+ *  names the tab whenever only its icon shows. */
+function PanelTab({
   active,
   onClick,
-  title,
-  children,
+  icon,
+  label,
+  hint,
+  badge = 0,
+  extra = false,
 }: {
   active: boolean;
   onClick: () => void;
-  title: string;
-  children: React.ReactNode;
+  icon: React.ReactNode;
+  label: string;
+  /** Tooltip text; defaults to the label. */
+  hint?: string;
+  /** Count shown after the label; hidden at 0. */
+  badge?: number;
+  /** Secondary tab — keeps its label only on the widest tier. */
+  extra?: boolean;
 }) {
   return (
-    <Hint label={title}>
+    <Hint label={hint ?? label}>
       <button
         type="button"
+        role="tab"
+        aria-selected={active}
+        aria-label={label}
         onClick={onClick}
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+          "rp-tab flex h-[26px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md transition-colors",
           active
-            ? "bg-accent/15 text-accent"
-            : "text-content-muted hover:bg-surface-hover hover:text-content",
+            ? "bg-surface font-medium text-content shadow-sm dark:bg-surface-hover"
+            : "text-content-muted hover:text-content",
         )}
       >
-        {children}
+        {icon}
+        <span className={extra ? "rp-tab-label-extra" : "rp-tab-label"}>{label}</span>
+        {badge > 0 && (
+          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent/15 px-1 text-[11px] font-semibold leading-none text-accent-strong">
+            {badge}
+          </span>
+        )}
       </button>
     </Hint>
   );

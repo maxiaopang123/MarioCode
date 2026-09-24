@@ -140,6 +140,11 @@ function escapeHtml(s: string): string {
  *  (taller blocks preview-scroll inside this box). */
 const CODE_COLLAPSE_MAX_PX = 360;
 
+/** Link text (ui-refresh prototype `.prose a`): accent-strong ink over a
+ *  faint accent underline that firms up on hover. */
+const LINK_CLASS =
+  "text-accent-strong underline decoration-accent/35 underline-offset-2 transition-colors hover:decoration-accent";
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const { t } = useI18n();
@@ -354,7 +359,7 @@ function MarkdownLocalImage({
         <FileLink
           token={filePath}
           projectPath={projectPath}
-          display={alt ? <span className="text-info underline">{alt}</span> : undefined}
+          display={alt ? <span className={LINK_CLASS}>{alt}</span> : undefined}
         />
       </span>
     );
@@ -404,7 +409,7 @@ function buildComponents(): Components {
     const isInline = !isFencedCode(className);
     if (isInline) {
       return (
-        <code className="rounded bg-surface-muted/80 px-1 py-0.5 font-mono [font-size:var(--chat-fs-xs)] [color:var(--code-fg)]">
+        <code className="rounded border border-edge bg-surface-muted px-[5px] py-px font-mono [font-size:var(--chat-fs-xs)] [color:var(--code-fg)]">
           <CodeContext.Provider value={true}>{children}</CodeContext.Provider>
         </code>
       );
@@ -490,8 +495,8 @@ function buildComponents(): Components {
     }, [rawCode, lang, ready, html, expanded]);
 
     return (
-      <pre className="my-[var(--chat-md-gap-md)] overflow-hidden rounded-lg border border-edge/60 bg-surface-muted/60">
-        <div className="flex items-center justify-between gap-2 border-b border-edge/60 bg-surface-muted/40 px-2 py-0.5 text-content-subtle [font-size:var(--chat-fs-xxs)]">
+      <pre className="my-[var(--chat-md-gap-md)] overflow-hidden rounded-xl border border-edge bg-surface-muted">
+        <div className="flex h-[34px] items-center justify-between gap-2 border-b border-edge pl-3 pr-1.5 text-content-subtle [font-size:var(--chat-fs-xxs)]">
           <span className="truncate font-mono">{lang}</span>
           <span className="flex shrink-0 items-center gap-1">
             {clippable && expanded && (
@@ -513,9 +518,9 @@ function buildComponents(): Components {
             style={{ maxHeight: expanded ? undefined : CODE_COLLAPSE_MAX_PX }}
           >
             {html ? (
-              <div className="px-3 py-2 [font-size:var(--chat-fs-xs)]" dangerouslySetInnerHTML={html} />
+              <div className="px-3.5 py-3 [font-size:var(--chat-fs-xs)]" dangerouslySetInnerHTML={html} />
             ) : (
-              <code className="block px-3 py-2 font-mono leading-relaxed text-content [font-size:var(--chat-fs-xs)]">
+              <code className="block px-3.5 py-3 font-mono leading-relaxed text-content [font-size:var(--chat-fs-xs)]">
                 {childProps?.children as React.ReactNode}
               </code>
             )}
@@ -544,7 +549,7 @@ function buildComponents(): Components {
     // Sanitized-away href (e.g. `javascript:`): an `<a href="">` would navigate
     // the app's own origin on click — render a non-navigating span instead.
     if (!raw) {
-      return <span className="text-info underline">{children}</span>;
+      return <span className={LINK_CLASS}>{children}</span>;
     }
     // Local file path (drive-letter / file:// / scheme-less): resolve and open
     // in the IDE instead of navigating — see fileLink.ts. In a base-dir
@@ -559,12 +564,12 @@ function buildComponents(): Components {
           token={token}
           projectPath={projectPath}
           asLink
-          display={<span className="text-info underline hover:opacity-80">{children}</span>}
+          display={<span className={LINK_CLASS}>{children}</span>}
         />
       );
     }
     return (
-      <a href={href} target="_blank" rel="noreferrer" className="text-info underline hover:text-info">
+      <a href={href} target="_blank" rel="noreferrer" className={LINK_CLASS}>
         {children}
       </a>
     );
@@ -592,7 +597,7 @@ function buildComponents(): Components {
           <FileLink
             token={absolute}
             projectPath={projectPath}
-            display={alt ? <span className="text-info underline">{alt}</span> : undefined}
+            display={alt ? <span className={LINK_CLASS}>{alt}</span> : undefined}
           />
         </span>
       );
@@ -628,28 +633,31 @@ function buildComponents(): Components {
   // width, min-width:100% keeps sparse tables filling the column (previous
   // look), and the per-cell max-width cap makes long prose wrap at a readable
   // measure instead of rendering one enormous unbroken line. The overflow-x-auto
-  // wrapper scrolls whatever still exceeds the pane.
+  // wrapper scrolls whatever still exceeds the pane, and carries the rounded
+  // frame (ui-refresh `.prose table`): rows split by hairlines, no column rules.
   table({ children }) {
     return (
-      <div className="my-[var(--chat-md-gap-md)] overflow-x-auto">
-        <table className="[width:max-content] [min-width:100%] border-collapse [font-size:var(--chat-fs-sm)]">{children}</table>
+      <div className="my-[var(--chat-md-gap-md)] overflow-x-auto rounded-xl border border-edge">
+        <table className="[width:max-content] [min-width:100%] border-collapse [font-size:var(--chat-fs-sm)] [&_tr:last-child>td]:border-b-0">{children}</table>
       </div>
     );
   },
   th({ children }) {
-    return <th className="max-w-[32ch] border border-edge bg-surface-muted/50 px-2 py-1 text-left font-semibold text-content">{children}</th>;
+    return <th className="max-w-[32ch] border-b border-edge bg-surface-muted px-3 py-2 text-left font-medium text-content-muted [font-size:var(--chat-fs-xs)]">{children}</th>;
   },
   td({ children }) {
-    return <td className="max-w-[32ch] border border-edge px-2 py-1 text-content-muted">{children}</td>;
+    return <td className="max-w-[32ch] border-b border-edge px-3 py-2 text-content">{children}</td>;
   },
+  // Headings stay at 600 (the type scale's heaviest weight): h1 one step up,
+  // h2 / h3 share the 16px reply-subheading size.
   h1({ children }) {
-    return <h1 className="mb-[var(--chat-md-gap-md)] mt-[var(--chat-md-gap-lg)] font-bold text-content [font-size:var(--chat-fs-lg)]">{children}</h1>;
+    return <h1 className="mb-[var(--chat-md-gap-md)] mt-[var(--chat-md-gap-lg)] font-semibold text-content [font-size:var(--chat-fs-lg)]">{children}</h1>;
   },
   h2({ children }) {
-    return <h2 className="mb-[var(--chat-md-gap-sm)] mt-[var(--chat-md-gap-lg)] font-bold text-content [font-size:var(--chat-font-size)]">{children}</h2>;
+    return <h2 className="mb-[var(--chat-md-gap-sm)] mt-[var(--chat-md-gap-lg)] font-semibold text-content [font-size:var(--chat-fs-heading)]">{children}</h2>;
   },
   h3({ children }) {
-    return <h3 className="mb-[var(--chat-md-gap-xs)] mt-[var(--chat-md-gap-md)] font-semibold text-content [font-size:var(--chat-font-size)]">{children}</h3>;
+    return <h3 className="mb-[var(--chat-md-gap-xs)] mt-[var(--chat-md-gap-md)] font-semibold text-content [font-size:var(--chat-fs-heading)]">{children}</h3>;
   },
   };
 }

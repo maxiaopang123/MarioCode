@@ -335,12 +335,14 @@ div:has(> [role="menu"]) {
  * user picks a different font size in Settings. Computed via calc() so
  * they track the base automatically; no per-theme definition needed. The
  * ratios preserve the visual hierarchy; at the default 15px:
- *   lg≈17 (×1.143, h1), base=15, sm≈14 (×0.929, table), xs≈13 (×0.857,
- *   code block), xxs≈12 (×0.786, code header).
+ *   lg≈17 (×1.143, h1), heading=16 (×1.067, h2 / h3), base=15, sm≈14
+ *   (×0.929, table), xs≈13 (×0.857, code block), xxs≈12 (×0.786, code
+ *   header).
  * The smaller tiers are floored at 11px, the app-wide minimum text size,
  * so the smallest user setting can't push metadata below it. */
 :root {
   --chat-fs-lg: calc(var(--chat-font-size) * 1.1429);
+  --chat-fs-heading: calc(var(--chat-font-size) * 1.0667);
   --chat-fs-sm: max(11px, calc(var(--chat-font-size) * 0.9286));
   --chat-fs-xs: max(11px, calc(var(--chat-font-size) * 0.8571));
   --chat-fs-xxs: max(11px, calc(var(--chat-font-size) * 0.7857));

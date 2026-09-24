@@ -4310,7 +4310,7 @@ const MessageRow = memo(function MessageRow({
           onClick={isUser && userOverflow ? onBubbleClick : undefined}
           className={
             isUser
-              ? "relative user-bubble-fill overflow-hidden rounded-[13px_13px_5px_13px] px-3 py-2 text-content [font-size:var(--chat-font-size)]" +
+              ? "relative user-bubble-fill overflow-hidden rounded-[12px_12px_4px_12px] px-3.5 py-2.5 text-content [font-size:var(--chat-font-size)]" +
                 (freshBubble ? " chat-bubble-in" : "") +
                 (userOverflow ? " cursor-pointer" : "")
               : "text-content [font-size:var(--chat-font-size)]"

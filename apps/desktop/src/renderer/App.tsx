@@ -297,13 +297,12 @@ export function App() {
           onToggleRight={() => setRightOpen(!rightOpen)}
           onToggleBottomTerminal={() => setBottomTerminalOpen(!bottomTerminalOpen)}
         />
-        {/* Main panel row — bg-surface-base as the contrasting track so the
-            center pane's rounded left-edge corners (in ThreePaneLayout)
-            reveal this ground color through the notches and read as clean
-            arcs. The left sidebar (bg-surface-base) blends into the track
-            on its side; the center pane (bg-surface) separates from the
-            track by the flat color step alone (no shadow). */}
-        <div className="relative flex min-h-0 flex-1 bg-surface-base">
+        {/* Main panel row — the bg-surface-base track the center and right
+            cards (ThreePaneLayout) float on. Padded 8px on three sides so
+            the cards clear the window edge and the sidebar; the left pad is
+            also where the sidebar Divider's grab area lands, so resizing
+            never starts on top of the card. */}
+        <div className="relative flex min-h-0 flex-1 bg-surface-base px-2 pb-2">
           {/*
             Center is ONE stable tree across wide mode (CenterPane takes the
             wide flag as a render variation) — the old ternary swap
@@ -345,9 +344,9 @@ export function App() {
             now spans the whole window) covers everything below the toolbar.
             The workspace still mounts underneath, keeping terminals alive,
             just not visible. bg-surface-base is opaque (no bleed-through)
-            and doubles as the settings "track": it shows through the content
-            pane's rounded-tl/bl notches so the settings arcs read exactly
-            like the workspace center pane against its frame.
+            and doubles as the settings track: the settings nav sits on it
+            and the content pane floats beside it as the same card the
+            workspace uses.
             `flex` is required: SettingsPage reuses
             ThreePaneLayout, whose left <aside> + center <main> are sibling
             nodes laid out horizontally by a flex parent. Without flex the
@@ -355,7 +354,7 @@ export function App() {
             renders.
           */}
           {settingsOpen && (
-            <div className="settings-root absolute inset-0 z-30 flex bg-surface-base">
+            <div className="settings-root absolute inset-0 z-30 flex bg-surface-base pb-2 pr-2">
               <SettingsPage />
             </div>
           )}

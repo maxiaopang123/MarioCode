@@ -91,17 +91,17 @@ export function ThreePaneLayout({
         />
       )}
 
-      {/* Center pane — 3xl arcs on the LEFT edge only (top-left at the
-         toolbar/sidebar junction, bottom-left at the track below): the muted
-         frame shows through both notches against the pane's bg-surface, so
-         the arcs read cleanly. overflow-hidden clips the CONTENT to the same
-         rounded rect — without it, square children painted into the notches
-         (e.g. the session-tabs strip's translucent bg-surface/40 + its
-         border-b, or the bottom-terminal bar) read as a faint square corner
-         behind the arc. Non-scrolling overflow-hidden is xterm-safe (see the
-         note on the right sidebar).
+      {/* Center pane — a floating card: all four corners rounded, hairline
+         border and the tier-1 shadow, sitting on the bg-surface-base track
+         (the caller pads the track so the card never touches the window
+         edge). overflow-hidden clips the CONTENT to the same rounded rect —
+         without it, square children painted into the corners (e.g. the
+         session-tabs strip's translucent bg-surface/40 + its border-b, or the
+         bottom-terminal bar) read as a faint square corner behind the arc.
+         Non-scrolling overflow-hidden is xterm-safe (see the note on the
+         right sidebar).
          Stacks the center content above an optional bottom terminal bar. */}
-      <main className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden rounded-tl-3xl rounded-bl-3xl border-t border-edge-panel bg-surface">
+      <main className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-edge bg-surface shadow-sm">
         <div className="min-h-0 flex-1 overflow-hidden">{center}</div>
         {/* Bottom terminal bar — keep-alive: always rendered, height collapses
             to 0 when closed so PTYs/scrollback survive. overflow-hidden clips
@@ -129,24 +129,29 @@ export function ThreePaneLayout({
         )}
       </main>
 
+      {/* The 8px gap between the two cards doubles as the drag gutter, so
+         no hairline: the track color already separates them. */}
       {rightOpen && onResizeRight && (
         <Divider
           orientation="vertical"
+          hideLine
+          className="w-2"
           onResize={onResizeRight}
           onDoubleClick={onResetRight}
         />
       )}
-      {/* Right sidebar — square corners (no arcs; the seam with the center
-         pane stays a straight edge). Uses bg-surface (same as center pane) so
-         it reads as a continuation of the chat area; the border-l below is
-         the divider. overflow-hidden (not overflow-y-auto): Files/Git scroll
+      {/* Right sidebar — a second floating card, same treatment as the
+         center pane. overflow-hidden (not overflow-y-auto): Files/Git scroll
          internally, and xterm FitAddon breaks under a scrolling ancestor. */}
       {rightOpen && (
         <aside
-          className="flex h-full shrink-0 flex-col overflow-hidden border-t border-edge-panel bg-surface"
+          className={cn(
+            "flex h-full shrink-0 flex-col overflow-hidden rounded-2xl border border-edge bg-surface shadow-sm",
+            !onResizeRight && "ml-2",
+          )}
           style={{ width: rightWidthPct !== undefined ? `${rightWidthPct}%` : rightWidth }}
         >
-          <div className="min-h-0 flex-1 overflow-hidden border-l border-edge-panel/60">{right}</div>
+          <div className="min-h-0 flex-1 overflow-hidden">{right}</div>
         </aside>
       )}
     </>

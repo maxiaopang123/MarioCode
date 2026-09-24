@@ -110,7 +110,7 @@ export function TurnFilesCard({
   );
 
   return (
-    <div className={cn("mb-[5px] rounded-lg border border-edge bg-surface-muted/60 shadow-sm text-xs text-content-muted", rewound && "opacity-60")}>
+    <div className={cn("mb-[5px] rounded-xl border border-edge bg-surface-muted/60 text-xs text-content-muted", rewound && "opacity-60")}>
       <div
         role="button"
         tabIndex={0}
@@ -125,7 +125,7 @@ export function TurnFilesCard({
         className="flex w-full cursor-pointer items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-surface-hover/50"
       >
         <IconFile size={14} className="shrink-0 text-content-subtle" />
-        <span className="whitespace-nowrap font-semibold text-content">
+        <span className="whitespace-nowrap font-medium text-content">
           <span className="tfc-long">{t("chatStream.turnFiles.titleLong", { n: files.length })}</span>
           <span className="tfc-short">{t("chatStream.turnFiles.titleShort", { n: files.length })}</span>
         </span>

@@ -1572,6 +1572,8 @@ button.chat-ledger-head:hover {
 /* Agent identity is intentionally scoped to the composer. The neutral
  * surface stays untouched; only lightweight chrome carries the provider.
  * Unknown/future providers inherit the app accent. */
+/* Resting lift: the tier-2 shadow (ui-refresh `.composer`), kept under the
+ * focus / drag rings below so the card stays afloat in every state. */
 [data-chat-root] .composer-card {
   --composer-agent: var(--accent);
   --composer-agent-strong: var(--accent);
@@ -1580,6 +1582,7 @@ button.chat-ledger-head:hover {
     rgb(var(--composer-agent)) 28%,
     rgb(var(--input-edge))
   );
+  box-shadow: var(--shadow-2);
 }
 [data-chat-root] .composer-card[data-agent="claude"] {
   --composer-agent: 217 119 87;
@@ -1598,13 +1601,13 @@ button.chat-ledger-head:hover {
  * hairline without tinting the input background. */
 [data-chat-root] .composer-card:focus-within {
   border-color: rgb(var(--composer-agent-strong) / 0.78);
-  box-shadow: 0 0 0 3px rgb(var(--composer-agent-strong) / 0.14);
+  box-shadow: var(--shadow-2), 0 0 0 3px rgb(var(--composer-agent-strong) / 0.14);
 }
 /* Drag feedback is an interaction state rather than provider identity. Keep
  * it after the base/focus rules so the original global accent ring wins. */
 [data-chat-root] .composer-card[data-drag-over="1"] {
   border-color: rgb(var(--accent));
-  box-shadow: 0 0 0 4px rgb(var(--accent) / 0.2);
+  box-shadow: var(--shadow-2), 0 0 0 4px rgb(var(--accent) / 0.2);
 }
 [data-chat-root] .composer-card::after {
   content: "";

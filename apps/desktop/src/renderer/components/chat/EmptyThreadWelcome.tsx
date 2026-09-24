@@ -17,6 +17,7 @@ import { api } from "@renderer/lib/api.js";
 import { isElectron } from "@renderer/lib/platform.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { fmtTokens } from "@renderer/lib/contextWindow.js";
+import { IconSparkles } from "@renderer/lib/icons.js";
 import type { UsageSummaryStat } from "@contracts/ipc";
 
 export interface EmptyThreadWelcomeProps {
@@ -53,7 +54,10 @@ export function EmptyThreadWelcome({ projectName }: EmptyThreadWelcomeProps) {
 
   return (
     <div className="mb-4 flex animate-[home-fade-up_160ms_ease-out] flex-col items-center gap-1.5">
-      <h2 className="text-2xl font-semibold tracking-tight text-content">
+      <div className="mb-3 grid h-12 w-12 place-items-center rounded-[14px] bg-accent/10 text-accent" aria-hidden>
+        <IconSparkles size={22} />
+      </div>
+      <h2 className="text-2xl font-medium text-content">
         {projectName
           ? t("chatStream.welcome.withProject", { name: projectName })
           : t("chatStream.welcome.title")}

@@ -359,7 +359,7 @@ export function SortableSessionTab({
         // fixed natural-width chips inside the horizontally scrolling strip.
         multiRow ? "min-w-[170px] flex-1" : "min-w-0 shrink-0",
         isActive
-          ? "bg-accent/15 text-content ring-1 ring-inset ring-accent/40 dark:text-accent"
+          ? "bg-surface-hover text-content ring-1 ring-inset ring-edge-input"
           : "bg-surface-muted/60 text-content-muted hover:bg-surface-hover/70 hover:text-content",
         isDragging && "shadow-lg",
       )}
@@ -379,7 +379,7 @@ export function SortableSessionTab({
           aria-hidden
           className={cn(
             "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
-            isActive ? "bg-accent/70" : "bg-content-subtle/50",
+            isActive ? "bg-content-subtle" : "bg-content-subtle/50",
           )}
         />
       )}

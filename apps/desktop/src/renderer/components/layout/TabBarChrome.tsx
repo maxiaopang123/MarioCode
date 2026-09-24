@@ -112,7 +112,7 @@ export function TabBarOverflowMenu({
                   className={cn(
                     "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] outline-none select-none",
                     "data-[highlighted]:bg-surface-muted",
-                    multiRow ? "text-content dark:text-accent" : "text-content-muted",
+                    multiRow ? "text-content" : "text-content-muted",
                   )}
                 >
                   <span className="min-w-0 flex-1">{t("ide.editor.multiRowTabs")}</span>
@@ -131,7 +131,7 @@ export function TabBarOverflowMenu({
                   className={cn(
                     "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] outline-none select-none",
                     "data-[highlighted]:bg-surface-muted",
-                    item.active ? "text-content dark:text-accent" : "text-content-muted",
+                    item.active ? "text-content" : "text-content-muted",
                   )}
                 >
                   {item.dotClass && (

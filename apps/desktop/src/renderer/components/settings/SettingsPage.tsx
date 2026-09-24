@@ -161,16 +161,19 @@ export function SettingsPage() {
   return (
     <ThreePaneLayout
       left={
+        // Same shape as the workspace sidebar (ui-refresh `.set-nav`): plain
+        // 13px group titles, 28px rows in full-strength text with neutral
+        // icons; the selected row is a gray fill plus the short accent bar.
         <nav
-          className="px-2 py-3"
+          className="px-2 pb-2 pt-1"
           style={{ fontSize: "var(--right-panel-font-size)" }}
         >
           {NAV_GROUPS.map((group, gi) => (
-            <div key={group.labelKey} className={gi === 0 ? "pb-1" : "pb-1 pt-4"}>
-              <div className="px-3 pb-1 text-[0.7143em] font-medium uppercase tracking-wider text-content-subtle">
+            <div key={group.labelKey} className={gi === 0 ? undefined : "mt-1"}>
+              <div className="flex h-[26px] items-center px-2.5 text-[0.9286em] text-content-subtle">
                 {t(group.labelKey)}
               </div>
-              <div className="space-y-0.5">
+              <div className="space-y-px">
                 {group.items.map((item) => {
                   const isActive = item.id === active;
                   const Icon = item.icon;
@@ -179,22 +182,14 @@ export function SettingsPage() {
                       key={item.id}
                       onClick={() => setActive(item.id)}
                       className={cn(
-                        "relative flex w-full items-center gap-2 rounded px-3 py-2 text-left transition-colors",
-                        isActive
-                          ? "bg-surface-hover font-medium text-content"
-                          : "text-content-muted hover:bg-surface-hover hover:text-content",
+                        "relative flex h-7 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-content transition-colors",
+                        isActive ? "bg-surface-hover" : "hover:bg-surface-hover",
                       )}
                     >
                       {isActive && (
-                        <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent" />
+                        <span className="absolute left-[3px] top-1/2 h-3 w-[3px] -translate-y-1/2 rounded-full bg-accent" />
                       )}
-                      <Icon
-                        size={16}
-                        className={cn(
-                          "shrink-0",
-                          isActive ? "text-accent" : "text-content-subtle",
-                        )}
-                      />
+                      <Icon size={16} className="shrink-0 text-content-muted" />
                       {t(item.labelKey)}
                     </button>
                   );
@@ -223,7 +218,7 @@ export function SettingsPage() {
           // The initial 20px gap comes from PanelHeader's own `mt-5` instead —
           // a sticky element's self-margin positions it at rest but does not
           // offset where it sticks.
-          className="min-h-0 h-full overflow-y-auto px-6 pb-5"
+          className="min-h-0 h-full overflow-y-auto px-8 pb-8"
           style={{ fontSize: "var(--right-panel-font-size)" }}
         >
           {active === "general" && <GeneralPanel />}

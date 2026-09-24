@@ -58,12 +58,12 @@ export function SettingRow({
         <div>
           <TitleTag
             {...(isLabel ? { htmlFor } : {})}
-            className="text-[0.8571em] font-medium text-content"
+            className="text-[0.9286em] font-medium text-content"
           >
             {title}
           </TitleTag>
           {desc && (
-            <div className="mt-0.5 text-[0.7857em] leading-relaxed text-content-subtle">
+            <div className="mt-0.5 text-[0.8571em] leading-relaxed text-content-subtle">
               {desc}
             </div>
           )}
@@ -84,12 +84,12 @@ export function SettingRow({
       <div className="min-w-0 flex-1">
         <TitleTag
           {...(isLabel ? { htmlFor } : {})}
-          className="text-[0.8571em] font-medium text-content"
+          className="text-[0.9286em] font-medium text-content"
         >
           {title}
         </TitleTag>
         {desc && (
-          <div className="mt-0.5 text-[0.7857em] leading-relaxed text-content-subtle">
+          <div className="mt-0.5 text-[0.8571em] leading-relaxed text-content-subtle">
             {desc}
           </div>
         )}

@@ -85,7 +85,9 @@ function TooltipPopup({ className, ...props }: TooltipPopupProps) {
   return (
     <BaseTooltip.Popup
       className={cn(
-        "max-w-xs rounded-md border border-edge bg-surface px-2.5 py-2 text-[11px] text-content shadow-lg",
+        // Inverted chip (ui-refresh `.tip`): content-colored fill with the
+        // surface color as ink, so it reads against either theme.
+        "max-w-xs rounded-md bg-content px-[9px] py-1 text-xs text-surface shadow-md",
         "data-[starting-style]:scale-95 data-[starting-style]:opacity-0",
         "data-[ending-style]:scale-95 data-[ending-style]:opacity-0",
         "origin-[var(--transform-origin)] transition-[transform,opacity] duration-100",

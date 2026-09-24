@@ -23,9 +23,9 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
       <BaseInput
         ref={ref}
         className={cn(
-          "min-w-0 w-full rounded border border-edge bg-surface px-2.5 py-1.5 font-mono text-xs text-content placeholder:text-content-subtle outline-none transition-colors",
-          "focus:border-accent",
-          error && "border-danger focus:border-danger",
+          "min-w-0 w-full rounded-lg border border-edge-input bg-surface px-2.5 py-1.5 font-mono text-xs text-content placeholder:text-content-subtle outline-none transition-[border-color,box-shadow]",
+          "focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15",
+          error && "border-danger focus:border-danger focus:ring-danger/15",
           className,
         )}
         {...props}

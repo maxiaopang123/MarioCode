@@ -76,7 +76,7 @@ function DialogPopup({ className, ...props }: DialogPopupProps) {
     <BaseDialog.Popup
       className={cn(
         "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
-        "rounded-lg border border-edge bg-surface shadow-2xl",
+        "rounded-xl border border-edge bg-surface shadow-dialog",
         "data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0",
         "transition-[transform,opacity] duration-150",
         className,

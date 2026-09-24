@@ -36,17 +36,18 @@ const Switch = forwardRef<HTMLElement, SwitchProps>(
         aria-label={label}
         title={label}
         className={cn(
-          "relative h-4 w-7 shrink-0 rounded-full outline-none transition-colors",
+          "relative h-[18px] w-8 shrink-0 rounded-full outline-none transition-colors",
           "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-1 focus-visible:ring-offset-surface",
-          checked ? "bg-accent" : "bg-surface-hover",
+          checked ? "bg-accent" : "bg-edge-input",
           disabled && "cursor-not-allowed opacity-50",
           className,
         )}
       >
+        {/* White thumb in both themes (ui-refresh `.switch`). */}
         <BaseSwitch.Thumb
           className={cn(
-            "absolute top-0.5 h-3 w-3 rounded-full bg-surface shadow transition-transform",
-            checked ? "left-3.5" : "left-0.5",
+            "absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-[left]",
+            checked ? "left-4" : "left-0.5",
           )}
         />
       </BaseSwitch.Root>

@@ -51,9 +51,9 @@ function SelectTrigger({ className, children, ...props }: SelectTriggerProps) {
   return (
     <BaseSelect.Trigger
       className={cn(
-        "flex items-center gap-1 rounded-md border border-edge bg-surface px-2.5 py-1.5 text-xs text-content outline-none transition-colors",
-        "hover:bg-surface-muted focus:border-accent",
-        "data-[popup-open]:border-accent",
+        "flex items-center gap-1 rounded-lg border border-edge-input bg-surface px-2.5 py-1.5 text-xs text-content outline-none transition-[border-color,box-shadow]",
+        "hover:border-content-subtle focus-visible:border-accent/60 focus-visible:ring-[3px] focus-visible:ring-accent/15",
+        "data-[popup-open]:border-accent/60",
         className,
       )}
       {...props}
@@ -103,7 +103,7 @@ function SelectPopup({ className, ...props }: SelectPopupProps) {
   return (
     <BaseSelect.Popup
       className={cn(
-        "origin-top rounded-md border border-edge bg-surface py-1 shadow-lg",
+        "origin-top rounded-xl border border-edge bg-surface p-1 shadow-md",
         "data-[ending-style]:scale-y-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-y-95 data-[starting-style]:opacity-0",
         "transition-[transform,opacity] duration-100",
         className,
@@ -169,8 +169,8 @@ function SelectItem({ className, children, ...props }: SelectItemProps) {
   return (
     <BaseSelect.Item
       className={cn(
-        "group flex items-center gap-2 px-3 py-1.5 text-xs text-content-muted outline-none select-none",
-        "hover:bg-surface-muted hover:text-content data-[highlighted]:bg-surface-muted data-[highlighted]:text-content",
+        "group flex min-h-[30px] items-center gap-2 rounded-md px-2 py-1 text-xs text-content-muted outline-none select-none",
+        "hover:bg-surface-hover hover:text-content data-[highlighted]:bg-surface-hover data-[highlighted]:text-content",
         "data-[disabled]:opacity-30 data-[disabled]:cursor-not-allowed",
         className,
       )}

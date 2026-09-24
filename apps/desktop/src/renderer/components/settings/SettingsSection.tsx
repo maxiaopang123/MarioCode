@@ -3,9 +3,9 @@
  *
  * The middle level of the settings visual hierarchy (see PanelHeader):
  * a category label (the "功能分类标题") sits above a bordered Card that
- * contains the actual setting rows (the "功能标题" + controls). The label is
- * deliberately one size step up from the row titles (0.93em semibold content
- * vs 0.86em medium) — group vs row must be tellable apart at a glance.
+ * contains the actual setting rows (the "功能标题" + controls). The label
+ * is a quiet eyebrow (ui-refresh `.set-sec h3`: 13px, 500, muted); group vs
+ * row reads from position — the label sits outside the card, rows inside.
  *
  * @example
  *   <SettingsSection title="提交记录生成" desc="配置生成提交信息的模型与提示词。">
@@ -36,7 +36,7 @@ export function SettingsSection({
     <section className={cn("space-y-1.5", className)}>
       <div className="flex items-center gap-1.5 px-1">
         {Icon && <Icon size={15} className="shrink-0 text-content-muted" />}
-        <h3 className="text-[0.9286em] font-semibold text-content">
+        <h3 className="text-[0.9286em] font-medium text-content-subtle">
           {title}
         </h3>
       </div>

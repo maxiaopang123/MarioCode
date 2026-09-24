@@ -31,14 +31,18 @@ import {
   type McpManagementState,
   type McpServerConfig,
 } from "@contracts/ipc";
-import { MCODE_CONFIG_DIR } from "@main/providers/claude-sdk/customEnv.js";
 import { awaitDb } from "@main/store/db.js";
 import { SettingRepo } from "@main/store/repositories.js";
 
 /** Mcode's own ~/.mcode/.claude.json — the CLI's user-level config file under
  *  the redirected CLAUDE_CONFIG_DIR. User-scope MCP servers live in its
  *  top-level `mcpServers` object. */
-const USER_CLAUDE_JSON = path.join(MCODE_CONFIG_DIR, ".claude.json");
+/** Resolve lazily so isolated Electron smoke runs can redirect USERPROFILE
+ * before booting the app, and so every read/write in one process uses the same
+ * current home directory. */
+function userClaudeJsonPath(): string {
+  return path.join(homedir(), ".mcode", ".claude.json");
+}
 
 /** The real Claude CLI's config file — scanned (read-only) by the import
  *  feature. Never written. */
@@ -85,14 +89,14 @@ async function writeJson(file: string, value: unknown): Promise<void> {
  *  missing or unparseable (the CLI creates/populates it on first run; a
  *  missing file simply means "no user-scope servers yet"). */
 export async function readUserClaudeJson(): Promise<Record<string, unknown>> {
-  const parsed = await readJson(USER_CLAUDE_JSON);
+  const parsed = await readJson(userClaudeJsonPath());
   return asRecord(parsed) ?? {};
 }
 
 /** Overwrite ~/.mcode/.claude.json. Callers must pass a value derived from
  *  readUserClaudeJson() (read-modify-write) so unknown keys survive. */
 export async function writeUserClaudeJson(cfg: Record<string, unknown>): Promise<void> {
-  await writeJson(USER_CLAUDE_JSON, cfg);
+  await writeJson(userClaudeJsonPath(), cfg);
 }
 
 /** Validate an unknown config object against the contract schema. Returns the

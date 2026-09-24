@@ -89,6 +89,26 @@ interface RuntimeState {
 
 const runtime = new Map<string, RuntimeState>();
 
+// Different sources can rescan at the same time (for example, a Codex
+// config rewrite arriving while Cursor is being enabled). Serialize the
+// read-modify-write of the shared mirror so one source cannot overwrite the
+// other source's freshly mirrored servers.
+let mirrorMutationTail: Promise<void> = Promise.resolve();
+
+async function withMirrorMutation<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = mirrorMutationTail;
+  let release!: () => void;
+  mirrorMutationTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 function emptyStatus(): McpSyncStatus {
   return { serverNames: [], lastSyncAt: null, lastError: null };
 }
@@ -356,44 +376,46 @@ async function runSync(source: McpSyncSource): Promise<void> {
       notifyChanged();
       return;
     }
-    const cfg = await readUserClaudeJson();
-    const fileServers = mcpServersOf(cfg);
-    const ownership = readOwnership();
-    const prevOwned = new Set(ownership[source.id] ?? []);
-    const nextOwned: string[] = [];
-    const conflicts: string[] = [];
+    await withMirrorMutation(async () => {
+      const cfg = await readUserClaudeJson();
+      const fileServers = mcpServersOf(cfg);
+      const ownership = readOwnership();
+      const prevOwned = new Set(ownership[source.id] ?? []);
+      const nextOwned: string[] = [];
+      const conflicts: string[] = [];
 
-    // Retract names the source no longer provides. We only retract entries
-    // this source still OWNS (present in the previous pass's ownership list);
-    // a name the user re-added via the panel loses its ownership (see
-    // clearOwnershipFor) and is therefore left alone.
-    for (const name of prevOwned) {
-      if (name in servers) continue;
-      if (name in fileServers) delete fileServers[name];
-    }
-
-    for (const [name, config] of Object.entries(servers)) {
-      if (name in fileServers && !prevOwned.has(name)) {
-        // Pre-existing local entry we don't own — never overwrite.
-        conflicts.push(name);
-        continue;
+      // Retract names the source no longer provides. We only retract entries
+      // this source still OWNS (present in the previous pass's ownership list);
+      // a name the user re-added via the panel loses its ownership (see
+      // clearOwnershipFor) and is therefore left alone.
+      for (const name of prevOwned) {
+        if (name in servers) continue;
+        if (name in fileServers) delete fileServers[name];
       }
-      fileServers[name] = config;
-      nextOwned.push(name);
-    }
 
-    cfg.mcpServers = fileServers;
-    await writeUserClaudeJson(cfg);
-    ownership[source.id] = nextOwned;
-    writeOwnership(ownership);
+      for (const [name, config] of Object.entries(servers)) {
+        if (name in fileServers && !prevOwned.has(name)) {
+          // Pre-existing local entry we don't own — never overwrite.
+          conflicts.push(name);
+          continue;
+        }
+        fileServers[name] = config;
+        nextOwned.push(name);
+      }
 
-    st.status = {
-      serverNames: nextOwned,
-      lastSyncAt: new Date().toISOString(),
-      lastError: conflicts.length > 0 ? `同名本地配置保留:${conflicts.join(", ")}` : null,
-    };
-    log.info(`mcpSync: ${source.label} → ${nextOwned.length} server(s) mirrored${conflicts.length ? `, ${conflicts.length} conflict(s) kept local` : ""}`);
-    notifyChanged();
+      cfg.mcpServers = fileServers;
+      await writeUserClaudeJson(cfg);
+      ownership[source.id] = nextOwned;
+      writeOwnership(ownership);
+
+      st.status = {
+        serverNames: nextOwned,
+        lastSyncAt: new Date().toISOString(),
+        lastError: conflicts.length > 0 ? `同名本地配置保留:${conflicts.join(", ")}` : null,
+      };
+      log.info(`mcpSync: ${source.label} → ${nextOwned.length} server(s) mirrored${conflicts.length ? `, ${conflicts.length} conflict(s) kept local` : ""}`);
+      notifyChanged();
+    });
   } catch (err) {
     st.status.lastError = (err as Error).message;
     st.status.lastSyncAt = new Date().toISOString();
@@ -409,21 +431,23 @@ async function runSync(source: McpSyncSource): Promise<void> {
 
 /** Retract every server `id` owns from the mirror file. */
 async function retractSource(id: string): Promise<void> {
-  const ownership = readOwnership();
-  const owned = ownership[id] ?? [];
-  if (owned.length > 0) {
-    try {
-      const cfg = await readUserClaudeJson();
-      const fileServers = mcpServersOf(cfg);
-      for (const name of owned) delete fileServers[name];
-      cfg.mcpServers = fileServers;
-      await writeUserClaudeJson(cfg);
-    } catch (err) {
-      log.warn(`mcpSync: retract ${id} failed: ${(err as Error).message}`);
+  await withMirrorMutation(async () => {
+    const ownership = readOwnership();
+    const owned = ownership[id] ?? [];
+    if (owned.length > 0) {
+      try {
+        const cfg = await readUserClaudeJson();
+        const fileServers = mcpServersOf(cfg);
+        for (const name of owned) delete fileServers[name];
+        cfg.mcpServers = fileServers;
+        await writeUserClaudeJson(cfg);
+      } catch (err) {
+        log.warn(`mcpSync: retract ${id} failed: ${(err as Error).message}`);
+      }
     }
-  }
-  delete ownership[id];
-  writeOwnership(ownership);
+    delete ownership[id];
+    writeOwnership(ownership);
+  });
 }
 
 /** Clear ownership for a name the user re-added locally via the panel, so a

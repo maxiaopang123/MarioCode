@@ -200,14 +200,10 @@ div:has(> [role="menu"]) {
 }
 
 .dark {
-  /* Dark-mode base font weight. White text on a dark background undergoes
-   * optical thinning, so the default 400 reads as low-contrast. The base is
-   * lifted to 600 for crisp, readable UI text. The matching .dark .font-*
-   * ladder shift (in the font-weight ladder section below) keeps relative
-   * hierarchy intact. Light mode uses a 500 base via :root (lighter than
-   * dark because black-on-white needs less help), with its own ladder shift
-   * in the same section. */
-  font-weight: 600;
+  /* Dark-mode base font weight: half a step above light's 400 because white
+   * strokes thin optically on the deep background. Must stay below 550 so
+   * Microsoft YaHei keeps its Regular face (see :root). */
+  font-weight: 450;
 
   /* Slate-tinted dark ramp (VS Code Dark+ / GitHub Dark style). The whole
    * ramp carries a slight cool bias — the B channel runs a few units above
@@ -284,11 +280,9 @@ div:has(> [role="menu"]) {
    * Overridden at runtime by lib/appearance.ts when the user sets a custom
    * value. */
   --chat-font-size: 14px;
-  /* Chat prose base weight — dark mode raises the prose weight to 500 (one
-   * step above light's 450) because white strokes thin optically on the deep
-   * background. Line height is density-driven (--chat-md-leading) and shared
-   * across themes. */
-  --chat-font-weight: 500;
+  /* Chat prose base weight — tracks the dark chrome base (450). Line height
+   * is density-driven (--chat-md-leading) and shared across themes. */
+  --chat-font-weight: 450;
   --user-bubble: 113 113 122; /* default = zinc-500 (\#71717a) */
   /* Low-alpha gray over #1a1d24 barely moves: 15% ≈ 1.1:1, indistinguishable
    * from the chat surface. 25% lands the bubble at ~1.30:1 — the same
@@ -297,6 +291,12 @@ div:has(> [role="menu"]) {
    * user-picked bubble color, not just the default (the tint strength is the
    * problem, not the default hue). */
   --user-bubble-alpha: 0.25;
+
+  /* Elevation tiers for the dark ramp: deeper shadows plus a faint light ring
+   * so floating layers still separate from the near-black surfaces. */
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-2: 0 10px 24px -8px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.03);
+  --shadow-3: 0 28px 56px -16px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.04);
 
   /* Global side-panel + settings base font size - user-configurable via
    * Settings -> 外观 -> 全局字体大小. Despite the var's legacy name it drives
@@ -358,55 +358,6 @@ div:has(> [role="menu"]) {
 }
 .dark:not(.sketch) .chat-md li strong {
   color: color-mix(in srgb, rgb(var(--content)) 70%, rgb(var(--content-muted)));
-}
-
-/* ───────────── Font-weight ladder shifts ─────────────
- * Pairs with the base font-weight set on :root (500, light) and .dark (600,
- * dark). Because the inherited base is lifted, the raw Tailwind utilities
- * (which set weight directly on the element) would otherwise sit AT or BELOW
- * body weight — .font-medium (500) would render thinner than body text,
- * inverting the hierarchy. Both blocks add one ancestor to win specificity
- * over the utility classes and shift the whole ladder up one stop.
- *
- * ORDER MATTERS: the light block is declared first, the dark block second.
- * .dark and html have equal specificity (0,1,1) when .dark is on <html>, so
- * source order decides — the dark block wins only because it comes last.
- * Keep the dark block below the light block.
- *
- * Resulting ladders:
- *   light: body 500  ←  font-normal 500  ←  font-medium 600  ←  font-semibold 700  ←  font-bold 800
- *   dark:  body 600  ←  font-normal 500  ←  font-medium 600  ←  font-semibold 700  ←  font-bold 800
- * font-normal is lifted only to 500 in both so the few "explicitly thin" spots
- * (TerminalPanel / MessageBlocks / ContentTagChip) stay a notch lighter than
- * body without dropping below comfortable legibility. */
-
-/* Light-mode ladder (:root base = 500). */
-html .font-normal {
-  font-weight: 500;
-}
-html .font-medium {
-  font-weight: 600;
-}
-html .font-semibold {
-  font-weight: 700;
-}
-html .font-bold {
-  font-weight: 800;
-}
-
-/* Dark-mode ladder (.dark base = 600). Must come AFTER the light block so it
- * wins the equal-specificity tie when <html> carries .dark. */
-.dark .font-normal {
-  font-weight: 500;
-}
-.dark .font-medium {
-  font-weight: 600;
-}
-.dark .font-semibold {
-  font-weight: 700;
-}
-.dark .font-bold {
-  font-weight: 800;
 }
 
 /* ───────────── Derived chat font sizes ─────────────

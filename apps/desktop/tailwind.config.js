@@ -25,6 +25,17 @@ export default {
           "monospace",
         ],
       },
+      // Three elevation tiers; per-theme values are --shadow-1/2/3 in
+      // styles.css. Tier 3 is only for modal dialogs and the command palette.
+      boxShadow: {
+        sm: "var(--shadow-1)",
+        DEFAULT: "var(--shadow-1)",
+        md: "var(--shadow-2)",
+        lg: "var(--shadow-2)",
+        xl: "var(--shadow-2)",
+        "2xl": "var(--shadow-2)",
+        dialog: "var(--shadow-3)",
+      },
       colors: {
         // Semantic tokens backed by CSS variables. Each variable holds a
         // space-separated "R G B" triplet (NOT #hex) so Tailwind's

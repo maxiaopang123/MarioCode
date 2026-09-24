@@ -1136,8 +1136,8 @@ const BlockView = memo(function BlockView({
         ? Math.round((saved! / block.preTokens) * 100)
         : null;
       return (
-        <div className="flex items-center gap-2 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 [font-size:var(--chat-fs-sm)]">
-          <IconStack2 size={14} className="shrink-0 text-accent" />
+        <div className="flex items-center gap-2 rounded-lg border border-edge bg-surface-muted px-3 py-2 [font-size:var(--chat-fs-sm)]">
+          <IconStack2 size={14} className="shrink-0 text-content-subtle" />
           <span className="text-content">
             {block.trigger === "manual" ? t("chatStream.compact.manual") : t("chatStream.compact.auto")}
             {saved != null && (
@@ -1275,8 +1275,8 @@ function AttachmentCard({
         className={cn(
           "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] transition-colors",
           open
-            ? "border-accent bg-accent/20 text-accent"
-            : "border-accent/40 bg-accent/10 text-accent hover:border-accent/70 hover:bg-accent/20",
+            ? "border-edge-input bg-surface-hover text-content"
+            : "border-edge bg-surface-muted text-content-muted hover:bg-surface-hover hover:text-content",
         )}
       >
         {isFile ? (

@@ -53,7 +53,7 @@ export function EmptyThreadWelcome({ projectName }: EmptyThreadWelcomeProps) {
   }, []);
 
   return (
-    <div className="mb-4 flex animate-[home-fade-up_160ms_ease-out] flex-col items-center gap-1.5">
+    <div className="mb-6 flex animate-[home-fade-up_160ms_ease-out] flex-col items-center gap-1.5">
       <div className="mb-3 grid h-12 w-12 place-items-center rounded-[14px] bg-accent/10 text-accent" aria-hidden>
         <IconSparkles size={22} />
       </div>

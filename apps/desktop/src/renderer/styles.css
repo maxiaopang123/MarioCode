@@ -853,9 +853,11 @@ button.chat-ledger-head:hover {
   50% { opacity: 0.5; transform: scale(0.8); }
 }
 
+/* The breathing dot beside it carries the running accent; the label itself
+ * stays neutral, one step brighter than the rest of the head. */
 .chat-ledger-live {
-  font-weight: 600;
-  color: rgb(var(--accent-strong));
+  font-weight: 500;
+  color: rgb(var(--content));
 }
 
 /* 底部扫描光带：运行中表示"还在继续"，结清后收掉。光带固定在台账宽度内，
@@ -1078,10 +1080,11 @@ button.chat-ledger-head:hover {
   animation: chat-st-spin 0.72s linear infinite;
 }
 
+/* A finished step is a gray check — only the running spinner is green. */
 .chat-st-done {
   opacity: 0;
   transform: scale(0.5);
-  color: rgb(var(--accent));
+  color: rgb(var(--content-subtle));
 }
 
 .chat-st[data-status="done"] .chat-st-run {

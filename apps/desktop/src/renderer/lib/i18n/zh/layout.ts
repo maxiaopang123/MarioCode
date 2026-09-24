@@ -60,10 +60,13 @@ export const zh = {
   "layout.deleteThreadDesc": "确认彻底删除线程「{title}」?此操作不可恢复。",
   "layout.newSessionInProject": "在当前项目下新建会话",
   "layout.needProject": "请先打开一个项目",
+  "layout.scheduledTasks": "定时任务",
+  "layout.pluginsAndSkills": "插件与技能",
 
   /* ── stream sidebar (session-first left-bar view) ── */
-  "layout.stream.switchToStream": "切换为会话流视图",
-  "layout.stream.switchToTree": "切换为项目树视图",
+  "layout.stream.modeLabel": "侧栏视图",
+  "layout.stream.modeStream": "全部会话",
+  "layout.stream.modeTree": "按项目",
   "layout.stream.scopeAll": "全部项目",
   "layout.stream.scopeGroupCap": "分组",
   "layout.stream.scopeWorktree": "工作树",

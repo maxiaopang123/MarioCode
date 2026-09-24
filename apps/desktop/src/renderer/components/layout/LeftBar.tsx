@@ -28,7 +28,6 @@ import {
   IconArchive,
   IconTrash,
   IconLoader2,
-  IconSettings,
   IconCheck,
   IconX,
   IconPencil,
@@ -40,19 +39,19 @@ import {
   IconSearch,
   IconPin,
   IconPinnedFilled,
-  IconSun,
-  IconMoon,
-  IconFocus,
-  IconLayoutSidebarLeftExpand,
 } from "@renderer/lib/icons.js";
-import { useTheme, applyThemeClass } from "@renderer/lib/theme.js";
-import { isMac } from "@renderer/lib/platform.js";
 import { getProviderIcon } from "@renderer/lib/providerIcon.js";
 import { Button, ConfirmDialog, Dialog, Hint, Input } from "@renderer/components/ui/index.js";
-import { BrandLogo } from "./BrandLogo.js";
 import { SidebarQuickActions } from "./SidebarQuickActions.js";
-import { HoverIconButton, RenameDialog, SessionContextMenu, ArchivedRow } from "./SidebarShared.js";
-import { LeftBarModeSwitch } from "./StreamSidebar.js";
+import {
+  ArchivedRow,
+  HoverIconButton,
+  LeftBarModeSwitch,
+  RenameDialog,
+  SessionContextMenu,
+  SidebarFooter,
+  SidebarTopStrip,
+} from "./SidebarShared.js";
 import { api } from "@renderer/lib/api.js";
 import { normWorktreeKey, worktreeDisplayName } from "@renderer/lib/worktree.js";
 import { WorktreeMergeBackDialog, WorktreeRemoveDialog } from "@renderer/components/chat/WorktreeMergeBack.js";
@@ -133,8 +132,6 @@ function LeftBarBase({
   const archiveProject = useSessionStore((s) => s.archiveProject);
   const deleteSession = useSessionStore((s) => s.deleteSession);
   const archiveSession = useSessionStore((s) => s.archiveSession);
-  const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
-  const setLeftOpen = useSessionStore((s) => s.setLeftOpen);
   const runningBySession = useSessionStore((s) => s.runningBySession);
   const unreadBySession = useSessionStore((s) => s.unreadBySession);
   const renameSession = useSessionStore((s) => s.renameSession);
@@ -175,20 +172,6 @@ function LeftBarBase({
     const pinned = pinnedSessions.find((s) => s.id === activeSessionId);
     return pinned ? pinned.projectId : null;
   }, [activeSessionId, sessionsByProject, pinnedSessions]);
-
-  // Theme quick-toggle (bottom rail). useTheme subscribes to theme.changed,
-  // so the icon stays in sync when the theme changes elsewhere (settings
-  // panel, or the OS flipping while in "system" mode). The toggle flips
-  // between the two EXPLICIT themes based on what's currently rendering —
-  // a "system" preference resolves via `effective` and lands on the opposite
-  // explicit theme.
-  const { effective: effectiveTheme } = useTheme();
-  const toggleTheme = () => {
-    const next = effectiveTheme === "dark" ? "light" : "dark";
-    void api.theme.set({ theme: next }).then((s) => {
-      applyThemeClass(s.effective);
-    });
-  };
 
   // ── Scroll-to-active-thread (clicking a tab should locate the thread in
   // the left bar, even across collapsed groups/projects and un-paginated
@@ -588,79 +571,16 @@ function LeftBarBase({
 
   return (
     <div className="flex h-full flex-col px-2 py-2 [font-size:var(--right-panel-font-size)]">
-      {/* Top strip. mac: the brand header (logo + name) was removed — the
-          strip now hosts the sidebar-collapse toggle, moved up from the
-          footer, sitting right of the traffic lights (trafficLightPosition
-          {x:20,y:13}: three 12px circles ending ~x=72): -mt-2 cancels the
-          root's pt-2 so the box spans the Titlebar's 40px band (y 0..40) and
-          the button centers on the traffic lights' centerline; pl-[70px]
-          clears the buttons (toggle starts at x≈78). The strip doubles as a
-          window drag handle; the button opts out. win: keeps the original
-          brand header (logo + name + tagline), clicking it collapses the
-          sidebar (setLeftOpen(false)) — settings remain in the footer. */}
-      {isMac ? (
-        <div
-          className="-mt-2 mb-2 flex h-10 items-center gap-1 pl-[70px]"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          <Hint label={t("layout.hideLeftPanel")}>
-            <button
-              type="button"
-              onClick={() => setLeftOpen(false)}
-              className={cn(
-                "flex h-7 w-7 items-center justify-center rounded text-content-muted transition-colors",
-                "hover:bg-surface-hover hover:text-content",
-              )}
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            >
-              <IconLayoutSidebarLeftExpand size={18} className="shrink-0" />
-            </button>
-          </Hint>
-          {/* Tree ↔ stream view switch (same spot in both sidebars). */}
-          <LeftBarModeSwitch />
-        </div>
-      ) : (
-        <div className="mb-2" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setLeftOpen(false)}
-              className={cn(
-                "group flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors",
-                "hover:bg-surface-hover/60",
-              )}
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            title={t("layout.hideLeftPanel")}
-          >
-            <BrandLogo size={30} />
-            <span className="flex min-w-0 flex-col leading-tight">
-              <span className="truncate text-[1.07em] font-semibold tracking-tight text-content">
-                MarioCode
-              </span>
-              <span className="truncate text-content-subtle [font-size:var(--rp-fs-sm)]">
-                {t("layout.tagline")}
-              </span>
-            </span>
-            </button>
-            {/* Tree ↔ stream view switch (same spot in both sidebars). */}
-            <LeftBarModeSwitch />
-          </div>
-        </div>
-      )}
+      <SidebarTopStrip />
 
-      {/* Quick actions — 新建会话 / 搜索 / 连接手机. Full-width buttons
-          docked directly under the brand logo so the most-used workspace
-          entry points are always visible without scrolling. */}
       <SidebarQuickActions
         showSearch={showSearch}
         showConnectPhone={showConnectPhone}
       />
 
-      {/* Header */}
-      <div className="group mb-1 flex items-center justify-between px-1">
-        <h3 className="font-semibold uppercase tracking-wide text-content-subtle [font-size:var(--rp-fs-md)]">
-          {t("layout.projects")}
-        </h3>
+      {/* View switch + the project-list tools (view mode, add project). */}
+      <div className="group mb-0.5 mt-3 flex items-center justify-between gap-2">
+        <LeftBarModeSwitch />
         <div className="flex items-center gap-1">
           {/* View-mode toggle: flat list vs grouped under headers. Hover-
               revealed (mirrors the add-project button below) to keep the
@@ -740,7 +660,7 @@ function LeftBarBase({
             <button
               onClick={() => setPinnedProjectsOpen(!pinnedProjectsOpen)}
               className={cn(
-                "flex w-full items-center gap-1 rounded px-1 py-0.5 font-medium uppercase tracking-wide [font-size:var(--rp-fs-md)]",
+                "flex h-7 w-full items-center gap-1 rounded px-1 [font-size:var(--rp-fs-md)]",
                 "text-content-subtle transition-colors hover:bg-surface-hover/60",
               )}
             >
@@ -773,7 +693,7 @@ function LeftBarBase({
             <button
               onClick={() => setPinnedOpen(!pinnedOpen)}
               className={cn(
-                "flex w-full items-center gap-1 rounded px-1 py-0.5 font-medium uppercase tracking-wide [font-size:var(--rp-fs-md)]",
+                "flex h-7 w-full items-center gap-1 rounded px-1 [font-size:var(--rp-fs-md)]",
                 "text-content-subtle transition-colors hover:bg-surface-hover/60",
               )}
             >
@@ -880,7 +800,7 @@ function LeftBarBase({
           <button
             onClick={() => setArchivedViewOpen(!archivedViewOpen)}
             className={cn(
-              "flex w-full items-center gap-1 rounded px-1 py-0.5 font-medium uppercase tracking-wide [font-size:var(--rp-fs-md)]",
+              "flex h-7 w-full items-center gap-1 rounded px-1 [font-size:var(--rp-fs-md)]",
               "text-content-subtle transition-colors hover:bg-surface-hover/60",
             )}
           >
@@ -936,70 +856,8 @@ function LeftBarBase({
         </div>
       )}
 
-      {/* Settings + locate + theme quick-toggle — entry moved here from the
-          (removed) TopBar header. Docked to the bottom of the left rail so
-          it's always reachable regardless of how far the project list
-          scrolls. The two compact square buttons right of 设置: locate
-          (scroll the project tree to the active session, centering it) and
-          theme (sun while dark → light, moon while light → dark). */}
-      <div className="mt-2 flex shrink-0 items-center gap-1 border-t border-edge pt-1.5">
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1.5 text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-            "hover:bg-surface-hover hover:text-content",
-          )}
-          title={t("layout.settings")}
-        >
-          <IconSettings size={14} className="shrink-0" />
-          {t("layout.settings")}
-        </button>
-        {/* Disabled with no active session, and a disabled button dispatches
-            no pointer events for the hint — keep the native title for it. */}
-        <Hint label={t("layout.locateSession")}>
-          <button
-            onClick={() => locateActiveSession(true)}
-            disabled={!activeSessionId}
-            title={!activeSessionId ? t("layout.locateSession") : undefined}
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-              "hover:bg-surface-hover hover:text-content disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
-            )}
-          >
-            <IconFocus size={14} />
-          </button>
-        </Hint>
-        <Hint
-          label={effectiveTheme === "dark" ? t("layout.themeToLight") : t("layout.themeToDark")}
-        >
-          <button
-            onClick={toggleTheme}
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-              "hover:bg-surface-hover hover:text-content",
-            )}
-          >
-            {effectiveTheme === "dark" ? <IconSun size={14} /> : <IconMoon size={14} />}
-          </button>
-        </Hint>
-        {/* Collapse-sidebar toggle — win only. On mac it moved to the
-            sidebar's top strip (right of the traffic lights). The toolbar
-            re-shows its own toggle while the sidebar is CLOSED, since this
-            footer button is inside the hidden sidebar then. */}
-        {!isMac && (
-          <Hint label={t("layout.hideLeftPanel")}>
-            <button
-              onClick={() => setLeftOpen(false)}
-              className={cn(
-                "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-                "hover:bg-surface-hover hover:text-content",
-              )}
-            >
-              <IconLayoutSidebarLeftExpand size={14} />
-            </button>
-          </Hint>
-        )}
-      </div>
+      {/* Locate scrolls the project tree to the active session, centering it. */}
+      <SidebarFooter onLocate={() => locateActiveSession(true)} />
 
       {/* Right-click context menu for session rows. Rendered once at the bar
           level and positioned at the cursor via a virtual anchor. */}
@@ -1339,10 +1197,10 @@ function ProjectNode(props: ProjectNodeProps) {
           onContextProject(e.clientX, e.clientY);
         }}
         className={cn(
-          "group flex items-center gap-1 rounded px-1 py-1 [font-size:var(--right-panel-font-size)]",
+          "group flex h-[30px] items-center gap-1 rounded-lg px-1.5 [font-size:var(--right-panel-font-size)]",
           isActiveProject
             ? "bg-surface-hover text-content"
-            : "text-content-muted hover:bg-surface-hover/60",
+            : "text-content hover:bg-surface-hover/60",
           isDragging && "opacity-50",
         )}
       >
@@ -1537,10 +1395,10 @@ function SessionRow({
         onContext(e.clientX, e.clientY);
       }}
       className={cn(
-        "group flex cursor-pointer items-center gap-1 rounded-md px-1 py-1 [font-size:var(--right-panel-font-size)]",
+        "group relative flex h-[30px] cursor-pointer items-center gap-1.5 rounded-lg px-2 [font-size:var(--right-panel-font-size)]",
         active
-          ? "bg-surface-hover text-content shadow-sm ring-1 ring-inset ring-accent/35"
-          : "text-content-muted hover:bg-surface-hover/60",
+          ? "bg-surface-hover text-content before:absolute before:left-0.5 before:top-1/2 before:h-3 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-accent"
+          : "text-content hover:bg-surface-hover/60",
       )}
       title={`${session.title}\n${formatFullTime(session.updatedAt)}`}
     >
@@ -1751,7 +1609,7 @@ function WorktreeGroupNode({
           e.preventDefault();
           onContext(e.clientX, e.clientY);
         }}
-        className="group flex items-center gap-1 rounded px-1 py-1 [font-size:var(--right-panel-font-size)] text-content-muted hover:bg-surface-hover/60"
+        className="group flex h-[30px] items-center gap-1 rounded-lg px-1.5 [font-size:var(--right-panel-font-size)] text-content hover:bg-surface-hover/60"
       >
         {/* Expand / collapse toggle */}
         <button
@@ -1969,7 +1827,7 @@ function GroupNode({
       <div
         {...listeners}
         className={cn(
-          "group flex items-center gap-1 rounded px-1 py-0.5 [font-size:var(--rp-fs-md)]",
+          "group flex h-7 items-center gap-1 rounded px-1 [font-size:var(--rp-fs-md)]",
           "text-content-subtle hover:bg-surface-hover/60",
           isOver && "bg-surface-hover ring-1 ring-accent/40",
           isDragging && "opacity-50",

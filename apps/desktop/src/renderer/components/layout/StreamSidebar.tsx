@@ -2,9 +2,10 @@
  * StreamSidebar — the session-first left-bar view ("stream" leftBarMode),
  * modeled on T3 Code's current sidebar (apps/web Sidebar.tsx):
  *
- *   [现状快捷入口: 新建会话 / 搜索 / 连接手机]   (SidebarQuickActions,原样式;
- *      新建会话在 scope 指向项目/工作树时改道到该处)
- *   [📁 全部项目 ▾]  [+]                        (scope filter + add project)
+ *   [快捷入口: 新建会话 / 搜索 / 定时任务 / 插件与技能 / 连接手机]
+ *      (SidebarQuickActions;新建会话在 scope 指向项目/工作树时改道到该处)
+ *   [全部会话 | 按项目]        [全部项目 ▾]    (view switch + scope filter,
+ *                                              filter menu ends in 添加项目)
  *   ── pinned cards ── hairline ── live cards ── (flat, each card carries
  *      its project identity + an inline status label; running rows recede)
  *   ── 已归档 shelf (collapsed) ──
@@ -30,43 +31,41 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Menu } from "@base-ui/react/menu";
 import {
   IconArchive,
-  IconInbox,
-  IconListTree,
   IconCheck,
   IconChevronRight,
   IconDots,
   IconFolder,
   IconFolderPlus,
-  IconFocus,
   IconGitBranch,
   IconGitFork,
-  IconLayoutSidebarLeftExpand,
   IconLoader2,
-  IconMoon,
   IconPin,
   IconPinnedFilled,
   IconPlus,
-  IconSettings,
-  IconSun,
   IconTrash,
   IconX,
 } from "@renderer/lib/icons.js";
 import { cn } from "@renderer/lib/cn.js";
 import { getProviderIcon } from "@renderer/lib/providerIcon.js";
 import { projectDisplayColor, projectInitial } from "@renderer/lib/projectAvatar.js";
-import { isMac } from "@renderer/lib/platform.js";
 import { formatRelativeTime, formatFullTime } from "@renderer/lib/time.js";
 import { normWorktreeKey, worktreeDisplayName } from "@renderer/lib/worktree.js";
-import { useTheme, applyThemeClass } from "@renderer/lib/theme.js";
-import { Button, ConfirmDialog, Hint } from "@renderer/components/ui/index.js";
+import { Button, ConfirmDialog } from "@renderer/components/ui/index.js";
 import { api } from "@renderer/lib/api.js";
 import { useCursorAnchor } from "@renderer/hooks/useCursorAnchor.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { WorktreeMergeBackDialog, WorktreeRemoveDialog } from "@renderer/components/chat/WorktreeMergeBack.js";
 import { ProjectManageMenuPopup, type ManageMenuState } from "./ProjectManageMenu.js";
 import { SidebarQuickActions } from "./SidebarQuickActions.js";
-import { ArchivedRow, HoverIconButton, RenameDialog, SessionContextMenu } from "./SidebarShared.js";
-import { BrandLogo } from "./BrandLogo.js";
+import {
+  ArchivedRow,
+  HoverIconButton,
+  LeftBarModeSwitch,
+  RenameDialog,
+  SessionContextMenu,
+  SidebarFooter,
+  SidebarTopStrip,
+} from "./SidebarShared.js";
 import type { Project, Session } from "@contracts/session";
 import type { GitWorktreeInfo } from "@contracts/ipc";
 import { useI18n } from "@renderer/lib/i18n/index.js";
@@ -80,32 +79,6 @@ function formatRunningDuration(ms: number): string {
   const mm = String(m).padStart(2, "0");
   const ss = String(s).padStart(2, "0");
   return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
-}
-
-/* ── Left↔stream view switch (mounted in BOTH sidebars' top strips) ── */
-
-export function LeftBarModeSwitch() {
-  const { t } = useI18n();
-  const mode = useSessionStore((s) => s.leftBarMode);
-  const setLeftBarMode = useSessionStore((s) => s.setLeftBarMode);
-  return (
-    <Hint
-      label={mode === "tree" ? t("layout.stream.switchToStream") : t("layout.stream.switchToTree")}
-    >
-      <button
-        type="button"
-        onClick={() => void setLeftBarMode(mode === "tree" ? "stream" : "tree")}
-        className={cn(
-          "flex h-7 w-7 items-center justify-center rounded text-content-muted transition-colors",
-          "hover:bg-surface-hover hover:text-accent",
-        )}
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      >
-        {/* Destination-view glyph: shows the view clicking leads to, matching the tooltip. */}
-        {mode === "tree" ? <IconInbox size={18} className="shrink-0" /> : <IconListTree size={18} className="shrink-0" />}
-      </button>
-    </Hint>
-  );
 }
 
 /* ── Card status model ── */
@@ -173,8 +146,6 @@ function StreamSidebarBase() {
   const setProjectGroup = useSessionStore((s) => s.setProjectGroup);
   const renameProject = useSessionStore((s) => s.renameProject);
   const setProjectColor = useSessionStore((s) => s.setProjectColor);
-  const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
-  const setLeftOpen = useSessionStore((s) => s.setLeftOpen);
 
   // ── Data lifecycle. The aggregate refetches whenever the dirty flag is
   // set while this view is mounted (send / remote change / pin / archive…).
@@ -507,14 +478,6 @@ function StreamSidebarBase() {
     [pinnedSessions, scopeMatches],
   );
 
-  const { effective: effectiveTheme } = useTheme();
-  const toggleTheme = () => {
-    const next = effectiveTheme === "dark" ? "light" : "dark";
-    void api.theme.set({ theme: next }).then((s) => {
-      applyThemeClass(s.effective);
-    });
-  };
-
   const menuItemClass = cn(
     "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs outline-none select-none",
     "text-content-muted data-[highlighted]:bg-surface-muted",
@@ -543,57 +506,9 @@ function StreamSidebarBase() {
 
   return (
     <div className="flex h-full flex-col px-2 py-2 [font-size:var(--right-panel-font-size)]">
-      {/* Top strip — same layout contract as the tree view (mac: traffic
-          lights strip; win: brand header), plus the mode switch. */}
-      {isMac ? (
-        <div
-          className="-mt-2 mb-2 flex h-10 items-center gap-1 pl-[70px]"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          <Hint label={t("layout.hideLeftPanel")}>
-            <button
-              type="button"
-              onClick={() => setLeftOpen(false)}
-              className={cn(
-                "flex h-7 w-7 items-center justify-center rounded text-content-muted transition-colors",
-                "hover:bg-surface-hover hover:text-content",
-              )}
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            >
-              <IconLayoutSidebarLeftExpand size={18} className="shrink-0" />
-            </button>
-          </Hint>
-          <LeftBarModeSwitch />
-        </div>
-      ) : (
-        <div className="mb-2" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setLeftOpen(false)}
-              className={cn(
-                "group flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors",
-                "hover:bg-surface-hover/60",
-              )}
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-              title={t("layout.hideLeftPanel")}
-            >
-              <BrandLogo size={30} />
-              <span className="flex min-w-0 flex-col leading-tight">
-                <span className="truncate text-[1.07em] font-semibold tracking-tight text-content">
-                  MarioCode
-                </span>
-                <span className="truncate text-content-subtle [font-size:var(--rp-fs-sm)]">
-                  {t("layout.tagline")}
-                </span>
-              </span>
-            </button>
-            <LeftBarModeSwitch />
-          </div>
-        </div>
-      )}
+      <SidebarTopStrip />
 
-      {/* 快捷入口 — 现状组件,原样挂载。Scoped to a managed worktree, the
+      {/* 快捷入口 — shared with the tree view. Scoped to a managed worktree, the
           新建会话 entry spawns the session in THAT checkout; scoped to a
           plain project, it spawns under THAT project — both instead of the
           active project, since the user has explicitly narrowed where they
@@ -609,29 +524,27 @@ function StreamSidebarBase() {
         newSessionOverrideTitle={scopedWorktree ? undefined : scopedProjectId ? t("layout.newSessionHere") : undefined}
       />
 
-      {/* Scope filter: 全部项目 / per-project (+ its worktrees) / group +
-          add project. Box metrics mirror SidebarQuickActions' rows (full
-          width, rounded-lg, px-1 py-2, 16px icon) so the control reads as
-          part of the same dock. */}
-      <div className="mb-1">
+      {/* View switch + scope filter: 全部项目 / per-project (+ its
+          worktrees) / group, ending in 添加项目. The trigger is a compact
+          label at the row's right end; its menu opens end-aligned under it. */}
+      <div className="mb-0.5 mt-3 flex items-center justify-between gap-2">
+        <LeftBarModeSwitch />
         <Menu.Root open={scopeOpen} onOpenChange={setScopeOpen}>
           <Menu.Trigger
             className={cn(
-              "flex w-full min-w-0 items-center gap-2 rounded-lg px-1 py-2 text-left transition-colors",
-              "[font-size:var(--right-panel-font-size)]",
-              "text-content-muted hover:bg-surface-hover/60",
+              "flex h-6 min-w-0 items-center gap-0.5 rounded px-1.5 transition-colors [font-size:var(--rp-fs-sm)]",
+              "text-content-subtle hover:bg-surface-hover hover:text-content",
+              scopeOpen && "bg-surface-hover text-content",
             )}
           >
-            {/* Fixed all-projects glyph — the label carries the current scope. */}
-            <IconFolder size={16} className="shrink-0 text-content-subtle" />
-            <span className="min-w-0 flex-1 truncate font-medium">{scopeLabel}</span>
-            <IconChevronRight size={12} className="shrink-0 rotate-90 text-content-subtle" />
+            <span className="min-w-0 truncate">{scopeLabel}</span>
+            <IconChevronRight size={12} className="shrink-0 rotate-90" />
           </Menu.Trigger>
           <Menu.Portal>
-            <Menu.Positioner align="start">
+            <Menu.Positioner align="end">
               <Menu.Popup
                 className={cn(
-                  "z-50 min-w-[200px] origin-top-left rounded-md border border-edge bg-surface py-1 shadow-2xl",
+                  "z-50 min-w-[200px] origin-top-right rounded-md border border-edge bg-surface py-1 shadow-2xl",
                   "data-[ending-style]:scale-95 data-[ending-style]:opacity-0",
                   "data-[starting-style]:scale-95 data-[starting-style]:opacity-0",
                   "transition-[transform,opacity] duration-100",
@@ -801,61 +714,8 @@ function StreamSidebarBase() {
         )}
       </div>
 
-      {/* Footer — same dock as the tree view. */}
-      <div className="mt-2 flex shrink-0 items-center gap-1 border-t border-edge pt-1.5">
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1.5 text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-            "hover:bg-surface-hover hover:text-content",
-          )}
-          title={t("layout.settings")}
-        >
-          <IconSettings size={14} className="shrink-0" />
-          {t("layout.settings")}
-        </button>
-        {/* Disabled with no active session, and a disabled button dispatches
-            no pointer events for the hint — keep the native title for it. */}
-        <Hint label={t("layout.locateSession")}>
-          <button
-            onClick={() => locateActiveSession(true)}
-            disabled={!activeSessionId}
-            title={!activeSessionId ? t("layout.locateSession") : undefined}
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-              "hover:bg-surface-hover hover:text-content disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
-            )}
-          >
-            <IconFocus size={14} />
-          </button>
-        </Hint>
-        <Hint
-          label={effectiveTheme === "dark" ? t("layout.themeToLight") : t("layout.themeToDark")}
-        >
-          <button
-            onClick={toggleTheme}
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-              "hover:bg-surface-hover hover:text-content",
-            )}
-          >
-            {effectiveTheme === "dark" ? <IconSun size={14} /> : <IconMoon size={14} />}
-          </button>
-        </Hint>
-        {!isMac && (
-          <Hint label={t("layout.hideLeftPanel")}>
-            <button
-              onClick={() => setLeftOpen(false)}
-              className={cn(
-                "flex h-7 w-7 shrink-0 items-center justify-center rounded text-content-muted transition-colors [font-size:var(--right-panel-font-size)]",
-                "hover:bg-surface-hover hover:text-content",
-              )}
-            >
-              <IconLayoutSidebarLeftExpand size={14} />
-            </button>
-          </Hint>
-        )}
-      </div>
+      {/* Locate scrolls the stream list to the active session. */}
+      <SidebarFooter onLocate={() => locateActiveSession(true)} />
 
       {/* Session context menu — with the worktree action group wired to the
           same dialogs the tree uses. */}

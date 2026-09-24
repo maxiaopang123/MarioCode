@@ -57,10 +57,13 @@ export const en = {
   "layout.deleteThreadDesc": "Permanently delete thread \"{title}\"? This cannot be undone.",
   "layout.newSessionInProject": "Start a new session in the current project",
   "layout.needProject": "Open a project first",
+  "layout.scheduledTasks": "Scheduled tasks",
+  "layout.pluginsAndSkills": "Plugins & skills",
 
   /* ── stream sidebar (session-first left-bar view) ── */
-  "layout.stream.switchToStream": "Switch to session stream view",
-  "layout.stream.switchToTree": "Switch to project tree view",
+  "layout.stream.modeLabel": "Sidebar view",
+  "layout.stream.modeStream": "All chats",
+  "layout.stream.modeTree": "By project",
   "layout.stream.scopeAll": "All projects",
   "layout.stream.scopeGroupCap": "Groups",
   "layout.stream.scopeWorktree": "Worktree",

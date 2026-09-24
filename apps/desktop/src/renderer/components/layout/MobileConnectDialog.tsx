@@ -22,13 +22,14 @@ import { IconCopy, IconDeviceMobile, IconRefresh, IconTrash, IconWifi, IconWorld
 import { api } from "@renderer/lib/api.js";
 import { copyText } from "@renderer/lib/clipboard.js";
 import { RemoteConnectPanel } from "@renderer/components/mobile/RemoteConnectPanel.js";
+import { SIDEBAR_NAV_ITEM } from "@renderer/components/layout/SidebarShared.js";
 import type { PairingStartResult, PairedDevice } from "@contracts/mobile";
 import type { RelayStatus } from "@contracts/ipc";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 
-/** Self-contained trigger button + dialog, rendered in the left sidebar's quick
- *  actions (below 搜索). The trigger matches the search/new-session button
- *  style; renders its own Dialog.Root so the sidebar only needs
+/** Self-contained trigger button + dialog, rendered as the last entry of the
+ *  left sidebar's quick actions. The trigger uses the shared sidebar nav row
+ *  shape; renders its own Dialog.Root so the sidebar only needs
  *  `<MobileConnectButton />`. When remote access (relay) is connected, an
  *  enabled indicator is shown on the right. */
 export function MobileConnectButton() {
@@ -84,15 +85,14 @@ export function MobileConnectButton() {
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          "flex w-full items-center gap-2 rounded-lg px-1 py-2 transition-colors",
-          "[font-size:var(--right-panel-font-size)]",
-          "text-content-muted hover:bg-accent/10 hover:text-accent",
-          open && "bg-accent/10 text-accent",
+          SIDEBAR_NAV_ITEM,
+          "text-content hover:bg-surface-hover",
+          open && "bg-surface-hover",
         )}
         title={t("layout.connectPhone")}
       >
-        <IconDeviceMobile size={16} className="shrink-0" />
-        <span className="flex-1 text-left font-medium">{t("layout.connectPhone")}</span>
+        <IconDeviceMobile size={16} className="shrink-0 text-content-muted" />
+        <span className="flex-1 truncate text-left">{t("layout.connectPhone")}</span>
         {activeCount > 0 && (
           <span
             className="shrink-0 rounded-full bg-accent/15 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-accent"

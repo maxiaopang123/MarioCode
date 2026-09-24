@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { session } from "electron";
 import type { ProviderContext } from "@contracts/provider";
 import { resolvePiRuntimeLaunch } from "@main/runtimes/runtimeSelection.js";
 import * as browser from "@main/browser/agentBrowserTools.js";
@@ -16,6 +17,32 @@ const BROWSER_METHODS = new Set([
 ]);
 
 interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }
+
+/** Proxy env for the Pi host so it takes the same route as the rest of the
+ *  app. The host is a plain Node process: it never sees the OS proxy
+ *  settings, and Node's fetch follows HTTP(S)_PROXY only when
+ *  NODE_USE_ENV_PROXY=1. Proxy vars already on the app's env win over the
+ *  system setting; SOCKS rules are skipped (Node's env proxy speaks HTTP
+ *  CONNECT only). */
+async function systemProxyEnv(): Promise<Record<string, string>> {
+  const e = process.env;
+  if (e.HTTPS_PROXY || e.https_proxy || e.HTTP_PROXY || e.http_proxy) return { NODE_USE_ENV_PROXY: "1" };
+  let rule: string;
+  try {
+    rule = await session.defaultSession.resolveProxy("https://example.com");
+  } catch {
+    return {};
+  }
+  const match = /^(PROXY|HTTPS)\s+(\S+)$/i.exec(rule.split(";")[0]?.trim() ?? "");
+  if (!match) return {};
+  const url = `${match[1]!.toUpperCase() === "HTTPS" ? "https" : "http"}://${match[2]}`;
+  return {
+    NODE_USE_ENV_PROXY: "1",
+    HTTPS_PROXY: url,
+    HTTP_PROXY: url,
+    NO_PROXY: e.NO_PROXY ?? e.no_proxy ?? "localhost,127.0.0.1,::1",
+  };
+}
 
 export class PiHostClient {
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -37,8 +64,14 @@ export class PiHostClient {
 
   private async ensureStartedInner(): Promise<void> {
     const launch = await resolvePiRuntimeLaunch();
-    const fingerprint = `${launch.nodePath}\u0000${launch.sdkEntry}\u0000${launch.version}`;
+    const proxyEnv = await systemProxyEnv();
+    const runtimeKey = `${launch.nodePath}\u0000${launch.sdkEntry}\u0000${launch.version}`;
+    const fingerprint = `${runtimeKey}\u0000${proxyEnv.HTTPS_PROXY ?? ""}`;
     if (this.ready && this.launchFingerprint === fingerprint) return this.ready;
+    // A system-proxy flip alone must not kill a turn in flight: a busy host
+    // keeps its old route, and the first call after it goes idle restarts it.
+    const busy = this.pending.size > 0 || this.turnContexts.size > 0;
+    if (this.ready && busy && this.launchFingerprint?.startsWith(`${runtimeKey}\u0000`)) return this.ready;
     if (this.child) this.stop(new Error("Pi runtime selection changed"));
     const generation = ++this.generation;
     this.launchFingerprint = fingerprint;
@@ -47,7 +80,7 @@ export class PiHostClient {
       const child = spawn(launch.nodePath, [hostEntry, launch.sdkEntry, launch.sdkPackageDir, launch.version], {
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
+        env: { ...process.env, ...proxyEnv, ELECTRON_RUN_AS_NODE: undefined },
       });
       this.child = child;
       child.stderr.setEncoding("utf8");

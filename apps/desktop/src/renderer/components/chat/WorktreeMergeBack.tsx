@@ -99,20 +99,20 @@ export function WorktreeMergeToolbarButton() {
 
   return (
     <>
-      {/* Square icon button — same geometry as the terminal/panel toggles it
-          sits between (rounded p-1.5, 18px icon). Accent tint signals "this
+      {/* Square icon button — same geometry as the toolbar toggles beside it
+          (28px square, rounded-lg, 16px icon). Accent tint signals "this
           session has work waiting to land"; the full explanation lives in
           the tooltip. */}
       <button
         onClick={() => setOpen(true)}
         className={cn(
-          "flex shrink-0 items-center justify-center rounded p-1.5 transition-colors",
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
           "text-accent hover:bg-surface-hover",
         )}
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         title={t("chat.worktree.mergeBackTitle")}
       >
-        <IconGitMerge size={18} className="shrink-0" />
+        <IconGitMerge size={16} className="shrink-0" />
       </button>
       <WorktreeMergeBackDialog
         open={open}

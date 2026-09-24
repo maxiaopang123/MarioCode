@@ -175,8 +175,12 @@ export function ProjectBranchIndicator({
         <Menu.Root onOpenChange={(open) => open && void loadBranches()}>
           <Menu.Trigger
             className={cn(
-              "flex shrink-0 items-center gap-0.5 rounded bg-surface-muted px-1.5 py-0.5 font-mono text-[11px] text-content-muted transition-colors",
-              "hover:bg-surface-hover hover:text-content",
+              "flex shrink-0 items-center font-mono text-[11px] text-content-muted transition-colors hover:text-content",
+              // compact = the titlebar breadcrumb's branch chip (ui-refresh
+              // `.chip`): a 22px pill that stays visible on the window ground.
+              compact
+                ? "h-[22px] gap-1 rounded-full bg-surface-hover px-2"
+                : "gap-0.5 rounded bg-surface-muted px-1.5 py-0.5 hover:bg-surface-hover",
             )}
             title={t("chat.branch.switchTitle")}
           >

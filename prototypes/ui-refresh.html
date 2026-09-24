@@ -1,0 +1,1216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MarioCode · 界面焕新原型（方向 B · 悬浮工作区）</title>
+<style>
+  /* =========================================================================
+   * 界面焕新 · 方向 B「悬浮工作区」交互原型(侧栏结构和字号借鉴 Codex 桌面版)
+   *
+   * 用法:直接双击在浏览器里打开,或 `node prototypes/.serve.mjs` 后访问
+   *   http://127.0.0.1:8899/ui-refresh.html
+   * 顶栏切换 视图(会话 / 欢迎页 / 设置 / 设计规范)、待确认卡片(工具审批 /
+   * 计划审批 / 提问,停靠在会话输入框上方)与 主题(浅色 / 深色 / 并排)。
+   * 地址栏 hash 可直接定位,例如 #dark、#welcome、#settings&dark、#approve、#spec&both。
+   *
+   * 目标:浅色、深色两套主题都是一等公民;中性色打底,翡翠绿只做点缀。
+   * 这里的 token 数值就是之后落到 styles.css / tailwind.config.js 的依据。
+   * 只是视觉稿:不接数据,交互只做到能看出形态(主题切换、面板开合、聚焦态)。
+   * ========================================================================= */
+
+  /* ===== 通用 token ===== */
+  :root{
+    --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","PingFang SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+    --font-mono:"JetBrains Mono","Cascadia Code","SF Mono",ui-monospace,Consolas,monospace;
+    --r-sm:6px;   /* 行内代码、徽标、文件树行、菜单项 */
+    --r-md:8px;   /* 按钮、输入框、列表行 */
+    --r-lg:12px;  /* 卡片、代码块、气泡、弹层 */
+    --r-xl:16px;  /* 工作区卡片、输入框卡片 */
+    --dur-1:120ms;
+    --dur-2:200ms;
+    --ease:cubic-bezier(.22,1,.36,1);
+  }
+
+  /* ===== 浅色主题(每个值是 "R G B" 三元组,与现有 styles.css 同一约定) ===== */
+  [data-theme]{
+    --bg:243 244 246;          /* 窗口底色:侧栏、标题栏直接落在上面 */
+    --surface:255 255 255;     /* 工作区卡片、弹层 */
+    --surface-2:247 248 250;   /* 内衬:代码块、表头、文件卡头 */
+    --hover:240 241 244;
+    --active:232 234 238;
+    --edge:229 231 235;        /* 卡片边、分隔线 */
+    --edge-strong:213 216 222; /* 输入框描边 */
+    --content:17 19 24;
+    --content-2:73 78 89;
+    --content-3:124 129 141;
+    --accent:5 150 105;        /* 翡翠绿 emerald-600 */
+    --accent-strong:4 120 87;  /* 小号绿色文字用 emerald-700,过 4.5:1 */
+    --on-accent:255 255 255;
+    --danger:220 38 38;
+    --warning:180 83 9;
+    --info:124 58 237;
+    --success:4 120 87;
+    --bubble:241 242 245;
+    --syn-kw:124 58 237;
+    --syn-str:15 118 110;
+    --syn-fn:37 99 235;
+    --e1:0 1px 2px rgb(16 24 40 / .05);
+    --e2:0 6px 16px -6px rgb(16 24 40 / .12), 0 2px 4px -2px rgb(16 24 40 / .05);
+    --e3:0 24px 48px -16px rgb(16 24 40 / .24), 0 6px 12px -6px rgb(16 24 40 / .08);
+    --w-base:400;
+    color-scheme:light;
+  }
+
+  /* ===== 深色主题:中性偏冷的近黑,三层明度拉开 ===== */
+  [data-theme="dark"]{
+    --bg:14 15 17;
+    --surface:23 24 27;
+    --surface-2:29 31 35;
+    --hover:35 37 42;
+    --active:43 46 52;
+    --edge:39 41 47;
+    --edge-strong:55 58 65;
+    --content:236 237 240;
+    --content-2:172 176 185;
+    --content-3:124 129 139;
+    --accent:16 185 129;       /* emerald-500 */
+    --accent-strong:52 211 153;/* emerald-400 */
+    --on-accent:3 30 21;       /* 深色下绿底配深色字,白字对比度只有 2.5:1 */
+    --danger:248 113 113;
+    --warning:251 191 36;
+    --info:167 139 250;
+    --success:52 211 153;
+    --bubble:36 38 43;
+    --syn-kw:196 181 253;
+    --syn-str:94 234 212;
+    --syn-fn:147 197 253;
+    --e1:0 1px 2px rgb(0 0 0 / .35);
+    --e2:0 10px 24px -8px rgb(0 0 0 / .55), 0 0 0 1px rgb(255 255 255 / .03);
+    --e3:0 28px 56px -16px rgb(0 0 0 / .7), 0 0 0 1px rgb(255 255 255 / .04);
+    --w-base:450;
+    color-scheme:dark;
+  }
+
+  /* ===== 原型外壳(不属于设计稿) ===== */
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--font-ui);background:#e6e7eb;color:#1f2328;-webkit-font-smoothing:antialiased;overflow:hidden}
+  button{font:inherit;color:inherit}
+  a{color:inherit;text-decoration:none;cursor:pointer}
+  .proto-bar{height:52px;display:flex;align-items:center;gap:20px;padding:0 20px;background:#fff;border-bottom:1px solid #dadce1}
+  .pb-title{display:flex;flex-direction:column;line-height:1.3;margin-right:auto}
+  .pb-title b{font-size:14px;font-weight:600}
+  .pb-title span{font-size:12px;color:#6b7280}
+  .pb-ctrls{display:flex;gap:12px}
+  .pseg{display:inline-flex;padding:2px;border-radius:8px;background:#eff0f3}
+  .pseg button{height:28px;padding:0 12px;border:0;border-radius:6px;background:transparent;font-size:13px;color:#4b5563;cursor:pointer}
+  .pseg button[aria-pressed="true"]{background:#fff;color:#111827;font-weight:500;box-shadow:0 1px 2px rgb(0 0 0 / .08)}
+  .stage{height:calc(100vh - 52px);padding:20px;display:flex;gap:20px;justify-content:center;align-items:flex-start;overflow:auto}
+  .frame{flex:1 1 auto;border-radius:12px;overflow:hidden;box-shadow:0 30px 60px -24px rgb(0 0 0 / .35),0 0 0 1px rgb(0 0 0 / .08)}
+  .stage.single .frame{width:100%;height:100%;min-width:1100px}
+  .stage.both .frame{flex:none;width:1280px;height:800px;zoom:var(--z,.5)}
+
+  /* ===== 应用骨架 ===== */
+  .app{height:100%;display:flex;flex-direction:column;background:rgb(var(--bg));color:rgb(var(--content));font-family:var(--font-ui);font-size:13px;line-height:1.45;font-weight:var(--w-base);transition:background-color var(--dur-2) var(--ease),color var(--dur-2) var(--ease)}
+  .app ::selection,.spec ::selection{background:rgb(var(--accent) / .22)}
+  .app :focus-visible{outline:2px solid rgb(var(--accent) / .55);outline-offset:1px}
+  .app ::-webkit-scrollbar,.spec::-webkit-scrollbar{width:10px;height:10px}
+  .app ::-webkit-scrollbar-thumb,.spec::-webkit-scrollbar-thumb{background:rgb(var(--content) / .14);border-radius:999px;border:3px solid transparent;background-clip:content-box}
+  .app ::-webkit-scrollbar-thumb:hover{background-color:rgb(var(--content) / .26)}
+  .app ::-webkit-scrollbar-track{background:transparent}
+  .app:not([data-view="chat"]) .only-chat,.app:not([data-view="welcome"]) .only-welcome,
+  .app:not([data-view="settings"]) .only-settings,.app[data-view="settings"] .not-settings{display:none !important}
+  .app[data-theme="dark"] .only-light,.app[data-theme="light"] .only-dark{display:none}
+
+  .ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+  .ic.sm{width:14px;height:14px}
+  .ic.xs{width:12px;height:12px}
+  .ic.lg{width:22px;height:22px}
+  .mono{font-family:var(--font-mono)}
+  .ml-auto{margin-left:auto}
+  .grow{flex:1}
+
+  .icon-btn{width:28px;height:28px;flex:none;border:0;border-radius:var(--r-md);background:transparent;display:inline-grid;place-items:center;color:rgb(var(--content-3));cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+  .icon-btn:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .icon-btn.sm{width:24px;height:24px;border-radius:var(--r-sm)}
+  .kbd{margin-left:auto;display:inline-flex;align-items:center;height:18px;padding:0 5px;border:1px solid rgb(var(--edge));border-radius:5px;font-family:var(--font-mono);font-size:11px;font-weight:400;color:rgb(var(--content-3))}
+  .chip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:999px;background:rgb(var(--hover));color:rgb(var(--content-2));font-size:11px}
+  .badge{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:rgb(var(--accent) / .14);color:rgb(var(--accent-strong));font-size:11px;font-weight:600;line-height:1}
+  .dot{width:6px;height:6px;flex:none;border-radius:50%;background:rgb(var(--accent))}
+  .spin{width:12px;height:12px;flex:none;border-radius:50%;border:1.5px solid rgb(var(--accent) / .22);border-top-color:rgb(var(--accent));animation:spin .9s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .ring{--p:0%;width:14px;height:14px;flex:none;border-radius:50%;background:conic-gradient(rgb(var(--accent)) 0 var(--p),rgb(var(--edge-strong)) var(--p) 100%);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2.5px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 2.5px),#000 calc(100% - 2px))}
+  .dotsep{margin:0 2px;color:rgb(var(--content-3))}
+  .avatar{--av:99 102 241;width:18px;height:18px;flex:none;border-radius:5px;display:inline-grid;place-items:center;background:rgb(var(--av) / .14);color:rgb(var(--av));font-size:11px;font-weight:600}
+
+  /* ===== 标题栏(Windows 形态:右侧窗口按钮) ===== */
+  .titlebar{height:40px;flex:none;display:flex;align-items:center;gap:8px;padding-left:10px;user-select:none}
+  .tb-left{width:246px;flex:none;display:flex;align-items:center;gap:8px}
+  .logo{width:20px;height:20px;flex:none;border-radius:6px;display:inline-grid;place-items:center;background:rgb(var(--accent));color:rgb(var(--on-accent));font-size:11px;font-weight:700}
+  .brand{font-size:13px;font-weight:600}
+  .crumbs{display:flex;align-items:center;gap:6px;min-width:0;font-size:12px;color:rgb(var(--content-3))}
+  .crumbs .cur{font-size:13px;font-weight:500;color:rgb(var(--content));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crumbs .chip{margin-left:4px}
+  .tb-right{margin-left:auto;display:flex;align-items:center;gap:2px}
+  .winctl{display:flex;margin-left:8px}
+  .winctl span{width:46px;height:40px;display:grid;place-items:center;color:rgb(var(--content-2))}
+  .winctl span:hover{background:rgb(var(--hover))}
+  .winctl span.close:hover{background:#e81123;color:#fff}
+
+  .body{flex:1;min-height:0;display:flex;gap:8px;padding:0 8px 8px 0}
+  .card{background:rgb(var(--surface));border:1px solid rgb(var(--edge));border-radius:var(--r-xl);box-shadow:var(--e1)}
+  .app.no-side .sidebar,.app.no-side .set-nav{display:none}
+  .app.no-side .body{padding-left:8px}
+  .app.no-insp .inspector{display:none}
+
+  /* ===== 左侧栏:直接落在窗口底色上,没有卡片、没有分隔线;结构和字号借鉴 Codex ===== */
+  /* 顶部一列导航(新建会话 / 搜索 / 定时任务 / 插件与技能 / 连接手机),底部一行「设置」。
+   * 行 14px / 30px 高,分组标题 13px 常规字重;选中用浅灰底加一条翡翠绿细条。
+   * 默认「全部会话」:各项目的会话按时间混排,行首小色块标出所属项目;
+   * 「按项目」用文件夹图标分组,会话缩进在项目下面。 */
+  .sidebar{width:256px;flex:none;display:flex;flex-direction:column;min-height:0;padding:2px 8px 6px}
+  .sidebar[data-sbmode="all"] .only-proj,.sidebar[data-sbmode="proj"] .only-all{display:none !important}
+  .cx-nav{display:flex;flex-direction:column;gap:1px}
+  .cx-item{display:flex;align-items:center;gap:10px;height:30px;padding:0 10px;border-radius:var(--r-md);font-size:14px;color:rgb(var(--content));cursor:pointer;transition:background-color var(--dur-1) var(--ease)}
+  .cx-item .ic{color:rgb(var(--content-2))}
+  .cx-item:hover{background:rgb(var(--hover))}
+  .cx-item .kbd{opacity:0;transition:opacity var(--dur-1) var(--ease)}
+  .cx-item:hover .kbd{opacity:1}
+  .sb-tools{display:flex;align-items:center;justify-content:space-between;margin:12px 0 2px}
+  .segctl.sm button{height:22px;padding:0 8px}
+  .sb-tools .segctl{gap:2px;padding:0;background:transparent}
+  .sb-tools .segctl button{color:rgb(var(--content-3))}
+  .sb-tools .segctl button.on,[data-theme="dark"] .sb-tools .segctl button.on{background:rgb(var(--active));box-shadow:none;color:rgb(var(--content));font-weight:400}
+  .sb-scope{display:inline-flex;align-items:center;gap:3px;height:24px;padding:0 6px;border:0;border-radius:var(--r-sm);background:transparent;font-size:12px;color:rgb(var(--content-3));cursor:pointer}
+  .sb-scope:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .sb-scroll{flex:1;min-height:0;overflow:auto;margin:0 -4px;padding:0 4px 8px}
+  .sb-group{height:28px;margin-top:6px;padding-left:10px;line-height:28px;font-size:13px;color:rgb(var(--content-3))}
+  .sb-sess{position:relative;display:flex;align-items:center;gap:8px;height:30px;padding:0 8px 0 10px;border-radius:var(--r-md);font-size:14px;color:rgb(var(--content));transition:background-color var(--dur-1) var(--ease)}
+  .sb-sess:hover{background:rgb(var(--hover))}
+  .sb-sess .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sb-sess .m{font-size:12px;color:rgb(var(--content-3))}
+  .sb-sess .wt{margin-right:-4px;color:rgb(var(--content-3))}
+  .sb-sess.active{background:rgb(var(--active))}
+  .sb-sess.active::before{content:"";position:absolute;left:3px;top:50%;width:3px;height:12px;margin-top:-6px;border-radius:3px;background:rgb(var(--accent))}
+  .sb-proj{display:flex;align-items:center;gap:8px;height:30px;margin-top:2px;padding:0 8px 0 10px;border-radius:var(--r-md);font-size:14px;color:rgb(var(--content));cursor:pointer;transition:background-color var(--dur-1) var(--ease)}
+  .sb-proj:hover{background:rgb(var(--hover))}
+  .sb-proj .fold{color:rgb(var(--content-2))}
+  .sb-proj .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sb-proj .m{font-size:12px;color:rgb(var(--content-3))}
+  .only-proj .sb-sess{padding-left:34px}
+  .only-proj .sb-sess.active::before{left:22px}
+  .sb-more{display:block;height:28px;padding-left:10px;line-height:28px;font-size:13px;color:rgb(var(--content-3))}
+  .only-proj .sb-more{padding-left:34px}
+  .sb-more:hover{color:rgb(var(--content))}
+  .sb-foot{display:flex;align-items:center;gap:2px;padding:6px 0 0}
+  .avatar.xs{width:16px;height:16px;border-radius:4px}
+
+  /* ===== 中间工作区:会话 ===== */
+  .chat-card{flex:1;min-width:0;position:relative;display:flex;flex-direction:column;overflow:hidden}
+  .chat-scroll{flex:1;min-height:0;overflow:auto}
+  .chat-col{max-width:760px;margin:0 auto;padding:56px 32px 28px}
+  .msg-user{display:flex;justify-content:flex-end;margin-bottom:16px}
+  .bubble{max-width:78%;padding:10px 14px;border-radius:12px 12px 4px 12px;background:rgb(var(--bubble));font-size:15px;line-height:1.6}
+  .turn-meta{display:flex;align-items:center;gap:12px;margin:4px 0 18px;font-size:11px;color:rgb(var(--content-3));font-variant-numeric:tabular-nums}
+  .turn-meta::before,.turn-meta::after{content:"";flex:1;height:1px;background:rgb(var(--edge))}
+  .prose{font-size:15px;line-height:1.7}
+  .prose p{margin:0 0 12px}
+  .prose strong{font-weight:600}
+  .prose h3{margin:22px 0 8px;font-size:16px;font-weight:600;line-height:1.4}
+  .prose code,.spec code{padding:1px 5px;border:1px solid rgb(var(--edge));border-radius:var(--r-sm);background:rgb(var(--surface-2));font-family:var(--font-mono);font-size:.86em}
+  .prose a,.link{border-bottom:1px solid rgb(var(--accent) / .35);color:rgb(var(--accent-strong));cursor:pointer}
+  .prose a:hover,.link:hover{border-bottom-color:rgb(var(--accent))}
+
+  .tools{display:flex;flex-direction:column;gap:6px;margin:4px 0 16px}
+  .tools-head{display:flex;align-items:center;gap:6px;height:22px;font-size:12px;color:rgb(var(--content-3));cursor:pointer}
+  .tool{display:flex;align-items:center;gap:10px;height:36px;padding:0 12px;border:1px solid rgb(var(--edge));border-radius:var(--r-lg);background:rgb(var(--surface));font-size:13px;line-height:1;cursor:pointer;transition:background-color var(--dur-1) var(--ease)}
+  .tool:hover{background:rgb(var(--surface-2))}
+  .tool .st{width:16px;height:16px;flex:none;display:grid;place-items:center;color:rgb(var(--content-3))}
+  .tool .verb{font-weight:500;color:rgb(var(--content))}
+  .tool .target{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:12px;color:rgb(var(--content-2))}
+  .tool .dur{font-size:11px;color:rgb(var(--content-3));font-variant-numeric:tabular-nums}
+  .tool.fail{border-color:rgb(var(--danger) / .35)}
+  .tool.fail .st,.tool.fail .dur{color:rgb(var(--danger))}
+  .tool.run .dur{color:rgb(var(--content-2))}
+
+  .codeblock{margin:12px 0 16px;border:1px solid rgb(var(--edge));border-radius:var(--r-lg);background:rgb(var(--surface-2));overflow:hidden}
+  .cb-head{display:flex;align-items:center;justify-content:space-between;height:34px;padding:0 6px 0 12px;border-bottom:1px solid rgb(var(--edge));font-family:var(--font-mono);font-size:11px;color:rgb(var(--content-3))}
+  .codeblock pre{margin:0;padding:12px 0;overflow:auto;font-family:var(--font-mono);font-size:12.5px;line-height:1.7}
+  .codeblock .ln{display:block;padding:0 14px;white-space:pre}
+  .codeblock .ln.add{background:rgb(var(--success) / .09);color:rgb(var(--success))}
+  .tok-kw{color:rgb(var(--syn-kw))}
+  .tok-str{color:rgb(var(--syn-str))}
+  .tok-fn{color:rgb(var(--syn-fn))}
+  .tok-com{color:rgb(var(--content-3));font-style:italic}
+
+  .prose table{width:100%;margin:6px 0 16px;border:1px solid rgb(var(--edge));border-radius:var(--r-lg);border-collapse:separate;border-spacing:0;overflow:hidden;font-size:13px;line-height:1.5}
+  .prose th{padding:8px 12px;border-bottom:1px solid rgb(var(--edge));background:rgb(var(--surface-2));text-align:left;font-size:12px;font-weight:500;color:rgb(var(--content-2))}
+  .prose td{padding:8px 12px;border-bottom:1px solid rgb(var(--edge))}
+  .prose tr:last-child td{border-bottom:0}
+  .pass{display:inline-flex;align-items:center;gap:4px;font-weight:500;color:rgb(var(--accent-strong))}
+  .muted{color:rgb(var(--content-3))}
+
+  .files{margin:4px 0 14px;border:1px solid rgb(var(--edge));border-radius:var(--r-lg);overflow:hidden}
+  .files-head{display:flex;align-items:center;height:40px;padding:0 6px 0 12px;border-bottom:1px solid rgb(var(--edge));background:rgb(var(--surface-2));font-size:13px;font-weight:500}
+  .files-head .btn{margin-left:auto}
+  .file-row{display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;font-family:var(--font-mono);font-size:12px;color:rgb(var(--content-2))}
+  .file-row .path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .file-row b{font-weight:500;color:rgb(var(--content))}
+  .add{color:rgb(var(--success))}
+  .del{color:rgb(var(--danger))}
+
+  .activity{position:absolute;top:12px;right:14px;z-index:2;display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;border:1px solid rgb(var(--edge));border-radius:999px;background:rgb(var(--surface));box-shadow:var(--e1);font-size:12px;color:rgb(var(--content-2))}
+  .vsep{width:1px;height:12px;background:rgb(var(--edge))}
+  .mini{width:34px;height:4px;border-radius:999px;background:rgb(var(--edge));overflow:hidden}
+  .mini i{display:block;height:100%;border-radius:inherit;background:rgb(var(--content-3))}
+
+  /* ===== 输入框:保留现有药丸结构,只统一尺寸和聚焦态 ===== */
+  .composer-wrap{position:relative;flex:none;padding:0 32px 18px}
+  .composer-wrap::before{content:"";position:absolute;left:0;right:0;top:-28px;height:28px;background:linear-gradient(rgb(var(--surface) / 0),rgb(var(--surface)));pointer-events:none}
+  .composer{max-width:760px;margin:0 auto;border:1px solid rgb(var(--edge-strong));border-radius:var(--r-xl);background:rgb(var(--surface));box-shadow:var(--e2);transition:border-color var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease)}
+  .composer:focus-within{border-color:rgb(var(--accent) / .5);box-shadow:var(--e2),0 0 0 3px rgb(var(--accent) / .12)}
+  .composer textarea{display:block;width:100%;min-height:54px;padding:14px 16px 4px;border:0;outline:0;resize:none;background:transparent;font:inherit;font-size:15px;line-height:1.6;color:rgb(var(--content))}
+  .composer textarea::placeholder{color:rgb(var(--content-3))}
+  .composer textarea:focus-visible{outline:none}
+  .composer-bar{display:flex;align-items:center;gap:8px;padding:6px 8px 8px 10px}
+  .pill{display:inline-flex;align-items:stretch;height:28px;border:1px solid rgb(var(--edge));border-radius:999px;overflow:hidden}
+  .seg{display:inline-flex;align-items:center;gap:5px;padding:0 10px;border:0;background:transparent;font-size:12px;color:rgb(var(--content-2));white-space:nowrap;cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+  .seg+.seg{border-left:1px solid rgb(var(--edge))}
+  .seg:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .seg.icon{padding:0 8px}
+  .seg .caret{color:rgb(var(--content-3))}
+  .claude{color:#d97757}
+  .bar-right{margin-left:auto;display:flex;align-items:center;gap:4px}
+  .send{width:30px;height:30px;flex:none;border:0;border-radius:50%;display:inline-grid;place-items:center;background:rgb(var(--accent));color:rgb(var(--on-accent));box-shadow:0 1px 2px rgb(var(--accent) / .35);cursor:pointer;transition:transform var(--dur-1) var(--ease),background-color var(--dur-1) var(--ease)}
+  .send:hover{background:rgb(var(--accent-strong))}
+  .send:active{transform:scale(.94)}
+  .send .ic{stroke-width:2}
+
+  /* ===== 右侧面板:单独一张悬浮卡片 ===== */
+  .inspector{width:300px;flex:none;display:flex;flex-direction:column;overflow:hidden}
+  .insp-head{display:flex;align-items:center;gap:4px;padding:8px;border-bottom:1px solid rgb(var(--edge))}
+  .segctl{display:inline-flex;padding:2px;border-radius:var(--r-md);background:rgb(var(--hover))}
+  .segctl button{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border:0;border-radius:var(--r-sm);background:transparent;font-size:12px;color:rgb(var(--content-2));cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+  .segctl button:hover{color:rgb(var(--content))}
+  .segctl button.on{background:rgb(var(--surface));color:rgb(var(--content));font-weight:500;box-shadow:var(--e1)}
+  [data-theme="dark"] .segctl button.on{background:rgb(var(--active))}
+  .insp-path{display:flex;align-items:center;gap:6px;padding:10px 14px 6px;font-size:12px;color:rgb(var(--content-3))}
+  .tree{flex:1;min-height:0;overflow:auto;padding:0 6px 10px}
+  .row{--d:0;display:flex;align-items:center;gap:6px;height:26px;padding:0 8px 0 calc(8px + var(--d) * 14px);border-radius:var(--r-sm);font-size:13px;color:rgb(var(--content-2));white-space:nowrap;cursor:pointer;transition:background-color var(--dur-1) var(--ease)}
+  .row:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .row.sel{background:rgb(var(--active));color:rgb(var(--content))}
+  .row .chev,.row .fd{color:rgb(var(--content-3))}
+  .chev-sp{display:inline-block;width:12px;flex:none}
+  .ft{--ft:var(--content-3);color:rgb(var(--ft))}
+  .git{margin-left:auto;font-family:var(--font-mono);font-size:11px;font-weight:600}
+  .git.m{color:rgb(var(--warning))}
+  .git.a{color:rgb(var(--success))}
+  .insp-foot{display:flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-top:1px solid rgb(var(--edge));font-size:12px;color:rgb(var(--content-3))}
+
+  /* ===== 欢迎页(没有打开会话时) ===== */
+  .welcome{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px 56px}
+  .wl-mark{width:48px;height:48px;margin-bottom:18px;border-radius:14px;display:grid;place-items:center;background:rgb(var(--accent) / .1);color:rgb(var(--accent))}
+  .wl-title{margin:0 0 8px;font-size:24px;font-weight:500}
+  .wl-sub{display:flex;align-items:center;gap:6px;margin:0 0 24px;font-size:12px;color:rgb(var(--content-3))}
+  .welcome .composer{width:100%;max-width:680px;margin:0}
+  .welcome .composer textarea{min-height:76px}
+  .wl-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:18px 0 36px}
+  .qa{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 14px;border:1px solid rgb(var(--edge));border-radius:999px;background:rgb(var(--surface));font-size:13px;color:rgb(var(--content-2));cursor:pointer;transition:border-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease)}
+  .qa:hover{border-color:rgb(var(--edge-strong));color:rgb(var(--content));box-shadow:var(--e1)}
+  .qa .ic{color:rgb(var(--content-3))}
+  .wl-recent{width:100%;max-width:680px}
+  .wl-recent h4{margin:0 0 6px 10px;font-size:13px;font-weight:400;color:rgb(var(--content-3))}
+  .rc{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:var(--r-md);transition:background-color var(--dur-1) var(--ease)}
+  .rc:hover{background:rgb(var(--hover))}
+  .rc .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:rgb(var(--content))}
+  .rc .p{font-size:12px;color:rgb(var(--content-3))}
+  .rc .m{width:72px;text-align:right;font-size:11px;color:rgb(var(--content-3))}
+
+  /* ===== 待确认卡片:停靠在输入框正上方,一次只出现一张(工具审批 > 计划审批 > 提问) ===== */
+  .dock{display:none;max-width:760px;margin:0 auto 10px;border:1px solid rgb(var(--edge-strong));border-radius:var(--r-lg);background:rgb(var(--surface));box-shadow:var(--e2);overflow:hidden}
+  .app[data-prompt="approve"] .dock.approve,.app[data-prompt="plan"] .dock.plan,.app[data-prompt="ask"] .dock.ask{display:block}
+  .app[data-prompt="ask"] .composer{opacity:.55;pointer-events:none}
+  .dk-head{display:flex;align-items:center;gap:8px;min-height:42px;padding:0 8px 0 14px;font-size:13px;font-weight:500;color:rgb(var(--content))}
+  .dk-head>.ic{color:rgb(var(--content-2))}
+  .dk-head .muted{font-size:12px;font-weight:400}
+  .dk-body{padding:0 14px 14px}
+  .dk-cmd{display:flex;align-items:baseline;gap:10px;padding:10px 12px;border:1px solid rgb(var(--edge));border-radius:var(--r-md);background:rgb(var(--surface-2));font-family:var(--font-mono);font-size:12.5px;line-height:1.6;color:rgb(var(--content))}
+  .dk-cmd .k{flex:none;font-family:var(--font-ui);font-size:12px;font-weight:500;color:rgb(var(--content-3))}
+  .dk-note{margin:8px 2px 0;font-size:12px;line-height:1.55;color:rgb(var(--content-2))}
+  .dk-detail{display:none;margin:8px 0 0;padding:10px 12px;border:1px solid rgb(var(--edge));border-radius:var(--r-md);background:rgb(var(--surface-2));font-family:var(--font-mono);font-size:12px;line-height:1.6;color:rgb(var(--content-2));white-space:pre;overflow:auto}
+  .dock.open .dk-detail{display:block}
+  .dock.open [data-act="detail"] .ic{transform:rotate(180deg)}
+  .dk-foot{display:flex;align-items:center;gap:8px;min-height:48px;padding:8px 10px 8px 14px;border-top:1px solid rgb(var(--edge));background:rgb(var(--surface-2))}
+  .dk-foot .muted{font-size:12px}
+  .input.dk-input{display:block;width:100%;margin-top:10px}
+  .btn .kbd{margin-left:2px;height:16px;padding:0 4px;border-color:currentColor;color:inherit;opacity:.6}
+  .check{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:rgb(var(--content-2));cursor:pointer;user-select:none}
+  .check i{position:relative;width:14px;height:14px;flex:none;border:1.5px solid rgb(var(--edge-strong));border-radius:4px;transition:background-color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease)}
+  .check.on i{border-color:rgb(var(--accent));background:rgb(var(--accent))}
+  .check.on i::after{content:"";position:absolute;left:3.5px;top:.5px;width:4px;height:8px;border:solid rgb(var(--on-accent));border-width:0 1.75px 1.75px 0;transform:rotate(45deg)}
+  .plan-doc{padding:12px 14px;border:1px solid rgb(var(--edge));border-radius:var(--r-md);background:rgb(var(--surface-2));font-size:13px;line-height:1.6}
+  .plan-doc b{display:block;margin-bottom:4px;font-weight:600}
+  .plan-doc ol{margin:0;padding-left:20px;color:rgb(var(--content-2))}
+  .plan-doc code{padding:0 4px;border:1px solid rgb(var(--edge));border-radius:5px;background:rgb(var(--surface));font-family:var(--font-mono);font-size:.86em}
+  .q-text{margin:0 0 10px;font-size:14px;font-weight:500;line-height:1.5}
+  .opts{display:flex;flex-direction:column;gap:6px}
+  .opt{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border:1px solid rgb(var(--edge));border-radius:var(--r-md);cursor:pointer;transition:background-color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease)}
+  .opt:hover{background:rgb(var(--hover))}
+  .opt.on{border-color:rgb(var(--edge-strong));background:rgb(var(--active))}
+  .opt b{display:block;font-size:13px;font-weight:500;color:rgb(var(--content))}
+  .opt .od{display:block;font-size:12px;color:rgb(var(--content-3))}
+  .radio{position:relative;width:14px;height:14px;flex:none;margin-top:3px;border:1.5px solid rgb(var(--edge-strong));border-radius:50%}
+  .opt.on .radio{border-color:rgb(var(--accent))}
+  .opt.on .radio::after{content:"";position:absolute;inset:2px;border-radius:50%;background:rgb(var(--accent))}
+
+  /* ===== 设置页:导航直接落在窗口底色上,内容是一张悬浮卡片;每项都是「标题 + 说明 + 控件」 ===== */
+  .set-nav{width:256px;flex:none;display:flex;flex-direction:column;min-height:0;padding:2px 8px 4px}
+  .set-back{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:0;border-radius:var(--r-md);background:transparent;font-size:13px;color:rgb(var(--content-2));cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+  .set-back:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .set-search{display:flex;align-items:center;gap:6px;height:30px;margin-top:6px;padding:0 10px;border:1px solid rgb(var(--edge));border-radius:var(--r-md);background:rgb(var(--surface));box-shadow:var(--e1);color:rgb(var(--content-3));transition:border-color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease)}
+  .set-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:13px;color:rgb(var(--content))}
+  .set-search input::placeholder{color:rgb(var(--content-3))}
+  .set-search input:focus-visible{outline:none}
+  .set-search:focus-within{border-color:rgb(var(--accent) / .5);box-shadow:0 0 0 3px rgb(var(--accent) / .12)}
+  .set-groups{flex:1;min-height:0;overflow:auto;margin:4px -4px 0;padding:0 4px 8px}
+  .set-group{height:26px;margin-top:4px;padding-left:10px;line-height:26px;font-size:13px;color:rgb(var(--content-3))}
+  .set-item{position:relative;display:flex;align-items:center;gap:10px;height:28px;padding:0 10px;border-radius:var(--r-md);font-size:14px;color:rgb(var(--content));transition:background-color var(--dur-1) var(--ease)}
+  .set-item .ic{color:rgb(var(--content-2))}
+  .set-item:hover{background:rgb(var(--hover))}
+  .set-item.active{background:rgb(var(--active))}
+  .set-item.active::before{content:"";position:absolute;left:3px;top:50%;width:3px;height:12px;margin-top:-6px;border-radius:3px;background:rgb(var(--accent))}
+  .set-card{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .set-scroll{flex:1;min-height:0;overflow:auto}
+  .set-col{max-width:720px;margin:0 auto;padding:40px 32px 48px}
+  .set-title{margin:0 0 6px;font-size:24px;font-weight:500}
+  .set-desc{margin:0 0 28px;color:rgb(var(--content-2))}
+  .set-sec{margin-bottom:24px}
+  .set-sec h3{margin:0 0 8px 2px;font-size:13px;font-weight:500;color:rgb(var(--content-3))}
+  .set-box{border:1px solid rgb(var(--edge));border-radius:var(--r-lg);background:rgb(var(--surface))}
+  .set-row{display:flex;align-items:center;gap:24px;min-height:60px;padding:12px 16px}
+  .set-row+.set-row{border-top:1px solid rgb(var(--edge))}
+  .set-row .txt{flex:1;min-width:0}
+  .set-row .txt b{display:block;font-weight:500}
+  .set-row .txt span{display:block;margin-top:2px;font-size:12px;line-height:1.5;color:rgb(var(--content-3))}
+  .set-row .ctl{flex:none;display:flex;align-items:center;gap:8px}
+  .swatch-row{display:flex;align-items:center;gap:8px}
+  .swc{--c:5 150 105;width:18px;height:18px;flex:none;padding:0;border:0;border-radius:50%;background:rgb(var(--c));box-shadow:inset 0 0 0 1px rgb(0 0 0 / .08);cursor:pointer;transition:box-shadow var(--dur-1) var(--ease)}
+  .swc.on{box-shadow:0 0 0 2px rgb(var(--surface)),0 0 0 3.5px rgb(var(--c))}
+  .stepper{display:inline-flex;align-items:stretch;height:30px;border:1px solid rgb(var(--edge-strong));border-radius:var(--r-md);background:rgb(var(--surface));overflow:hidden}
+  .stepper button{width:30px;border:0;background:transparent;font-size:15px;color:rgb(var(--content-2));cursor:pointer;transition:background-color var(--dur-1) var(--ease)}
+  .stepper button:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .stepper span{min-width:56px;display:grid;place-items:center;border-left:1px solid rgb(var(--edge));border-right:1px solid rgb(var(--edge));font-variant-numeric:tabular-nums}
+  .select{display:inline-flex;align-items:center;justify-content:space-between;gap:10px;min-width:188px;height:30px;padding:0 8px 0 10px;border:1px solid rgb(var(--edge-strong));border-radius:var(--r-md);background:rgb(var(--surface));font-size:13px;color:rgb(var(--content));cursor:pointer;transition:border-color var(--dur-1) var(--ease)}
+  .select .ic{color:rgb(var(--content-3))}
+  .select:hover{border-color:rgb(var(--content-3))}
+  .set-foot{margin:0 2px;font-size:12px;color:rgb(var(--content-3))}
+
+  /* ===== 基础组件 ===== */
+  .btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid transparent;border-radius:var(--r-md);font-size:13px;font-weight:500;cursor:pointer;transition:background-color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+  .btn.sm{height:28px;padding:0 10px;font-size:12px}
+  .btn-primary{background:rgb(var(--accent));color:rgb(var(--on-accent))}
+  .btn-primary:hover{background:rgb(var(--accent-strong))}
+  .btn-secondary{border-color:rgb(var(--edge-strong));background:rgb(var(--surface));color:rgb(var(--content));box-shadow:var(--e1)}
+  .btn-secondary:hover{background:rgb(var(--surface-2))}
+  .btn-ghost{background:transparent;color:rgb(var(--content-2))}
+  .btn-ghost:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .btn-danger{border-color:rgb(var(--danger) / .35);background:transparent;color:rgb(var(--danger))}
+  .btn-danger:hover{background:rgb(var(--danger) / .08)}
+  .btn:disabled{opacity:.45;pointer-events:none}
+  .input{width:180px;height:32px;padding:0 10px;border:1px solid rgb(var(--edge-strong));border-radius:var(--r-md);outline:none;background:rgb(var(--surface));font:inherit;font-size:13px;color:rgb(var(--content));transition:border-color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease)}
+  .input::placeholder{color:rgb(var(--content-3))}
+  .input:focus,.input.focused{border-color:rgb(var(--accent) / .6);box-shadow:0 0 0 3px rgb(var(--accent) / .14)}
+  .switch{position:relative;display:inline-block;width:32px;height:18px;flex:none;border-radius:999px;background:rgb(var(--edge-strong));cursor:pointer;transition:background-color var(--dur-2) var(--ease)}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgb(0 0 0 / .25);transition:transform var(--dur-2) var(--ease)}
+  .switch.on{background:rgb(var(--accent))}
+  .switch.on::after{transform:translateX(14px)}
+  .tag{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:var(--r-sm);background:rgb(var(--info) / .12);color:rgb(var(--info));font-size:11px;font-weight:500}
+  .tip{display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:var(--r-sm);background:rgb(var(--content));color:rgb(var(--surface));font-size:12px;box-shadow:var(--e2)}
+  .menu{width:240px;padding:4px;border:1px solid rgb(var(--edge));border-radius:var(--r-lg);background:rgb(var(--surface));box-shadow:var(--e2)}
+  .mi{display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border-radius:var(--r-sm);font-size:13px;color:rgb(var(--content-2));cursor:pointer}
+  .mi .ic{color:rgb(var(--content-3))}
+  .mi.hov,.mi:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .mi.danger,.mi.danger .ic{color:rgb(var(--danger))}
+  .msep{height:1px;margin:4px 6px;background:rgb(var(--edge))}
+
+  /* ===== 设计规范页 ===== */
+  .spec{height:100%;overflow:auto;background:rgb(var(--bg));color:rgb(var(--content));font-family:var(--font-ui);font-size:13px;line-height:1.5;font-weight:var(--w-base)}
+  .spec-inner{max-width:980px;margin:0 auto;padding:32px 36px 60px}
+  .spec h2{margin:0 0 6px;font-size:20px;font-weight:600}
+  .spec .lead{margin:0 0 24px;color:rgb(var(--content-2))}
+  .spec section{margin-bottom:16px;padding:20px 22px;border:1px solid rgb(var(--edge));border-radius:var(--r-xl);background:rgb(var(--surface));box-shadow:var(--e1)}
+  .spec section.two{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+  .spec h3{margin:0 0 14px;font-size:14px;font-weight:600}
+  .note{margin:14px 0 0;font-size:12px;color:rgb(var(--content-3))}
+  .swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .sw{border:1px solid rgb(var(--edge));border-radius:var(--r-lg);overflow:hidden}
+  .sw i{display:block;height:44px;border-bottom:1px solid rgb(var(--edge))}
+  .sw div{padding:7px 9px 8px}
+  .sw b{display:block;font-size:12px;font-weight:500}
+  .sw span{display:block;font-family:var(--font-mono);font-size:11px;color:rgb(var(--content-3))}
+  .accent-uses{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 24px}
+  .use{display:flex;align-items:center;gap:10px;min-height:34px;font-size:13px;color:rgb(var(--content-2))}
+  .use-bar{width:3px;height:16px;border-radius:3px;background:rgb(var(--accent))}
+  .ts-row{display:grid;grid-template-columns:90px 1fr 200px;align-items:baseline;gap:16px;padding:10px 0;border-bottom:1px solid rgb(var(--edge))}
+  .ts-row:last-child{border-bottom:0}
+  .ts-k{font-family:var(--font-mono);font-size:11px;color:rgb(var(--content-3))}
+  .ts-u{text-align:right;font-size:12px;color:rgb(var(--content-3))}
+  .radii{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .radii div{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+  .radii i{width:56px;height:40px;border:1.5px solid rgb(var(--edge-strong));background:rgb(var(--surface-2))}
+  .radii b{font-size:12px;font-weight:600}
+  .radii span,.elev span{font-size:11px;line-height:1.4;color:rgb(var(--content-3))}
+  .elev{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:6px}
+  .elev div{height:78px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:1px solid rgb(var(--edge));border-radius:var(--r-lg);background:rgb(var(--surface))}
+  .elev b{font-family:var(--font-mono);font-size:12px}
+  .comp-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px 28px}
+  .comp{display:flex;flex-direction:column;gap:8px}
+  .comp .lbl{font-size:11px;font-weight:500;letter-spacing:.06em;color:rgb(var(--content-3))}
+  .hstack{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  table.cmp{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+  table.cmp th{padding:8px 12px;border-bottom:1px solid rgb(var(--edge));text-align:left;font-size:12px;font-weight:500;color:rgb(var(--content-3))}
+  table.cmp td{padding:9px 12px;border-bottom:1px solid rgb(var(--edge))}
+  table.cmp tr:last-child td{border-bottom:0}
+  table.cmp td:nth-child(2){color:rgb(var(--content-3))}
+  table.cmp td:nth-child(3){font-weight:500}
+
+  @media (prefers-reduced-motion:reduce){
+    .app *,.spec *{transition:none !important;animation-duration:0s !important}
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="3" width="11" height="18" rx="2.5"/><path d="M11 17.5h2"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v1.5M12 19.5V21M4.6 4.6l1.1 1.1M18.3 18.3l1.1 1.1M3 12h1.5M19.5 12H21M4.6 19.4l1.1-1.1M18.3 5.7l1.1-1.1"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6"/></symbol>
+    <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7a2 2 0 0 1 2-2h3.6l2 2h7.4a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M13.5 3.5h-6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-10z"/><path d="M13.5 3.5v5h5"/></symbol>
+    <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="7" cy="6" r="2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="8" r="2"/><path d="M7 8v8M17 10c0 4-4 4-8 6.5"/></symbol>
+    <symbol id="i-fork" viewBox="0 0 24 24"><circle cx="6.5" cy="5.5" r="2"/><circle cx="17.5" cy="5.5" r="2"/><circle cx="12" cy="18.5" r="2"/><path d="M6.5 7.5v1a3 3 0 0 0 3 3h5a3 3 0 0 0 3-3v-1M12 11.5v5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M7 10l3 2.5L7 15M12.5 15H17"/></symbol>
+    <symbol id="i-panel-r" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M15 4.5v15"/></symbol>
+    <symbol id="i-panel-l" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M9 4.5v15"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M17 7L7 17M7 7l10 10"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5.5M6 11.5l6-6 6 6"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 17h6M10 20.5h4M12 3.5a5.5 5.5 0 0 0-3.3 9.9c.6.5.8 1.1.8 1.8V16h5v-.8c0-.7.3-1.3.8-1.8A5.5 5.5 0 0 0 12 3.5z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5l7 3v5c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9v-5z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 0 1-13.1 5M4.5 12a7.5 7.5 0 0 1 13.1-5"/><path d="M17.5 3.5V7H14M6.5 20.5V17H10"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/></symbol>
+    <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18" cy="12" r="1.2"/></symbol>
+    <symbol id="i-min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+    <symbol id="i-max" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 4l1.8 4.6L18.5 10l-4.7 1.6L12 16l-1.8-4.4L5.5 10l4.7-1.4z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></symbol>
+    <symbol id="i-msg" viewBox="0 0 24 24"><path d="M5.5 4.5h13a2 2 0 0 1 2 2V15a2 2 0 0 1-2 2H11l-4.5 3.5V17h-1a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2z"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z"/><path d="M4.5 7.7L12 12l7.5-4.3M12 12v8.5"/></symbol>
+    <symbol id="i-claude" viewBox="0 0 24 24"><path d="M12 3.5v17M3.5 12h17M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14l-4.5-4.5L9 5"/><path d="M4.5 9.5H14a5.5 5.5 0 0 1 0 11h-3"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V12"/><path d="M17.8 3.9a1.9 1.9 0 0 1 2.7 2.7l-7.6 7.6-3.4.7.7-3.4z"/></symbol>
+    <symbol id="i-arrow-l" viewBox="0 0 24 24"><path d="M19 12H5.5M11.5 6l-6 6 6 6"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1 0 1.7-.7 1.7-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6h1.9a4.1 4.1 0 0 0 4.1-4.1c0-4.1-3.8-7.5-8.5-7.5z"/><circle cx="7.8" cy="11.2" r="1"/><circle cx="10.2" cy="7.6" r="1"/><circle cx="14.6" cy="7.8" r="1"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M10 10h4v4h-4zM9.5 3.5v3M14.5 3.5v3M9.5 17.5v3M14.5 17.5v3M3.5 9.5h3M3.5 14.5h3M17.5 9.5h3M17.5 14.5h3"/></symbol>
+    <symbol id="i-blocks" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><path d="M16.5 13.5v6M13.5 16.5h6"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3.5v4M15 3.5v4M6.5 7.5h11v3a5.5 5.5 0 0 1-11 0z"/><path d="M12 16v4.5"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M7 10h.01M10.3 10h.01M13.7 10h.01M17 10h.01M8 14h8"/></symbol>
+    <symbol id="i-mouse" viewBox="0 0 24 24"><rect x="7" y="3.5" width="10" height="17" rx="5"/><path d="M12 7.5v3"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 1.5h-14z"/><path d="M10 20.5h4"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5M13.5 5l-3 14"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4.5 19.5h15M7.5 16v-4M12 16V8M16.5 16v-6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9.5 6.5H20M9.5 12H20M9.5 17.5H20M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.8 9.6a2.3 2.3 0 0 1 4.4.9c0 1.5-2.2 1.9-2.2 3.4M12 16.8h.01"/></symbol>
+  </defs>
+</svg>
+
+<header class="proto-bar">
+  <div class="pb-title">
+    <b>MarioCode 界面焕新原型</b>
+    <span>方向 B · 悬浮工作区 · 侧栏和字号借鉴 Codex · 浅色 / 深色两套主题 · 翡翠绿只做点缀</span>
+  </div>
+  <div class="pb-ctrls">
+    <div class="pseg" data-group="view">
+      <button data-v="chat">会话</button><button data-v="welcome">欢迎页</button><button data-v="settings">设置</button><button data-v="spec">设计规范</button>
+    </div>
+    <div class="pseg" data-group="prompt" title="会话里停靠在输入框上方的待确认卡片">
+      <button data-v="none">无待确认</button><button data-v="approve">工具审批</button><button data-v="plan">计划审批</button><button data-v="ask">提问</button>
+    </div>
+    <div class="pseg" data-group="theme">
+      <button data-v="light">浅色</button><button data-v="dark">深色</button><button data-v="both">并排</button>
+    </div>
+  </div>
+</header>
+<main class="stage single" id="stage"></main>
+
+<!-- ===================== 应用主界面 ===================== -->
+<template id="tpl-app">
+<div class="app" data-theme="light" data-view="chat">
+  <header class="titlebar">
+    <div class="tb-left">
+      <button class="icon-btn" data-act="sidebar" title="收起侧栏"><svg class="ic"><use href="#i-panel-l"/></svg></button>
+      <span class="logo">M</span>
+      <span class="brand">MarioCode</span>
+    </div>
+    <nav class="crumbs">
+      <svg class="ic sm not-settings"><use href="#i-folder"/></svg>
+      <span class="not-settings">MarioCode</span>
+      <svg class="ic sm only-settings"><use href="#i-settings"/></svg>
+      <span class="only-settings">设置</span>
+      <svg class="ic xs"><use href="#i-chev-r"/></svg>
+      <span class="cur only-chat">修复 Pi host 启动崩溃</span>
+      <span class="cur only-welcome">新会话</span>
+      <span class="cur only-settings">外观</span>
+      <span class="chip mono not-settings"><svg class="ic xs"><use href="#i-branch"/></svg>master</span>
+    </nav>
+    <div class="tb-right">
+      <button class="icon-btn" title="终端"><svg class="ic"><use href="#i-terminal"/></svg></button>
+      <button class="icon-btn only-chat" data-act="inspector" title="右侧面板"><svg class="ic"><use href="#i-panel-r"/></svg></button>
+      <div class="winctl" aria-hidden="true">
+        <span><svg class="ic sm"><use href="#i-min"/></svg></span>
+        <span><svg class="ic sm"><use href="#i-max"/></svg></span>
+        <span class="close"><svg class="ic sm"><use href="#i-x"/></svg></span>
+      </div>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside class="sidebar not-settings" data-sbmode="all">
+      <nav class="cx-nav">
+        <a class="cx-item"><svg class="ic"><use href="#i-edit"/></svg>新建会话<kbd class="kbd">Ctrl N</kbd></a>
+        <a class="cx-item"><svg class="ic"><use href="#i-search"/></svg>搜索<kbd class="kbd">Ctrl K</kbd></a>
+        <a class="cx-item"><svg class="ic"><use href="#i-clock"/></svg>定时任务</a>
+        <a class="cx-item"><svg class="ic"><use href="#i-blocks"/></svg>插件与技能</a>
+        <a class="cx-item"><svg class="ic"><use href="#i-phone"/></svg>连接手机</a>
+      </nav>
+      <div class="sb-tools">
+        <div class="segctl sm" data-sbmode>
+          <button class="on" data-mode="all">全部会话</button><button data-mode="proj">按项目</button>
+        </div>
+        <button class="sb-scope only-all" title="按项目筛选">全部项目<svg class="ic xs"><use href="#i-chev-d"/></svg></button>
+        <button class="icon-btn sm only-proj" title="添加项目"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+      </div>
+      <div class="sb-scroll">
+        <div class="only-all">
+          <div class="sb-group">今天</div>
+          <a class="sb-sess active"><span class="avatar xs" style="--av:99 102 241">M</span><span class="t">修复 Pi host 启动崩溃</span><span class="spin" title="运行中"></span></a>
+          <a class="sb-sess"><span class="avatar xs" style="--av:99 102 241">M</span><span class="t">界面焕新方案</span><span class="dot" title="有新回复"></span></a>
+          <a class="sb-sess"><span class="avatar xs" style="--av:217 119 6">减</span><span class="t">整理 16 页讲演版 PPT</span><span class="m">3 小时</span></a>
+          <a class="sb-sess"><span class="avatar xs" style="--av:99 102 241">M</span><span class="t">TODO-004 MCP 同步验收</span><span class="m">5 小时</span></a>
+          <div class="sb-group">更早</div>
+          <a class="sb-sess"><span class="avatar xs" style="--av:99 102 241">M</span><span class="t">Codex 空响应兜底</span><span class="m">昨天</span></a>
+          <a class="sb-sess"><span class="avatar xs" style="--av:14 165 233">C</span><span class="t">拉取并推送代码</span><span class="m">昨天</span></a>
+          <a class="sb-sess"><span class="avatar xs" style="--av:99 102 241">M</span><svg class="ic xs wt"><use href="#i-fork"/></svg><span class="t">评估换 Tauri</span><span class="m">3 天</span></a>
+          <a class="sb-sess"><span class="avatar xs" style="--av:217 119 6">减</span><span class="t">实验数据图表</span><span class="m">4 天</span></a>
+          <a class="sb-sess"><span class="avatar xs" style="--av:14 165 233">C</span><span class="t">Clerk 能否用于软件验证码</span><span class="m">6 天</span></a>
+          <a class="sb-sess"><span class="avatar xs" style="--av:14 165 233">C</span><span class="t">移动端功能小红书推广文案</span><span class="m">6 天</span></a>
+          <a class="sb-more">显示更多（还有 24 条）</a>
+        </div>
+        <div class="only-proj">
+          <div class="sb-proj"><svg class="ic sm fold"><use href="#i-folder"/></svg><span class="t">MarioCode</span><span class="m">17</span></div>
+          <a class="sb-sess active"><span class="t">修复 Pi host 启动崩溃</span><span class="spin" title="运行中"></span></a>
+          <a class="sb-sess"><span class="t">界面焕新方案</span><span class="dot" title="有新回复"></span></a>
+          <a class="sb-sess"><span class="t">TODO-004 MCP 同步验收</span><span class="m">5 小时</span></a>
+          <a class="sb-sess"><span class="t">Codex 空响应兜底</span><span class="m">昨天</span></a>
+          <a class="sb-sess"><svg class="ic xs wt"><use href="#i-fork"/></svg><span class="t">评估换 Tauri</span><span class="m">3 天</span></a>
+          <a class="sb-more">显示更多（还有 12 条）</a>
+          <div class="sb-proj"><svg class="ic sm fold"><use href="#i-folder"/></svg><span class="t">减重实验报告</span><span class="m">6</span></div>
+          <a class="sb-sess"><span class="t">整理 16 页讲演版 PPT</span><span class="m">3 小时</span></a>
+          <a class="sb-sess"><span class="t">实验数据图表</span><span class="m">4 天</span></a>
+          <div class="sb-proj"><svg class="ic sm fold"><use href="#i-folder"/></svg><span class="t">cc-gui</span><span class="m">9</span></div>
+        </div>
+      </div>
+      <div class="sb-foot">
+        <a class="cx-item grow" data-act="settings"><svg class="ic"><use href="#i-settings"/></svg>设置</a>
+        <button class="icon-btn" data-act="theme" title="切换浅色 / 深色">
+          <svg class="ic only-light"><use href="#i-moon"/></svg><svg class="ic only-dark"><use href="#i-sun"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <main class="card chat-card not-settings">
+      <div class="activity only-chat"><span class="spin"></span>1 个子代理运行中<i class="vsep"></i>任务 3/5<span class="mini"><i style="width:60%"></i></span></div>
+
+      <div class="chat-scroll only-chat">
+        <div class="chat-col">
+          <div class="msg-user"><div class="bubble">现在有个问题，pi agent 好像无法调用公共提供商</div></div>
+          <div class="turn-meta">15:21 · 用时 1 分 37 秒</div>
+          <div class="prose">
+            <p>问题不在统一提供商本身，而是 <strong>Pi 的后台进程每次启动都会直接崩溃</strong>，所以所有 Pi 功能都用不了。</p>
+            <div class="tools">
+              <div class="tools-head"><svg class="ic xs"><use href="#i-chev-d"/></svg>执行了 4 步 · 18 秒</div>
+              <div class="tool ok"><span class="st"><svg class="ic sm"><use href="#i-check"/></svg></span><span class="verb">读取</span><span class="target">piHost.ts、PiHostClient.ts 等 3 个文件</span><span class="dur">0.4s</span></div>
+              <div class="tool ok"><span class="st"><svg class="ic sm"><use href="#i-check"/></svg></span><span class="verb">搜索</span><span class="target">"Pi host exited" · main.log</span><span class="dur">0.2s</span></div>
+              <div class="tool fail"><span class="st"><svg class="ic sm"><use href="#i-x"/></svg></span><span class="verb">运行</span><span class="target">node out/pi-host/piHost.mjs</span><span class="dur">退出码 1</span></div>
+              <div class="tool run"><span class="st"><span class="spin"></span></span><span class="verb">运行</span><span class="target">pnpm --filter @mcode/desktop typecheck</span><span class="dur">进行中</span></div>
+            </div>
+            <h3>原因</h3>
+            <p>提交 <code>b2dfcdb</code> 把构建脚本改成了 <code>write: false</code>，却没有把产物写回磁盘，于是 <code>piHost.mjs</code> 一直停在旧版本，里面还带着 Electron 依赖。</p>
+            <div class="codeblock">
+              <div class="cb-head"><span>build/build-pi-host.mjs</span><button class="icon-btn sm" title="复制"><svg class="ic sm"><use href="#i-copy"/></svg></button></div>
+              <pre><span class="ln"><span class="tok-com">// write: false 时 esbuild 不落盘，要自己写</span></span><span class="ln"><span class="tok-kw">const</span> result = <span class="tok-kw">await</span> <span class="tok-fn">build</span>({ <span class="tok-str">write</span>: <span class="tok-kw">false</span>, <span class="tok-str">metafile</span>: <span class="tok-kw">true</span> });</span><span class="ln add">+ for (const file of result.outputFiles)</span><span class="ln add">+   fs.writeFileSync(file.path, file.contents);</span></pre>
+            </div>
+            <table>
+              <thead><tr><th>检查项</th><th>结果</th></tr></thead>
+              <tbody>
+                <tr><td>构建产物不含 Electron 导入</td><td><span class="pass"><svg class="ic xs"><use href="#i-check"/></svg>通过</span></td></tr>
+                <tr><td>统一提供商模型注册</td><td><span class="pass"><svg class="ic xs"><use href="#i-check"/></svg>通过</span></td></tr>
+                <tr><td>真实模型调用</td><td><span class="muted">等你确认</span></td></tr>
+              </tbody>
+            </table>
+            <div class="files">
+              <div class="files-head"><span>本轮修改 1 个文件</span><button class="btn btn-ghost sm"><svg class="ic sm"><use href="#i-undo"/></svg>撤销本轮</button></div>
+              <div class="file-row"><svg class="ic sm ft"><use href="#i-file"/></svg><span class="path">apps/desktop/build/<b>build-pi-host.mjs</b></span><span class="add">+5</span><span class="del">−1</span></div>
+            </div>
+            <p>类型检查跑完我再告诉你结果。完整记录见 <a onclick="return false">版本迭代跟踪</a>。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="welcome only-welcome">
+        <div class="wl-mark"><svg class="ic lg"><use href="#i-sparkle"/></svg></div>
+        <h1 class="wl-title">下午好，今天想做点什么？</h1>
+        <p class="wl-sub"><svg class="ic xs"><use href="#i-folder"/></svg>MarioCode<span class="dotsep">·</span><svg class="ic xs"><use href="#i-branch"/></svg>master</p>
+        <div class="composer">
+          <textarea rows="3" placeholder="描述你要做的事，@ 引用文件，/ 使用命令"></textarea>
+          <div class="composer-bar">
+            <div class="pill">
+              <button class="seg icon" title="添加附件"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+              <button class="seg"><svg class="ic sm claude"><use href="#i-claude"/></svg>Claude Opus 5.5<svg class="ic xs caret"><use href="#i-chev-d"/></svg></button>
+              <button class="seg"><svg class="ic sm"><use href="#i-bulb"/></svg>思考 · 高<svg class="ic xs caret"><use href="#i-chev-d"/></svg></button>
+              <button class="seg"><svg class="ic sm"><use href="#i-shield"/></svg>默认权限<svg class="ic xs caret"><use href="#i-chev-d"/></svg></button>
+            </div>
+            <div class="bar-right">
+              <button class="icon-btn" title="语音输入"><svg class="ic"><use href="#i-mic"/></svg></button>
+              <button class="send" title="发送"><svg class="ic"><use href="#i-arrow-up"/></svg></button>
+            </div>
+          </div>
+        </div>
+        <div class="wl-actions">
+          <button class="qa"><svg class="ic sm"><use href="#i-msg"/></svg>新建会话</button>
+          <button class="qa"><svg class="ic sm"><use href="#i-folder"/></svg>打开项目</button>
+          <button class="qa"><svg class="ic sm"><use href="#i-cube"/></svg>配置模型</button>
+          <button class="qa"><svg class="ic sm"><use href="#i-phone"/></svg>连接手机</button>
+        </div>
+        <div class="wl-recent">
+          <h4>最近</h4>
+          <a class="rc"><span class="avatar" style="--av:99 102 241">M</span><span class="t">修复 Pi host 启动崩溃</span><span class="p">MarioCode</span><span class="m">刚刚</span></a>
+          <a class="rc"><span class="avatar" style="--av:99 102 241">M</span><span class="t">界面焕新方案</span><span class="p">MarioCode</span><span class="m">12 分钟前</span></a>
+          <a class="rc"><span class="avatar" style="--av:217 119 6">减</span><span class="t">整理 16 页讲演版 PPT</span><span class="p">减重实验报告</span><span class="m">昨天</span></a>
+        </div>
+      </div>
+
+      <div class="composer-wrap only-chat">
+        <div class="dock approve" role="alertdialog" aria-label="Claude 请求执行工具">
+          <div class="dk-head">
+            <svg class="ic sm"><use href="#i-shield"/></svg>Claude 请求执行工具
+            <span class="muted">队列中还有 1 个待审批</span>
+            <button class="btn btn-ghost sm ml-auto" data-act="detail">查看工具输入<svg class="ic xs"><use href="#i-chev-d"/></svg></button>
+          </div>
+          <div class="dk-body">
+            <div class="dk-cmd"><span class="k">Bash</span><span>pnpm --filter @mcode/desktop build</span></div>
+            <p class="dk-note">重新构建桌面端，确认新的 piHost.mjs 里没有 Electron 导入。</p>
+            <pre class="dk-detail">{
+  "command": "pnpm --filter @mcode/desktop build",
+  "description": "重新构建桌面端，确认新的 piHost.mjs 里没有 Electron 导入",
+  "timeout": 600000
+}</pre>
+          </div>
+          <div class="dk-foot">
+            <label class="check" data-act="check"><i></i>本会话内始终允许 Bash</label>
+            <span class="grow"></span>
+            <button class="btn btn-secondary sm" data-act="resolve" title="拒绝 (Esc)">拒绝<kbd class="kbd">Esc</kbd></button>
+            <button class="btn btn-primary sm" data-act="resolve" title="允许 (Enter)">允许<kbd class="kbd">Enter</kbd></button>
+          </div>
+        </div>
+
+        <div class="dock plan" role="dialog" aria-label="计划已就绪">
+          <div class="dk-head">
+            <svg class="ic sm"><use href="#i-list"/></svg>计划已就绪 · 请审阅<span class="tag">计划模式</span>
+            <button class="btn btn-ghost sm ml-auto"><svg class="ic sm"><use href="#i-file"/></svg>在编辑器中查看</button>
+          </div>
+          <div class="dk-body">
+            <div class="plan-doc">
+              <b>界面焕新 · 第一阶段：设计基础</b>
+              <ol>
+                <li>删掉旧的字重补偿规则，正文字重浅色 400、深色 450</li>
+                <li><code>tailwind.config.js</code> 接上三档阴影，替换散落的 <code>shadow-2xl</code></li>
+                <li>深色主题按原型重调表面、文字、边框三层明度</li>
+                <li>圆角收成 6 / 8 / 12 / 16 + 全圆，排好中文字体栈</li>
+              </ol>
+            </div>
+            <input class="input dk-input" placeholder="补充意见（可选），会随批准或拒绝一起发给模型">
+          </div>
+          <div class="dk-foot">
+            <span class="muted">执行方式</span>
+            <div class="segctl sm"><button class="on" title="在当前会话内继续执行，保留完整上下文">当前会话</button><button title="当前会话换用所选模型执行">换模型</button><button title="转交新会话执行，按计划文档重建上下文">新会话</button></div>
+            <span class="grow"></span>
+            <button class="btn btn-secondary sm" data-act="resolve">拒绝</button>
+            <button class="btn btn-primary sm" data-act="resolve" title="批准后退出计划模式并开始执行">批准并执行</button>
+          </div>
+        </div>
+
+        <div class="dock ask" role="dialog" aria-label="Claude 正在提问">
+          <div class="dk-head">
+            <svg class="ic sm"><use href="#i-help"/></svg>Claude 有 2 个问题需要回答<span class="muted">第 1/2 题</span>
+            <button class="icon-btn sm ml-auto" data-act="resolve" title="忽略这次提问"><svg class="ic sm"><use href="#i-x"/></svg></button>
+          </div>
+          <div class="dk-body">
+            <p class="q-text">侧栏默认显示哪种视图？</p>
+            <div class="opts">
+              <div class="opt on"><i class="radio"></i><span><b>全部会话</b><span class="od">各项目的会话按时间混排，行首色块标出所属项目</span></span></div>
+              <div class="opt"><i class="radio"></i><span><b>按项目</b><span class="od">每个项目一组，可以折叠，适合同时开很多项目</span></span></div>
+            </div>
+            <input class="input dk-input" placeholder="或输入自定义回答…">
+          </div>
+          <div class="dk-foot">
+            <span class="muted">1 / 2 已回答</span>
+            <span class="grow"></span>
+            <button class="btn btn-ghost sm" disabled>上一题</button>
+            <button class="btn btn-primary sm">下一题</button>
+          </div>
+        </div>
+
+        <div class="composer">
+          <textarea rows="2" placeholder="发送消息…（@ 引用文件 · / 命令 · 粘贴图片）"></textarea>
+          <div class="composer-bar">
+            <div class="pill">
+              <button class="seg icon" title="添加附件"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+              <button class="seg"><svg class="ic sm claude"><use href="#i-claude"/></svg>Claude Opus 5.5<svg class="ic xs caret"><use href="#i-chev-d"/></svg></button>
+              <button class="seg"><svg class="ic sm"><use href="#i-bulb"/></svg>思考 · 高<svg class="ic xs caret"><use href="#i-chev-d"/></svg></button>
+              <button class="seg"><svg class="ic sm"><use href="#i-shield"/></svg>默认权限<svg class="ic xs caret"><use href="#i-chev-d"/></svg></button>
+              <button class="seg" title="上下文已用 23%"><span class="ring" style="--p:23%"></span>23%</button>
+            </div>
+            <div class="bar-right">
+              <button class="icon-btn" title="语音输入"><svg class="ic"><use href="#i-mic"/></svg></button>
+              <button class="send" title="发送"><svg class="ic"><use href="#i-arrow-up"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="card inspector only-chat">
+      <div class="insp-head">
+        <div class="segctl">
+          <button class="on"><svg class="ic sm"><use href="#i-folder"/></svg>文件</button>
+          <button><svg class="ic sm"><use href="#i-branch"/></svg>Git<span class="badge">2</span></button>
+          <button><svg class="ic sm"><use href="#i-globe"/></svg>浏览器</button>
+        </div>
+        <button class="icon-btn sm ml-auto" title="刷新"><svg class="ic sm"><use href="#i-refresh"/></svg></button>
+        <button class="icon-btn sm" title="更多"><svg class="ic sm"><use href="#i-dots"/></svg></button>
+      </div>
+      <div class="insp-path"><svg class="ic xs"><use href="#i-folder"/></svg>MarioCode</div>
+      <div class="tree">
+        <div class="row" style="--d:0"><svg class="ic xs chev"><use href="#i-chev-d"/></svg><svg class="ic sm fd"><use href="#i-folder"/></svg>apps</div>
+        <div class="row" style="--d:1"><svg class="ic xs chev"><use href="#i-chev-d"/></svg><svg class="ic sm fd"><use href="#i-folder"/></svg>desktop</div>
+        <div class="row" style="--d:2"><svg class="ic xs chev"><use href="#i-chev-d"/></svg><svg class="ic sm fd"><use href="#i-folder"/></svg>build</div>
+        <div class="row sel" style="--d:3"><i class="chev-sp"></i><svg class="ic sm ft" style="--ft:202 138 4"><use href="#i-file"/></svg>build-pi-host.mjs<span class="git m">M</span></div>
+        <div class="row" style="--d:3"><i class="chev-sp"></i><svg class="ic sm ft" style="--ft:202 138 4"><use href="#i-file"/></svg>build-runtime.mjs</div>
+        <div class="row" style="--d:2"><svg class="ic xs chev"><use href="#i-chev-r"/></svg><svg class="ic sm fd"><use href="#i-folder"/></svg>scripts</div>
+        <div class="row" style="--d:2"><svg class="ic xs chev"><use href="#i-chev-r"/></svg><svg class="ic sm fd"><use href="#i-folder"/></svg>src</div>
+        <div class="row" style="--d:2"><i class="chev-sp"></i><svg class="ic sm ft" style="--ft:217 119 6"><use href="#i-file"/></svg>package.json</div>
+        <div class="row" style="--d:0"><svg class="ic xs chev"><use href="#i-chev-r"/></svg><svg class="ic sm fd"><use href="#i-folder"/></svg>docs</div>
+        <div class="row" style="--d:0"><svg class="ic xs chev"><use href="#i-chev-r"/></svg><svg class="ic sm fd"><use href="#i-folder"/></svg>packages</div>
+        <div class="row" style="--d:0"><svg class="ic xs chev"><use href="#i-chev-d"/></svg><svg class="ic sm fd"><use href="#i-folder"/></svg>prototypes</div>
+        <div class="row" style="--d:1"><i class="chev-sp"></i><svg class="ic sm ft" style="--ft:234 88 12"><use href="#i-file"/></svg>ui-refresh.html<span class="git a">A</span></div>
+        <div class="row" style="--d:0"><i class="chev-sp"></i><svg class="ic sm ft" style="--ft:100 116 139"><use href="#i-file"/></svg>AGENTS.md</div>
+        <div class="row" style="--d:0"><i class="chev-sp"></i><svg class="ic sm ft" style="--ft:217 119 6"><use href="#i-file"/></svg>package.json</div>
+        <div class="row" style="--d:0"><i class="chev-sp"></i><svg class="ic sm ft" style="--ft:220 38 38"><use href="#i-file"/></svg>pnpm-workspace.yaml</div>
+        <div class="row" style="--d:0"><i class="chev-sp"></i><svg class="ic sm ft" style="--ft:100 116 139"><use href="#i-file"/></svg>README.md</div>
+      </div>
+      <div class="insp-foot"><svg class="ic xs"><use href="#i-branch"/></svg>master<span class="dotsep">·</span>2 个改动<span class="ml-auto">领先 26</span></div>
+    </aside>
+
+    <nav class="set-nav only-settings">
+      <button class="set-back" data-act="back"><svg class="ic sm"><use href="#i-arrow-l"/></svg>返回会话</button>
+      <label class="set-search"><svg class="ic sm"><use href="#i-search"/></svg><input placeholder="搜索设置"></label>
+      <div class="set-groups">
+        <div class="set-group">通用</div>
+        <a class="set-item"><svg class="ic sm"><use href="#i-settings"/></svg>常规</a>
+        <a class="set-item active"><svg class="ic sm"><use href="#i-palette"/></svg>外观</a>
+        <div class="set-group">AI 能力</div>
+        <a class="set-item"><svg class="ic sm"><use href="#i-cpu"/></svg>模型配置</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-msg"/></svg>系统提示词</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-cube"/></svg>Agent</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-blocks"/></svg>插件</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-sparkle"/></svg>技能</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-plug"/></svg>MCP</a>
+        <div class="set-group">输入与提醒</div>
+        <a class="set-item"><svg class="ic sm"><use href="#i-mic"/></svg>语音输入</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-keyboard"/></svg>快捷键</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-mouse"/></svg>鼠标手势</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-bell"/></svg>消息通知</a>
+        <div class="set-group">工作台</div>
+        <a class="set-item"><svg class="ic sm"><use href="#i-clock"/></svg>定时任务</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-branch"/></svg>Git</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-terminal"/></svg>终端</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-globe"/></svg>浏览器</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-code"/></svg>LSP</a>
+        <div class="set-group">系统</div>
+        <a class="set-item"><svg class="ic sm"><use href="#i-chart"/></svg>用量统计</a>
+        <a class="set-item"><svg class="ic sm"><use href="#i-info"/></svg>关于</a>
+      </div>
+    </nav>
+
+    <main class="card set-card only-settings">
+      <div class="set-scroll">
+        <div class="set-col">
+          <h1 class="set-title">外观</h1>
+          <p class="set-desc">调整界面主题、聊天样式与全局强调色，所有改动实时生效。</p>
+
+          <section class="set-sec">
+            <h3>主题与颜色</h3>
+            <div class="set-box">
+              <div class="set-row">
+                <div class="txt"><b>界面主题</b><span>选「跟随系统」会随操作系统自动切换。</span></div>
+                <div class="ctl"><div class="segctl" data-themectl><button data-t="light">浅色</button><button data-t="dark">深色</button><button data-t="system">跟随系统</button></div></div>
+              </div>
+              <div class="set-row">
+                <div class="txt"><b>界面风格</b><span>「手绘」在浅色下是纸面手绘，深色下是牛皮纸；代码和终端保持等宽字体。</span></div>
+                <div class="ctl"><div class="segctl"><button class="on">经典</button><button>手绘</button></div></div>
+              </div>
+              <div class="set-row">
+                <div class="txt"><b>品牌强调色</b><span>影响按钮、链接、选中态、输入框聚焦边框等。原型里点一下就能预览。</span></div>
+                <div class="ctl">
+                  <div class="swatch-row" data-accents>
+                    <button class="swc on" data-accent="emerald" style="--c:5 150 105" title="翠绿（默认）"></button>
+                    <button class="swc" data-accent="sky" style="--c:2 132 199" title="天蓝"></button>
+                    <button class="swc" data-accent="indigo" style="--c:79 70 229" title="靛蓝"></button>
+                    <button class="swc" data-accent="violet" style="--c:124 58 237" title="紫罗兰"></button>
+                    <button class="swc" data-accent="rose" style="--c:225 29 72" title="玫瑰红"></button>
+                    <button class="swc" data-accent="amber" style="--c:217 119 6" title="琥珀"></button>
+                    <button class="swc" data-accent="gray" style="--c:82 82 91" title="灰色"></button>
+                  </div>
+                </div>
+              </div>
+              <div class="set-row">
+                <div class="txt"><b>用户消息背景色</b><span>影响聊天里你发出的消息气泡的底色。</span></div>
+                <div class="ctl"><button class="select">主题默认（灰色）<svg class="ic xs"><use href="#i-chev-d"/></svg></button></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="set-sec">
+            <h3>字号</h3>
+            <div class="set-box">
+              <div class="set-row">
+                <div class="txt"><b>全局字体大小</b><span>左侧栏、右侧文件树 / Git / 终端和设置面板一起调整。</span></div>
+                <div class="ctl"><div class="stepper"><button title="减小">−</button><span>14 px</span><button title="增大">+</button></div></div>
+              </div>
+              <div class="set-row">
+                <div class="txt"><b>聊天字体大小</b><span>只影响聊天内容，代码块和表格按比例跟随。</span></div>
+                <div class="ctl"><div class="stepper"><button title="减小">−</button><span>15 px</span><button title="增大">+</button></div></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="set-sec">
+            <h3>字体</h3>
+            <div class="set-box">
+              <div class="set-row">
+                <div class="txt"><b>界面字体</b><span>从系统已安装的字体里选；代码、终端和 diff 保持等宽字体。</span></div>
+                <div class="ctl"><button class="select">系统默认<svg class="ic xs"><use href="#i-chev-d"/></svg></button></div>
+              </div>
+              <div class="set-row">
+                <div class="txt"><b>编辑器配色 · 浅色模式</b><span>代码编辑器的语法高亮，按界面主题分别选择。</span></div>
+                <div class="ctl"><button class="select">MarioCode 浅色（默认）<svg class="ic xs"><use href="#i-chev-d"/></svg></button></div>
+              </div>
+              <div class="set-row">
+                <div class="txt"><b>编辑器配色 · 深色模式</b><span>深色主题下使用的语法高亮。</span></div>
+                <div class="ctl"><button class="select">MarioCode 深色（默认）<svg class="ic xs"><use href="#i-chev-d"/></svg></button></div>
+              </div>
+            </div>
+          </section>
+
+          <p class="set-foot">主题切换整窗即时生效；颜色透明度按各场景预设，不需要手动调。</p>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</template>
+
+<!-- ===================== 设计规范 ===================== -->
+<template id="tpl-spec">
+<div class="spec" data-theme="light">
+  <div class="spec-inner">
+    <h2>设计规范 · 方向 B「悬浮工作区」</h2>
+    <p class="lead">浅色、深色两套主题；中性色打底，翡翠绿只做点缀。这里的数值就是之后改 <code>styles.css</code> 和 <code>tailwind.config.js</code> 的依据。</p>
+
+    <section>
+      <h3>颜色</h3>
+      <div class="swatches" data-swatches></div>
+    </section>
+
+    <section>
+      <h3>翡翠绿只出现在这些地方</h3>
+      <div class="accent-uses">
+        <div class="use"><button class="send"><svg class="ic"><use href="#i-arrow-up"/></svg></button><button class="btn btn-primary sm">保存</button><span>发送按钮、主要按钮</span></div>
+        <div class="use"><span class="use-bar"></span><span>选中会话左侧的细条</span></div>
+        <div class="use"><span class="spin"></span><span class="ring" style="--p:62%"></span><span>运行中的转圈、上下文进度环</span></div>
+        <div class="use"><span class="switch on"></span><span>开关打开</span></div>
+        <div class="use"><input class="input focused" value="聚焦中" readonly><span>焦点环</span></div>
+        <div class="use"><span class="dot"></span><span class="badge">2</span><a class="link">链接文字</a><span>未读圆点、计数、链接</span></div>
+      </div>
+      <p class="note">其余一律用中性色：成功的工具步骤用灰色对勾，选中的页签和文件用浅灰底，不染绿。</p>
+    </section>
+
+    <section>
+      <h3>字号（全局最小 11px）</h3>
+      <div class="ts-row"><span class="ts-k">24 · 500</span><span style="font-size:24px;font-weight:500">下午好，今天想做点什么？</span><span class="ts-u">页面标题（欢迎页、设置页）</span></div>
+      <div class="ts-row"><span class="ts-k">16 · 600</span><span style="font-size:16px;font-weight:600">原因与修复</span><span class="ts-u">回复里的小标题</span></div>
+      <div class="ts-row"><span class="ts-k">15 · 400</span><span style="font-size:15px">聊天正文和输入框，行高 1.7，读长回复不累。</span><span class="ts-u">聊天正文</span></div>
+      <div class="ts-row"><span class="ts-k">14 · 400</span><span style="font-size:14px">侧栏导航、会话列表、设置导航</span><span class="ts-u">侧栏（借鉴 Codex）</span></div>
+      <div class="ts-row"><span class="ts-k">13 · 400</span><span style="font-size:13px;color:rgb(var(--content-2))">菜单、按钮、文件树、分组标题</span><span class="ts-u">界面正文</span></div>
+      <div class="ts-row"><span class="ts-k">12 · 400</span><span style="font-size:12px;color:rgb(var(--content-2))">工具目标、表头、面包屑、会话时间</span><span class="ts-u">次要信息</span></div>
+      <div class="ts-row"><span class="ts-k">11 · 500</span><span style="font-size:11px;font-weight:500;color:rgb(var(--content-3))">计数、徽标、代码块头</span><span class="ts-u">辅助信息</span></div>
+    </section>
+
+    <section class="two">
+      <div>
+        <h3>圆角</h3>
+        <div class="radii">
+          <div><i style="border-radius:6px"></i><b>6</b><span>行内代码、徽标、文件树行</span></div>
+          <div><i style="border-radius:8px"></i><b>8</b><span>按钮、输入框、列表行</span></div>
+          <div><i style="border-radius:12px"></i><b>12</b><span>卡片、代码块、弹层</span></div>
+          <div><i style="border-radius:16px"></i><b>16</b><span>工作区、输入框卡片</span></div>
+          <div><i style="border-radius:999px"></i><b>全圆</b><span>胶囊、开关</span></div>
+        </div>
+      </div>
+      <div>
+        <h3>阴影</h3>
+        <div class="elev">
+          <div style="box-shadow:var(--e1)"><b>e1</b><span>卡片、选中行</span></div>
+          <div style="box-shadow:var(--e2)"><b>e2</b><span>弹层、输入框</span></div>
+          <div style="box-shadow:var(--e3)"><b>e3</b><span>对话框</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h3>基础组件</h3>
+      <div class="comp-grid">
+        <div class="comp"><span class="lbl">按钮</span><div class="hstack"><button class="btn btn-primary">保存</button><button class="btn btn-secondary">取消</button><button class="btn btn-ghost">更多</button><button class="btn btn-danger">删除</button></div></div>
+        <div class="comp"><span class="lbl">输入框</span><div class="hstack"><input class="input" placeholder="搜索会话…"><input class="input focused" value="聚焦态" readonly></div></div>
+        <div class="comp"><span class="lbl">开关 · 分段</span><div class="hstack"><span class="switch on"></span><span class="switch"></span><div class="segctl"><button class="on">浅色</button><button>深色</button><button>跟随系统</button></div></div></div>
+        <div class="comp"><span class="lbl">标签 · 提示</span><div class="hstack"><span class="chip mono"><svg class="ic xs"><use href="#i-branch"/></svg>master</span><span class="badge">2</span><span class="tag">计划模式</span><span class="tip">Ctrl K 打开命令面板</span></div></div>
+        <div class="comp"><span class="lbl">菜单</span>
+          <div class="menu">
+            <div class="mi"><svg class="ic sm"><use href="#i-msg"/></svg>重命名</div>
+            <div class="mi hov"><svg class="ic sm"><use href="#i-fork"/></svg>在工作树中新建会话</div>
+            <div class="mi"><svg class="ic sm"><use href="#i-folder"/></svg>在资源管理器中显示</div>
+            <div class="msep"></div>
+            <div class="mi danger"><svg class="ic sm"><use href="#i-x"/></svg>删除会话</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h3>和现在比</h3>
+      <table class="cmp">
+        <thead><tr><th>项目</th><th>现在</th><th>方案</th></tr></thead>
+        <tbody>
+          <tr><td>最小字号</td><td>7px</td><td>11px</td></tr>
+          <tr><td>界面常用字号</td><td>10–11px（共 344 处）</td><td>13–14px，聊天正文 15px</td></tr>
+          <tr><td>基础字重</td><td>浅色 500 / 深色 600</td><td>400 / 450</td></tr>
+          <tr><td>圆角</td><td>7 种混用</td><td>6 / 8 / 12 / 16 + 全圆</td></tr>
+          <tr><td>阴影</td><td><code>shadow-2xl</code> 用了 41 处</td><td>e1 / e2 / e3 三档</td></tr>
+          <tr><td>聊天正文宽度</td><td>1024px</td><td>760px（代码块、表格可以更宽）</td></tr>
+          <tr><td>三栏结构</td><td>中间区左侧圆角，靠分隔线分栏</td><td>中间区、右侧面板都是悬浮卡片</td></tr>
+          <tr><td>背景模糊</td><td>11 处</td><td>不新增，逐步去掉滚动区里的</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+</div>
+</template>
+
+<script>
+  const SWATCHES = [
+    ["--bg", "窗口底色"], ["--surface", "工作区"], ["--surface-2", "内衬"], ["--hover", "悬停"], ["--active", "选中"],
+    ["--edge", "分隔线"], ["--edge-strong", "描边"], ["--content", "正文"], ["--content-2", "次要文字"], ["--content-3", "辅助文字"],
+    ["--accent", "翡翠绿"], ["--accent-strong", "翡翠绿文字"], ["--danger", "危险"], ["--warning", "警告"], ["--info", "信息"],
+  ];
+  // 翠绿就是主题 token 里的默认值;其余每套主题给 [强调色, 小号文字色, 强调色上的文字色(缺省白)]
+  const ACCENTS = {
+    emerald: null,
+    sky: { light: ["2 132 199", "3 105 161"], dark: ["14 165 233", "56 189 248", "8 25 40"] },
+    indigo: { light: ["79 70 229", "67 56 202"], dark: ["99 102 241", "129 140 248"] },
+    violet: { light: ["124 58 237", "109 40 217"], dark: ["139 92 246", "167 139 250"] },
+    rose: { light: ["225 29 72", "190 18 60"], dark: ["244 63 94", "251 113 133"] },
+    amber: { light: ["217 119 6", "180 83 9"], dark: ["245 158 11", "251 191 36", "40 22 2"] },
+    gray: { light: ["82 82 91", "63 63 70"], dark: ["161 161 170", "212 212 216", "18 18 20"] },
+  };
+  const state = { view: "chat", theme: "light", prompt: "none" };
+  for (const tok of location.hash.slice(1).split(/[&,]/)) {
+    if (["chat", "welcome", "settings", "spec"].includes(tok)) state.view = tok;
+    if (["light", "dark", "both"].includes(tok)) state.theme = tok;
+    if (["approve", "plan", "ask"].includes(tok)) state.prompt = tok;
+    if (tok === "proj") state.sbmode = "proj";
+  }
+  const stage = document.getElementById("stage");
+
+  function hex(triplet) {
+    return "#" + triplet.trim().split(/\s+/).map((n) => Number(n).toString(16).padStart(2, "0")).join("").toUpperCase();
+  }
+
+  function fillSwatches(root) {
+    const box = root.querySelector("[data-swatches]");
+    if (!box) return;
+    const cs = getComputedStyle(root);
+    box.innerHTML = SWATCHES.map(([name, label]) => {
+      const value = cs.getPropertyValue(name).trim();
+      return `<div class="sw"><i style="background:rgb(${value})"></i><div><b>${label}</b><span>${name}</span><span>${hex(value)}</span></div></div>`;
+    }).join("");
+  }
+
+  function wire(root) {
+    root.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => {
+      const app = btn.closest(".app");
+      const act = btn.dataset.act;
+      if (act === "theme") {
+        app.dataset.theme = app.dataset.theme === "dark" ? "light" : "dark";
+        delete app.dataset.themePref;
+        syncTheme(app);
+      }
+      if (act === "inspector") app.classList.toggle("no-insp");
+      if (act === "sidebar") app.classList.toggle("no-side");
+      if (act === "settings") go("settings");
+      if (act === "back") go("chat");
+      if (act === "detail") btn.closest(".dock").classList.toggle("open");
+      if (act === "check") btn.classList.toggle("on");
+      if (act === "resolve") {
+        state.prompt = "none";
+        document.querySelectorAll(".app").forEach((a) => { a.dataset.prompt = "none"; });
+        markPressed();
+        saveHash();
+      }
+    }));
+    root.querySelectorAll(".segctl").forEach((seg) => seg.addEventListener("click", (event) => {
+      const target = event.target.closest("button");
+      if (!target) return;
+      seg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === target));
+      if (seg.hasAttribute("data-sbmode")) {
+        state.sbmode = target.dataset.mode;
+        seg.closest(".sidebar").dataset.sbmode = target.dataset.mode;
+      }
+      if (seg.hasAttribute("data-themectl")) {
+        const app = seg.closest(".app");
+        const pref = target.dataset.t;
+        app.dataset.themePref = pref;
+        app.dataset.theme = pref === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : pref;
+        syncTheme(app);
+      }
+    }));
+    root.querySelectorAll("[data-accents] .swc").forEach((sw) => sw.addEventListener("click", () => {
+      const app = sw.closest(".app");
+      sw.parentElement.querySelectorAll(".swc").forEach((b) => b.classList.toggle("on", b === sw));
+      app.dataset.accent = sw.dataset.accent;
+      applyAccent(app);
+    }));
+    root.querySelectorAll(".opts").forEach((box) => box.addEventListener("click", (event) => {
+      const opt = event.target.closest(".opt");
+      if (opt) box.querySelectorAll(".opt").forEach((o) => o.classList.toggle("on", o === opt));
+    }));
+  }
+
+  function applyAccent(app) {
+    ["--accent", "--accent-strong", "--on-accent"].forEach((p) => app.style.removeProperty(p));
+    const pick = ACCENTS[app.dataset.accent];
+    if (!pick) return;
+    const [accent, strong, on = "255 255 255"] = pick[app.dataset.theme === "dark" ? "dark" : "light"];
+    app.style.setProperty("--accent", accent);
+    app.style.setProperty("--accent-strong", strong);
+    app.style.setProperty("--on-accent", on);
+  }
+
+  function syncTheme(app) {
+    applyAccent(app);
+    const pref = app.dataset.themePref || app.dataset.theme;
+    app.querySelectorAll("[data-themectl] button").forEach((b) => b.classList.toggle("on", b.dataset.t === pref));
+  }
+
+  function markPressed() {
+    document.querySelectorAll(".pseg").forEach((group) => group.querySelectorAll("button").forEach((b) => {
+      b.setAttribute("aria-pressed", String(state[group.dataset.group] === b.dataset.v));
+    }));
+  }
+
+  function saveHash() {
+    const parts = [state.view, state.theme];
+    if (state.prompt !== "none") parts.push(state.prompt);
+    history.replaceState(null, "", "#" + parts.join("&"));
+  }
+
+  function go(view) {
+    state.view = view;
+    saveHash();
+    render();
+  }
+
+  function applySidebarMode(root) {
+    const sidebar = root.querySelector(".sidebar");
+    if (!sidebar || !state.sbmode) return;
+    sidebar.dataset.sbmode = state.sbmode;
+    sidebar.querySelectorAll("[data-sbmode] button").forEach((b) => b.classList.toggle("on", b.dataset.mode === state.sbmode));
+  }
+
+  function fit() {
+    if (state.theme !== "both") return;
+    const cs = getComputedStyle(stage);
+    const w = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const z = Math.min((w - 20) / 2560, h / 800);
+    stage.style.setProperty("--z", Math.max(0.3, z).toFixed(3));
+  }
+
+  function render() {
+    markPressed();
+    stage.className = "stage " + (state.theme === "both" ? "both" : "single");
+    stage.innerHTML = "";
+    const themes = state.theme === "both" ? ["light", "dark"] : [state.theme];
+    for (const theme of themes) {
+      const frame = document.createElement("div");
+      frame.className = "frame";
+      const tpl = document.getElementById(state.view === "spec" ? "tpl-spec" : "tpl-app");
+      const node = tpl.content.firstElementChild.cloneNode(true);
+      node.dataset.theme = theme;
+      if (state.view !== "spec") {
+        node.dataset.view = state.view;
+        node.dataset.prompt = state.prompt;
+      }
+      frame.appendChild(node);
+      stage.appendChild(frame);
+      wire(node);
+      applySidebarMode(node);
+      if (state.view !== "spec") syncTheme(node);
+      fillSwatches(node);
+    }
+    fit();
+  }
+
+  document.querySelectorAll(".pseg").forEach((group) => group.addEventListener("click", (event) => {
+    const b = event.target.closest("button");
+    if (!b) return;
+    state[group.dataset.group] = b.dataset.v;
+    if (group.dataset.group === "prompt" && b.dataset.v !== "none") state.view = "chat";
+    saveHash();
+    render();
+  }));
+  window.addEventListener("resize", fit);
+  render();
+</script>
+</body>
+</html>

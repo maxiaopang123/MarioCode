@@ -17,6 +17,7 @@ import {
   SiGithub,
 } from "@renderer/lib/icons.js";
 import {
+  AUTO_UPDATE_ENABLED,
   UPDATE_STATE_SETTING_KEY,
   type AppInfoResult,
   type CheckForUpdatesResult,
@@ -300,12 +301,14 @@ export function AboutPanel() {
       </div>
 
       {/* Update status banner */}
-      <UpdateBanner
-        state={updateState}
-        onDownload={onDownloadUpdate}
-        onInstall={onQuitAndInstall}
-        onGoToDownload={onGoToDownload}
-      />
+      {AUTO_UPDATE_ENABLED && (
+        <UpdateBanner
+          state={updateState}
+          onDownload={onDownloadUpdate}
+          onInstall={onQuitAndInstall}
+          onGoToDownload={onGoToDownload}
+        />
+      )}
 
       {/* Action buttons */}
       <div className="mt-6 flex w-full max-w-md flex-wrap items-center justify-center gap-2">
@@ -333,21 +336,23 @@ export function AboutPanel() {
           <SiGithub size={14} />
           {t("settings.about.githubRepo")}
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onCheckForUpdates}
-          disabled={updateState.kind === "checking" || updateState.kind === "downloading"}
-          title={t("settings.about.checkUpdateTitle")}
-          className="gap-1.5"
-        >
-          {updateState.kind === "checking" ? (
-            <IconRefresh size={14} className="animate-spin" />
-          ) : (
-            <IconExternalLink size={14} />
-          )}
-          {updateState.kind === "checking" ? t("settings.about.checking") : t("settings.about.checkForUpdates")}
-        </Button>
+        {AUTO_UPDATE_ENABLED && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCheckForUpdates}
+            disabled={updateState.kind === "checking" || updateState.kind === "downloading"}
+            title={t("settings.about.checkUpdateTitle")}
+            className="gap-1.5"
+          >
+            {updateState.kind === "checking" ? (
+              <IconRefresh size={14} className="animate-spin" />
+            ) : (
+              <IconExternalLink size={14} />
+            )}
+            {updateState.kind === "checking" ? t("settings.about.checking") : t("settings.about.checkForUpdates")}
+          </Button>
+        )}
       </div>
 
       {/* Footer note */}

@@ -439,7 +439,7 @@ pnpm build
 | P4 IDE 右栏 | ✅ | 文件树、git、终端(xterm+node-pty)、Monaco 编辑器 + diff |
 | P4.5 LSP 语言服务器 | ✅ | 设置页可安装/启停 TS/Python/Go/Java 语言服务器;`LspManager`(main)管理 stdio JSON-RPC 子进程;Monaco 手写 Provider(definition/references/hover)+ 诊断 markers + 跳转定位 |
 | P5 体验打磨 | 🟡 | ✅ 浏览器预览(agent 驱动应用内浏览器);⬜ checkpoint 时间线、Cmd+K、审批 UI |
-| P6 发布 | ✅ 基础 | electron-builder(mac/win 安装包)、electron-updater(GitHub Releases 渠道)、CI(typecheck + tag 自动发布)。mac 包已接 ad-hoc 签名(无 Apple 付费证书,dmg 直下首次启动需 `xattr -dr com.apple.quarantine` 或系统设置"仍要打开";brew cask 安装无此问题);真实 Developer ID 签名+公证未做,未含 Vitest |
+| P6 发布 | ✅ 基础 | electron-builder(mac/win 安装包)、electron-updater(GitHub Releases 渠道)、CI(typecheck + tag 自动发布)。mac 包已接 ad-hoc 签名(无 Apple 付费证书,dmg 直下首次启动需 `xattr -dr com.apple.quarantine` 或系统设置"仍要打开";brew cask 安装无此问题);真实 Developer ID 签名+公证未做,未含 Vitest。**自动更新暂时关闭**(2026-09-26,`packages/contracts/src/ipc.ts` 的 `AUTO_UPDATE_ENABLED = false`,不做开机/定时检查,关于页的检查更新按钮和更新横幅隐藏):`publish` 和关于页/更新卡的发布链接仍指向上游 M Code(huangbh2020/mcode),上游版本号更高,开着会把 MarioCode 装成 M Code;重开前先把它们改到 MarioCode 自己的 Release |
 
 详见 `docs/tech-stack.md` 第八节。
 

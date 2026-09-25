@@ -206,6 +206,15 @@ export const UI_FONT_FAMILY_SETTING_KEY = "ui.uiFontFamily";
 export const UPDATE_STATE_SETTING_KEY = "update.state";
 
 /**
+ * Master switch for auto-update. Kept off because the release feed (`publish`
+ * in apps/desktop/electron-builder.yml) and the About / update-card release
+ * links still point at upstream M Code (huangbh2020/mcode), whose higher
+ * version numbers would "update" MarioCode into M Code. Point them at
+ * MarioCode's own releases before turning this back on.
+ */
+export const AUTO_UPDATE_ENABLED: boolean = false;
+
+/**
  * Display mode for the center pane:
  *  - "single" (default): clicking a thread in the left bar replaces the
  *    center pane content (legacy behavior).

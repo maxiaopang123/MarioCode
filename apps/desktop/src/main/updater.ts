@@ -55,6 +55,7 @@ function loadAutoUpdater(): AppUpdater {
   return autoUpdaterRef;
 }
 import {
+  AUTO_UPDATE_ENABLED,
   IPC,
   UPDATE_STATE_SETTING_KEY,
   type CheckForUpdatesResult,
@@ -132,6 +133,7 @@ function detectManualInstallRequired(): boolean {
  *  Safe to call in dev - it short-circuits and does nothing.
  *  Async because electron-updater is lazy-loaded on first use. */
 export async function initUpdater(): Promise<void> {
+  if (!AUTO_UPDATE_ENABLED) return;
   if (!is.prod) {
     // electron-updater has no app-update.yml to read in dev; skip entirely.
     return;

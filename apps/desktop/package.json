@@ -20,6 +20,7 @@
     "test:shared-providers": "node scripts/shared-provider-smoke/run.mjs",
     "test:shared-providers-electron": "node scripts/test-shared-providers-electron.mjs",
     "test:clawbot": "node scripts/clawbot-smoke/run.mjs",
+    "test:sync-load": "node scripts/sync-load-smoke/run.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "rebuild:native": "node build/rebuild-native.cjs",
     "pack:pi-runtime": "node build/pack-pi-runtime.cjs",

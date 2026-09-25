@@ -61,7 +61,7 @@ import { getOsPrefersDark, getThemePreference } from "@main/lib/theme.js";
 import { log } from "@main/lib/logger.js";
 import { SettingRepo } from "@main/store/repositories.js";
 import { PICKER_INJECT_SCRIPT, PICKER_REMOVE_SCRIPT } from "./pickerScript.js";
-import { SNAPSHOT_SCRIPT, buildClickScript, buildCheckFileInputScript, buildElementCenterScript, buildTypeScript, buildEvaluateScript, buildScrollScript, buildWaitScript, buildSelectScript, buildFindScript } from "./snapshotScript.js";
+import { buildSnapshotScript, type SnapshotMode, buildClickScript, buildCheckFileInputScript, buildElementCenterScript, buildTypeScript, buildEvaluateScript, buildScrollScript, buildWaitScript, buildSelectScript, buildFindScript } from "./snapshotScript.js";
 import { AddressHistory } from "./addressHistory.js";
 
 /** Normalize a URL to its origin (scheme://host[:port]). Returns "" for URLs
@@ -178,8 +178,17 @@ export interface BrowserSnapshotResult {
     url: string;
     title: string;
     readyState: string;
-    html: string;
+    /** Main-content text slice [textOffset, textOffset + textCap); "" in
+     *  interactive mode. */
     bodyText: string;
+    /** Length of the whole extracted main-content text (0 in interactive mode). */
+    textTotal: number;
+    /** Where `bodyText` starts: the requested offset clamped to textTotal. */
+    textOffset: number;
+    /** Root the text came from: main / article / block / body ("" in
+     *  interactive mode). */
+    textSource: string;
+    /** Empty in text mode. */
     interactive: Array<{
       /** 1-based handle the model passes to browser_click/type/select. */
       index: number;
@@ -1624,15 +1633,18 @@ class BrowserManagerImpl {
     return out;
   }
 
-  /** Read a structured snapshot of the page: url/title/readyState, clipped
-   *  html + bodyText, and a compact list of interactive elements (links,
-   *  buttons, inputs, headings) each with a stable selector the agent can
-   *  pass back to `click()`. */
-  async snapshot(id: string): Promise<BrowserSnapshotResult> {
+  /** Read a structured snapshot of the page: url/title/readyState, a slice of
+   *  the main-content text, and a compact list of interactive elements
+   *  (links, buttons, inputs, headings) each with a stable selector the agent
+   *  can pass back to `click()`. `mode` skips either half. */
+  async snapshot(
+    id: string,
+    opts: { mode: SnapshotMode; textCap: number; textOffset: number },
+  ): Promise<BrowserSnapshotResult> {
     const live = this.get(id);
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
     try {
-      const data = await live.view.webContents.executeJavaScript(SNAPSHOT_SCRIPT, true);
+      const data = await live.view.webContents.executeJavaScript(buildSnapshotScript(opts), true);
       return { ok: true, data: data as BrowserSnapshotResult["data"] };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

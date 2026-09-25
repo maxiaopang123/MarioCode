@@ -522,11 +522,23 @@ function registerBrowserTools(
     description: BROWSER_TOOL_SPECS.browser_snapshot.description,
     promptSnippet: BROWSER_TOOL_SPECS.browser_snapshot.promptSnippet,
     parameters: Type.Object({
+      mode: Type.Optional(
+        Type.Union([Type.Literal("both"), Type.Literal("interactive"), Type.Literal("text")], {
+          description: "both(默认,元素+正文)/ interactive(只要元素)/ text(只要正文,读文章用)",
+        }),
+      ),
+      maxChars: Type.Optional(Type.Number({ description: "正文最多返回多少字,默认 4000,范围 500–20000" })),
+      offset: Type.Optional(Type.Number({ description: "从正文第几个字开始读,续读长文时填上次结果末尾给出的值" })),
       browserId: Type.Optional(Type.String({ description: "目标浏览器视图 id;省略则用当前目标视图" })),
     }),
     async execute(_toolCallId, params) {
-      const { browserId } = params as { browserId?: string };
-      return toPiResult(await browserSnapshot({ browserId }));
+      const { browserId, mode, maxChars, offset } = params as {
+        browserId?: string;
+        mode?: string;
+        maxChars?: number;
+        offset?: number;
+      };
+      return toPiResult(await browserSnapshot({ browserId, mode, maxChars, offset }));
     },
   });
 

@@ -925,7 +925,16 @@ function buildDynamicTools(browserToolsEnabled: boolean): Array<Record<string, u
       type: "function",
       name: "browser_snapshot",
       description: BROWSER_TOOL_SPECS.browser_snapshot.description,
-      inputSchema: schema({ browserId: optId }),
+      inputSchema: schema({
+        mode: {
+          type: "string",
+          enum: ["both", "interactive", "text"],
+          description: "both(默认,元素+正文)/ interactive(只要元素)/ text(只要正文,读文章用)",
+        },
+        maxChars: { type: "number", description: "正文最多返回多少字,默认 4000,范围 500–20000" },
+        offset: { type: "number", description: "从正文第几个字开始读,续读长文时填上次结果末尾给出的值" },
+        browserId: optId,
+      }),
     },
     {
       type: "function",
@@ -1175,7 +1184,14 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
           ),
         );
       case "browser_snapshot":
-        return toContent(await browserSnapshot({ browserId: optStr(args.browserId) }));
+        return toContent(
+          await browserSnapshot({
+            browserId: optStr(args.browserId),
+            mode: args.mode,
+            maxChars: args.maxChars,
+            offset: args.offset,
+          }),
+        );
       case "browser_click":
         return toContent(
           await browserClick({

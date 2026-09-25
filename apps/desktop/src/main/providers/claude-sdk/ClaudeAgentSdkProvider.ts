@@ -244,10 +244,21 @@ async function buildBrowserMcpServer(
         name: "browser_snapshot",
         description: BROWSER_TOOL_SPECS.browser_snapshot.description,
         inputSchema: {
+          mode: z
+            .enum(["both", "interactive", "text"])
+            .optional()
+            .describe("both(默认,元素+正文)/ interactive(只要元素)/ text(只要正文,读文章用)"),
+          maxChars: z.number().optional().describe("正文最多返回多少字,默认 4000,范围 500–20000"),
+          offset: z.number().optional().describe("从正文第几个字开始读,续读长文时填上次结果末尾给出的值"),
           browserId: z.string().optional().describe("目标浏览器视图 id;省略则用当前目标视图"),
         },
         handler: async (args: Record<string, unknown>) =>
-          browserSnapshot({ browserId: args.browserId as string | undefined }),
+          browserSnapshot({
+            browserId: args.browserId as string | undefined,
+            mode: args.mode,
+            maxChars: args.maxChars,
+            offset: args.offset,
+          }),
       },
       {
         name: "browser_click",

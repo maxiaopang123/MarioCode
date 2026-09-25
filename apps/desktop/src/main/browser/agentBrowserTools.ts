@@ -30,8 +30,15 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { app } from "electron";
-import { BrowserManager, type BrowserDownloadEntry } from "./BrowserManager.js";
-import { SNAPSHOT_DISPLAY_CAP } from "./snapshotScript.js";
+import { BrowserManager, type BrowserDownloadEntry, type BrowserSnapshotResult } from "./BrowserManager.js";
+import {
+  SNAPSHOT_DISPLAY_CAP,
+  SNAPSHOT_DISPLAY_CAP_INTERACTIVE,
+  SNAPSHOT_TEXT_DEFAULT,
+  SNAPSHOT_TEXT_MAX,
+  SNAPSHOT_TEXT_MIN,
+  type SnapshotMode,
+} from "./snapshotScript.js";
 import { log } from "@main/lib/logger.js";
 import { registerImageArtifact } from "@main/lib/imageArtifacts.js";
 import { SettingRepo } from "@main/store/repositories.js";
@@ -453,58 +460,112 @@ export async function browserNavigate(
   );
 }
 
+type SnapshotElement = NonNullable<BrowserSnapshotResult["data"]>["interactive"][number];
+
+/** Where the snapshot's body text came from (MAIN_TEXT_JS root kinds). */
+const SNAPSHOT_TEXT_SOURCE: Record<string, string> = {
+  main: "主内容区 <main>",
+  article: "文章 <article>",
+  block: "正文段落最集中的区块",
+  body: "整页,已去掉导航/页脚/侧栏",
+};
+
+function coerceSnapshotMode(v: unknown): SnapshotMode {
+  return v === "interactive" || v === "text" ? v : "both";
+}
+
+function clampInt(v: unknown, fallback: number, min: number, max: number): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(v)));
+}
+
+/** One element per line: `[n] <tag> role=… "name" state… text="…" ↓`. The
+ *  role only when it differs from the tag, the text only when it differs from
+ *  the name, ↓ = outside the viewport. No selector — `browser_find` hands
+ *  those out when the model needs one. */
+function formatSnapshotElement(el: SnapshotElement): string {
+  const role = el.role && el.role !== el.tag ? ` role=${el.role}` : "";
+  const name = el.name ? ` "${el.name}"` : "";
+  const state = el.state.length ? ` ${el.state.join(" ")}` : "";
+  const extra = el.text && el.text !== el.name ? ` text="${el.text}"` : "";
+  return `[${el.index}] <${el.tag}>${role}${name}${state}${extra}${el.inView ? "" : " ↓"}`;
+}
+
 /** `browser_snapshot` — read a structured snapshot of the page (read-only).
- *  Returns url/title, bodyText, and the interactive-element list. Each element
- *  carries a 1-based `index` handle (pass to click/type/select), its form
- *  state (value/checked/disabled/href), an 视口外 marker when it's outside the
- *  viewport, and the fallback CSS selector. */
-export async function browserSnapshot(args: { browserId?: string }): Promise<ToolResult> {
+ *  `mode` picks the halves: `both` (default: up to SNAPSHOT_DISPLAY_CAP
+ *  elements + SNAPSHOT_TEXT_DEFAULT chars of text), `interactive` (elements
+ *  only, a longer list) or `text` (main-content text only). Each element
+ *  carries a 1-based `index` handle (pass to click/type/select) plus its form
+ *  state; the text is the page's main content (nav/footer/sidebars dropped),
+ *  sliced by `maxChars` / `offset` so long pages are read in pieces. */
+export async function browserSnapshot(args: {
+  browserId?: string;
+  mode?: unknown;
+  maxChars?: unknown;
+  offset?: unknown;
+}): Promise<ToolResult> {
   const resolved = resolveBrowserId(args.browserId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
   const blocked = guardSearchEnginePage(resolved.browserId);
   if (blocked) return blocked;
-  const res = await BrowserManager.snapshot(resolved.browserId);
+  const mode = coerceSnapshotMode(args.mode);
+  const textCap = clampInt(args.maxChars, SNAPSHOT_TEXT_DEFAULT, SNAPSHOT_TEXT_MIN, SNAPSHOT_TEXT_MAX);
+  const textOffset = clampInt(args.offset, 0, 0, Number.MAX_SAFE_INTEGER);
+  const res = await BrowserManager.snapshot(resolved.browserId, { mode, textCap, textOffset });
   if (!res.ok || !res.data) return errorResult(res.error ?? "读取快照失败");
 
   const d = res.data;
-  // Remember the index→selector map for index-addressed click/type/select.
-  const map = new Map<number, string>();
-  for (const el of d.interactive) map.set(el.index, el.selector);
-  snapshotIndexMaps.set(resolved.browserId, map);
-
-  // Display order: in-viewport elements first (what the user sees right now /
-  // what a viewport screenshot covers), then the below-the-fold ones. Indices
-  // are the collected (DOM-order) handles and stay stable within this
-  // snapshot — the sort is only for presentation.
-  const inView = d.interactive.filter((el) => el.inView);
-  const offView = d.interactive.filter((el) => !el.inView);
-  const shown = [...inView, ...offView].slice(0, SNAPSHOT_DISPLAY_CAP);
-  const intLines = shown.map((el) => {
-    const statePart = el.state.length ? ` ${el.state.join(" ")}` : "";
-    const head = `  [${el.index}] <${el.tag}> role="${el.role}" name="${el.name}"${statePart}`;
-    const body = [`      selector: ${el.selector}`];
-    if (el.text && el.text !== el.name) body.push(`      text: ${el.text}`);
-    if (!el.inView) body.push("      (视口外——点击时会自动滚动到位;viewport 截图不含它)");
-    return [head, ...body].join("\n");
-  });
-  const hidden = d.interactive.length - shown.length;
-  const summary = [
-    `页面快照(browserId=${resolved.browserId})`,
+  const lines = [
+    `页面快照(browserId=${resolved.browserId},mode=${mode})`,
     `URL: ${d.url}`,
-    `标题: ${d.title || "(无)"}`,
-    `readyState: ${d.readyState}`,
-    ``,
-    `可交互元素(共 ${d.interactive.length} 个:视口内 ${inView.length} + 视口外 ${offView.length};展示前 ${shown.length} 个。` +
-      `[n] 是元素索引,直接传给 browser_click / browser_type / browser_select 的 index 参数):`,
-    intLines.join("\n") || "  (未发现可交互元素)",
-    hidden > 0 ? `\n(还有 ${hidden} 个元素未展示——用 browser_find 按 selector/文本精确定位,它们同样可以用 [索引] 操作)` : "",
-    ``,
-    `页面正文(前 ${d.bodyText.length} 字符):`,
-    d.bodyText || "(空)",
-  ].join("\n");
-  return text(summary);
+    `标题: ${d.title || "(无)"}${d.readyState === "complete" ? "" : `(readyState=${d.readyState},页面可能还没加载完)`}`,
+  ];
+
+  if (mode !== "text") {
+    // Remember the index→selector map for index-addressed click/type/select.
+    // A text-only snapshot hands out no indices, so it leaves the previous
+    // map (the one the model's indices came from) alone.
+    const map = new Map<number, string>();
+    for (const el of d.interactive) map.set(el.index, el.selector);
+    snapshotIndexMaps.set(resolved.browserId, map);
+
+    // Display order: in-viewport elements first (what the user sees right now /
+    // what a viewport screenshot covers), then the below-the-fold ones. Indices
+    // are the collected (DOM-order) handles and stay stable within this
+    // snapshot — the sort is only for presentation.
+    const cap = mode === "interactive" ? SNAPSHOT_DISPLAY_CAP_INTERACTIVE : SNAPSHOT_DISPLAY_CAP;
+    const inView = d.interactive.filter((el) => el.inView);
+    const offView = d.interactive.filter((el) => !el.inView);
+    const shown = [...inView, ...offView].slice(0, cap);
+    const hidden = d.interactive.length - shown.length;
+    lines.push(
+      "",
+      `可交互元素(共 ${d.interactive.length} 个,视口内 ${inView.length} 个;展示 ${shown.length} 个。` +
+        `[n] 是索引,直接传给 browser_click / browser_type / browser_select 的 index;↓ = 在视口外,点击时会自动滚动到位):`,
+      shown.map(formatSnapshotElement).join("\n") || "(未发现可交互元素)",
+    );
+    if (hidden > 0) {
+      lines.push(
+        `(还有 ${hidden} 个未展示${mode === "interactive" ? "" : `,mode="interactive" 能多看一些`};也可以用 browser_find 精确定位,找到的元素同样能点击)`,
+      );
+    }
+  }
+
+  if (mode !== "interactive") {
+    const source = SNAPSHOT_TEXT_SOURCE[d.textSource] ?? SNAPSHOT_TEXT_SOURCE.body;
+    const end = d.textOffset + d.bodyText.length;
+    lines.push("");
+    if (d.textTotal === 0) {
+      lines.push(`正文(${source}):(空)`);
+    } else {
+      lines.push(`正文(${source};第 ${d.textOffset}–${end} 字,共 ${d.textTotal} 字):`);
+      lines.push(d.bodyText || "(offset 已超出正文末尾)");
+      if (end < d.textTotal) lines.push(`(未完,续读:browser_snapshot({mode:"text", offset:${end}}))`);
+    }
+  }
+  return text(lines.join("\n"));
 }
 
 /** `browser_click` — click an element by snapshot `index` (preferred) or CSS
@@ -1023,9 +1084,12 @@ export const BROWSER_TOOL_SPECS: Record<string, BrowserToolSpec> = {
   browser_snapshot: {
     name: "browser_snapshot",
     description:
-      "读取当前页面的结构化快照:URL、标题、正文,以及可交互元素列表(链接/按钮/输入框等)。" +
-      "每个元素带数字索引 [n] 与表单状态(当前值/勾选/禁用/href),索引可直接传给 browser_click / browser_type / browser_select 的 index 参数;列表还标注视口外元素(需先滚动)。只读——这是理解页面内容、定位元素的主要方式。",
-    promptSnippet: "browser_snapshot({browserId?}): 读取页面快照,元素带索引与状态(只读)",
+      "读取当前页面快照:URL、标题、主内容正文(优先 <main>/<article>,已去掉导航/页脚/侧栏),以及可交互元素列表(链接/按钮/输入框等)。" +
+      "每个元素一行,带数字索引 [n] 与表单状态(当前值/勾选/禁用/href),索引直接传给 browser_click / browser_type / browser_select 的 index;↓ 表示在视口外。" +
+      "mode 可选:both(默认,元素最多 40 个 + 正文 4000 字)/ interactive(只要元素,最多 80 个,找按钮、填表时用)/ text(只要正文,读文章时用);" +
+      "maxChars 调整正文字数(500–20000);正文没读完时结果末尾会给出 offset,带上它续读下一段。只读——这是理解页面内容、定位元素的主要方式。",
+    promptSnippet:
+      "browser_snapshot({mode?: both|interactive|text, maxChars?, offset?, browserId?}): 读取页面快照——元素索引 + 主内容正文,长文按 offset 分段读(只读)",
   },
   browser_click: {
     name: "browser_click",
@@ -1135,7 +1199,7 @@ export const BROWSER_TOOL_SPECS: Record<string, BrowserToolSpec> = {
 export const BROWSER_TOOLS_FLOW =
   "browserId 参数全部可选——省略时作用于 agent 当前目标视图(navigate/switch_tab 设置)或第一个已开视图。" +
   "典型流程: navigate → (wait 等内容出现) → snapshot 读内容与元素索引 → 按需 type 填表(接 keys:Enter 提交)/ select 选下拉 / upload_file 传附件 / click 点击 / scroll 翻页 / find 精查 / screenshot 截图 / save_pdf 存档;" +
-  "页面超出快照正文上限时用 scroll+snapshot 或 find 检索,避免整页抓取;触发下载后用 downloads 查看进度与保存路径。" +
+  "只操作页面时用 snapshot 的 mode=interactive,读文章用 mode=text,正文没读完按结果末尾给出的 offset 续读;只找某段内容用 find,避免整页抓取;触发下载后用 downloads 查看进度与保存路径。" +
   "禁止把浏览器当搜索引擎用:不要打开 Google/Bing/百度等搜索站输入关键词检索(会被拦截,且搜索结果页快照极大);" +
   "没有搜索工具时直接告知用户你无法联网搜索,已知具体网址则直接 navigate 打开。";
 

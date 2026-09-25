@@ -14,20 +14,22 @@
 
 9/24–9/26 新增：UI 焕新四阶段全部提交（TODO-014）；Pi host 一启动就崩的问题已修（`ca5e0e1`）；设置新增「网络」页，统一管三个引擎的代理（TODO-015）；发现自动更新会把 MarioCode 装成上游 M Code，已先关掉（`d3e8599`，后续见 TODO-016）；关于页和 README 的仓库链接已改指 MarioCode 自己的仓库（`9ea4cc0`）。上游 M Code 从分叉点之后又发了 v0.2.3–v0.2.5，要不要同步见 TODO-017。
 
-仍需人工验收：TODO-004 三个 Provider 真机加载、TODO-006 三端提示词一致性、TODO-007 / TODO-014 的运行时视觉检查、TODO-009 真实 Pi 会话、TODO-015 的真实系统代理和 Claude / Codex 端到端；Pi 真实模型调用也还没验。`apps/desktop/release/` 里的 0.1.54 安装包是旧代码打的（自动更新指向上游 + 坏的 Pi host），要 `pnpm package` 重打后才能发。`dbdab86` 之后的本地提交都还没推送。
+9/26 夜：TODO-013 snapshot 瘦身完成（`d36e806`，同页工具结果 18–21K → 3–7K 字符）；TODO-004 三个 Provider 的加载用真实引擎验过（`3b794c5`，`pnpm test:sync-load` 7/7），收成 100%；TODO-005 内置网页搜索 / 网页读取 / 图片生成完成（`c24b661`，设置 → 内置工具）。
+
+仍需人工验收：TODO-005 在三个引擎的真实对话里调用（要模型额度）、博查 / 智谱 / Tavily 用真 Key、真实图片模型出图；TODO-006 三端提示词一致性、TODO-007 / TODO-014 的运行时视觉检查、TODO-009 真实 Pi 会话、TODO-015 的真实系统代理和 Claude / Codex 端到端；Pi 真实模型调用也还没验。`apps/desktop/release/` 里的 0.1.54 安装包是旧代码打的（自动更新指向上游 + 坏的 Pi host），要 `pnpm package` 重打后才能发。`dbdab86` 之后的本地提交都还没推送。
 
 | ID | 功能 | 进度 | 状态 | 对应 Commit | 备注 |
 |---|---|---:|---|---|---|
 | `TODO-001` | 定时任务 | 100% | 🟢 已完成 | `c4f35af` | 已实现一次/每天/每周、启停、立即运行、异常恢复与防重叠 |
 | `TODO-002` | 微信 ClawBot 信息推送（二维码绑定 + iLink Bot API） | 100% | 🟢 已完成 | `c4f35af` | 已实现二维码绑定、安全凭证、单一用户锁定、消息激活与定时任务结果推送；已通过构建、测试和代码复审 |
 | `TODO-003` | 微信 ClawBot 对话接入 MarioCode | 100% | 🟢 已完成 | `dbdab86` | 已实现绑定者私聊纯文本接入、专用微信助手项目、按会话隔离、Agent/模型选择、`新会话` 指令及安全恢复；已通过冷构建、启动检查、回归测试与独立代码审查 |
-| `TODO-004` | 外部工具 Skill / MCP 同步（非复制导入） | 95% | 🟡 进行中 | `b2dfcdb` `ddad88d` `c66f635` | P1。Skills 单向复制同步 + MCP 多源配置同步（Claude/Codex/Cursor/Zcode 配置文件 → ~/.mcode/.claude.json，watch 实时跟随、停用/移除自动撤回、本地手改优先）均已落地；多源并发写入保护和 Electron smoke 已通过；仍待三个 Provider 的真机加载验收 |
-| `TODO-005` | 内置工具：网页搜索 + 图片生成 | 0% | ⚪ 未开始 | - | P2。三个 provider 共用的 `web_search` / `image_generate`，不依赖模型端点是否原生支持；按 `agentBrowserTools` 模式三端注册 |
+| `TODO-004` | 外部工具 Skill / MCP 同步（非复制导入） | 100% | 🟢 已完成 | `b2dfcdb` `ddad88d` `c66f635` `3b794c5` | P1。Skills 单向复制同步 + MCP 多源配置同步（Claude/Codex/Cursor/Zcode 配置文件 → ~/.mcode/.claude.json，watch 实时跟随、停用/移除自动撤回、本地手改优先）均已落地；多源并发写入保护和 Electron smoke 已通过；**三个 Provider 加载已用真实引擎验过**（`pnpm test:sync-load`：Claude CLI 列出同步的 skill 并连上两个 MCP server、Codex app-server 列出 skill 并启动两个 server、Pi loader 从镜像读到 skill，含 npx 同形的 `.cmd` 启动器，7/7）；Pi 不支持 MCP（设计如此） |
+| `TODO-005` | 内置工具：网页搜索 + 图片生成 | 100% | 🟢 已完成 | `c24b661` | P2。三端共用的 `web_search` / `web_fetch` / `image_generate`（`main/tools/`），设置 → 内置工具。搜索默认必应（免 Key），可选百度（免 Key）/ 博查 / 智谱 / Tavily（需 Key，失败退回必应）；读网页走隐藏窗口 + 与 snapshot 同一套正文提取、30 分钟缓存按 offset 续读；图片走 OpenAI 兼容 `/images/generations`，每次审批。已通过 typecheck、build、`pnpm test:web-tools`（14 项）、`pnpm test:builtin-tools-electron`（真 app 截图）；**未验证**：三端真实对话调用、三个 Key 后端真 Key、真实图片模型 |
 | `TODO-006` | 统一系统提示词 | 100% | 🟢 已完成 | `8aaa72a`（功能）+ `8c7f02f`（预览对齐） | P4（原建议提前到 TODO-005 之前，已兑现）。用户可编辑的全局（settings 表）+ 项目级（`<project>/.mcode/prompt.md`）系统提示词，Claude / Codex / Pi 三端同位注入（身份之后、工具指引之前）；设置页新增「系统提示词」面板：两级编辑器、字数上限 20000、按 Agent 分层预览。三个待拍板已定：项目级存文件、Codex 走 `thread/start|resume.developerInstructions`、模板库不做。叠加顺序已写进 `AGENTS.md`「统一系统提示词」节。已通过 `pnpm typecheck`；**真机三端一致性验证未做**（见规划详情） |
 | `TODO-007` | 聊天框界面渲染优化（含前端 UI 体检） | 100% | 🟢 已完成 | `baa45a4`…`bf5672b`（11 个） | **P0（原 P3，2026-09-20 上调）**。体检 + 原七项里**静态就能做完的五项**：焦点环、死代码清场、手机端 i18n、`Hint` 提示层两批替换、文件树删除确认框提到树根。原第 5、6 项与第 7 项第二步不是没做完，是**条件不具备**，已拆成 `TODO-010` / `TODO-011` 暂定；第 3 项欠的 lint 规则拆成 `TODO-012`。**运行时验收仍待人工完成**（见规划详情末尾） |
 | `TODO-008` | DeepSeek Harness（dsh）接入为第四个 Provider | 0% | ⚪ 未开始 | - | P3。先做 1–2 天可行性 spike；照 Pi 的「独立 host 进程 + MessageAdapter」模板接入 |
 | `TODO-009` | 禁止 agent 用内置浏览器访问搜索引擎 | 100% | 🟢 已完成 | `81fe292` | TODO-005 落地前的止血：Pi 无搜索工具时模型拿浏览器去搜索引擎翻页，每次 snapshot 10K+ token。三端共用的 `agentBrowserTools` 加守卫——navigate 到搜索站（含首页）拒绝，snapshot/find/evaluate/screenshot 发现当前页是搜索站也拒绝；只拦搜索站自身域名，产品子域不受影响；提示词同步补禁令。写死名单、暂无开关。已通过 tsc 与 28 条域名规则用例；**真机验证未做**（需 `pnpm dev` + Pi 跑一轮，确认模型回「无法联网搜索」而非去开浏览器） |
-| `TODO-013` | 内置浏览器 snapshot 瘦身（降 token） | 0% | ⚪ 未开始 | - | 从上一会话「止血」讨论补立项：操作普通网页时每次 `browser_snapshot` 仍 8–15K token（80 个元素 + 整页正文），与 009 是两件事，独立于 TODO-005。裁剪方案见下方规划详情 TODO-013 |
+| `TODO-013` | 内置浏览器 snapshot 瘦身（降 token） | 100% | 🟢 已完成 | `d36e806` | `browser_snapshot` 加 `mode`（both / interactive / text）、`maxChars`、`offset`；元素一行一个、去 selector 行、展示 40 个（interactive 80 个）；正文改为主内容提取（main / article / 段落最集中的块），去导航 / 页脚 / 侧栏，默认 4000 字、按 offset 续读。真实页面同页对比：菜鸟教程 18.2K→3.2K、MDN 21.6K→6.7K、新浪 21.3K→5.9K、博客园 19.1K→5.9K 字符。`browser_search` 并入 TODO-005 的免 Key 搜索后端，不单做 |
 | `TODO-014` | UI 焕新（四阶段） | 100% | 🟢 已完成 | `7791101`…`abefc47`（16 个） | 原型 `prototypes/ui-refresh.html`：设计基础 → 外壳导航 → 聊天界面 → 设置弹层；浅 / 深两套主题、翡翠绿只做点缀，会话行 30px、聊天正文 15px、标题 24px/500、字号 11px 起步。已通过 tsc；**真 app 验收未做**（小徽标字变大后显挤、侧栏 / 标题栏 / 页签布局最可能出问题） |
 | `TODO-015` | 网络设置：直连 / 跟随系统代理 / 自定义代理 | 100% | 🟢 已完成 | `4277991` | 设置 →「AI 能力」→「网络」。统一管 Claude（对话、连接测试、标题 / 提交信息生成）、Codex（每轮启动 app-server）、Pi（常驻 host 空闲时重启换路由）和 OpenAI 协议的本地 bridge，下一轮对话生效；跟随系统时环境变量优先，直连设 `NO_PROXY=*`，localhost 一律绕开，Pi host 加 `NODE_USE_ENV_PROXY=1`。已通过 tsc + Electron 33 对本地假代理 5 种场景实跑；**未验证**：真实系统代理读取、Claude / Codex 二进制端到端、界面真机查看；**未覆盖**：内置浏览器、插件下载、运行时下载 |
 | `TODO-010` | 聊天流渲染性能：行高估值与流式重算（原 TODO-007 第 5、6 项） | 0% | ⏸ 暂定 | - | P1。**解除条件：把应用跑起来采一次数**。两项都按「先量后改」的口径走，而行高分布与分组耗时都拿不到静态答案。文档里备了一段开发者工具即贴即用的行高统计脚本；分组耗时要现加 dev-only `performance.mark`。没有真实数字之前不要改 `estimatedItemSize`，也不要动分组切点——切错会让聊天记录错乱 |
@@ -148,7 +150,7 @@
 ### TODO-004 外部工具 Skill / MCP 同步
 
 - **目标**：用户设备上已有的 skills / MCP servers（Claude Code `~/.claude`、Codex `~/.codex`、Cursor `~/.cursor`、Zcode `~/.agents` + `~/.zcode`）自动出现在 MarioCode 里，源头增删改自动跟随，不必重新添加。
-- **现状**：**Skills 单向复制同步已落地（2026-09-23）**；**MCP 多源配置同步已落地（2026-09-23）**。真机回归（三个 provider 实际加载同步进的 server）未做。
+- **现状**：**Skills 单向复制同步已落地（2026-09-23）**；**MCP 多源配置同步已落地（2026-09-23）**。**三个 provider 的加载已验（2026-09-26，`3b794c5`）**：`pnpm test:sync-load` 在临时目录按同步引擎的产物布局（skill 镜像、合成的 Claude 插件目录、`.claude.json` 的 mcpServers、Codex config.toml）放好测试 skill 与两个 stdio MCP server（一个 `node`，一个 npx 同形的 `.cmd` 启动器），再用 provider 同样的参数问真实引擎——Claude CLI 列出 `mcode-sync-…:skill` 且两个 server 均 connected 带工具，Codex app-server 经 `skills/extraRoots/set` 列出 skill 且两个 server 启动带工具，Pi loader 从镜像读到 skill；不发模型请求。设置页「添加源 → 同步」的界面流程仍按 Electron smoke 的覆盖为准。
 - **MCP 同步落地详情（2026-09-23）**：
   1. **同步引擎** `main/lib/mcpSync.ts`：用户在设置页添加外部 MCP 配置文件作为同步源（预设探测 Claude Code `~/.claude.json` / Codex `~/.codex/config.toml` / Cursor `~/.cursor/mcp.json` / Zcode `~/.zcode/mcp.json`，也支持手动选任意文件），引擎把每个源里可识别的 server 归一化为 `McpServerConfig` 后合并进 `~/.mcode/.claude.json` 的 `mcpServers`——该文件同时是 Claude 二进制的加载点与 Codex config.toml 物料来源，一处生效三端通吃。源文件只读，改动经父目录 `fs.watch`（600ms 防抖；watch 目录而非文件，因为 CLI 用替换式重写）实时跟随。
   2. **合并规则**：单向（源 → 镜像），权属表 `mcpSync.ownership`（settings 表）记录每源上轮同步进去的名字；再同步只替换/撤回自己拥有的名字，用户在面板手加/导入的同名条目经 `clearOwnershipFor` 摘除权属、永久保留（本地优先）；已存在的本地条目不同名覆盖、状态栏显示冲突名单。停用源 = 撤回其同步条目（冻结但继续加载会留下静默陈旧 server）；移除源 = 撤回 + 停止监听。
@@ -199,6 +201,8 @@
   4. Codex 双份工具：原生 webSearch 开着时模型选哪个，定去重策略。
   5. 零 key 浏览器抓取：10 次查询的成功率 / 耗时 / 反爬，决定能否当兜底。
 - **待拍板**：默认搜索后端（建议博查）；图片生成要不要进审批（花钱）；结果条数与摘要长度上限。
+- **拍板结果（2026-09-26）**：默认必应（免 Key，开箱可用；本机直连实测博查 / 智谱 / Tavily / 必应 / 百度可达，Brave、DuckDuckGo 超时所以没接），博查 / 智谱 / Tavily 作为可选 Key 后端、失败自动退回必应；图片生成每次审批（Full Access / 始终允许除外）；默认 5 条、摘要 ≤200 字、正文每次 5000 字，设置页可调。图片来源没做成「模型能力位」，改为设置页选共享提供商或填自定义接口 + 模型名——图片模型不会混进对话模型列表。
+- **落地（2026-09-26，`c24b661`）**：核心在 `main/tools/`（描述 `builtinToolSpecs.ts` / 配置 `builtinToolsConfig.ts` / 隐藏窗口 `webPage.ts` / 三个工具 / 调用入口 `builtinTools.ts`）；Claude = 进程内 MCP `mcode-web` + `mcode-image`，Codex = dynamicTools（image_generate 手动审批），Pi = 扩展注册 + `builtinTool` 反向调用回主进程；设置 → 内置工具（来源、Key 加密存、条数 / 字数、测试搜索、图片接口），MCP 页内置组多两行、与之共用开关；Pi / Codex 注入工具说明，预览面板同步。控上下文 1–3、5 已做（缓存：搜索 10 分钟内存、网页 30 分钟磁盘）；4（副模型二级压缩）没做。验证：`pnpm test:web-tools`（活网络 + 本地假图片接口，14 项）、`pnpm test:builtin-tools-electron`（真 app 点进设置页截图、IPC、开关联动、Pi 预览）。详见 `AGENTS.md`「内置工具」节。
 
 ### TODO-006 统一系统提示词 · 🟢 已完成（2026-09-21 功能落地，2026-09-22 收尾）
 
@@ -248,11 +252,15 @@
   4. 正文提主内容：优先 `<article>` / `<main>` / 最大文本块，去 `nav/footer/aside`，不再整页 `innerText`。
 - **相关（可并入 TODO-005 的零 key 兜底）**：新工具 `browser_search(query, engine?)` 自己抽 10 条 标题/URL/摘要（≈1K token）；`browserToolsUsagePrompt` 补一句用法（搜索用 `browser_search`、读文章用 `browser_snapshot mode=text`）。
 - **工作量**：1–4 项纯裁剪约半天；`browser_search` 新工具 + 三端注册再半天到一天。**风险**：低，裁剪逻辑需回归几个典型页面确认不误删正文。
+- **落地（2026-09-26，`d36e806`）**：1–4 项全部完成，另加 `offset` 续读（原流程「scroll + snapshot 读后文」其实无效——正文与滚动位置无关）；元素采集只收真交互 role，丢 aria-hidden、链接里的标题、同 href 同名的重复链接。正文提取 `MAIN_TEXT_JS` 与 TODO-005 的 web_fetch 共用。用项目自带 Electron 在 4 个真实页面 + 1 个本地夹具页新旧对比回归（去噪、列表 / 表格 / 代码缩进、offset）。`browser_search` 不单做：TODO-005 的 web_search 必应 / 百度后端就是它。
 
 ## Git 版本记录
 
 | 版本 | 日期 | Commit | 主要更新 | 状态 |
 |---|---|---|---|---|
+| 开发版 | 2026-09-26 | `c24b661` | 内置 `web_search` / `web_fetch` / `image_generate`，三端注册 + 设置 → 内置工具 + MCP 页两个内置 server；顺带修好 contracts 包自 `4277991` 起的 typecheck（TODO-005） | 已提交、未推送 |
+| 开发版 | 2026-09-26 | `3b794c5` | `pnpm test:sync-load`：用真实 Claude CLI / Codex app-server / Pi loader 验证同步的 skill 与 MCP server 能被加载（TODO-004） | 已提交、未推送 |
+| 开发版 | 2026-09-26 | `d36e806` | `browser_snapshot` 瘦身：元素一行一个、主内容正文、mode / maxChars / offset（TODO-013） | 已提交、未推送 |
 | 开发版 | 2026-09-26 | `9ea4cc0` | 关于页「GitHub 仓库」按钮和 README 的徽章 / Releases / issue 链接改指 MarioCode 自己的仓库 | 已提交、未推送 |
 | 开发版 | 2026-09-26 | `d3e8599` | 关闭自动更新：发布源仍指向上游 M Code，开着会把 MarioCode 装成 M Code；总开关 `AUTO_UPDATE_ENABLED = false`，关于页隐藏检查更新按钮和横幅（TODO-016） | 已提交、未推送 |
 | 开发版 | 2026-09-25 | `4277991` | 设置新增「网络」页：跟随系统代理 / 直连 / 自定义代理，统一管 Claude / Codex / Pi 和本地 bridge（TODO-015） | 已提交、未推送 |

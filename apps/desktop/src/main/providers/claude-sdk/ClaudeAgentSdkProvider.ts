@@ -63,6 +63,17 @@ import {
   BROWSER_TOOL_SPECS,
   BROWSER_TOOLS_FLOW,
 } from "@main/browser/agentBrowserTools.js";
+import { MCP_IMAGE_SERVER_NAME, MCP_WEB_SERVER_NAME } from "@contracts/ipc";
+import {
+  BUILTIN_READONLY_TOOLS,
+  BUILTIN_TOOL_SPECS,
+  WEB_TOOLS_FLOW,
+  type BuiltinToolFlags,
+} from "@main/tools/builtinToolSpecs.js";
+import { builtinToolFlags } from "@main/tools/builtinToolsConfig.js";
+import { webSearch } from "@main/tools/webSearch.js";
+import { webFetch } from "@main/tools/webFetch.js";
+import { imageGenerate } from "@main/tools/imageGenerate.js";
 
 // Lazy-load the Agent SDK so the (large) module and its bundled claude binary
 // stay out of the main-process startup path. The SDK is only needed once the
@@ -522,6 +533,73 @@ async function buildBrowserMcpServer(
   });
 }
 
+/**
+ * In-process MCP servers for the built-in tools: `mcode-web` (web_search /
+ * web_fetch — read-only, auto-approved like the read-only browser tools) and
+ * `mcode-image` (image_generate — spends money, normal approval). Only the
+ * servers whose switch is on this turn are built; descriptions come from
+ * builtinToolSpecs.ts, implementations from main/tools. The generated image
+ * reaches the conversation as the tool result's image block.
+ */
+async function buildBuiltinToolServers(flags: BuiltinToolFlags, sessionId: string, turnNumber?: number) {
+  const createSdkMcpServer = await loadCreateMcpServer();
+  const servers: Record<string, ReturnType<typeof createSdkMcpServer>> = {};
+  if (flags.web) {
+    servers[MCP_WEB_SERVER_NAME] = createSdkMcpServer({
+      name: MCP_WEB_SERVER_NAME,
+      version: "1.0.0",
+      instructions: "MarioCode 内置联网工具。" + WEB_TOOLS_FLOW,
+      alwaysLoad: true,
+      tools: [
+        {
+          name: "web_search",
+          description: BUILTIN_TOOL_SPECS.web_search.description,
+          inputSchema: {
+            query: z.string().describe("搜索关键词"),
+            count: z.number().optional().describe("返回条数,1–10,默认按设置"),
+          },
+          handler: async (args: Record<string, unknown>) => webSearch(args),
+        },
+        {
+          name: "web_fetch",
+          description: BUILTIN_TOOL_SPECS.web_fetch.description,
+          inputSchema: {
+            url: z.string().describe("网页地址,http(s)://"),
+            offset: z.number().optional().describe("从正文第几个字开始读,续读时填上次结果末尾给出的值"),
+            maxChars: z.number().optional().describe("本次最多返回多少字,1000–20000,默认按设置"),
+            links: z.boolean().optional().describe("true=保留正文里的链接"),
+          },
+          handler: async (args: Record<string, unknown>) => webFetch(args),
+        },
+      ],
+    });
+  }
+  if (flags.image) {
+    servers[MCP_IMAGE_SERVER_NAME] = createSdkMcpServer({
+      name: MCP_IMAGE_SERVER_NAME,
+      version: "1.0.0",
+      instructions: "MarioCode 内置图片生成工具。每次调用都会产生费用并需要用户审批;除非用户要求,不要为同一需求反复重画。",
+      alwaysLoad: true,
+      tools: [
+        {
+          name: "image_generate",
+          description: BUILTIN_TOOL_SPECS.image_generate.description,
+          inputSchema: {
+            prompt: z.string().describe("图片描述:主体、风格、构图、光线、色调等"),
+            size: z.string().optional().describe("尺寸,如 1024x1024 / 1536x1024 / 1024x1536,省略用设置里的默认值"),
+          },
+          handler: async (args: Record<string, unknown>) =>
+            imageGenerate(args, { toolCallId: randomUUID(), sessionId, turnNumber }),
+        },
+      ],
+    });
+  }
+  return servers;
+}
+
+/** canUseTool names of the read-only built-in tools (`mcp__mcode-web__web_search` …). */
+const BUILTIN_READONLY_MCP_TOOLS = new Set([...BUILTIN_READONLY_TOOLS].map((name) => `mcp__${MCP_WEB_SERVER_NAME}__${name}`));
+
 /** Tools that mutate files on disk — auto-approved under `acceptEdits`
  *  mode without prompting the user. Mirrors Claude Code's own grouping. */
 const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
@@ -566,8 +644,8 @@ function isReadOnlyBrowserTool(toolName: string): boolean {
 function shouldAutoApprove(mode: PermissionMode | undefined, toolName: string): boolean {
   if (!mode) return false;
   if (mode === "bypassPermissions" || mode === "dontAsk") return true;
-  // Read-only browser tools never need approval — they can't change anything.
-  if (isReadOnlyBrowserTool(toolName)) return true;
+  // Read-only browser / built-in web tools never need approval — they can't change anything.
+  if (isReadOnlyBrowserTool(toolName) || BUILTIN_READONLY_MCP_TOOLS.has(toolName)) return true;
   if (mode === "acceptEdits") return FILE_EDIT_TOOLS.has(toolName);
   return false;
 }
@@ -1191,7 +1269,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     // plugin-MCP merge (which accepts a precomputed set to avoid a second
     // directory scan).
     const enabledPluginsPromise = getEnabledPlugins();
-    const [mcpState, browserServer, projectMcpRecord, outputStyle, enabledPlugins, pluginMcp, userPrompt] =
+    const [mcpState, browserServer, projectMcpRecord, outputStyle, enabledPlugins, pluginMcp, userPrompt, builtinServers] =
       await Promise.all([
         getMcpManagement(),
         // Pure constructor after the (cached) SDK import — building it
@@ -1203,6 +1281,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
         enabledPluginsPromise,
         enabledPluginsPromise.then((plugins) => getPluginMcpServers(plugins)),
         loadUserSystemPrompt({ cwd: req.cwd, sessionId: req.sessionId }),
+        builtinToolFlags().then((flags) => buildBuiltinToolServers(flags, req.sessionId, req.turnNumber)),
       ]);
 
     // User prompt (global + project) lands right after the identity section
@@ -1221,6 +1300,9 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
 
     if (!mcpState.browserDisabled) {
       options.mcpServers = { [BROWSER_MCP_SERVER]: browserServer };
+    }
+    if (Object.keys(builtinServers).length > 0) {
+      options.mcpServers = { ...(options.mcpServers ?? {}), ...builtinServers };
     }
     const projectMcpNames = Object.keys(projectMcpRecord);
     if (projectMcpNames.length > 0) {

@@ -21,6 +21,8 @@
     "test:shared-providers-electron": "node scripts/test-shared-providers-electron.mjs",
     "test:clawbot": "node scripts/clawbot-smoke/run.mjs",
     "test:sync-load": "node scripts/sync-load-smoke/run.mjs",
+    "test:web-tools": "node scripts/web-tools-smoke/run.mjs",
+    "test:builtin-tools-electron": "node scripts/test-builtin-tools-electron.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "rebuild:native": "node build/rebuild-native.cjs",
     "pack:pi-runtime": "node build/pack-pi-runtime.cjs",

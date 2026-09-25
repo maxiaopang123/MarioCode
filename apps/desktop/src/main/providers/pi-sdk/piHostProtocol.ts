@@ -21,6 +21,11 @@ export interface PiHostTurnConfig {
   browserToolsEnabled: boolean;
   browserToolSpecs: Record<string, { description: string; promptSnippet?: string }>;
   browserUsagePrompt: string;
+  /** Built-in web_search / web_fetch and image_generate switches for this
+   *  turn (main resolves them; the tools run main-side via the
+   *  `builtinTool` reverse method). Absent = off. */
+  webToolsEnabled?: boolean;
+  imageToolEnabled?: boolean;
   /** The user's global + project system prompt, already formatted into
    *  sections and joined (see `userSystemPromptSections`); "" when unset.
    *  Resolved main-side (settings DB + project file) because the host
@@ -29,7 +34,7 @@ export interface PiHostTurnConfig {
   agentDir: string;
 }
 
-export type PiHostReverseMethod = "requestApproval" | "requestUserInput" | "requestPlanApproval" | "permissionState" | "browser";
+export type PiHostReverseMethod = "requestApproval" | "requestUserInput" | "requestPlanApproval" | "permissionState" | "browser" | "builtinTool";
 export type PiHostReverseParams = ApprovalRequest | UserInputRequest | PlanApprovalRequest | { toolName: string } | { name: string; args: unknown; meta?: unknown };
 export type PiHostReverseResult = ProviderApprovalDecision | UserInputDecision | PlanApprovalDecision | unknown;
 
@@ -70,6 +75,8 @@ export function isMainToPiHost(value: unknown): value is MainToPiHost {
     && Array.isArray(p.extraSkillPaths) && p.extraSkillPaths.every((x) => typeof x === "string")
     && (p.gitBash === null || typeof p.gitBash === "string")
     && typeof p.browserToolsEnabled === "boolean"
+    && (p.webToolsEnabled === undefined || typeof p.webToolsEnabled === "boolean")
+    && (p.imageToolEnabled === undefined || typeof p.imageToolEnabled === "boolean")
     && typeof p.agentDir === "string" && p.agentDir.length > 0
     && isRecord(p.browserToolSpecs) && typeof p.browserUsagePrompt === "string"
     && typeof p.userSystemPrompt === "string";

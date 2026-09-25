@@ -37,6 +37,8 @@ import {
 } from "./userSystemPrompt.js";
 import { browserToolsUsagePrompt } from "@main/browser/agentBrowserTools.js";
 import { codexHomeAgentsMarkdown } from "@main/providers/codex-sdk/CodexAgentSdkProvider.js";
+import { builtinToolsUsagePrompt } from "@main/tools/builtinToolSpecs.js";
+import { builtinToolFlags } from "@main/tools/builtinToolsConfig.js";
 import path from "node:path";
 
 /** The two user layers, identical for every provider. `text: null` marks an
@@ -68,11 +70,13 @@ export async function previewSystemPrompt(
     ? await loadUserSystemPrompt({ cwd: projectPath })
     : { global: await loadGlobalUserPrompt(), project: "", projectFile: null };
   const user = userSections(prompt, projectPath);
-  const [mcp, outputStyle] = await Promise.all([
+  const [mcp, outputStyle, builtinFlags] = await Promise.all([
     getMcpManagement().catch(() => ({ browserDisabled: false })),
     getOutputStyleSetting().catch(() => null),
+    builtinToolFlags().catch(() => ({ web: false, image: false })),
   ]);
   const browserEnabled = !mcp.browserDisabled;
+  const builtinUsage = builtinToolsUsagePrompt(builtinFlags);
   const win32 = process.platform === "win32";
 
   let sections: SystemPromptPreviewSection[];
@@ -102,6 +106,11 @@ export async function previewSystemPrompt(
           kind: "conditional",
           text: browserEnabled ? browserToolsUsagePrompt() : null,
         },
+        {
+          id: builtinUsage ? "builtin.usage.on" : "builtin.usage.off",
+          kind: "conditional",
+          text: builtinUsage || null,
+        },
       ];
       break;
     case "codex-sdk":
@@ -114,7 +123,7 @@ export async function previewSystemPrompt(
         {
           id: "codex.agentsHome",
           kind: "fixed",
-          text: codexHomeAgentsMarkdown(),
+          text: codexHomeAgentsMarkdown(builtinFlags),
           meta: { path: path.join(codexHomePath(), "AGENTS.md") },
         },
         {

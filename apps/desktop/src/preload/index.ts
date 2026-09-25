@@ -251,6 +251,14 @@ const api = {
       ipcRenderer.invoke(IPC.NETWORK_PROXY_STATUS)) as RpcMap["network.proxyStatus"],
   },
 
+  /** Settings → 内置工具: web_search / web_fetch / image_generate config. */
+  builtinTools: {
+    get: (() => ipcRenderer.invoke(IPC.BUILTIN_TOOLS_GET)) as RpcMap["builtinTools.get"],
+    save: ((input) => ipcRenderer.invoke(IPC.BUILTIN_TOOLS_SAVE, input)) as RpcMap["builtinTools.save"],
+    testSearch: ((input) =>
+      ipcRenderer.invoke(IPC.BUILTIN_TOOLS_TEST_SEARCH, input)) as RpcMap["builtinTools.testSearch"],
+  },
+
   /** Open a project root in the OS file manager. Main refuses any path that
    *  isn't an exact match for a known project root, so only directories the
    *  user has added as projects can be opened. */

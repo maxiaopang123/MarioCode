@@ -6,6 +6,8 @@ import type { ProviderContext } from "@contracts/provider";
 import { resolvePiRuntimeLaunch } from "@main/runtimes/runtimeSelection.js";
 import { networkFingerprint, withEngineNetworkEnv } from "@main/network/engineProxy.js";
 import * as browser from "@main/browser/agentBrowserTools.js";
+import { invokeBuiltinTool } from "@main/tools/builtinTools.js";
+import { isBuiltinToolName } from "@main/tools/builtinToolSpecs.js";
 import { PI_HOST_PROTOCOL_VERSION, type MainToPiHost, type PiHostCall, type PiHostToMain } from "./piHostProtocol.js";
 
 const CALL_TIMEOUT_MS = 30_000;
@@ -126,11 +128,27 @@ export class PiHostClient {
         if (typeof toolName !== "string" || !toolName) throw new Error("Invalid permissionState request");
         value = { mode: ctx.getPermissionMode?.(), alwaysAllowed: ctx.isToolAlwaysAllowed?.(toolName) === true };
       }
+      else if (message.method === "builtinTool") value = await this.invokeBuiltin(message.params as { name: string; args: unknown; meta?: unknown }, ctx, message.turnId);
       else value = await this.invokeBrowser(message.params as { name: string; args: unknown; meta?: unknown }, ctx, message.turnId);
       this.write({ type: "reverseResult", id: message.id, ok: true, value });
     } catch (err) {
       this.write({ type: "reverseResult", id: message.id, ok: false, error: err instanceof Error ? err.message : String(err) });
     }
+  }
+
+  /** A built-in web / image tool call from the host. The session id comes
+   *  from the turn id, not the host-supplied meta. */
+  private async invokeBuiltin(call: { name: string; args: unknown; meta?: unknown }, ctx: ProviderContext, turnId: string): Promise<unknown> {
+    if (!isBuiltinToolName(call.name)) throw new Error(`Unsupported built-in tool: ${call.name}`);
+    const sessionId = turnId.split(":", 1)[0]!;
+    const meta = (call.meta ?? {}) as { toolCallId?: unknown; turnNumber?: unknown };
+    const args = call.args && typeof call.args === "object" ? (call.args as Record<string, unknown>) : {};
+    return invokeBuiltinTool(call.name, args, {
+      toolCallId: typeof meta.toolCallId === "string" && meta.toolCallId ? meta.toolCallId : randomUUID(),
+      sessionId,
+      turnNumber: typeof meta.turnNumber === "number" ? meta.turnNumber : undefined,
+      onImage: (info) => ctx.emit({ type: "browser.image", sessionId, toolCallId: info.toolCallId, data: info.data, mimeType: info.mimeType }),
+    });
   }
 
   private async invokeBrowser(call: { name: string; args: unknown; meta?: unknown }, ctx: ProviderContext, turnId: string): Promise<unknown> {

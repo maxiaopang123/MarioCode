@@ -176,6 +176,29 @@ function proxiedSession(proxyUrl: string): Promise<Session> {
   return proxied.ready;
 }
 
+const sessionRoutes = new WeakMap<Session, string>();
+
+/**
+ * Pin a Chromium session to the engines' route — for the built-in tools'
+ * hidden page loads (web_search's browser backends, web_fetch), so they reach
+ * the web the same way the engines do. System mode hands the choice to
+ * Chromium itself (PAC answers per URL); a custom or env proxy is pinned; a
+ * no-op when the route hasn't changed since the last call.
+ */
+export async function applyEngineRouteToSession(ses: Session): Promise<void> {
+  const settings = readSettings();
+  const route = await resolveRoute(settings);
+  const config: Electron.ProxyConfig = route.forceDirect
+    ? { mode: "direct" }
+    : route.proxyUrl && route.source !== "system"
+      ? { proxyRules: route.proxyUrl, proxyBypassRules: "<local>" }
+      : { mode: "system" };
+  const key = JSON.stringify(config);
+  if (sessionRoutes.get(ses) === key) return;
+  await ses.setProxy(config);
+  sessionRoutes.set(ses, key);
+}
+
 /**
  * fetch for the bridge's upstream calls: Node's fetch when the route is
  * direct (its undici error codes feed the bridge's retry logic), otherwise

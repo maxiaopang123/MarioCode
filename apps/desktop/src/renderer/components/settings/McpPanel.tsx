@@ -39,7 +39,7 @@ import {
   IconRefresh,
 } from "@renderer/lib/icons.js";
 import {
-  MCP_RESERVED_NAME,
+  MCP_RESERVED_NAMES,
   type McpImportSource,
   type McpKind,
   type McpScope,
@@ -389,7 +389,7 @@ export function McpPanel() {
   const userServers = servers.filter((s) => s.scope === "user");
   const projectServers = servers.filter((s) => s.scope === "project");
   const pluginServers = servers.filter((s) => s.scope === "plugin");
-  const builtin = servers.find((s) => s.scope === "builtin");
+  const builtins = servers.filter((s) => s.scope === "builtin");
 
   return (
     <section className="mx-auto w-full max-w-3xl space-y-4">
@@ -677,8 +677,9 @@ export function McpPanel() {
 
       {/* ───────── 内置 ───────── */}
       <SettingsSection title={t("settings.mcp.builtinSection")} desc={t("settings.mcp.builtinSectionDesc")}>
-        {builtin && (
+        {builtins.map((builtin) => (
           <SettingRow
+            key={builtin.name}
             title={
               <span className="flex items-center gap-1.5">
                 <span className="font-mono">{builtin.name}</span>
@@ -694,7 +695,7 @@ export function McpPanel() {
               label={t(builtin.enabled ? "settings.mcp.toggleOff" : "settings.mcp.toggleOn", { name: builtin.name })}
             />
           </SettingRow>
-        )}
+        ))}
       </SettingsSection>
 
       <ConfirmDialog
@@ -902,8 +903,8 @@ function AddServerDialog({
       setError(t("settings.nameCharsError"));
       return;
     }
-    if (trimmedName === MCP_RESERVED_NAME) {
-      setError(t("settings.mcp.errReserved", { name: MCP_RESERVED_NAME }));
+    if (MCP_RESERVED_NAMES.includes(trimmedName)) {
+      setError(t("settings.mcp.errReserved", { name: trimmedName }));
       return;
     }
     let config: McpServerConfig;

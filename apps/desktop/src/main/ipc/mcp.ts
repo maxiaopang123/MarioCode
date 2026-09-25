@@ -31,10 +31,14 @@ import {
   McpSyncRemoveSchema,
   McpSyncRescanSchema,
   MCP_RESERVED_NAME,
+  MCP_RESERVED_NAMES,
+  MCP_WEB_SERVER_NAME,
+  MCP_IMAGE_SERVER_NAME,
   type McpScope,
   type McpServerConfig,
   type McpServerEntry,
 } from "@contracts/ipc";
+import { resolveImageEndpoint } from "@main/tools/builtinToolsConfig.js";
 import {
   listMcpSync,
   scanMcpSyncCandidates,
@@ -75,8 +79,10 @@ function findKnownProject(projectPath: string) {
   return ProjectRepo.list().find((p) => samePath(p.path, projectPath));
 }
 
-/** Description line for the built-in browser server row. */
+/** Description lines for the built-in server rows. */
 const BUILTIN_DETAIL = "browser_navigate / browser_snapshot / browser_click 等应用内浏览器工具";
+const WEB_TOOLS_DETAIL = "web_search / web_fetch 联网搜索与网页正文读取(来源在「内置工具」页设置)";
+const IMAGE_TOOL_DETAIL = "image_generate 图片生成(模型在「内置工具」页设置)";
 
 /* ── OAuth needs-auth state ──
  * The CLI records remote servers that demanded OAuth but hold no stored
@@ -510,14 +516,19 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
       if (config) rememberRemote("plugin", entry.name, config);
     }
 
-    // Built-in in-process browser server.
-    servers.push({
-      name: MCP_RESERVED_NAME,
-      scope: "builtin",
-      kind: "builtin",
-      detail: BUILTIN_DETAIL,
-      enabled: !state.browserDisabled,
-    });
+    // Built-in in-process servers: the browser, web search / fetch, and image
+    // generation (which only registers once an image model is configured).
+    servers.push(
+      { name: MCP_RESERVED_NAME, scope: "builtin", kind: "builtin", detail: BUILTIN_DETAIL, enabled: !state.browserDisabled },
+      { name: MCP_WEB_SERVER_NAME, scope: "builtin", kind: "builtin", detail: WEB_TOOLS_DETAIL, enabled: !state.webToolsDisabled },
+      {
+        name: MCP_IMAGE_SERVER_NAME,
+        scope: "builtin",
+        kind: "builtin",
+        detail: resolveImageEndpoint().ok ? IMAGE_TOOL_DETAIL : `${IMAGE_TOOL_DETAIL};尚未配置,开着也不会注册`,
+        enabled: !state.imageToolDisabled,
+      },
+    );
 
     // Remote servers' OAuth state. The CLI's needs-auth flag is a live signal
     // (written on an actual 401 while connecting), so it BEATS a stored token:
@@ -571,7 +582,9 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
     try {
       if (input.scope === "builtin") {
         const state = await getMcpManagement();
-        state.browserDisabled = !input.enabled;
+        if (input.name === MCP_WEB_SERVER_NAME) state.webToolsDisabled = !input.enabled;
+        else if (input.name === MCP_IMAGE_SERVER_NAME) state.imageToolDisabled = !input.enabled;
+        else state.browserDisabled = !input.enabled;
         saveMcpManagement(state);
         return { ok: true };
       }
@@ -761,8 +774,8 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
   // ── Add a user-scope server ──
   ipcMain.handle(IPC.MCP_SAVE, async (_evt, raw) => {
     const input = McpSaveSchema.parse(raw);
-    if (input.name === MCP_RESERVED_NAME) {
-      return { ok: false, error: `「${MCP_RESERVED_NAME}」是内置 server 的保留名` };
+    if (MCP_RESERVED_NAMES.includes(input.name)) {
+      return { ok: false, error: `「${input.name}」是内置 server 的保留名` };
     }
     try {
       const cfg = await readUserClaudeJson();

@@ -61,11 +61,23 @@ import {
   ASK_NATIVE_TOOL_PROMPT,
 } from "@main/lib/askQuestion.js";
 import { PI_IDENTITY_PROMPT, joinPromptSections } from "@main/lib/systemPrompt.js";
+import {
+  BUILTIN_READONLY_TOOLS,
+  BUILTIN_TOOL_SPECS,
+  builtinToolsUsagePrompt,
+  type BuiltinToolFlags,
+  type BuiltinToolResult,
+} from "@main/tools/builtinToolSpecs.js";
 type ToolResult = { content: Array<{ type: "text"; text: string }>; details?: unknown; isError?: boolean };
 export interface PiBrowserBridge {
   specs: Record<string, { description: string; promptSnippet?: string }>;
   usagePrompt: string;
   invoke(name: string, args: unknown, meta?: unknown): Promise<ToolResult>;
+}
+/** Runs a built-in tool (web_search / web_fetch / image_generate) main-side;
+ *  `meta` carries the toolCallId / session / turn for the image path. */
+export interface PiBuiltinBridge {
+  invoke(name: string, args: unknown, meta: { toolCallId: string; sessionId: string; turnNumber?: number }): Promise<BuiltinToolResult>;
 }
 
 /** Pi's write/edit tools carry their target path in the `path` field (unlike
@@ -171,6 +183,9 @@ export interface CreateMcodeExtensionOptions {
    *  (`PiHostTurnConfig.userSystemPrompt`). Empty string = nothing to inject. */
   userSystemPrompt?: string;
   browserBridge: PiBrowserBridge;
+  /** Built-in web / image tools registered this turn (resolved main-side). */
+  builtinTools?: BuiltinToolFlags;
+  builtinBridge?: PiBuiltinBridge;
   snapshot: FileSnapshot;
   permissionState?(toolName: string): Promise<{ mode?: PermissionMode; alwaysAllowed: boolean }>;
 }
@@ -187,6 +202,7 @@ export interface CreateMcodeExtensionOptions {
  */
 export function createMcodeExtension(opts: CreateMcodeExtensionOptions): InlineExtension {
   const { ctx, cwd, strict, sessionId, projectPath, turnNumber, browserToolsEnabled, userSystemPrompt, browserBridge, snapshot, permissionState } = opts;
+  const builtinTools: BuiltinToolFlags = opts.builtinBridge ? opts.builtinTools ?? { web: false, image: false } : { web: false, image: false };
 
   // ── Plan mode state (per-turn, in-process) ──────────────────────────
   // Tracked here rather than via ctx.getPermissionMode() because the latter
@@ -211,8 +227,16 @@ export function createMcodeExtension(opts: CreateMcodeExtensionOptions): InlineE
       if (browserToolsEnabled) {
         registerBrowserTools(pi, { ctx, sessionId, projectPath, turnNumber, browserBridge });
       }
+      if (opts.builtinBridge && (builtinTools.web || builtinTools.image)) {
+        registerBuiltinTools(pi, { sessionId, turnNumber, flags: builtinTools, bridge: opts.builtinBridge });
+      }
       registerPlanModeTools(pi, { ctx, sessionId, planMode });
-      registerSystemPromptInjector(pi, { browserToolsEnabled, browserUsagePrompt: browserBridge.usagePrompt, userSystemPrompt: userSystemPrompt ?? "" });
+      registerSystemPromptInjector(pi, {
+        browserToolsEnabled,
+        browserUsagePrompt: browserBridge.usagePrompt,
+        builtinUsagePrompt: builtinToolsUsagePrompt(builtinTools),
+        userSystemPrompt: userSystemPrompt ?? "",
+      });
     },
   };
 }
@@ -308,7 +332,7 @@ function registerToolCallGuard(
     //    page or navigate, so they're safe to auto-approve in every mode.
     //    `browser_navigate` / `browser_click` DO have side effects and fall
     //    through to the normal approval flow below.
-    if (MCODE_BROWSER_READONLY.has(toolName)) {
+    if (MCODE_BROWSER_READONLY.has(toolName) || BUILTIN_READONLY_TOOLS.has(toolName)) {
       return;
     }
 
@@ -881,6 +905,71 @@ function registerBrowserTools(
 }
 
 /**
+ * Register the built-in web / image tools. Descriptions come from
+ * builtinToolSpecs.ts; execution happens main-side over the `builtinTool`
+ * reverse channel (the host has no Electron: no hidden windows, no settings
+ * or keys). web_search / web_fetch are auto-approved by the `tool_call` guard
+ * (BUILTIN_READONLY_TOOLS); image_generate goes through normal approval. The
+ * generated image reaches the tool card through a `browser.image` event that
+ * main emits with this call's toolCallId.
+ */
+function registerBuiltinTools(
+  pi: ExtensionAPI,
+  deps: { sessionId: string; turnNumber?: number; flags: BuiltinToolFlags; bridge: PiBuiltinBridge },
+): void {
+  const { sessionId, turnNumber, flags, bridge } = deps;
+  const run = async (name: string, toolCallId: string, params: unknown) => {
+    const r = await bridge.invoke(name, params, { toolCallId, sessionId, turnNumber });
+    return { content: r.content, details: (r.details ?? {}) as Record<string, unknown> };
+  };
+  if (flags.web) {
+    pi.registerTool({
+      name: "web_search",
+      label: "Web Search",
+      description: BUILTIN_TOOL_SPECS.web_search.description,
+      promptSnippet: BUILTIN_TOOL_SPECS.web_search.promptSnippet,
+      parameters: Type.Object({
+        query: Type.String({ description: "搜索关键词" }),
+        count: Type.Optional(Type.Number({ description: "返回条数,1–10,默认按设置" })),
+      }),
+      async execute(toolCallId, params) {
+        return run("web_search", toolCallId, params);
+      },
+    });
+    pi.registerTool({
+      name: "web_fetch",
+      label: "Web Fetch",
+      description: BUILTIN_TOOL_SPECS.web_fetch.description,
+      promptSnippet: BUILTIN_TOOL_SPECS.web_fetch.promptSnippet,
+      parameters: Type.Object({
+        url: Type.String({ description: "网页地址,http(s)://" }),
+        offset: Type.Optional(Type.Number({ description: "从正文第几个字开始读,续读时填上次结果末尾给出的值" })),
+        maxChars: Type.Optional(Type.Number({ description: "本次最多返回多少字,1000–20000,默认按设置" })),
+        links: Type.Optional(Type.Boolean({ description: "true=保留正文里的链接" })),
+      }),
+      async execute(toolCallId, params) {
+        return run("web_fetch", toolCallId, params);
+      },
+    });
+  }
+  if (flags.image) {
+    pi.registerTool({
+      name: "image_generate",
+      label: "Image Generate",
+      description: BUILTIN_TOOL_SPECS.image_generate.description,
+      promptSnippet: BUILTIN_TOOL_SPECS.image_generate.promptSnippet,
+      parameters: Type.Object({
+        prompt: Type.String({ description: "图片描述:主体、风格、构图、光线、色调等" }),
+        size: Type.Optional(Type.String({ description: "尺寸,如 1024x1024 / 1536x1024 / 1024x1536,省略用设置里的默认值" })),
+      }),
+      async execute(toolCallId, params) {
+        return run("image_generate", toolCallId, params);
+      },
+    });
+  }
+}
+
+/**
  * Register `EnterPlanMode` and `ExitPlanMode` tools, bridging to the host's
  * plan-mode UI (the same `plan.update` / `mode.change` / `plan.approval_request`
  * RuntimeEvents that Claude's SdkMessageAdapter emits). The frontend plan
@@ -1053,7 +1142,7 @@ const PLAN_MODE_PROMPT = [
  */
 function registerSystemPromptInjector(
   pi: ExtensionAPI,
-  deps: { browserToolsEnabled: boolean; browserUsagePrompt: string; userSystemPrompt: string },
+  deps: { browserToolsEnabled: boolean; browserUsagePrompt: string; builtinUsagePrompt: string; userSystemPrompt: string },
 ): void {
   pi.on(
     "before_agent_start",
@@ -1068,6 +1157,8 @@ function registerSystemPromptInjector(
         // (MCP panel's built-in switch) — otherwise the model would call
         // tools that don't exist.
         ...(deps.browserToolsEnabled ? [deps.browserUsagePrompt] : []),
+        // Empty when no built-in tool is registered this turn.
+        deps.builtinUsagePrompt,
       );
       const next = base ? `${base}\n\n${injected}` : injected;
       return { systemPrompt: next };

@@ -8,6 +8,7 @@ import { resolveGitBash } from "@main/lib/binaryResolve.js";
 import { getEnabledPluginSkillRoots } from "@main/plugins/pluginManager.js";
 import { skillSyncMirrorRoots } from "@main/lib/skillSync.js";
 import { getMcpManagement } from "@main/lib/mcpConfig.js";
+import { builtinToolFlags } from "@main/tools/builtinToolsConfig.js";
 import { BROWSER_TOOL_SPECS, browserToolsUsagePrompt } from "@main/browser/agentBrowserTools.js";
 import { joinPromptSections } from "@main/lib/systemPrompt.js";
 import { loadUserSystemPrompt, userSystemPromptSections } from "@main/lib/userSystemPrompt.js";
@@ -24,7 +25,7 @@ export function piPrivateAgentDir(): string {
   return join(app.getPath("userData"), "agent-config", "pi");
 }
 
-async function loadHostConfiguration(): Promise<{ providers: Record<string, PiProviderPublic>; apiKeys: Record<string, string>; extraSkillPaths: string[]; gitBash: string | null; browserToolsEnabled: boolean; agentDir: string }> {
+async function loadHostConfiguration(): Promise<{ providers: Record<string, PiProviderPublic>; apiKeys: Record<string, string>; extraSkillPaths: string[]; gitBash: string | null; browserToolsEnabled: boolean; webToolsEnabled: boolean; imageToolEnabled: boolean; agentDir: string }> {
   const providers = await PiModelsStore.listPublic();
   const apiKeys: Record<string, string> = {};
   for (const [name, provider] of Object.entries(providers)) {
@@ -33,11 +34,12 @@ async function loadHostConfiguration(): Promise<{ providers: Record<string, PiPr
     if (key) apiKeys[name] = key;
   }
   const mcp = await getMcpManagement();
+  const builtin = await builtinToolFlags();
   // extraSkillPaths = enabled plugin skill roots + external sync mirrors
   // (TODO-004). The Pi host learns the sync mirrors through THIS config
   // channel — it cannot read the sync source list itself because the host
   // bundle runs without the Electron DB.
-  return { providers, apiKeys, extraSkillPaths: [...(await getEnabledPluginSkillRoots()), ...(await skillSyncMirrorRoots())], gitBash: process.platform === "win32" ? resolveGitBash() : null, browserToolsEnabled: !mcp.browserDisabled, agentDir: piPrivateAgentDir() };
+  return { providers, apiKeys, extraSkillPaths: [...(await getEnabledPluginSkillRoots()), ...(await skillSyncMirrorRoots())], gitBash: process.platform === "win32" ? resolveGitBash() : null, browserToolsEnabled: !mcp.browserDisabled, webToolsEnabled: builtin.web, imageToolEnabled: builtin.image, agentDir: piPrivateAgentDir() };
 }
 
 export class PiAgentSdkProvider implements AgentProvider {

@@ -12,7 +12,7 @@ import { buildPiSkillLoader, rewriteSkillPrefix, createMntNormalizingReadTool } 
 import { createMcodeExtension } from "./mcodeExtension.js";
 import { normalizePiRegisteredModel } from "./piRegisteredModel.js";
 import { dropFileSnapshot, getFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
-import { isMainToPiHost, PI_HOST_PROTOCOL_VERSION, type MainToPiHost, type PiHostToMain, type PiHostTurnConfig } from "./piHostProtocol.js";
+import { isMainToPiHost, PI_HOST_PROTOCOL_VERSION, type MainToPiHost, type PiHostReverseMethod, type PiHostToMain, type PiHostTurnConfig } from "./piHostProtocol.js";
 
 const sdkEntry = process.argv[2];
 const runtimeVersion = process.argv[4];
@@ -25,17 +25,17 @@ const abortedTurns = new Set<string>();
 let shuttingDown = false;
 function send(message: PiHostToMain): void { if (!shuttingDown) process.stdout.write(`${JSON.stringify(message)}\n`); }
 function safeError(error: unknown): string { return error instanceof Error ? error.message : String(error); }
-function validateReverseResult(method: "requestApproval" | "requestUserInput" | "requestPlanApproval" | "permissionState" | "browser", value: unknown): unknown {
+function validateReverseResult(method: PiHostReverseMethod, value: unknown): unknown {
   if (!value || typeof value !== "object") throw new Error(`Invalid ${method} response`);
   const v = value as Record<string, unknown>;
   if (method === "requestApproval" && typeof v.allow !== "boolean") throw new Error("Invalid approval response");
   if (method === "requestUserInput" && (!v.answers || typeof v.answers !== "object" || Array.isArray(v.answers))) throw new Error("Invalid user-input response");
   if (method === "requestPlanApproval" && typeof v.approved !== "boolean") throw new Error("Invalid plan-approval response");
   if (method === "permissionState" && (typeof v.alwaysAllowed !== "boolean" || (v.mode !== undefined && typeof v.mode !== "string"))) throw new Error("Invalid permission-state response");
-  if (method === "browser" && !Array.isArray(v.content)) throw new Error("Invalid browser tool response");
+  if ((method === "browser" || method === "builtinTool") && !Array.isArray(v.content)) throw new Error(`Invalid ${method} response`);
   return value;
 }
-function reverse(turnId: string, method: "requestApproval" | "requestUserInput" | "requestPlanApproval" | "permissionState" | "browser", params: never): Promise<unknown> {
+function reverse(turnId: string, method: PiHostReverseMethod, params: never): Promise<unknown> {
   const id = randomUUID();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { reversePending.delete(id); reject(new Error(`${method} timed out`)); }, 5 * 60_000);
@@ -131,6 +131,8 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
   const snapshot = getFileSnapshot(req.sessionId);
   const extension = createMcodeExtension({ ctx, cwd: req.cwd, strict, sessionId: req.sessionId, projectPath: req.cwd, turnNumber: req.turnNumber, browserToolsEnabled: config.browserToolsEnabled, userSystemPrompt: config.userSystemPrompt,
     browserBridge: { specs: config.browserToolSpecs, usagePrompt: config.browserUsagePrompt, invoke: (name, args, meta) => reverse(turnId, "browser", { name, args, meta } as never) as never }, snapshot,
+    builtinTools: { web: config.webToolsEnabled === true, image: config.imageToolEnabled === true },
+    builtinBridge: { invoke: (name, args, meta) => reverse(turnId, "builtinTool", { name, args, meta } as never) as never },
     permissionState: (toolName) => reverse(turnId, "permissionState", { toolName } as never) as never });
   const loader = await buildPiSkillLoader({ sdk, cwd: req.cwd, agentDir: config.agentDir, allowNames: req.skills?.length ? req.skills : undefined, extraSkillPaths: config.extraSkillPaths, extensionFactories: [extension] });
   const customTools = process.platform === "win32" ? [

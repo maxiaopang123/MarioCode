@@ -42,6 +42,8 @@ import {
 import { log } from "@main/lib/logger.js";
 import { registerImageArtifact } from "@main/lib/imageArtifacts.js";
 import { SettingRepo } from "@main/store/repositories.js";
+import { webToolsEnabledSync } from "@main/tools/builtinToolsConfig.js";
+import { matchSearchEngine } from "./searchEngines.js";
 import {
   BROWSER_SCREENSHOT_DIR_SETTING_KEY,
   type BrowserDevicePreset,
@@ -221,55 +223,20 @@ function isAllowedUrl(url: string): boolean {
 // a view that already sits on an engine, e.g. a tab the user opened manually,
 // or a page reached via a typed form submit). The user's own browsing in the
 // panel is never affected — this guard lives only in the agent tool layer.
-//
-// Host rules are deliberately narrow: only the engine's own search hosts
-// (root / www / regional search subdomains). Product subdomains such as
-// docs.google.com, pan.baidu.com, developer.baidu.com stay reachable.
-const SEARCH_ENGINE_HOST_RULES: ReadonlyArray<{ label: string; test: RegExp }> = [
-  { label: "Google", test: /^(www\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$/ },
-  { label: "Bing", test: /^((www|cn|m|global)\.)?bing\.com$/ },
-  { label: "百度", test: /^((www|m|wap)\.)?baidu\.com$/ },
-  { label: "DuckDuckGo", test: /(^|\.)duckduckgo\.com$/ },
-  { label: "搜狗", test: /^((www|m|wap)\.)?sogou\.com$/ },
-  { label: "360 搜索", test: /^((www|m)\.)?so\.com$/ },
-  { label: "神马搜索", test: /^((www|m|quark)\.)?sm\.cn$/ },
-  { label: "头条搜索", test: /^so\.toutiao\.com$/ },
-  { label: "Yandex", test: /^(www\.)?(yandex\.(com|ru|com\.tr)|ya\.ru)$/ },
-  { label: "Yahoo 搜索", test: /(^|\.)search\.yahoo\.(com|co\.jp)$/ },
-  { label: "Brave Search", test: /^search\.brave\.com$/ },
-  { label: "Startpage", test: /^(www\.)?startpage\.com$/ },
-  { label: "Ecosia", test: /^(www\.)?ecosia\.org$/ },
-  { label: "Kagi", test: /^(www\.)?kagi\.com$/ },
-  { label: "You.com", test: /^(www\.)?you\.com$/ },
-  { label: "Perplexity", test: /^(www\.)?perplexity\.ai$/ },
-];
-
-/** Return the engine label when `url` points at a search engine's search host,
- *  else null. Only http(s) URLs are inspected; unparsable input → null (the
- *  caller's own validation reports it). */
-export function matchSearchEngine(url: string): string | null {
-  let host: string;
-  try {
-    const u = new URL(url);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    host = u.hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-  for (const rule of SEARCH_ENGINE_HOST_RULES) {
-    if (rule.test.test(host)) return rule.label;
-  }
-  return null;
-}
+// The host rules live in searchEngines.ts (shared with the built-in web tools).
+export { matchSearchEngine };
 
 /** The refusal text for a blocked engine. Tells the model what to do instead
  *  (say so to the user / open a known URL directly) and explicitly forbids the
  *  two natural workarounds (another engine, typing into a search box). */
 function searchEngineBlockedResult(label: string, action: "navigate" | "read", url?: string): ToolResult {
   const where = action === "navigate" ? `拦截: ${label}` : `当前页面是搜索引擎 ${label}${url ? `: ${url}` : ""}`;
+  const instead = webToolsEnabledSync()
+    ? "请改用 web_search 工具搜索(只返回标题、链接和摘要),需要细节再用 web_fetch 读取具体链接;"
+    : "当前没有可用的网页搜索工具:请直接告诉用户你无法联网搜索,让用户提供资料或具体链接;";
   return errorResult(
-    `内置浏览器不允许用于搜索引擎检索(${where})。当前没有可用的网页搜索工具:请直接告诉用户你无法联网搜索,` +
-      `让用户提供资料或具体链接;不要换其他搜索引擎、也不要在网页搜索框里输入关键词绕过。已知具体网址时可以直接 browser_navigate 打开该网址。`,
+    `内置浏览器不允许用于搜索引擎检索(${where})。${instead}` +
+      `不要换其他搜索引擎、也不要在网页搜索框里输入关键词绕过。已知具体网址时可以直接 browser_navigate 打开该网址。`,
   );
 }
 
@@ -1201,7 +1168,7 @@ export const BROWSER_TOOLS_FLOW =
   "典型流程: navigate → (wait 等内容出现) → snapshot 读内容与元素索引 → 按需 type 填表(接 keys:Enter 提交)/ select 选下拉 / upload_file 传附件 / click 点击 / scroll 翻页 / find 精查 / screenshot 截图 / save_pdf 存档;" +
   "只操作页面时用 snapshot 的 mode=interactive,读文章用 mode=text,正文没读完按结果末尾给出的 offset 续读;只找某段内容用 find,避免整页抓取;触发下载后用 downloads 查看进度与保存路径。" +
   "禁止把浏览器当搜索引擎用:不要打开 Google/Bing/百度等搜索站输入关键词检索(会被拦截,且搜索结果页快照极大);" +
-  "没有搜索工具时直接告知用户你无法联网搜索,已知具体网址则直接 navigate 打开。";
+  "需要搜索时用 web_search 工具(若可用);没有搜索工具时直接告知用户你无法联网搜索,已知具体网址则直接 navigate 打开。";
 
 /**
  * Build the system-prompt section teaching the browser tools — one promptSnippet

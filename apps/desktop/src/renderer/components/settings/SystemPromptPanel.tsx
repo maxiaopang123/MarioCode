@@ -27,6 +27,8 @@ const LAYER_LABELS: Record<string, MessageId> = {
   "pi.plan": "settings.systemPrompt.layer.piPlan",
   "browser.usage.on": "settings.systemPrompt.layer.browserOn",
   "browser.usage.off": "settings.systemPrompt.layer.browserOff",
+  "builtin.usage.on": "settings.systemPrompt.layer.builtinOn",
+  "builtin.usage.off": "settings.systemPrompt.layer.builtinOff",
   "codex.agentsHome": "settings.systemPrompt.layer.codexAgentsHome",
   "engine.unknown.base": "settings.systemPrompt.layer.engineUnknown",
 };

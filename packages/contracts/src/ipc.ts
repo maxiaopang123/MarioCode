@@ -340,6 +340,22 @@ export function parseNetworkProxySettings(raw: string | null | undefined): Netwo
   return { mode: "system", customUrl: "" };
 }
 
+/** The WHATWG URL constructor exists at runtime in every process that loads
+ *  this package (Node's global, the renderer's DOM), but this package's
+ *  TypeScript lib is environment-neutral — no DOM, no @types/node. */
+declare class URL {
+  constructor(input: string);
+  protocol: string;
+  hostname: string;
+  host: string;
+  port: string;
+  username: string;
+  password: string;
+  pathname: string;
+  search: string;
+  hash: string;
+}
+
 /**
  * Normalize a typed proxy address to `http(s)://host:port`, or null when it
  * isn't one. A bare `host:port` gets `http://`. SOCKS, other schemes and
@@ -363,6 +379,133 @@ export function normalizeProxyUrl(input: string): string | null {
   // `URL` drops a port equal to the scheme default, so check the typed text.
   if (!url.port && !/:\d+\/?$/.test(withScheme)) return null;
   return `${url.protocol}//${url.host}`;
+}
+
+/**
+ * Built-in agent tools (Settings → 内置工具): `web_search` / `web_fetch` and
+ * `image_generate`, registered on Claude, Codex and Pi. The non-secret config
+ * is one JSON blob under this key (see {@link BuiltinToolsConfigSchema}); it
+ * is written only through `builtinTools.save`, which also owns the API keys
+ * (encrypted under a separate key, never sent to the renderer). The on/off
+ * switches live in MCP management state (`webToolsDisabled` /
+ * `imageToolDisabled`), so the MCP panel's built-in group and this page flip
+ * the same flags. Read fresh on every turn.
+ */
+export const BUILTIN_TOOLS_CONFIG_SETTING_KEY = "builtinTools.config";
+
+/** Where web_search gets results: a hidden browser window on Bing / Baidu
+ *  (no key), or a search API that needs the user's key. */
+export const WebSearchBackendSchema = z.enum(["bing", "baidu", "bocha", "zhipu", "tavily"]);
+export type WebSearchBackend = z.infer<typeof WebSearchBackendSchema>;
+export const WEB_SEARCH_KEYED_BACKENDS = ["bocha", "zhipu", "tavily"] as const;
+export type WebSearchKeyedBackend = (typeof WEB_SEARCH_KEYED_BACKENDS)[number];
+/** Stored secrets: one per keyed search backend, plus the image endpoint's
+ *  key when the image source is a custom endpoint. */
+export type BuiltinToolsSecretId = WebSearchKeyedBackend | "image";
+
+/** `WxH` pixels or `auto` — what OpenAI-compatible images endpoints accept. */
+export const IMAGE_SIZE_RE = /^(auto|\d{3,4}x\d{3,4})$/;
+/** `image.source` value for an endpoint typed into the page instead of a
+ *  shared provider's. */
+export const IMAGE_SOURCE_CUSTOM = "custom";
+
+export const BuiltinToolsConfigSchema = z.object({
+  search: z.object({
+    backend: WebSearchBackendSchema,
+    /** Default result count per web_search call (the model may ask for fewer or more, ≤ 10). */
+    maxResults: z.number().int().min(1).max(10),
+  }),
+  fetch: z.object({
+    /** Default characters per web_fetch call (the model may pass maxChars within 1000–20000). */
+    maxChars: z.number().int().min(1000).max(20000),
+  }),
+  image: z.object({
+    /** A shared provider id (its endpoint + key are reused), IMAGE_SOURCE_CUSTOM,
+     *  or "" when image generation isn't configured. */
+    source: z.string().max(64),
+    /** OpenAI-compatible base URL (…/v1); only read when source is custom. */
+    baseUrl: z.string().max(2048),
+    /** Image model id, e.g. gpt-image-1 / cogview-4 / doubao-seedream-3-0-t2i. */
+    model: z.string().max(256),
+    /** Default size when the model doesn't pass one. */
+    size: z.string().regex(IMAGE_SIZE_RE),
+  }),
+});
+export type BuiltinToolsConfig = z.infer<typeof BuiltinToolsConfigSchema>;
+
+export const DEFAULT_BUILTIN_TOOLS_CONFIG: BuiltinToolsConfig = {
+  search: { backend: "bing", maxResults: 5 },
+  fetch: { maxChars: 5000 },
+  image: { source: "", baseUrl: "", model: "", size: "1024x1024" },
+};
+
+/** Section-wise lenient parse: a malformed section falls back to its default
+ *  without taking the other sections with it. */
+export function parseBuiltinToolsConfig(raw: string | null | undefined): BuiltinToolsConfig {
+  let parsed: Record<string, unknown> = {};
+  if (raw) {
+    try {
+      const value: unknown = JSON.parse(raw);
+      if (value && typeof value === "object" && !Array.isArray(value)) parsed = value as Record<string, unknown>;
+    } catch {
+      // Malformed JSON → all defaults.
+    }
+  }
+  const shape = BuiltinToolsConfigSchema.shape;
+  const section = <K extends keyof BuiltinToolsConfig>(key: K): BuiltinToolsConfig[K] => {
+    const result = shape[key].safeParse(parsed[key]);
+    return (result.success ? result.data : DEFAULT_BUILTIN_TOOLS_CONFIG[key]) as BuiltinToolsConfig[K];
+  };
+  return { search: section("search"), fetch: section("fetch"), image: section("image") };
+}
+
+/** Why image_generate isn't usable yet (the page renders the localized text). */
+export type ImageToolIssue = "noSource" | "providerMissing" | "noBaseUrl" | "noModel" | "noKey";
+
+/** Settings → 内置工具 page state. Secrets are reported by presence only. */
+export interface BuiltinToolsState {
+  config: BuiltinToolsConfig;
+  webToolsEnabled: boolean;
+  imageToolEnabled: boolean;
+  keys: Record<BuiltinToolsSecretId, boolean>;
+  /** null = image_generate is configured (it registers whenever enabled). */
+  imageIssue: ImageToolIssue | null;
+}
+
+const SecretInputSchema = z.string().max(4096).nullable().optional();
+
+/** Save any subset. Keys: a string stores it (trimmed, must be non-empty),
+ *  null deletes it, absent keeps what's stored. */
+export const BuiltinToolsSaveSchema = z.object({
+  config: BuiltinToolsConfigSchema.optional(),
+  webToolsEnabled: z.boolean().optional(),
+  imageToolEnabled: z.boolean().optional(),
+  keys: z
+    .object({ bocha: SecretInputSchema, zhipu: SecretInputSchema, tavily: SecretInputSchema, image: SecretInputSchema })
+    .optional(),
+});
+export type BuiltinToolsSaveInput = z.infer<typeof BuiltinToolsSaveSchema>;
+
+export interface BuiltinToolsSaveResult {
+  ok: boolean;
+  error?: string;
+  state?: BuiltinToolsState;
+}
+
+/** Run one real search with the saved settings (the page's 测试 button). */
+export const BuiltinToolsTestSearchSchema = z.object({ query: z.string().trim().min(1).max(200) });
+export type BuiltinToolsTestSearchInput = z.infer<typeof BuiltinToolsTestSearchSchema>;
+
+export interface BuiltinToolsTestSearchResult {
+  ok: boolean;
+  /** Backend that produced the results (differs from the setting after a fallback). */
+  backend: WebSearchBackend;
+  count: number;
+  first?: { title: string; url: string };
+  /** The configured keyed backend failed and Bing answered instead. */
+  fallbackFrom?: WebSearchBackend;
+  error?: string;
+  ms: number;
 }
 
 /** What the engines' network route resolves to right now — the status line
@@ -3184,6 +3327,11 @@ export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 export interface McpManagementState {
   /** Built-in mcode-browser server disabled. Absent/false = enabled. */
   browserDisabled?: boolean;
+  /** Built-in web_search / web_fetch (mcode-web) disabled. Absent/false = enabled. */
+  webToolsDisabled?: boolean;
+  /** Built-in image_generate (mcode-image) disabled. Absent/false = enabled
+   *  (it still registers only once an image model is configured). */
+  imageToolDisabled?: boolean;
   /** User-scope servers the user turned OFF. Their full configs are stashed
    *  here (keyed by name) so re-enabling restores them exactly; the config
    *  file meanwhile stays free of them, which is what keeps the binary from
@@ -3290,6 +3438,11 @@ const MCP_NAME_RE = /^[A-Za-z0-9_-]+$/;
 
 /** Reserved server name — collides with the built-in in-process server. */
 export const MCP_RESERVED_NAME = "mcode-browser";
+/** The built-in web_search / web_fetch server and the image_generate server. */
+export const MCP_WEB_SERVER_NAME = "mcode-web";
+export const MCP_IMAGE_SERVER_NAME = "mcode-image";
+/** Every built-in server name; user servers may not take one. */
+export const MCP_RESERVED_NAMES: readonly string[] = [MCP_RESERVED_NAME, MCP_WEB_SERVER_NAME, MCP_IMAGE_SERVER_NAME];
 
 /** Add a user-scope server. Rejected when the name already exists (enabled in
  *  the config file or stashed as disabled). The config is written into
@@ -4685,6 +4838,12 @@ export interface RpcMap {
   /** What the engines' network route resolves to right now (Settings → 网络).
    *  The setting itself goes through setting.get/set. */
   "network.proxyStatus": () => Promise<NetworkProxyStatus>;
+  /** Settings → 内置工具: config, switches, which keys are stored. */
+  "builtinTools.get": () => Promise<BuiltinToolsState>;
+  /** Save config / switches / keys (any subset). */
+  "builtinTools.save": (input: BuiltinToolsSaveInput) => Promise<BuiltinToolsSaveResult>;
+  /** One real web_search with the saved settings. */
+  "builtinTools.testSearch": (input: BuiltinToolsTestSearchInput) => Promise<BuiltinToolsTestSearchResult>;
   /** Check for updates on the GitHub Releases channel. Returns the current
    *  version when up-to-date, the new version when available, or an error.
    *  In dev this short-circuits to "up-to-date" (updater only runs in prod). */
@@ -5137,6 +5296,9 @@ export const IPC = {
   // App / runtime info (About panel)
   APP_INFO: "app:info",
   NETWORK_PROXY_STATUS: "network:proxyStatus",
+  BUILTIN_TOOLS_GET: "builtinTools:get",
+  BUILTIN_TOOLS_SAVE: "builtinTools:save",
+  BUILTIN_TOOLS_TEST_SEARCH: "builtinTools:testSearch",
   // Auto-update (electron-updater)
   APP_CHECK_FOR_UPDATES: "app:checkForUpdates",
   APP_DOWNLOAD_UPDATE: "app:downloadUpdate",

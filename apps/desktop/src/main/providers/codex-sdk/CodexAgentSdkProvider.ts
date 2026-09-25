@@ -92,6 +92,15 @@ import {
   BROWSER_TOOL_SPECS,
   browserToolsUsagePrompt,
 } from "@main/browser/agentBrowserTools.js";
+import {
+  BUILTIN_READONLY_TOOLS,
+  BUILTIN_TOOL_SPECS,
+  builtinToolsUsagePrompt,
+  isBuiltinToolName,
+  type BuiltinToolFlags,
+} from "@main/tools/builtinToolSpecs.js";
+import { builtinToolFlags } from "@main/tools/builtinToolsConfig.js";
+import { invokeBuiltinTool } from "@main/tools/builtinTools.js";
 
 /* ── Codex-native capability descriptors ── */
 
@@ -236,7 +245,8 @@ export class CodexAgentSdkProvider implements AgentProvider {
       return failTurn(ctx, req.sessionId, "CODEX_NO_MODEL", "Codex 未配置任何模型:请先在「设置 → 模型配置 → Codex」中添加模型端点后再发送。");
     }
     await CodexModelsStore.ensureConfigMaterialized(req.cwd);
-    await ensureCodexHomeIdentity();
+    const builtinFlags = await builtinToolFlags();
+    await ensureCodexHomeIdentity(builtinFlags);
     const userSystemPrompt = joinPromptSections(
       ...userSystemPromptSections(await loadUserSystemPrompt({ cwd: req.cwd, sessionId: req.sessionId })),
     );
@@ -388,6 +398,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
         planMode,
         activeTurn,
         browserToolsEnabled,
+        builtinFlags,
       }),
     );
     const unsubscribe = client.onNotification((frame) => adapter.handleNotification(frame));
@@ -410,7 +421,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
           ...(userSystemPrompt ? { developerInstructions: userSystemPrompt } : {}),
           // Experimental (requires initialize capabilities.experimentalApi):
           // register Mcode's host-side tools (ask/plan/browser).
-          dynamicTools: buildDynamicTools(browserToolsEnabled),
+          dynamicTools: buildDynamicTools(browserToolsEnabled, builtinFlags),
         };
         let threadId: string | null = null;
         if (req.resumeProviderSessionId) {
@@ -638,20 +649,21 @@ function skillRootsFor(cwd: string): string[] {
 
 /** Write CODEX_HOME/AGENTS.md — Codex's global instructions file, which we
  *  own inside the isolated home. Idempotent (writes only on drift). */
-export function codexHomeAgentsMarkdown(): string {
+export function codexHomeAgentsMarkdown(builtinFlags: BuiltinToolFlags): string {
   return joinPromptSections(
     CODEX_IDENTITY_PROMPT,
     ASK_NATIVE_TOOL_PROMPT,
     PLAN_MODE_PROMPT,
     browserToolsUsagePrompt(),
+    builtinToolsUsagePrompt(builtinFlags),
     process.platform === "win32" ? WIN32_PATH_HINT : "",
   );
 }
 
-async function ensureCodexHomeIdentity(): Promise<void> {
+async function ensureCodexHomeIdentity(builtinFlags: BuiltinToolFlags): Promise<void> {
   const dir = codexHomePath();
   await fs.mkdir(dir, { recursive: true });
-  const content = `${codexHomeAgentsMarkdown()}\n`;
+  const content = `${codexHomeAgentsMarkdown(builtinFlags)}\n`;
   const file = path.join(dir, "AGENTS.md");
   try {
     const prev = await fs.readFile(file, "utf-8");
@@ -690,6 +702,9 @@ interface RequestDeps {
    *  thread rollout and thread/resume cannot re-register them — a resumed
    *  thread keeps advertising browser_* even when disabled. */
   browserToolsEnabled: boolean;
+  /** Built-in web / image tools registered at thread start (the invocation
+   *  path re-reads the switches for the same resume reason). */
+  builtinFlags: BuiltinToolFlags;
 }
 
 /** Dispatch the server's request frames: approvals, user input, dynamic
@@ -796,6 +811,19 @@ async function decideApproval(
   return { decision: decision.persist ? "acceptForSession" : "accept" };
 }
 
+/** Approval for a host-side dynamic tool with a cost (image_generate), on
+ *  the same rules as decideApproval: Full Access and a recorded "always
+ *  allow" pass, anything else asks. Returns null when approved, else the
+ *  reason for the refusal. */
+async function approveHostTool(deps: RequestDeps, toolName: string, input: unknown): Promise<string | null> {
+  const { ctx, req } = deps;
+  if (normalizeCodexMode(ctx.getPermissionMode?.() ?? req.permissionMode) === "full-access") return null;
+  if (ctx.isToolAlwaysAllowed?.(toolName)) return null;
+  if (!ctx.requestApproval) return "工具审批不可用";
+  const decision = await ctx.requestApproval({ requestId: randomUUID(), toolName, input });
+  return decision.allow ? null : decision.reason ?? "已拒绝";
+}
+
 /** Codex's native user-input request ({questions: [{title, options?}]},
  *  answers keyed by question title). Bridges to the same renderer question
  *  card as our dynamic ask_user_question tool. */
@@ -834,7 +862,7 @@ async function answerNativeUserInput(p: Record<string, unknown>, deps: RequestDe
 
 /** JSON-schema function descriptors handed to thread/start. Names use
  *  snake_case (codex tool conventions). */
-function buildDynamicTools(browserToolsEnabled: boolean): Array<Record<string, unknown>> {
+function buildDynamicTools(browserToolsEnabled: boolean, builtinFlags: BuiltinToolFlags): Array<Record<string, unknown>> {
   const tools: Array<Record<string, unknown>> = [
     {
       type: "function",
@@ -893,6 +921,55 @@ function buildDynamicTools(browserToolsEnabled: boolean): Array<Record<string, u
       },
     },
   ];
+  // Built-in web / image tools — descriptions from the shared spec
+  // (builtinToolSpecs.ts), registered per switch.
+  if (builtinFlags.web) {
+    tools.push(
+      {
+        type: "function",
+        name: "web_search",
+        description: BUILTIN_TOOL_SPECS.web_search.description,
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "搜索关键词" },
+            count: { type: "number", description: "返回条数,1–10,默认按设置" },
+          },
+          required: ["query"],
+        },
+      },
+      {
+        type: "function",
+        name: "web_fetch",
+        description: BUILTIN_TOOL_SPECS.web_fetch.description,
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "网页地址,http(s)://" },
+            offset: { type: "number", description: "从正文第几个字开始读,续读时填上次结果末尾给出的值" },
+            maxChars: { type: "number", description: "本次最多返回多少字,1000–20000,默认按设置" },
+            links: { type: "boolean", description: "true=保留正文里的链接" },
+          },
+          required: ["url"],
+        },
+      },
+    );
+  }
+  if (builtinFlags.image) {
+    tools.push({
+      type: "function",
+      name: "image_generate",
+      description: BUILTIN_TOOL_SPECS.image_generate.description,
+      inputSchema: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "图片描述:主体、风格、构图、光线、色调等" },
+          size: { type: "string", description: "尺寸,如 1024x1024 / 1536x1024 / 1024x1536,省略用设置里的默认值" },
+        },
+        required: ["prompt"],
+      },
+    });
+  }
   // Browser tools (read-only trio + side-effect ones) — descriptions come
   // from the shared spec so Claude/Pi/Codex stay in sync. Gated by the MCP
   // panel's builtin-browser switch (same flag Claude's in-process MCP server
@@ -1115,6 +1192,30 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
   // invocation returns this error instead of touching the browser.
   if (name.startsWith("browser_") && !deps.browserToolsEnabled) {
     return fail("内置浏览器工具已停用(设置 → MCP)。请改用其他方式完成任务。");
+  }
+
+  // Built-in web / image tools. invokeBuiltinTool re-reads the switches;
+  // image_generate spends money, so it asks first (dynamic tools bypass
+  // codex's own approval flow).
+  if (isBuiltinToolName(name)) {
+    const toolCallId = typeof p.callId === "string" ? p.callId : randomUUID();
+    try {
+      if (!BUILTIN_READONLY_TOOLS.has(name)) {
+        const denied = await approveHostTool(deps, name, args);
+        if (denied) return fail(`用户没有批准这次调用:${denied}`);
+      }
+      return toContent(
+        await invokeBuiltinTool(name, args, {
+          toolCallId,
+          sessionId: req.sessionId,
+          turnNumber: req.turnNumber,
+          onImage: (info) =>
+            ctx.emit({ type: "browser.image", sessionId: req.sessionId, toolCallId: info.toolCallId, data: info.data, mimeType: info.mimeType }),
+        }),
+      );
+    } catch (err) {
+      return fail(`工具执行失败:${(err as Error).message}`);
+    }
   }
 
   try {

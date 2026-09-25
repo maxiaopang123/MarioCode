@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { ProviderContext } from "@contracts/provider";
 import { resolvePiRuntimeLaunch } from "@main/runtimes/runtimeSelection.js";
+import { networkFingerprint, withEngineNetworkEnv } from "@main/network/engineProxy.js";
 import * as browser from "@main/browser/agentBrowserTools.js";
 import { PI_HOST_PROTOCOL_VERSION, type MainToPiHost, type PiHostCall, type PiHostToMain } from "./piHostProtocol.js";
 
@@ -37,8 +38,14 @@ export class PiHostClient {
 
   private async ensureStartedInner(): Promise<void> {
     const launch = await resolvePiRuntimeLaunch();
-    const fingerprint = `${launch.nodePath}\u0000${launch.sdkEntry}\u0000${launch.version}`;
+    const env = await withEngineNetworkEnv({ ...process.env, ELECTRON_RUN_AS_NODE: undefined });
+    const runtimeKey = `${launch.nodePath}\u0000${launch.sdkEntry}\u0000${launch.version}`;
+    const fingerprint = `${runtimeKey}\u0000${networkFingerprint(env)}`;
     if (this.ready && this.launchFingerprint === fingerprint) return this.ready;
+    // A network route change alone must not kill a turn in flight: a busy host
+    // keeps its old route, and the first call after it goes idle restarts it.
+    const busy = this.pending.size > 0 || this.turnContexts.size > 0;
+    if (this.ready && busy && this.launchFingerprint?.startsWith(`${runtimeKey}\u0000`)) return this.ready;
     if (this.child) this.stop(new Error("Pi runtime selection changed"));
     const generation = ++this.generation;
     this.launchFingerprint = fingerprint;
@@ -47,7 +54,7 @@ export class PiHostClient {
       const child = spawn(launch.nodePath, [hostEntry, launch.sdkEntry, launch.sdkPackageDir, launch.version], {
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
+        env,
       });
       this.child = child;
       child.stderr.setEncoding("utf8");

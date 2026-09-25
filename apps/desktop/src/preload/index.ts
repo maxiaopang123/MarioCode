@@ -245,6 +245,12 @@ const api = {
       ipcRenderer.invoke(IPC.APP_QUIT_AND_INSTALL)) as RpcMap["app.quitAndInstall"],
   },
 
+  /** Settings → 网络: what the engines' network route resolves to right now. */
+  network: {
+    proxyStatus: (() =>
+      ipcRenderer.invoke(IPC.NETWORK_PROXY_STATUS)) as RpcMap["network.proxyStatus"],
+  },
+
   /** Open a project root in the OS file manager. Main refuses any path that
    *  isn't an exact match for a known project root, so only directories the
    *  user has added as projects can be opened. */

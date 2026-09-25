@@ -577,6 +577,29 @@ export const en = {
   "settings.lsp.reveal": "Reveal in folder",
 
 
+  // ── NetworkPanel (engine connections: direct / system proxy / custom proxy) ──
+  "settings.nav.network": "Network",
+  "settings.network.title": "Network",
+  "settings.network.section": "Engine connections",
+  "settings.network.sectionDesc": "Applies to the Claude, Codex and Pi engines (including connection tests, title and commit-message generation) from the next turn. The built-in browser and plugin downloads are not affected.",
+  "settings.network.mode": "Proxy",
+  "settings.network.modeDesc": "Whether the engines reach model services through a proxy.",
+  "settings.network.modeSystem": "System proxy",
+  "settings.network.modeDirect": "Direct",
+  "settings.network.modeCustom": "Custom proxy",
+  "settings.network.customUrl": "Proxy address",
+  "settings.network.customUrlDesc": "An HTTP or HTTPS proxy, e.g. http://127.0.0.1:7897.",
+  "settings.network.customUrlInvalid": "Invalid address — use http://host:port or https://host:port. SOCKS and credentials are not supported.",
+  "settings.network.statusProxy": "Now: {url} ({source})",
+  "settings.network.statusDirect": "Now: direct",
+  "settings.network.statusSystemNone": "Now: no system proxy set, connecting directly",
+  "settings.network.sourceEnv": "from the HTTPS_PROXY / HTTP_PROXY environment variables",
+  "settings.network.sourceSystem": "from the system proxy settings",
+  "settings.network.sourceCustom": "custom",
+  "settings.network.pendingCustom": "Takes effect once a proxy address is saved; until then the previous route stays",
+  "settings.network.saved": "Saved — applies from the next turn",
+  "settings.network.recheck": "Re-check",
+
   // ── RuntimesPanel (Agent runtimes, download-on-demand, one row each) ──
   "settings.nav.runtimes": "Agent",
   "settings.runtimes.title": "Agent",

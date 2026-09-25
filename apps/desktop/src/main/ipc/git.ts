@@ -63,6 +63,7 @@ import { ProjectRepo, SettingRepo } from "@main/store/repositories.js";
 import { findContainingWorkspaceRoot, isKnownWorkspaceRoot } from "@main/lib/pathGuard.js";
 import { CustomModelStore } from "@main/lib/secretStore.js";
 import { buildCustomEnv, resolveActiveModel } from "@main/providers/claude-sdk/customEnv.js";
+import { withEngineNetworkEnv } from "@main/network/engineProxy.js";
 import { resolveSdkBinaryPath } from "@main/providers/claude-sdk/sdkBinaryPath.js";
 import { BridgeRegistry } from "@main/providers/bridge/bridgeRegistry.js";
 import { resolveProtocol } from "@contracts/customModel";
@@ -402,6 +403,7 @@ export async function generateCommitMessageForRepo(input: {
         model = resolveActiveModel(cfg);
         env = buildCustomEnv(cfg);
       }
+      env = await withEngineNetworkEnv(env ?? { ...process.env });
 
       // Resolve the real on-disk binary path (unpacks from asar in a packaged
       // app). See the resolveSdkBinaryPath.ts rationale.

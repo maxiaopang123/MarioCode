@@ -22,6 +22,7 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
 import { log } from "@main/lib/logger.js";
+import { engineFetch } from "@main/network/engineProxy.js";
 import {
   hasHeader,
   requiresSessionHeader,
@@ -118,8 +119,9 @@ function isRetryableFetchError(err: unknown): boolean {
   const code = (err as { cause?: { code?: string; name?: string } })?.cause?.code;
   if (code && RETRYABLE_FETCH_CODES.has(code)) return true;
   // Fall back to a string match on the readable cause — covers variants that
-  // only populate .name or surface the code in the message.
-  return /ECONNRESET|ECONNREFUSED|EAI_AGAIN|ETIMEDOUT|CONNECT_TIMEOUT|SOCKET|UND_ERR_CLOSED/i.test(
+  // only populate .name or surface the code in the message, and Chromium's
+  // net::ERR_* names from proxied calls (see engineFetch).
+  return /ECONNRESET|ECONNREFUSED|EAI_AGAIN|ETIMEDOUT|CONNECT_TIMEOUT|SOCKET|UND_ERR_CLOSED|ERR_CONNECTION_(RESET|CLOSED|REFUSED)|ERR_TIMED_OUT|ERR_NETWORK_CHANGED|ERR_PROXY_CONNECTION_FAILED/i.test(
     describeFetchError(err),
   );
 }
@@ -143,7 +145,7 @@ async function fetchUpstreamWithRetry(
   for (let attempt = 1; attempt <= attempts; attempt++) {
     if (signal.aborted) throw new Error("aborted before fetch");
     try {
-      const res = await fetch(url, { ...init, signal });
+      const res = await engineFetch(url, { ...init, signal });
       // A request that needed retries finally went through — tell
       // subscribers the stall is over (they clear the retry hint).
       if (attempt > 1) onStatus?.({ kind: "ok", cause: "", attempt, attempts });

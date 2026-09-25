@@ -21,6 +21,7 @@ import {
 import type { ApiConfig } from "@contracts/customModel";
 import { CustomModelStore } from "@main/lib/secretStore.js";
 import { buildCustomEnv, resolveActiveModel } from "@main/providers/claude-sdk/customEnv.js";
+import { withEngineNetworkEnv } from "@main/network/engineProxy.js";
 import { BridgeRegistry } from "@main/providers/bridge/bridgeRegistry.js";
 import { resolveSdkBinaryPath } from "@main/providers/claude-sdk/sdkBinaryPath.js";
 import { log } from "@main/lib/logger.js";
@@ -157,7 +158,7 @@ async function probeEndpoint(
         abortController: ac,
         maxTurns: 1,
         model: probedModel,
-        env: buildCustomEnv(cfg),
+        env: await withEngineNetworkEnv(buildCustomEnv(cfg)),
         // MUST mirror the live-turn provider's settingSources (see
         // ClaudeAgentSdkProvider.ts). The bundled binary re-reads
         // ~/.claude/settings.json after spawn and overwrites the env we pass

@@ -33,6 +33,7 @@ import { sendToRenderer } from "@main/window.js";
 import { broadcastSessionChanged } from "@main/lib/sessionSync.js";
 import { resolveModelForGitOp } from "@main/ipc/git.js";
 import { buildCustomEnv, resolveActiveModel } from "@main/providers/claude-sdk/customEnv.js";
+import { withEngineNetworkEnv } from "@main/network/engineProxy.js";
 import { resolveSdkBinaryPath } from "@main/providers/claude-sdk/sdkBinaryPath.js";
 import { log } from "@main/lib/logger.js";
 
@@ -142,7 +143,7 @@ export async function generateSessionTitle(
     model = resolveActiveModel(cfg);
     // Session id, so the gateway's session header follows the conversation the
     // title is generated for rather than the process-wide fallback.
-    env = buildCustomEnv(cfg, { sessionId: session.id });
+    env = await withEngineNetworkEnv(buildCustomEnv(cfg, { sessionId: session.id }));
 
     // Resolve the real on-disk binary path (unpacks from asar in a packaged
     // app). See git.ts:generateCommitMessage for the full rationale.

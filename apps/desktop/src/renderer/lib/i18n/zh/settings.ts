@@ -580,6 +580,29 @@ export const zh = {
   "settings.lsp.reveal": "在文件夹中显示",
 
 
+  // ── NetworkPanel(引擎联网:直连 / 跟随系统代理 / 自定义代理) ──
+  "settings.nav.network": "网络",
+  "settings.network.title": "网络",
+  "settings.network.section": "引擎联网",
+  "settings.network.sectionDesc": "作用于 Claude、Codex、Pi 三个引擎（含连接测试、标题生成、提交信息生成），从下一轮对话开始生效。内置浏览器和插件下载不受影响。",
+  "settings.network.mode": "代理模式",
+  "settings.network.modeDesc": "引擎访问模型服务时走不走代理。",
+  "settings.network.modeSystem": "跟随系统代理",
+  "settings.network.modeDirect": "直连",
+  "settings.network.modeCustom": "自定义代理",
+  "settings.network.customUrl": "代理地址",
+  "settings.network.customUrlDesc": "HTTP 或 HTTPS 代理，例如 http://127.0.0.1:7897。",
+  "settings.network.customUrlInvalid": "地址格式不对：填 http://主机:端口 或 https://主机:端口，不支持 SOCKS 和账号密码。",
+  "settings.network.statusProxy": "当前：{url}（{source}）",
+  "settings.network.statusDirect": "当前：直连",
+  "settings.network.statusSystemNone": "当前：系统没有设置代理，按直连",
+  "settings.network.sourceEnv": "来自环境变量 HTTPS_PROXY / HTTP_PROXY",
+  "settings.network.sourceSystem": "来自系统代理设置",
+  "settings.network.sourceCustom": "自定义",
+  "settings.network.pendingCustom": "填好代理地址并保存后生效，在此之前仍按原来的方式联网",
+  "settings.network.saved": "已保存，下一轮对话生效",
+  "settings.network.recheck": "重新检测",
+
   // ── RuntimesPanel(Agent 运行时,按需下载,单行布局) ──
   "settings.nav.runtimes": "Agent",
   "settings.runtimes.title": "Agent",

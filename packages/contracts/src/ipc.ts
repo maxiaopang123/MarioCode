@@ -300,6 +300,75 @@ export const SESSION_WORKTREE_DEFAULT_SETTING_KEY = "session.worktreeDefault";
 export const WORKTREE_ROOT_SETTING_KEY = "worktree.root";
 
 /**
+ * Setting key for the engines' network route (Settings → 网络), one JSON blob
+ * `{ mode, customUrl }` (see {@link NetworkProxySettingsSchema}). Main reads it
+ * fresh whenever an engine process spawns — the Claude binary and the Codex
+ * app-server per turn, the Pi host on (re)start — and on every upstream call
+ * of the OpenAI-protocol bridge, so a change applies from the next turn.
+ * Missing / malformed = follow the system proxy.
+ */
+export const NETWORK_PROXY_SETTING_KEY = "network.proxy";
+
+export const NetworkProxyModeSchema = z.enum(["direct", "system", "custom"]);
+export type NetworkProxyMode = z.infer<typeof NetworkProxyModeSchema>;
+
+export const NetworkProxySettingsSchema = z.object({
+  mode: NetworkProxyModeSchema,
+  /** Proxy URL as produced by {@link normalizeProxyUrl}; only read in "custom" mode. */
+  customUrl: z.string(),
+});
+export type NetworkProxySettings = z.infer<typeof NetworkProxySettingsSchema>;
+
+export function parseNetworkProxySettings(raw: string | null | undefined): NetworkProxySettings {
+  if (raw) {
+    try {
+      const parsed = NetworkProxySettingsSchema.safeParse(JSON.parse(raw));
+      if (parsed.success) return parsed.data;
+    } catch {
+      // Malformed JSON falls back to the default below.
+    }
+  }
+  return { mode: "system", customUrl: "" };
+}
+
+/**
+ * Normalize a typed proxy address to `http(s)://host:port`, or null when it
+ * isn't one. A bare `host:port` gets `http://`. SOCKS, other schemes and
+ * credentials are rejected: the engines receive the proxy as HTTP(S)_PROXY
+ * (spoken as HTTP CONNECT by the Claude binary and Node), and the bridge's
+ * Chromium session can't take credentials in its proxy rules.
+ */
+export function normalizeProxyUrl(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  let url: URL;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  if (!url.hostname || url.username || url.password) return null;
+  if (url.pathname !== "/" || url.search || url.hash) return null;
+  // `URL` drops a port equal to the scheme default, so check the typed text.
+  if (!url.port && !/:\d+\/?$/.test(withScheme)) return null;
+  return `${url.protocol}//${url.host}`;
+}
+
+/** What the engines' network route resolves to right now — the status line
+ *  under Settings → 网络. */
+export interface NetworkProxyStatus {
+  /** The saved mode. */
+  mode: NetworkProxyMode;
+  /** Proxy the engines go through, or null for a direct connection. */
+  proxyUrl: string | null;
+  /** Where `proxyUrl` comes from: the app's own HTTP(S)_PROXY env vars (they
+   *  win in "system" mode), the OS proxy settings, or the custom address. */
+  source: "env" | "system" | "custom" | null;
+}
+
+/**
  * Setting key persisting left-bar DISPLAY NAMES for worktree directories, as
  * a JSON map of normalized worktree path → name. Purely cosmetic — a session
  * never reads its worktree name; missing entries fall back to the directory
@@ -4604,6 +4673,9 @@ export interface RpcMap {
   "browser.downloadAction": (input: BrowserDownloadActionInput) => Promise<BrowserOpResult>;
   /** App version + runtime info for the About panel. */
   "app.info": () => Promise<AppInfoResult>;
+  /** What the engines' network route resolves to right now (Settings → 网络).
+   *  The setting itself goes through setting.get/set. */
+  "network.proxyStatus": () => Promise<NetworkProxyStatus>;
   /** Check for updates on the GitHub Releases channel. Returns the current
    *  version when up-to-date, the new version when available, or an error.
    *  In dev this short-circuits to "up-to-date" (updater only runs in prod). */
@@ -5055,6 +5127,7 @@ export const IPC = {
   BROWSER_DOWNLOAD_ACTION: "browser:downloadAction",
   // App / runtime info (About panel)
   APP_INFO: "app:info",
+  NETWORK_PROXY_STATUS: "network:proxyStatus",
   // Auto-update (electron-updater)
   APP_CHECK_FOR_UPDATES: "app:checkForUpdates",
   APP_DOWNLOAD_UPDATE: "app:downloadUpdate",

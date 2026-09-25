@@ -60,6 +60,7 @@ import {
   codexKeyEnvVar,
 } from "@main/lib/codexModelsStore.js";
 import { getOrSetFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
+import { withEngineNetworkEnv } from "@main/network/engineProxy.js";
 import { getMcpManagement } from "@main/lib/mcpConfig.js";
 import { skillSyncMirrorRootsSync } from "@main/lib/skillSync.js";
 import { CODEX_IDENTITY_PROMPT, joinPromptSections } from "@main/lib/systemPrompt.js";
@@ -618,7 +619,7 @@ async function buildCodexEnv(ctx: ProviderContext): Promise<Record<string, strin
       ctx.log.warn(`codex: failed to decrypt key for provider "${p.id}"`);
     }
   }
-  return env;
+  return withEngineNetworkEnv(env);
 }
 
 /** Mcode skill roots made visible to codex: the global manager root plus

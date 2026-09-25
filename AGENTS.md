@@ -153,6 +153,13 @@ pnpm build
 - **预览面板**(`systemPromptPreview.ts` → `SystemPromptPanel.tsx`)按上表逐 provider 列层:`engine` 层(CLI/SDK 自有,MarioCode 读不到)只标位置 `text:null`,`fixed` / `conditional` 层直接 import provider 用的同一常量,`user` 层用同两个 helper——**新增一段注入必须同步加进预览的 sections,否则面板说谎**;层 id → 文案在 `SystemPromptPanel.LAYER_LABELS`(`settings.systemPrompt.layer.*`,zh/en 同步加)。
 - **不做**:模板库(待有需求)、按 provider 差异化的用户提示词(刻意三端同文,保证「同一句指令三端同效」可验证)。**真机三端一致性验证未做**:同一句可观测指令(如「每次回复末尾加 [MC]」)分别跑 Claude / Pi / Codex,以及 output-style 与用户提示词冲突时谁赢,都要在 `pnpm dev` 下人工跑。
 
+### 引擎联网:直连 / 跟随系统代理 / 自定义代理(2026-09-25;设置 → 网络)
+- **存储**:settings 表 `network.proxy`(`NETWORK_PROXY_SETTING_KEY`,JSON `{mode, customUrl}`,走通用 setting.get/set;缺省 = `system`)。自定义地址只收 `http(s)://host:port`(`normalizeProxyUrl`,拒 SOCKS / 账号密码 / 路径);面板在地址校验通过并保存之前不落 `custom`。状态行走专用 IPC `network:proxyStatus`。
+- **生效点全在 `main/network/engineProxy.ts`**:`withEngineNetworkEnv(env)` 包住每一处引擎子进程 env——Claude 轮次(官方 + 自定义端点)、连接测试 `probeEndpoint`、标题生成、提交信息生成、Codex `buildCodexEnv`、Pi host 启动。**新增引擎 spawn 点必须同样包一层**,否则那条路不跟设置走。Pi host 常驻:网络指纹(`networkFingerprint`)变了在空闲时重启,忙时沿用旧路由。
+- **env 规则**:custom / 解析出的系统代理 → 写 `HTTPS_PROXY` + `HTTP_PROXY`,`NO_PROXY` 补 localhost / 127.0.0.1 / ::1(本地 bridge、Ollama 必须绕开),`NODE_USE_ENV_PROXY=1`(Pi host 是纯 Node,不设就不认代理变量;Pi SDK 自带的 `configureHttpDispatcher` 只在它的 CLI 入口调用,SDK 入口不走)。`system` 模式下应用自身 env 已有代理变量时**以 env 为准**(只补 NO_PROXY 和 NODE_USE_ENV_PROXY)。`direct` 删光代理变量并设 `NO_PROXY=*`(Codex 的 reqwest 在 Windows 上会自己读注册表里的系统代理)。系统代理用独立分区 session `{mode:"system"}` 的 `resolveProxy` 解析,SOCKS 规则按直连处理。
+- **OpenAI 协议 bridge**:主进程的 Node fetch 永远不走代理,所以 `engineFetch` 在路由有代理时改走 Chromium(`mcode-network-proxied` 分区 session,`setProxy` 钉到同一代理),直连仍用 Node fetch;bridge 的重试正则同时认 `net::ERR_*`。
+- **不管**:内置浏览器(默认 session 跟随系统)、插件下载、运行时下载。**未验证**:系统代理真开着时的解析(实现时本机未开)、Claude / Codex 二进制端到端走代理、真 app 界面。
+
 ### claude 解析(SdkMessageAdapter)
 - `SdkMessageAdapter.dispatch()` 将 SDK 的 `SDKMessage` 归一化为 `RuntimeEvent`
 - 流是按 `message.type` 分发的 if/else 链,未知 type 静默忽略(向前兼容)

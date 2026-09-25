@@ -20,6 +20,7 @@ import type {
 import type { AskUserQuestionItem, PermissionMode } from "@contracts/runtime";
 import { SdkMessageAdapter, parseQuestions } from "./SdkMessageAdapter.js";
 import { buildCustomEnv, MCODE_CONFIG_DIR, resolveActiveModel } from "./customEnv.js";
+import { withEngineNetworkEnv } from "@main/network/engineProxy.js";
 import type { ClaudeContextWindowTag } from "./claudeTokenUsage.js";
 import { ASK_SYSTEM_PROMPT } from "@main/lib/askQuestion.js";
 import { CLAUDE_IDENTITY_PROMPT, CLAUDE_PLAN_MODE_NUDGE, joinPromptSections } from "@main/lib/systemPrompt.js";
@@ -770,11 +771,11 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
       // gateway request headers, and CLAUDE_CONFIG_DIR on top of process.env.
       // The session id names the gateway's session header (gateways that
       // require one want a stable id per conversation, not per request).
-      options.env = buildCustomEnv(req.apiConfig, { sessionId: req.sessionId });
+      options.env = await withEngineNetworkEnv(buildCustomEnv(req.apiConfig, { sessionId: req.sessionId }));
     } else {
       // Standard Anthropic endpoint: still redirect the config root so Mcode
       // manages its own skills/settings, but no auth/model overrides needed.
-      options.env = { ...process.env, CLAUDE_CONFIG_DIR: MCODE_CONFIG_DIR };
+      options.env = await withEngineNetworkEnv({ ...process.env, CLAUDE_CONFIG_DIR: MCODE_CONFIG_DIR });
     }
 
     // Subagent model pin (per provider config, settings panel「模型配置」):

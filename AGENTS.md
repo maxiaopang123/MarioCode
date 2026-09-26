@@ -93,8 +93,7 @@ apps/desktop/src/
 ## 开发命令
 
 ```bash
-# 启动开发(electron-vite,HMR)
-cd D:\00-huangbh-project\my-claude-gui
+# 启动开发(electron-vite,HMR;在仓库根目录执行)
 pnpm dev
 
 # 类型检查(改完代码先跑这个,最快定位问题)

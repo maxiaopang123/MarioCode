@@ -45,6 +45,12 @@ pnpm-debug.log*
 # ZCode session artifacts (local planning drafts, scratch)
 .zcode/
 
+# Claude Code local plan drafts (same role as .zcode/plans)
+.claude/plans/
+
+# npm lockfile — this repo is pnpm-only (pnpm-lock.yaml is the source of truth)
+package-lock.json
+
 # Pi runtime meta-package build output (22MB tarball + staging tree, produced
 # by apps/desktop/build/pack-pi-runtime.cjs; republish via npm, never commit)
 apps/desktop/build/pi-runtime-dist/

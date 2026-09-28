@@ -18,7 +18,6 @@
 | | 外观 | `AppearancePanel` | 单列,含色板/步进/Monaco 配色 |
 | AI 能力 | 模型配置 | `CustomModelsPanel` | **双栏**(供应商列表 + 表单),页签 Claude/Codex/Pi |
 | | Agent | `RuntimesPanel` | 单列,3 行可展开 |
-| | 插件 | `PluginsPanel` | 单列,头部页签 + 市场二级页签 |
 | | Skills | `SkillsPanel` | **双栏**(skill 列表 + 编辑器) |
 | | MCP 服务器 | `McpPanel` | 单列,4 个分组 |
 | 输入与提醒 | 语音 | `VoicePanel` | 单列,模型卡片 + 下载进度 |

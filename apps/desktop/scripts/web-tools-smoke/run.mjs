@@ -1,4 +1,4 @@
-// Bundle main.ts (the real web_search / web_fetch modules, in-memory settings)
+// Bundle main.ts (the real mario_web_search / mario_web_fetch modules, in-memory settings)
 // and run it as Electron's main process. Hits the live web. `pnpm test:web-tools`
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";

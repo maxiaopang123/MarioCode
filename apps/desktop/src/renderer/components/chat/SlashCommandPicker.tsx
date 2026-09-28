@@ -256,8 +256,8 @@ export function SlashCommandPicker({
                     ? t("chat.slash.builtin")
                     : (entry as SkillInfo).source === "project"
                       ? t("chat.slash.project")
-                      : (entry as SkillInfo).source === "plugin"
-                        ? t("chat.slash.plugin")
+                      : (entry as SkillInfo).source === "sync"
+                        ? t("chat.slash.sync")
                         : t("chat.slash.global")}
                 </span>
               </button>

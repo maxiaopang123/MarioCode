@@ -62,9 +62,11 @@ import {
 } from "@main/lib/askQuestion.js";
 import { PI_IDENTITY_PROMPT, joinPromptSections } from "@main/lib/systemPrompt.js";
 import {
-  BUILTIN_READONLY_TOOLS,
   BUILTIN_TOOL_SPECS,
+  NO_BUILTIN_TOOLS,
+  builtinToolNeedsApproval,
   builtinToolsUsagePrompt,
+  isBuiltinToolName,
   type BuiltinToolFlags,
   type BuiltinToolResult,
 } from "@main/tools/builtinToolSpecs.js";
@@ -74,7 +76,7 @@ export interface PiBrowserBridge {
   usagePrompt: string;
   invoke(name: string, args: unknown, meta?: unknown): Promise<ToolResult>;
 }
-/** Runs a built-in tool (web_search / web_fetch / image_generate) main-side;
+/** Runs a built-in tool (mario_web_search / mario_web_fetch / mario_image_generate) main-side;
  *  `meta` carries the toolCallId / session / turn for the image path. */
 export interface PiBuiltinBridge {
   invoke(name: string, args: unknown, meta: { toolCallId: string; sessionId: string; turnNumber?: number }): Promise<BuiltinToolResult>;
@@ -186,6 +188,9 @@ export interface CreateMcodeExtensionOptions {
   /** Built-in web / image tools registered this turn (resolved main-side). */
   builtinTools?: BuiltinToolFlags;
   builtinBridge?: PiBuiltinBridge;
+  /** Unattended run (scheduled task / ClawBot turn), resolved main-side —
+   *  input to builtinToolNeedsApproval in the tool_call guard. */
+  unattended?: boolean;
   snapshot: FileSnapshot;
   permissionState?(toolName: string): Promise<{ mode?: PermissionMode; alwaysAllowed: boolean }>;
 }
@@ -202,7 +207,8 @@ export interface CreateMcodeExtensionOptions {
  */
 export function createMcodeExtension(opts: CreateMcodeExtensionOptions): InlineExtension {
   const { ctx, cwd, strict, sessionId, projectPath, turnNumber, browserToolsEnabled, userSystemPrompt, browserBridge, snapshot, permissionState } = opts;
-  const builtinTools: BuiltinToolFlags = opts.builtinBridge ? opts.builtinTools ?? { web: false, image: false } : { web: false, image: false };
+  const builtinTools: BuiltinToolFlags = opts.builtinBridge ? opts.builtinTools ?? NO_BUILTIN_TOOLS : NO_BUILTIN_TOOLS;
+  const unattended = opts.unattended === true;
 
   // ── Plan mode state (per-turn, in-process) ──────────────────────────
   // Tracked here rather than via ctx.getPermissionMode() because the latter
@@ -219,7 +225,7 @@ export function createMcodeExtension(opts: CreateMcodeExtensionOptions): InlineE
   return {
     name: "mcode",
     factory: (pi: ExtensionAPI) => {
-      registerToolCallGuard(pi, { ctx, cwd, strict, sessionId, planMode, snapshot, permissionState });
+      registerToolCallGuard(pi, { ctx, cwd, strict, sessionId, planMode, snapshot, permissionState, unattended });
       registerAskUserQuestionTool(pi, ctx);
       // Browser tools + their usage prompt ride the same switch: when the
       // built-in server is disabled in the MCP panel, the model must neither
@@ -227,7 +233,7 @@ export function createMcodeExtension(opts: CreateMcodeExtensionOptions): InlineE
       if (browserToolsEnabled) {
         registerBrowserTools(pi, { ctx, sessionId, projectPath, turnNumber, browserBridge });
       }
-      if (opts.builtinBridge && (builtinTools.web || builtinTools.image)) {
+      if (opts.builtinBridge && (builtinTools.web || builtinTools.image || builtinTools.schedule || builtinTools.wechat)) {
         registerBuiltinTools(pi, { sessionId, turnNumber, flags: builtinTools, bridge: opts.builtinBridge });
       }
       registerPlanModeTools(pi, { ctx, sessionId, planMode });
@@ -266,9 +272,10 @@ function registerToolCallGuard(
     planMode: { active: boolean };
     snapshot: FileSnapshot;
     permissionState?: CreateMcodeExtensionOptions["permissionState"];
+    unattended: boolean;
   },
 ): void {
-  const { ctx, cwd, strict, sessionId, planMode } = deps;
+  const { ctx, cwd, strict, sessionId, planMode, unattended } = deps;
 
   pi.on("tool_call", async (event: ToolCallEvent): Promise<ToolCallEventResult | void> => {
     const { toolName } = event;
@@ -332,7 +339,13 @@ function registerToolCallGuard(
     //    page or navigate, so they're safe to auto-approve in every mode.
     //    `browser_navigate` / `browser_click` DO have side effects and fall
     //    through to the normal approval flow below.
-    if (MCODE_BROWSER_READONLY.has(toolName) || BUILTIN_READONLY_TOOLS.has(toolName)) {
+    if (MCODE_BROWSER_READONLY.has(toolName)) {
+      return;
+    }
+    //    Built-in MarioTool tools follow the shared policy: read-only ones
+    //    always pass; schedule mutations / WeChat notify pass without asking
+    //    in unattended runs (the schedule tools then refuse main-side).
+    if (isBuiltinToolName(toolName) && !builtinToolNeedsApproval(toolName, unattended)) {
       return;
     }
 
@@ -908,8 +921,9 @@ function registerBrowserTools(
  * Register the built-in web / image tools. Descriptions come from
  * builtinToolSpecs.ts; execution happens main-side over the `builtinTool`
  * reverse channel (the host has no Electron: no hidden windows, no settings
- * or keys). web_search / web_fetch are auto-approved by the `tool_call` guard
- * (BUILTIN_READONLY_TOOLS); image_generate goes through normal approval. The
+ * or keys). Approval follows builtinToolNeedsApproval in the `tool_call`
+ * guard (read-only ones pass, mario_image_generate asks, schedule mutations /
+ * WeChat notify ask unless the run is unattended). Labels are the specs' display names. The
  * generated image reaches the tool card through a `browser.image` event that
  * main emits with this call's toolCallId.
  */
@@ -924,23 +938,23 @@ function registerBuiltinTools(
   };
   if (flags.web) {
     pi.registerTool({
-      name: "web_search",
-      label: "Web Search",
-      description: BUILTIN_TOOL_SPECS.web_search.description,
-      promptSnippet: BUILTIN_TOOL_SPECS.web_search.promptSnippet,
+      name: BUILTIN_TOOL_SPECS.mario_web_search.name,
+      label: BUILTIN_TOOL_SPECS.mario_web_search.label,
+      description: BUILTIN_TOOL_SPECS.mario_web_search.description,
+      promptSnippet: BUILTIN_TOOL_SPECS.mario_web_search.promptSnippet,
       parameters: Type.Object({
         query: Type.String({ description: "搜索关键词" }),
         count: Type.Optional(Type.Number({ description: "返回条数,1–10,默认按设置" })),
       }),
       async execute(toolCallId, params) {
-        return run("web_search", toolCallId, params);
+        return run(BUILTIN_TOOL_SPECS.mario_web_search.name, toolCallId, params);
       },
     });
     pi.registerTool({
-      name: "web_fetch",
-      label: "Web Fetch",
-      description: BUILTIN_TOOL_SPECS.web_fetch.description,
-      promptSnippet: BUILTIN_TOOL_SPECS.web_fetch.promptSnippet,
+      name: BUILTIN_TOOL_SPECS.mario_web_fetch.name,
+      label: BUILTIN_TOOL_SPECS.mario_web_fetch.label,
+      description: BUILTIN_TOOL_SPECS.mario_web_fetch.description,
+      promptSnippet: BUILTIN_TOOL_SPECS.mario_web_fetch.promptSnippet,
       parameters: Type.Object({
         url: Type.String({ description: "网页地址,http(s)://" }),
         offset: Type.Optional(Type.Number({ description: "从正文第几个字开始读,续读时填上次结果末尾给出的值" })),
@@ -948,22 +962,107 @@ function registerBuiltinTools(
         links: Type.Optional(Type.Boolean({ description: "true=保留正文里的链接" })),
       }),
       async execute(toolCallId, params) {
-        return run("web_fetch", toolCallId, params);
+        return run(BUILTIN_TOOL_SPECS.mario_web_fetch.name, toolCallId, params);
       },
     });
   }
   if (flags.image) {
     pi.registerTool({
-      name: "image_generate",
-      label: "Image Generate",
-      description: BUILTIN_TOOL_SPECS.image_generate.description,
-      promptSnippet: BUILTIN_TOOL_SPECS.image_generate.promptSnippet,
+      name: BUILTIN_TOOL_SPECS.mario_image_generate.name,
+      label: BUILTIN_TOOL_SPECS.mario_image_generate.label,
+      description: BUILTIN_TOOL_SPECS.mario_image_generate.description,
+      promptSnippet: BUILTIN_TOOL_SPECS.mario_image_generate.promptSnippet,
       parameters: Type.Object({
         prompt: Type.String({ description: "图片描述:主体、风格、构图、光线、色调等" }),
         size: Type.Optional(Type.String({ description: "尺寸,如 1024x1024 / 1536x1024 / 1024x1536,省略用设置里的默认值" })),
       }),
       async execute(toolCallId, params) {
-        return run("image_generate", toolCallId, params);
+        return run(BUILTIN_TOOL_SPECS.mario_image_generate.name, toolCallId, params);
+      },
+    });
+  }
+  if (flags.schedule) {
+    const kind = Type.Union([Type.Literal("one-time"), Type.Literal("daily"), Type.Literal("weekly")], {
+      description: "one-time 一次性 / daily 每天 / weekly 每周",
+    });
+    const optionalDefinition = {
+      timeOfDay: Type.Optional(Type.String({ description: "每天 / 每周任务的时间,\"HH:mm\"(24 小时制)" })),
+      weekdays: Type.Optional(Type.Array(Type.Number(), { description: "每周任务的星期,1=周一 … 7=周日" })),
+      runAt: Type.Optional(Type.String({ description: "一次性任务的执行时间,带时区偏移的 ISO 时间,如 2026-09-28T09:00:00+08:00" })),
+      pushEnabled: Type.Optional(Type.Boolean({ description: "true=任务结束后把结果摘要推送到微信" })),
+      projectId: Type.Optional(Type.String({ description: "所属项目 id,省略=当前会话的项目" })),
+      providerId: Type.Optional(Type.String({ description: "执行引擎 id(claude-sdk / codex-sdk / pi-sdk),省略=当前会话的引擎" })),
+    };
+    const nameDesc = { description: "任务名称" };
+    const promptDesc = { description: "到点后发给 Agent 的提示词:写成具体的只读 / 检查 / 汇总类指令" };
+    const idParam = Type.String({ description: "任务 id(mario_schedule_list 里查)" });
+    const specs = BUILTIN_TOOL_SPECS;
+    pi.registerTool({
+      name: specs.mario_schedule_list.name,
+      label: specs.mario_schedule_list.label,
+      description: specs.mario_schedule_list.description,
+      promptSnippet: specs.mario_schedule_list.promptSnippet,
+      parameters: Type.Object({
+        projectId: Type.Optional(Type.String({ description: "只看这个项目的任务,省略=全部" })),
+      }),
+      async execute(toolCallId, params) {
+        return run(specs.mario_schedule_list.name, toolCallId, params);
+      },
+    });
+    pi.registerTool({
+      name: specs.mario_schedule_create.name,
+      label: specs.mario_schedule_create.label,
+      description: specs.mario_schedule_create.description,
+      promptSnippet: specs.mario_schedule_create.promptSnippet,
+      parameters: Type.Object({
+        name: Type.String(nameDesc),
+        prompt: Type.String(promptDesc),
+        scheduleKind: kind,
+        ...optionalDefinition,
+      }),
+      async execute(toolCallId, params) {
+        return run(specs.mario_schedule_create.name, toolCallId, params);
+      },
+    });
+    pi.registerTool({
+      name: specs.mario_schedule_update.name,
+      label: specs.mario_schedule_update.label,
+      description: specs.mario_schedule_update.description,
+      promptSnippet: specs.mario_schedule_update.promptSnippet,
+      parameters: Type.Object({
+        id: idParam,
+        name: Type.Optional(Type.String(nameDesc)),
+        prompt: Type.Optional(Type.String(promptDesc)),
+        scheduleKind: Type.Optional(kind),
+        ...optionalDefinition,
+        enabled: Type.Optional(Type.Boolean({ description: "false=暂停,true=恢复" })),
+      }),
+      async execute(toolCallId, params) {
+        return run(specs.mario_schedule_update.name, toolCallId, params);
+      },
+    });
+    pi.registerTool({
+      name: specs.mario_schedule_delete.name,
+      label: specs.mario_schedule_delete.label,
+      description: specs.mario_schedule_delete.description,
+      promptSnippet: specs.mario_schedule_delete.promptSnippet,
+      parameters: Type.Object({ id: idParam }),
+      async execute(toolCallId, params) {
+        return run(specs.mario_schedule_delete.name, toolCallId, params);
+      },
+    });
+  }
+  if (flags.wechat) {
+    pi.registerTool({
+      name: BUILTIN_TOOL_SPECS.mario_wechat_notify.name,
+      label: BUILTIN_TOOL_SPECS.mario_wechat_notify.label,
+      description: BUILTIN_TOOL_SPECS.mario_wechat_notify.description,
+      promptSnippet: BUILTIN_TOOL_SPECS.mario_wechat_notify.promptSnippet,
+      parameters: Type.Object({
+        text: Type.String({ description: "要发给用户的纯文本消息,简洁" }),
+      }),
+      async execute(toolCallId, params) {
+        return run(BUILTIN_TOOL_SPECS.mario_wechat_notify.name, toolCallId, params);
       },
     });
   }

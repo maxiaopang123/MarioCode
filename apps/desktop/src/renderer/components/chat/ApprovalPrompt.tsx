@@ -3,6 +3,7 @@ import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { Button } from "@renderer/components/ui/index.js";
 import { IconChevronDown, IconShield } from "@renderer/lib/icons.js";
+import { toolDisplayName } from "@renderer/lib/builtinToolNames.js";
 import {
   DOCK_BODY,
   DOCK_BUTTON,
@@ -129,7 +130,7 @@ export function ApprovalPrompt({
       <div className={DOCK_BODY}>
         {/* Tool name + one-line summary of what it will do */}
         <div className={cn(DOCK_WELL, "flex items-baseline gap-2.5 px-3 py-2.5")}>
-          <span className="shrink-0 text-xs font-medium text-content-subtle">{toolName}</span>
+          <span className="shrink-0 text-xs font-medium text-content-subtle">{toolDisplayName(toolName)}</span>
           {summary && (
             <span className="line-clamp-2 min-w-0 break-all font-mono text-[12.5px] leading-relaxed">
               {summary}

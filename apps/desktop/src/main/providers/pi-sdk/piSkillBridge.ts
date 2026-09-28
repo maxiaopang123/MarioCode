@@ -75,8 +75,8 @@ export interface BuildPiSkillLoaderOptions {
    *  skills (mirrors Claude's `"all"` sentinel). */
   allowNames?: string[];
   /** Additional skill roots beyond Mcode's two defaults — the skills
-   *  directories of ENABLED plugins (settings → Plugins), supplied by the
-   *  provider from pluginManager.getEnabledPluginSkillRoots(). Absent/empty
+   *  mirror directories of external skill sync sources (TODO-004), supplied
+   *  by the provider from skillSync.skillSyncMirrorRoots(). Absent/empty
    *  keeps the historical pair. */
   extraSkillPaths?: string[];
   /** Inline extensions to inject via the loader's `extensionFactories` option.
@@ -116,7 +116,7 @@ export async function buildPiSkillLoader(
     // / `pi.on` are live before the first agent turn. Mcode's extension
     // bridges host approval, AskUserQuestion, and system-prompt injection.
     extensionFactories: extensionFactories ?? [],
-    // Pull in Mcode's two roots (plus ENABLED plugin skill roots) alongside
+    // Pull in Mcode's two roots (plus synced skill mirror roots) alongside
     // Pi's defaults. We deliberately leave `noSkills` unset so Pi's own
     // `~/.pi/agent/skills` + `<cwd>/.pi/skills` keep working — existing Pi
     // users aren't disrupted.

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MarioCode 功能一览</title>
+<style>
+  :root { --bg:#f5f6f7; --card:#fff; --text:#1f2328; --muted:#6b7280; --line:#e5e7eb; --accent:#10a37f; --soft:#e8f6f1; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#15171a; --card:#1e2125; --text:#e6e8eb; --muted:#9aa3ad; --line:#2d3137; --accent:#34c79b; --soft:#18322a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  main { max-width:1000px; margin:0 auto; padding:40px 20px 60px; }
+  h1 { font-size:30px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 32px; }
+  h2 { font-size:18px; margin:36px 0 12px; color:var(--accent); }
+
+  /* 窗口示意图 */
+  .win { display:grid; grid-template-columns:1.1fr 2.4fr 1.4fr; grid-template-rows:auto 1fr auto; gap:8px;
+         background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px; min-height:300px; }
+  .pane { border-radius:10px; background:var(--soft); padding:12px; font-size:14px; }
+  .pane b { display:block; font-size:15px; margin-bottom:6px; }
+  .pane span { display:inline-block; background:var(--card); border-radius:6px; padding:2px 8px; margin:2px 2px 0 0; }
+  .left { grid-row:1 / 4; }
+  .right { grid-row:1 / 4; }
+  .top { grid-column:2; }
+  .bottom { grid-column:2; }
+
+  /* 功能卡片 */
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .tile .i { font-size:26px; line-height:1; }
+  .tile .n { font-weight:600; margin-top:8px; }
+  .tile .d { color:var(--muted); font-size:14px; margin-top:2px; }
+  .new { border-color:var(--accent); }
+  .new .n::after { content:"新"; font-size:11px; color:#fff; background:var(--accent); border-radius:4px; padding:0 5px; margin-left:6px; vertical-align:2px; }
+  footer { margin-top:40px; color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>MarioCode 功能一览</h1>
+<p class="sub">一个能同时用 Claude、Pi、Codex 三个 AI 写代码的桌面软件。</p>
+
+<h2>窗口里都有什么</h2>
+<div class="win">
+  <div class="pane left"><b>左边 · 会话</b>
+    <span>项目</span><span>会话列表</span><span>搜索</span><span>定时任务</span><span>连接手机</span><span>设置</span>
+  </div>
+  <div class="pane top"><b>中间 · 聊天</b>
+    <span>和 AI 对话</span><span>看代码</span><span>改代码</span>
+  </div>
+  <div class="pane right"><b>右边 · 工具</b>
+    <span>文件</span><span>Git</span><span>浏览器</span><span>子会话</span><span>运行记录</span>
+  </div>
+  <div class="pane bottom"><b>底部</b>
+    <span>输入框</span><span>终端</span>
+  </div>
+</div>
+
+<h2>和 AI 对话</h2>
+<div class="grid">
+  <div class="tile"><div class="i">🤖</div><div class="n">三个 AI</div><div class="d">Claude / Pi / Codex 随便选</div></div>
+  <div class="tile"><div class="i">🔑</div><div class="n">模型配置</div><div class="d">填一次 Key，三个都能用</div></div>
+  <div class="tile"><div class="i">📎</div><div class="n">发图片和文件</div><div class="d">粘贴、拖进来都行</div></div>
+  <div class="tile"><div class="i">🎤</div><div class="n">语音输入</div><div class="d">说话代替打字</div></div>
+  <div class="tile"><div class="i">📝</div><div class="n">计划模式</div><div class="d">先出方案，你同意再做</div></div>
+  <div class="tile"><div class="i">✋</div><div class="n">操作审批</div><div class="d">AI 要改东西先问你</div></div>
+  <div class="tile"><div class="i">↩️</div><div class="n">撤销本轮</div><div class="d">改坏了一键还原</div></div>
+  <div class="tile"><div class="i">💬</div><div class="n">子会话</div><div class="d">另开一个窗口追问</div></div>
+  <div class="tile"><div class="i">🔖</div><div class="n">书签</div><div class="d">收藏有用的回答</div></div>
+  <div class="tile"><div class="i">🧪</div><div class="n">隔离工作区</div><div class="d">在副本里试，不动原项目</div></div>
+</div>
+
+<h2>AI 自带的工具（MarioTool）</h2>
+<div class="grid">
+  <div class="tile new"><div class="i">🔍</div><div class="n">搜索网页</div><div class="d">帮你上网查资料</div></div>
+  <div class="tile new"><div class="i">📖</div><div class="n">阅读网页</div><div class="d">读网页正文</div></div>
+  <div class="tile new"><div class="i">🎨</div><div class="n">生成图片</div><div class="d">每次都会先问你</div></div>
+  <div class="tile new"><div class="i">🌐</div><div class="n">操作浏览器</div><div class="d">打开网页、点击、截图</div></div>
+  <div class="tile new"><div class="i">⏰</div><div class="n">设定时</div><div class="d">说一句就建好定时任务</div></div>
+  <div class="tile new"><div class="i">📱</div><div class="n">发微信</div><div class="d">做完了微信告诉你</div></div>
+</div>
+
+<h2>写代码</h2>
+<div class="grid">
+  <div class="tile"><div class="i">📂</div><div class="n">文件管理</div><div class="d">浏览项目文件</div></div>
+  <div class="tile"><div class="i">✏️</div><div class="n">代码编辑器</div><div class="d">和 VS Code 同款</div></div>
+  <div class="tile"><div class="i">🔗</div><div class="n">代码跳转</div><div class="d">点函数跳到定义</div></div>
+  <div class="tile"><div class="i">🌿</div><div class="n">Git</div><div class="d">提交、推送，AI 写提交说明</div></div>
+  <div class="tile"><div class="i">⌨️</div><div class="n">终端</div><div class="d">直接跑命令</div></div>
+  <div class="tile"><div class="i">🖥️</div><div class="n">内置浏览器</div><div class="d">软件里直接看网页</div></div>
+</div>
+
+<h2>自动帮你做事</h2>
+<div class="grid">
+  <div class="tile"><div class="i">📅</div><div class="n">定时任务</div><div class="d">到点自动让 AI 干活</div></div>
+  <div class="tile"><div class="i">💚</div><div class="n">微信机器人</div><div class="d">在微信里和 AI 聊天</div></div>
+  <div class="tile"><div class="i">📲</div><div class="n">连接手机</div><div class="d">手机上看进度</div></div>
+  <div class="tile"><div class="i">🔔</div><div class="n">消息提醒</div><div class="d">做完或出错时提醒你</div></div>
+</div>
+
+<h2>个性化</h2>
+<div class="grid">
+  <div class="tile"><div class="i">🌗</div><div class="n">主题</div><div class="d">浅色、深色、手绘风</div></div>
+  <div class="tile"><div class="i">🈶</div><div class="n">中 / 英文</div><div class="d">界面语言切换</div></div>
+  <div class="tile"><div class="i">📜</div><div class="n">系统提示词</div><div class="d">告诉 AI 你的习惯</div></div>
+  <div class="tile"><div class="i">🎯</div><div class="n">快捷键 / 手势</div><div class="d">按自己习惯改</div></div>
+  <div class="tile"><div class="i">📊</div><div class="n">用量统计</div><div class="d">看用了多少 token</div></div>
+  <div class="tile"><div class="i">🧩</div><div class="n">技能与插件</div><div class="d">给 AI 加新本事</div></div>
+</div>
+
+<footer>标「新」的是最近加的。所有开关都在左下角「设置」里。</footer>
+
+</main>
+</body>
+</html>

@@ -180,7 +180,7 @@ const sessionRoutes = new WeakMap<Session, string>();
 
 /**
  * Pin a Chromium session to the engines' route — for the built-in tools'
- * hidden page loads (web_search's browser backends, web_fetch), so they reach
+ * hidden page loads (mario_web_search's browser backends, mario_web_fetch), so they reach
  * the web the same way the engines do. System mode hands the choice to
  * Chromium itself (PAC answers per URL); a custom or env proxy is pinned; a
  * no-op when the route hasn't changed since the last call.

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  IMAGE_SOURCE_CUSTOM,
+  BROWSER_SCREENSHOT_DIR_SETTING_KEY,
   WEB_SEARCH_KEYED_BACKENDS,
   type BuiltinToolsConfig,
   type BuiltinToolsSaveInput,
@@ -9,6 +9,7 @@ import {
   type ImageToolIssue,
   type WebSearchBackend,
   type WebSearchKeyedBackend,
+  type WechatToolStatus,
 } from "@contracts/ipc";
 import type { SharedProviderPublic } from "@contracts/sharedProvider";
 import { api } from "@renderer/lib/api.js";
@@ -24,6 +25,8 @@ const BACKENDS: { value: WebSearchBackend; labelKey: MessageId }[] = [
   { value: "bocha", labelKey: "settings.builtinTools.backendBocha" },
   { value: "zhipu", labelKey: "settings.builtinTools.backendZhipu" },
   { value: "tavily", labelKey: "settings.builtinTools.backendTavily" },
+  { value: "exa", labelKey: "settings.builtinTools.backendExa" },
+  { value: "brave", labelKey: "settings.builtinTools.backendBrave" },
 ];
 
 const BACKEND_NAME: Record<WebSearchBackend, MessageId> = {
@@ -32,20 +35,30 @@ const BACKEND_NAME: Record<WebSearchBackend, MessageId> = {
   bocha: "settings.builtinTools.name.bocha",
   zhipu: "settings.builtinTools.name.zhipu",
   tavily: "settings.builtinTools.name.tavily",
+  exa: "settings.builtinTools.name.exa",
+  brave: "settings.builtinTools.name.brave",
 };
 
 const KEY_HINT: Record<WebSearchKeyedBackend, MessageId> = {
   bocha: "settings.builtinTools.keyHint.bocha",
   zhipu: "settings.builtinTools.keyHint.zhipu",
   tavily: "settings.builtinTools.keyHint.tavily",
+  exa: "settings.builtinTools.keyHint.exa",
+  brave: "settings.builtinTools.keyHint.brave",
 };
 
 const ISSUE: Record<ImageToolIssue, MessageId> = {
   noSource: "settings.builtinTools.issue.noSource",
   providerMissing: "settings.builtinTools.issue.providerMissing",
-  noBaseUrl: "settings.builtinTools.issue.noBaseUrl",
   noModel: "settings.builtinTools.issue.noModel",
   noKey: "settings.builtinTools.issue.noKey",
+};
+
+const WECHAT_STATUS: Record<WechatToolStatus, MessageId> = {
+  unbound: "settings.builtinTools.wechatStatus.unbound",
+  "needs-interaction": "settings.builtinTools.wechatStatus.needsInteraction",
+  ready: "settings.builtinTools.wechatStatus.ready",
+  error: "settings.builtinTools.wechatStatus.error",
 };
 
 const RESULT_COUNTS = [3, 5, 8, 10];
@@ -57,22 +70,26 @@ function isKeyed(backend: WebSearchBackend): backend is WebSearchKeyedBackend {
 }
 
 /**
- * Settings → 内置工具: the web_search / web_fetch and image_generate tools
- * MarioCode registers on all three engines. Config and keys save through
- * builtinTools.save (keys go main-side only and come back as presence
- * flags); the two switches are the same flags as the MCP page's built-in
- * rows. Everything applies from the next turn.
+ * Settings → MarioTool: the mario_web_search / mario_web_fetch and mario_image_generate tools
+ * MarioCode registers on all three engines, plus the agent browser tools
+ * (browser_*; switch = the MCP row mcode-browser) and the shared tool output
+ * folder. Search defaults to keyless Bing
+ * (Baidu too); optional keyed search APIs take the user's key, which goes
+ * main-side only and comes back as a presence flag. Image generation reuses a
+ * shared provider's endpoint + key. Config and search keys save through
+ * builtinTools.save; the two switches are
+ * the same flags as the MCP page's built-in rows. Everything applies from the
+ * next turn.
  */
 export function BuiltinToolsPanel() {
   const { t } = useI18n();
   const [state, setState] = useState<BuiltinToolsState | null>(null);
   const [providers, setProviders] = useState<SharedProviderPublic[]>([]);
+  const [providersLoaded, setProvidersLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
   const [searchKeyDraft, setSearchKeyDraft] = useState("");
-  const [imageKeyDraft, setImageKeyDraft] = useState("");
   const [modelDraft, setModelDraft] = useState("");
-  const [baseUrlDraft, setBaseUrlDraft] = useState("");
   const [testQuery, setTestQuery] = useState("MarioCode");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<BuiltinToolsTestSearchResult | null>(null);
@@ -80,12 +97,14 @@ export function BuiltinToolsPanel() {
   const adopt = useCallback((next: BuiltinToolsState) => {
     setState(next);
     setModelDraft(next.config.image.model);
-    setBaseUrlDraft(next.config.image.baseUrl);
   }, []);
 
   useEffect(() => {
     void api.builtinTools.get().then(adopt);
-    void api.sharedProviders.list().then((r) => setProviders(r.providers), () => setProviders([]));
+    void api.sharedProviders
+      .list()
+      .then((r) => setProviders(r.providers), () => setProviders([]))
+      .finally(() => setProvidersLoaded(true));
   }, [adopt]);
 
   const save = async (input: BuiltinToolsSaveInput): Promise<boolean> => {
@@ -121,14 +140,9 @@ export function BuiltinToolsPanel() {
   const saveModel = () => {
     if (modelDraft.trim() !== config.image.model) patchConfig((c) => ({ ...c, image: { ...c.image, model: modelDraft.trim() } }));
   };
-  const saveBaseUrl = () => {
-    if (baseUrlDraft.trim() !== config.image.baseUrl) patchConfig((c) => ({ ...c, image: { ...c.image, baseUrl: baseUrlDraft.trim() } }));
-  };
 
   const sourceLabel = (value: string): string =>
-    value === IMAGE_SOURCE_CUSTOM
-      ? t("settings.builtinTools.imageSourceCustom")
-      : providers.find((p) => p.id === value)?.name ?? t("settings.builtinTools.imageSourceNone");
+    providers.find((p) => p.id === value)?.name ?? t("settings.builtinTools.imageSourceNone");
 
   return (
     <section className="mx-auto w-full max-w-3xl space-y-4">
@@ -196,6 +210,7 @@ export function BuiltinToolsPanel() {
                 onChange={(e) => setSearchKeyDraft((e.target as HTMLInputElement).value)}
                 placeholder={t(state.keys[backend] ? "settings.builtinTools.keyReplacePlaceholder" : "settings.builtinTools.keyPlaceholder")}
                 spellCheck={false}
+                aria-label={`${t(BACKEND_NAME[backend])} ${t("settings.builtinTools.apiKey")}`}
                 className="min-w-0 flex-1 font-mono"
               />
               <Button
@@ -274,9 +289,18 @@ export function BuiltinToolsPanel() {
           />
         </SettingRow>
 
-        <SettingRow title={t("settings.builtinTools.imageSource")} desc={t("settings.builtinTools.imageSourceDesc")}>
+        <SettingRow
+          title={t("settings.builtinTools.imageSource")}
+          desc={t("settings.builtinTools.imageSourceDesc")}
+          descExtra={
+            providersLoaded && providers.length === 0 ? (
+              <p className="text-[0.7857em] text-warning">{t("settings.builtinTools.imageNoProviders")}</p>
+            ) : undefined
+          }
+        >
           <Select.Root
             value={config.image.source}
+            disabled={providers.length === 0}
             onValueChange={(v) => patchConfig((c) => ({ ...c, image: { ...c.image, source: v as string } }))}
           >
             <Select.Trigger className="w-full">
@@ -291,66 +315,12 @@ export function BuiltinToolsPanel() {
                         <Select.ItemText>{p.name}</Select.ItemText>
                       </Select.Item>
                     ))}
-                    <Select.Item value={IMAGE_SOURCE_CUSTOM}>
-                      <Select.ItemText>{t("settings.builtinTools.imageSourceCustom")}</Select.ItemText>
-                    </Select.Item>
                   </Select.List>
                 </Select.Popup>
               </Select.Positioner>
             </Select.Portal>
           </Select.Root>
         </SettingRow>
-
-        {config.image.source === IMAGE_SOURCE_CUSTOM && (
-          <>
-            <SettingRow layout="vertical" title={t("settings.builtinTools.imageBaseUrl")} desc={t("settings.builtinTools.imageBaseUrlDesc")}>
-              <Input
-                value={baseUrlDraft}
-                onChange={(e) => setBaseUrlDraft((e.target as HTMLInputElement).value)}
-                onBlur={saveBaseUrl}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveBaseUrl();
-                }}
-                placeholder="https://api.openai.com/v1"
-                spellCheck={false}
-                className="w-full font-mono"
-              />
-            </SettingRow>
-            <SettingRow
-              layout="vertical"
-              title={t("settings.builtinTools.apiKey")}
-              descExtra={
-                <p className="text-[0.7857em] text-content-subtle">
-                  {t(state.keys.image ? "settings.builtinTools.keySaved" : "settings.builtinTools.keyMissing")}
-                </p>
-              }
-            >
-              <div className="flex gap-2">
-                <Input
-                  type="password"
-                  value={imageKeyDraft}
-                  onChange={(e) => setImageKeyDraft((e.target as HTMLInputElement).value)}
-                  placeholder={t(state.keys.image ? "settings.builtinTools.keyReplacePlaceholder" : "settings.builtinTools.keyPlaceholder")}
-                  spellCheck={false}
-                  className="min-w-0 flex-1 font-mono"
-                />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={!imageKeyDraft.trim()}
-                  onClick={() => void save({ keys: { image: imageKeyDraft } }).then((ok) => ok && setImageKeyDraft(""))}
-                >
-                  {t("common.save")}
-                </Button>
-                {state.keys.image && (
-                  <Button variant="ghost" size="sm" onClick={() => void save({ keys: { image: null } })}>
-                    {t("settings.builtinTools.clearKey")}
-                  </Button>
-                )}
-              </div>
-            </SettingRow>
-          </>
-        )}
 
         <SettingRow title={t("settings.builtinTools.imageModel")} desc={t("settings.builtinTools.imageModelDesc")}>
           <Input
@@ -390,7 +360,125 @@ export function BuiltinToolsPanel() {
           </Select.Root>
         </SettingRow>
       </SettingsSection>
+
+      <SettingsSection title={t("settings.builtinTools.browserSection")} desc={t("settings.builtinTools.browserSectionDesc")}>
+        <SettingRow
+          title={t("settings.builtinTools.browserEnabled")}
+          desc={t("settings.builtinTools.browserEnabledDesc")}
+          descExtra={<p className="text-[0.7857em] text-content-subtle">{t("settings.builtinTools.browserSharedHint")}</p>}
+        >
+          <Switch
+            checked={state.browserToolsEnabled}
+            onCheckedChange={(v) => void save({ browserToolsEnabled: v })}
+            label={t("settings.builtinTools.browserEnabled")}
+          />
+        </SettingRow>
+        <OutputDirRow />
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.builtinTools.scheduleSection")} desc={t("settings.builtinTools.scheduleSectionDesc")}>
+        <SettingRow
+          title={t("settings.builtinTools.scheduleEnabled")}
+          desc={t("settings.builtinTools.scheduleEnabledDesc")}
+          descExtra={<p className="text-[0.7857em] text-content-subtle">{t("settings.builtinTools.scheduleManageHint")}</p>}
+        >
+          <Switch
+            checked={state.scheduleToolsEnabled}
+            onCheckedChange={(v) => void save({ scheduleToolsEnabled: v })}
+            label={t("settings.builtinTools.scheduleEnabled")}
+          />
+        </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.builtinTools.wechatSection")} desc={t("settings.builtinTools.wechatSectionDesc")}>
+        <SettingRow
+          title={t("settings.builtinTools.wechatEnabled")}
+          desc={t("settings.builtinTools.wechatEnabledDesc")}
+          descExtra={
+            <>
+              <p className={state.wechatStatus === "ready" ? "text-[0.7857em] text-content-subtle" : "text-[0.7857em] text-warning"}>
+                {t(WECHAT_STATUS[state.wechatStatus])}
+              </p>
+              <p className="text-[0.7857em] text-content-subtle">{t("settings.builtinTools.wechatBindHint")}</p>
+            </>
+          }
+        >
+          <Switch
+            checked={state.wechatToolEnabled}
+            onCheckedChange={(v) => void save({ wechatToolEnabled: v })}
+            label={t("settings.builtinTools.wechatEnabled")}
+          />
+        </SettingRow>
+      </SettingsSection>
     </section>
+  );
+}
+
+/** Tool output folder (`browser.screenshotDir`, key name kept for
+ *  compatibility): browser_screenshot PNGs, browser_save_pdf PDFs and
+ *  mario_image_generate originals. Main reads it on every save, so it's a
+ *  plain setting.get/set — no builtinTools IPC. Moved here from the Browser
+ *  page because only the agent tools write to it. */
+function OutputDirRow() {
+  const { t } = useI18n();
+  const [dir, setDir] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void api.setting.get({ key: BROWSER_SCREENSHOT_DIR_SETTING_KEY }).then(({ value }) => {
+      setDir(value ?? "");
+      setLoaded(true);
+    });
+  }, []);
+
+  const pickDir = async () => {
+    const { path } = await api.pickFolder();
+    if (path) {
+      setDir(path);
+      setSaved(false);
+    }
+  };
+
+  const saveDir = async () => {
+    setSaving(true);
+    try {
+      await api.setting.set({ key: BROWSER_SCREENSHOT_DIR_SETTING_KEY, value: dir.trim() });
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SettingRow
+      layout="vertical"
+      title={t("settings.builtinTools.outputDir")}
+      desc={t("settings.builtinTools.outputDirDesc")}
+      descExtra={saved ? <p className="text-[0.7857em] text-accent">{t("settings.builtinTools.outputDirSaved")}</p> : undefined}
+    >
+      <div className="flex gap-2">
+        <Input
+          value={dir}
+          onChange={(e) => {
+            setDir((e.target as HTMLInputElement).value);
+            setSaved(false);
+          }}
+          placeholder={t("settings.builtinTools.outputDirPlaceholder")}
+          spellCheck={false}
+          disabled={!loaded}
+          aria-label={t("settings.builtinTools.outputDir")}
+          className="min-w-0 flex-1 font-mono"
+        />
+        <Button variant="secondary" size="sm" onClick={() => void pickDir()} disabled={!loaded}>
+          {t("settings.builtinTools.chooseDir")}
+        </Button>
+        <Button variant="primary" size="sm" onClick={() => void saveDir()} disabled={saving || !loaded}>
+          {saving ? t("settings.saving") : t("common.save")}
+        </Button>
+      </div>
+    </SettingRow>
   );
 }
 

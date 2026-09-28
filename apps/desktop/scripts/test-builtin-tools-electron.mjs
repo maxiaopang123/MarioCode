@@ -90,20 +90,40 @@ try {
   // IPC: defaults, a real search, the MCP rows, the preview section.
   const initial = await evaluate("window.api.builtinTools.get()");
   assert.equal(initial.webToolsEnabled, true);
+  assert.equal(initial.browserToolsEnabled, true);
   assert.equal(initial.config.search.backend, "bing");
   assert.equal(initial.imageIssue, "noSource");
-  ok("builtinTools.get defaults (web on, Bing, image not configured)");
+  assert.deepEqual(initial.keys, { bocha: false, zhipu: false, tavily: false, exa: false, brave: false });
+  ok("builtinTools.get defaults (web on, Bing, no search keys, image not configured)");
 
   const search = await evaluate("window.api.builtinTools.testSearch({ query: 'Electron BrowserWindow' })");
   assert.ok(search.ok && search.backend === "bing" && search.count >= 3, JSON.stringify(search));
   ok(`builtinTools.testSearch via Bing: ${search.count} results in ${search.ms}ms, first "${search.first?.title}"`);
 
-  const saved = await evaluate(`window.api.builtinTools.save({
-    config: { ...${JSON.stringify(initial.config)}, image: { source: "custom", baseUrl: "https://example.invalid/v1", model: "gpt-image-1", size: "1024x1024" } },
-    keys: { image: "sk-smoke-not-a-real-key" },
+  // The image source is a shared provider (its endpoint + key are reused);
+  // the image tool stores no key of its own.
+  const shared = await evaluate(`window.api.sharedProviders.save({
+    name: "Smoke image provider",
+    baseUrl: "https://example.invalid/v1",
+    protocols: ["chat-completions"],
+    models: [{ id: "gpt-image-1" }],
+    enabledAgents: ["pi"],
+    apiKey: "sk-smoke-not-a-real-key",
   })`);
-  assert.ok(saved.ok && saved.state.imageIssue === null && saved.state.keys.image === true, JSON.stringify(saved));
-  ok("builtinTools.save stores the image endpoint + encrypted key (image_generate ready)");
+  const providerId = shared.providers.find((p) => p.name === "Smoke image provider")?.id;
+  assert.ok(providerId, JSON.stringify(shared));
+  const saved = await evaluate(`window.api.builtinTools.save({
+    config: { ...${JSON.stringify(initial.config)}, image: { source: ${JSON.stringify(providerId)}, model: "gpt-image-1", size: "1024x1024" } },
+  })`);
+  assert.ok(saved.ok && saved.state.imageIssue === null && !("image" in saved.state.keys), JSON.stringify(saved));
+  ok("builtinTools.save points the image tool at a shared provider (mario_image_generate ready)");
+
+  // Optional search-API keys: presence only, never the value.
+  const withKey = await evaluate(`window.api.builtinTools.save({ keys: { exa: "exa-smoke-not-a-real-key" } })`);
+  assert.ok(withKey.ok && withKey.state.keys.exa === true && !JSON.stringify(withKey).includes("exa-smoke"), JSON.stringify(withKey));
+  const cleared = await evaluate(`window.api.builtinTools.save({ keys: { exa: null } })`);
+  assert.ok(cleared.ok && cleared.state.keys.exa === false, JSON.stringify(cleared));
+  ok("builtinTools.save stores / clears a search key; the state reports presence only");
 
   const mcp = await evaluate("window.api.mcp.list({})");
   const builtins = mcp.servers.filter((s) => s.scope === "builtin").map((s) => `${s.name}:${s.enabled}`);
@@ -115,20 +135,31 @@ try {
   await evaluate("window.api.mcp.toggle({ name: 'mcode-web', scope: 'builtin', enabled: true })");
   ok("MCP panel switch and the built-in tools page share one flag");
 
+  // Browser tools: the MarioTool switch flips the MCP row mcode-browser (and back).
+  const browserRow = async () =>
+    (await evaluate("window.api.mcp.list({})")).servers.find((s) => s.scope === "builtin" && s.name === "mcode-browser");
+  const browserOff = await evaluate("window.api.builtinTools.save({ browserToolsEnabled: false })");
+  assert.ok(browserOff.ok && browserOff.state.browserToolsEnabled === false, JSON.stringify(browserOff));
+  assert.equal((await browserRow())?.enabled, false);
+  const browserOn = await evaluate("window.api.builtinTools.save({ browserToolsEnabled: true })");
+  assert.ok(browserOn.ok && browserOn.state.browserToolsEnabled === true, JSON.stringify(browserOn));
+  assert.equal((await browserRow())?.enabled, true);
+  ok("MarioTool browser-tools switch and the MCP row mcode-browser share one flag");
+
   const preview = await evaluate("window.api.systemPrompt.preview({ providerId: 'pi-sdk', projectPath: null })");
   const layer = preview.sections.find((s) => s.id === "builtin.usage.on");
-  assert.ok(layer?.text?.includes("web_search") && layer.text.includes("image_generate"), JSON.stringify(preview.sections.map((s) => s.id)));
+  assert.ok(layer?.text?.includes("mario_web_search") && layer.text.includes("mario_image_generate"), JSON.stringify(preview.sections.map((s) => s.id)));
   ok("Pi prompt preview carries the built-in tools section");
 
   // UI: the page itself, via the visible settings navigation.
   await clickButton("设置");
-  await waitForText("内置工具");
-  await clickButton("内置工具");
+  await waitForText("MarioTool");
+  await clickButton("MarioTool");
   await waitForText("联网搜索与网页读取");
   await waitForText("已就绪");
   await clickButton("测试");
   await waitForText("必应返回", 30000);
-  ok("Settings → 内置工具 renders, shows image ready, the test button searches");
+  ok("Settings → MarioTool renders, shows image ready, the test button searches");
   await screenshot("builtin-tools-page");
   await clickButton("MCP");
   await waitForText("mcode-web");

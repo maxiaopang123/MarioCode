@@ -5,7 +5,7 @@
  *   新建会话     — starts a new thread in the active project.
  *   搜索         — opens the unified Ctrl+K search palette.
  *   定时任务     — opens Settings → 定时任务.
- *   插件与技能   — opens Settings → 插件.
+ *   技能         — opens Settings → 技能.
  *   连接手机     — LAN pairing / remote relay dialog.
  *
  * Rows rest neutral (no accent) and only fill on hover. 新建会话 / 搜索 carry
@@ -28,7 +28,7 @@ import {
   resolveShortcut,
   acceleratorToDisplayTokens,
 } from "@renderer/lib/shortcuts.js";
-import { IconCalendar, IconEdit, IconGitFork, IconPuzzle, IconSearch } from "@renderer/lib/icons.js";
+import { IconCalendar, IconEdit, IconGitFork, IconSearch, IconSparkles } from "@renderer/lib/icons.js";
 import { Kbd } from "@renderer/components/ui/index.js";
 import { MobileConnectButton } from "@renderer/components/layout/MobileConnectDialog.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
@@ -136,11 +136,11 @@ export function SidebarQuickActions({
 
       <button
         type="button"
-        onClick={() => setSettingsOpen(true, "plugins")}
+        onClick={() => setSettingsOpen(true, "skills")}
         className={NAV_ROW}
       >
-        <IconPuzzle size={16} className={NAV_ICON} />
-        <span className="flex-1 truncate text-left">{t("layout.pluginsAndSkills")}</span>
+        <IconSparkles size={16} className={NAV_ICON} />
+        <span className="flex-1 truncate text-left">{t("layout.skills")}</span>
       </button>
 
       {/* 连接手机 — a self-contained trigger + dialog so the sidebar just

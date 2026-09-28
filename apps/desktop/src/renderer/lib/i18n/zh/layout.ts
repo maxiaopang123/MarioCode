@@ -61,7 +61,7 @@ export const zh = {
   "layout.newSessionInProject": "在当前项目下新建会话",
   "layout.needProject": "请先打开一个项目",
   "layout.scheduledTasks": "定时任务",
-  "layout.pluginsAndSkills": "插件与技能",
+  "layout.skills": "技能",
 
   /* ── stream sidebar (session-first left-bar view) ── */
   "layout.stream.modeLabel": "侧栏视图",

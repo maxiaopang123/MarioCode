@@ -346,7 +346,7 @@ export function McpPanel() {
       const res = await api.mcp.authorize({
         name: s.name,
         // For http/sse rows `detail` IS the server URL (the describers put
-        // nothing else there — verified for user/plugin scopes).
+        // nothing else there — verified for user/project scopes).
         url: s.detail,
         kind: s.kind === "sse" ? "sse" : "http",
         // The main process resolves the server's real config (headers
@@ -388,7 +388,6 @@ export function McpPanel() {
 
   const userServers = servers.filter((s) => s.scope === "user");
   const projectServers = servers.filter((s) => s.scope === "project");
-  const pluginServers = servers.filter((s) => s.scope === "plugin");
   const builtins = servers.filter((s) => s.scope === "builtin");
 
   return (
@@ -635,44 +634,6 @@ export function McpPanel() {
               </SettingRow>
             ))
           ))}
-      </SettingsSection>
-
-      {/* ───────── 插件 ───────── */}
-      <SettingsSection
-        title={t("settings.mcp.pluginSection")}
-        desc={t("settings.mcp.pluginSectionDesc")}
-      >
-        {pluginServers.length === 0 ? (
-          <div className="px-4 py-4 text-center text-[0.7143em] leading-relaxed text-content-subtle">
-            {t("settings.mcp.noPluginServers")}
-          </div>
-        ) : (
-          pluginServers.map((s) => (
-            <SettingRow
-              key={rowKey(s)}
-              title={
-                <span className="flex items-center gap-1.5">
-                  <span className="font-mono">{s.name}</span>
-                  <KindBadge kind={s.kind} />
-                </span>
-              }
-              desc={<span className="font-mono">{s.detail}</span>}
-            >
-              <OAuthRowActions
-                s={s}
-                busy={busyKey === rowKey(s)}
-                onAuthorize={() => void authorize(s)}
-                onUnauthorize={() => void unauthorize(s)}
-              />
-              <Switch
-                checked={s.enabled}
-                onCheckedChange={() => void toggle(s)}
-                disabled={busyKey === rowKey(s)}
-                label={t(s.enabled ? "settings.mcp.toggleOff" : "settings.mcp.toggleOn", { name: s.name })}
-              />
-            </SettingRow>
-          ))
-        )}
       </SettingsSection>
 
       {/* ───────── 内置 ───────── */}

@@ -27,6 +27,8 @@ import {
   IconWorldSearch,
   IconHelpCircle,
   IconStack2,
+  IconClock,
+  IconMessage,
 } from "@renderer/lib/icons.js";
 import { useNow } from "@renderer/hooks/useNow.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
@@ -45,6 +47,7 @@ import { ImageWithPreview } from "@renderer/components/ui/index.js";
 import { TagPopover } from "./TagPopover.js";
 import { isImageFilePath, type ContentTag } from "@renderer/lib/contentTag.js";
 import { BUILT_IN_COMMANDS } from "@renderer/lib/slashCommands.js";
+import { toolDisplayName } from "@renderer/lib/builtinToolNames.js";
 
 /** Map of absolute file path → its pre-turn content. Built from the
  *  `turn.files` event payload so the Write tool card can diff the new
@@ -369,7 +372,7 @@ export function BatchToolGroup({
   // localized "思考" label so the tally reads as one uniform list.
   const counts = new Map<string, number>();
   for (const b of blocks) {
-    const name = b.kind === "thinking" ? t("chatStream.thinking") : b.toolName;
+    const name = b.kind === "thinking" ? t("chatStream.thinking") : toolDisplayName(b.toolName);
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
   const breakdown = [...counts.entries()].map(([n, c]) => `${n} ×${c}`).join(" · ");
@@ -1573,7 +1576,7 @@ function GenericToolCard({
       >
         <StatusIcon status={block.status} live={live} />
         <ToolIcon name={block.toolName} className="text-content-subtle" />
-        <span className="font-medium text-content-muted">{block.toolName}</span>
+        <span className="font-medium text-content-muted">{toolDisplayName(block.toolName)}</span>
         {summaryToolPath ? (
           <span className="truncate font-mono text-content-subtle">
             <FileLink token={summaryToolPath} projectPath={projectPath} />
@@ -1722,6 +1725,23 @@ const TOOL_ICON_MAP: Record<string, ComponentType<{ size?: number; className?: s
   Task: PiRobot,
   WebSearch: IconWorldSearch,
   WebFetch: IconWorldWww,
+  // MarioTool built-ins: bare ids (Codex / Pi) and Claude's MCP-qualified ids.
+  mario_web_search: IconWorldSearch,
+  "mcp__mcode-web__mario_web_search": IconWorldSearch,
+  mario_web_fetch: IconWorldWww,
+  "mcp__mcode-web__mario_web_fetch": IconWorldWww,
+  mario_image_generate: IconPhoto,
+  "mcp__mcode-image__mario_image_generate": IconPhoto,
+  mario_schedule_list: IconClock,
+  "mcp__mcode-schedule__mario_schedule_list": IconClock,
+  mario_schedule_create: IconClock,
+  "mcp__mcode-schedule__mario_schedule_create": IconClock,
+  mario_schedule_update: IconClock,
+  "mcp__mcode-schedule__mario_schedule_update": IconClock,
+  mario_schedule_delete: IconClock,
+  "mcp__mcode-schedule__mario_schedule_delete": IconClock,
+  mario_wechat_notify: IconMessage,
+  "mcp__mcode-wechat__mario_wechat_notify": IconMessage,
   AskUserQuestion: IconHelpCircle,
   EnterPlanMode: IconClipboard,
   ExitPlanMode: IconClipboard,

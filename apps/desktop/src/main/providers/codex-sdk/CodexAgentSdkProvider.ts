@@ -93,14 +93,15 @@ import {
   browserToolsUsagePrompt,
 } from "@main/browser/agentBrowserTools.js";
 import {
-  BUILTIN_READONLY_TOOLS,
   BUILTIN_TOOL_SPECS,
+  builtinToolNeedsApproval,
   builtinToolsUsagePrompt,
   isBuiltinToolName,
   type BuiltinToolFlags,
 } from "@main/tools/builtinToolSpecs.js";
 import { builtinToolFlags } from "@main/tools/builtinToolsConfig.js";
 import { invokeBuiltinTool } from "@main/tools/builtinTools.js";
+import { isUnattendedSession } from "@main/tools/unattended.js";
 
 /* ── Codex-native capability descriptors ── */
 
@@ -459,12 +460,10 @@ export class CodexAgentSdkProvider implements AgentProvider {
         ctx.onProviderSessionId?.(threadId);
 
         // Register Mcode's skill roots so the model can invoke user/project
-        // skills ($name), plus the skills directories of ENABLED plugins
-        // (settings → Plugins). Best-effort: failure only means no skills.
+        // skills ($name). Best-effort: failure only means no skills.
         try {
-          const { getEnabledPluginSkillRoots } = await import("@main/plugins/pluginManager.js");
           await client.request("skills/extraRoots/set", {
-            extraRoots: [...skillRootsFor(req.cwd), ...(await getEnabledPluginSkillRoots())],
+            extraRoots: skillRootsFor(req.cwd),
           });
         } catch (err) {
           ctx.log.warn(`codex: skills/extraRoots/set failed: ${(err as Error).message}`);
@@ -811,7 +810,7 @@ async function decideApproval(
   return { decision: decision.persist ? "acceptForSession" : "accept" };
 }
 
-/** Approval for a host-side dynamic tool with a cost (image_generate), on
+/** Approval for a host-side dynamic tool with a cost (mario_image_generate), on
  *  the same rules as decideApproval: Full Access and a recorded "always
  *  allow" pass, anything else asks. Returns null when approved, else the
  *  reason for the refusal. */
@@ -927,8 +926,8 @@ function buildDynamicTools(browserToolsEnabled: boolean, builtinFlags: BuiltinTo
     tools.push(
       {
         type: "function",
-        name: "web_search",
-        description: BUILTIN_TOOL_SPECS.web_search.description,
+        name: BUILTIN_TOOL_SPECS.mario_web_search.name,
+        description: BUILTIN_TOOL_SPECS.mario_web_search.description,
         inputSchema: {
           type: "object",
           properties: {
@@ -940,8 +939,8 @@ function buildDynamicTools(browserToolsEnabled: boolean, builtinFlags: BuiltinTo
       },
       {
         type: "function",
-        name: "web_fetch",
-        description: BUILTIN_TOOL_SPECS.web_fetch.description,
+        name: BUILTIN_TOOL_SPECS.mario_web_fetch.name,
+        description: BUILTIN_TOOL_SPECS.mario_web_fetch.description,
         inputSchema: {
           type: "object",
           properties: {
@@ -958,8 +957,8 @@ function buildDynamicTools(browserToolsEnabled: boolean, builtinFlags: BuiltinTo
   if (builtinFlags.image) {
     tools.push({
       type: "function",
-      name: "image_generate",
-      description: BUILTIN_TOOL_SPECS.image_generate.description,
+      name: BUILTIN_TOOL_SPECS.mario_image_generate.name,
+      description: BUILTIN_TOOL_SPECS.mario_image_generate.description,
       inputSchema: {
         type: "object",
         properties: {
@@ -967,6 +966,65 @@ function buildDynamicTools(browserToolsEnabled: boolean, builtinFlags: BuiltinTo
           size: { type: "string", description: "尺寸,如 1024x1024 / 1536x1024 / 1024x1536,省略用设置里的默认值" },
         },
         required: ["prompt"],
+      },
+    });
+  }
+  if (builtinFlags.schedule) {
+    const definition: Record<string, unknown> = {
+      name: { type: "string", description: "任务名称" },
+      prompt: { type: "string", description: "到点后发给 Agent 的提示词:写成具体的只读 / 检查 / 汇总类指令" },
+      scheduleKind: { type: "string", enum: ["one-time", "daily", "weekly"], description: "one-time 一次性 / daily 每天 / weekly 每周" },
+      timeOfDay: { type: "string", description: "每天 / 每周任务的时间,\"HH:mm\"(24 小时制)" },
+      weekdays: { type: "array", items: { type: "number" }, description: "每周任务的星期,1=周一 … 7=周日" },
+      runAt: { type: "string", description: "一次性任务的执行时间,带时区偏移的 ISO 时间,如 2026-09-28T09:00:00+08:00" },
+      pushEnabled: { type: "boolean", description: "true=任务结束后把结果摘要推送到微信" },
+      projectId: { type: "string", description: "所属项目 id,省略=当前会话的项目" },
+      providerId: { type: "string", description: "执行引擎 id(claude-sdk / codex-sdk / pi-sdk),省略=当前会话的引擎" },
+    };
+    const idProp = { type: "string", description: "任务 id(mario_schedule_list 里查)" };
+    tools.push(
+      {
+        type: "function",
+        name: BUILTIN_TOOL_SPECS.mario_schedule_list.name,
+        description: BUILTIN_TOOL_SPECS.mario_schedule_list.description,
+        inputSchema: {
+          type: "object",
+          properties: { projectId: { type: "string", description: "只看这个项目的任务,省略=全部" } },
+        },
+      },
+      {
+        type: "function",
+        name: BUILTIN_TOOL_SPECS.mario_schedule_create.name,
+        description: BUILTIN_TOOL_SPECS.mario_schedule_create.description,
+        inputSchema: { type: "object", properties: definition, required: ["name", "prompt", "scheduleKind"] },
+      },
+      {
+        type: "function",
+        name: BUILTIN_TOOL_SPECS.mario_schedule_update.name,
+        description: BUILTIN_TOOL_SPECS.mario_schedule_update.description,
+        inputSchema: {
+          type: "object",
+          properties: { id: idProp, ...definition, enabled: { type: "boolean", description: "false=暂停,true=恢复" } },
+          required: ["id"],
+        },
+      },
+      {
+        type: "function",
+        name: BUILTIN_TOOL_SPECS.mario_schedule_delete.name,
+        description: BUILTIN_TOOL_SPECS.mario_schedule_delete.description,
+        inputSchema: { type: "object", properties: { id: idProp }, required: ["id"] },
+      },
+    );
+  }
+  if (builtinFlags.wechat) {
+    tools.push({
+      type: "function",
+      name: BUILTIN_TOOL_SPECS.mario_wechat_notify.name,
+      description: BUILTIN_TOOL_SPECS.mario_wechat_notify.description,
+      inputSchema: {
+        type: "object",
+        properties: { text: { type: "string", description: "要发给用户的纯文本消息,简洁" } },
+        required: ["text"],
       },
     });
   }
@@ -1195,12 +1253,12 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
   }
 
   // Built-in web / image tools. invokeBuiltinTool re-reads the switches;
-  // image_generate spends money, so it asks first (dynamic tools bypass
+  // mario_image_generate spends money, so it asks first (dynamic tools bypass
   // codex's own approval flow).
   if (isBuiltinToolName(name)) {
     const toolCallId = typeof p.callId === "string" ? p.callId : randomUUID();
     try {
-      if (!BUILTIN_READONLY_TOOLS.has(name)) {
+      if (builtinToolNeedsApproval(name, isUnattendedSession(req.sessionId))) {
         const denied = await approveHostTool(deps, name, args);
         if (denied) return fail(`用户没有批准这次调用:${denied}`);
       }

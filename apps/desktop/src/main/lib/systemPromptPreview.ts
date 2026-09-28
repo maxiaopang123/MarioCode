@@ -37,7 +37,7 @@ import {
 } from "./userSystemPrompt.js";
 import { browserToolsUsagePrompt } from "@main/browser/agentBrowserTools.js";
 import { codexHomeAgentsMarkdown } from "@main/providers/codex-sdk/CodexAgentSdkProvider.js";
-import { builtinToolsUsagePrompt } from "@main/tools/builtinToolSpecs.js";
+import { NO_BUILTIN_TOOLS, builtinToolsUsagePrompt } from "@main/tools/builtinToolSpecs.js";
 import { builtinToolFlags } from "@main/tools/builtinToolsConfig.js";
 import path from "node:path";
 
@@ -73,7 +73,7 @@ export async function previewSystemPrompt(
   const [mcp, outputStyle, builtinFlags] = await Promise.all([
     getMcpManagement().catch(() => ({ browserDisabled: false })),
     getOutputStyleSetting().catch(() => null),
-    builtinToolFlags().catch(() => ({ web: false, image: false })),
+    builtinToolFlags().catch(() => NO_BUILTIN_TOOLS),
   ]);
   const browserEnabled = !mcp.browserDisabled;
   const builtinUsage = builtinToolsUsagePrompt(builtinFlags);

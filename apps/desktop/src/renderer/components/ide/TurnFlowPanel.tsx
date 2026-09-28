@@ -5,6 +5,7 @@ import type { SubagentSnapshot, TurnUsageRecord } from "@contracts/runtime";
 import { cn } from "@renderer/lib/cn.js";
 import { fmtTokens } from "@renderer/lib/contextWindow.js";
 import { ToolIcon, toolSummary } from "@renderer/components/chat/MessageBlocks.js";
+import { toolDisplayName } from "@renderer/lib/builtinToolNames.js";
 import { SUBAGENT_STATUS_META } from "@renderer/components/chat/activityShared.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import {
@@ -627,7 +628,7 @@ function BlockStep({
         <div className="min-w-0 flex-1 pt-0.5">
           <div className="flex min-w-0 items-center gap-1.5">
             <span className="truncate text-[11px] font-medium text-content">
-              {block.toolName}
+              {toolDisplayName(block.toolName)}
             </span>
             {block.status === "running" ? (
               <IconLoader2 size={10} className="shrink-0 animate-spin text-warning" />

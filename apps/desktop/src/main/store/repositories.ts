@@ -1478,6 +1478,15 @@ export const ScheduledTaskRepo = {
     return row ? rowToScheduledTask(row) : undefined;
   },
 
+  /** True when `sessionId` is the session of a task run in progress
+   *  (markRunning writes last_session_id before the turn starts). */
+  hasRunningSession(sessionId: string): boolean {
+    const row = getDb().prepare(
+      "SELECT 1 AS hit FROM scheduled_tasks WHERE last_status = 'running' AND last_session_id = ? LIMIT 1",
+    ).get(v(sessionId)) as unknown as { hit: number } | undefined;
+    return !!row;
+  },
+
   listDue(now: number): ScheduledTask[] {
     const rows = getDb().prepare(
       "SELECT * FROM scheduled_tasks WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ? ORDER BY next_run_at ASC",

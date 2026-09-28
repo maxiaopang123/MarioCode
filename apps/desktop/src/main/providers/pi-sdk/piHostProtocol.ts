@@ -21,11 +21,18 @@ export interface PiHostTurnConfig {
   browserToolsEnabled: boolean;
   browserToolSpecs: Record<string, { description: string; promptSnippet?: string }>;
   browserUsagePrompt: string;
-  /** Built-in web_search / web_fetch and image_generate switches for this
+  /** Built-in mario_web_search / mario_web_fetch and mario_image_generate switches for this
    *  turn (main resolves them; the tools run main-side via the
    *  `builtinTool` reverse method). Absent = off. */
   webToolsEnabled?: boolean;
   imageToolEnabled?: boolean;
+  /** mario_schedule_* and mario_wechat_notify switches (same resolution). */
+  scheduleToolsEnabled?: boolean;
+  wechatToolEnabled?: boolean;
+  /** The turn is an unattended run (scheduled task / ClawBot DM), resolved
+   *  main-side by isUnattendedSession — feeds builtinToolNeedsApproval in
+   *  the tool_call guard. Absent = attended. */
+  unattended?: boolean;
   /** The user's global + project system prompt, already formatted into
    *  sections and joined (see `userSystemPromptSections`); "" when unset.
    *  Resolved main-side (settings DB + project file) because the host
@@ -77,6 +84,9 @@ export function isMainToPiHost(value: unknown): value is MainToPiHost {
     && typeof p.browserToolsEnabled === "boolean"
     && (p.webToolsEnabled === undefined || typeof p.webToolsEnabled === "boolean")
     && (p.imageToolEnabled === undefined || typeof p.imageToolEnabled === "boolean")
+    && (p.scheduleToolsEnabled === undefined || typeof p.scheduleToolsEnabled === "boolean")
+    && (p.wechatToolEnabled === undefined || typeof p.wechatToolEnabled === "boolean")
+    && (p.unattended === undefined || typeof p.unattended === "boolean")
     && typeof p.agentDir === "string" && p.agentDir.length > 0
     && isRecord(p.browserToolSpecs) && typeof p.browserUsagePrompt === "string"
     && typeof p.userSystemPrompt === "string";

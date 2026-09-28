@@ -501,6 +501,11 @@ const skills: Api["skills"] = {
     syncSetEnabled: () => webUnsupported("skills.syncSetEnabled"),
     syncRemove: () => webUnsupported("skills.syncRemove"),
     syncRescan: () => webUnsupported("skills.syncRescan"),
+    marketList: () => webUnsupported("skills.marketList"),
+    marketAdd: () => webUnsupported("skills.marketAdd"),
+    marketRemove: () => webUnsupported("skills.marketRemove"),
+    marketRefresh: () => webUnsupported("skills.marketRefresh"),
+    marketInstall: () => webUnsupported("skills.marketInstall"),
 };
 
 const file: Api["file"] = {

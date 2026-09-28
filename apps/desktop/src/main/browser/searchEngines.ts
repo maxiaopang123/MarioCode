@@ -1,7 +1,7 @@
 /**
  * Search-engine host rules, shared by the browser tools' guard (the agent's
  * browser may not be used as a search engine) and the built-in web tools
- * (web_fetch refuses results pages, web_search drops links back into one).
+ * (mario_web_fetch refuses results pages, mario_web_search drops links back into one).
  *
  * Host rules are deliberately narrow: only the engine's own search hosts
  * (root / www / regional search subdomains). Product subdomains such as

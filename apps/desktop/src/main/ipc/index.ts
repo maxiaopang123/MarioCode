@@ -23,7 +23,6 @@ import { registerSystemPromptHandlers } from "./systemPrompt.js";
 import { registerUsageHandlers } from "./usage.js";
 import { registerLspHandlers } from "./lsp.js";
 import { registerRuntimesHandlers } from "./runtimes.js";
-import { registerPluginsHandlers } from "./plugins.js";
 import { registerBrowserHandlers } from "./browser.js";
 import { registerNotificationHandlers } from "./notifications.js";
 import { registerMobileHandlers } from "./mobile.js";
@@ -83,7 +82,6 @@ export function registerIpcHandlers(): void {
   registerUsageHandlers(ipc);
   registerLspHandlers(ipc);
   registerRuntimesHandlers(ipc);
-  registerPluginsHandlers(ipc);
   registerBrowserHandlers(ipc);
   registerNotificationHandlers(ipc);
   registerMobileHandlers(ipc);

@@ -6,6 +6,7 @@ import { MessageRepo, SessionRepo } from "@main/store/repositories.js";
 import { executeSessionTurn } from "@main/lib/sessionTurn.js";
 import { awaitProviderSettlement } from "@main/scheduler/settlement.js";
 import { uid } from "@main/utils.js";
+import { markBackgroundTurnEnd, markBackgroundTurnStart } from "./backgroundTurnTracker.js";
 
 const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_CANCEL_GRACE_MS = 10_000;
@@ -39,6 +40,18 @@ interface TerminalObservation {
 export class BackgroundTurnService {
   async run(input: BackgroundTurnInput): Promise<BackgroundTurnResult> {
     if (input.signal?.aborted) return { ok: false, error: "后台会话已取消。" };
+    // Marks the session unattended for the built-in tools' approval policy
+    // (see main/tools/unattended.ts) for exactly the lifetime of this turn.
+    const id = input.session.id;
+    markBackgroundTurnStart(id);
+    try {
+      return await this.runInner(input);
+    } finally {
+      markBackgroundTurnEnd(id);
+    }
+  }
+
+  private async runInner(input: BackgroundTurnInput): Promise<BackgroundTurnResult> {
     const user = this.persistUserMessage(input.session.id, input.prompt);
     const terminal = this.observe(input.session.id, input.signal);
     try {

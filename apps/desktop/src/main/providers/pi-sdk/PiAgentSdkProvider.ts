@@ -5,10 +5,10 @@ import type { AgentProvider, StartTurnRequest, ProviderContext, TurnHandle, Prov
 import type { PiProviderPublic } from "@contracts/piModel";
 import { PiModelsStore } from "@main/lib/piModelsStore.js";
 import { resolveGitBash } from "@main/lib/binaryResolve.js";
-import { getEnabledPluginSkillRoots } from "@main/plugins/pluginManager.js";
 import { skillSyncMirrorRoots } from "@main/lib/skillSync.js";
 import { getMcpManagement } from "@main/lib/mcpConfig.js";
 import { builtinToolFlags } from "@main/tools/builtinToolsConfig.js";
+import { isUnattendedSession } from "@main/tools/unattended.js";
 import { BROWSER_TOOL_SPECS, browserToolsUsagePrompt } from "@main/browser/agentBrowserTools.js";
 import { joinPromptSections } from "@main/lib/systemPrompt.js";
 import { loadUserSystemPrompt, userSystemPromptSections } from "@main/lib/userSystemPrompt.js";
@@ -25,7 +25,7 @@ export function piPrivateAgentDir(): string {
   return join(app.getPath("userData"), "agent-config", "pi");
 }
 
-async function loadHostConfiguration(): Promise<{ providers: Record<string, PiProviderPublic>; apiKeys: Record<string, string>; extraSkillPaths: string[]; gitBash: string | null; browserToolsEnabled: boolean; webToolsEnabled: boolean; imageToolEnabled: boolean; agentDir: string }> {
+async function loadHostConfiguration(sessionId: string): Promise<{ providers: Record<string, PiProviderPublic>; apiKeys: Record<string, string>; extraSkillPaths: string[]; gitBash: string | null; browserToolsEnabled: boolean; webToolsEnabled: boolean; imageToolEnabled: boolean; scheduleToolsEnabled: boolean; wechatToolEnabled: boolean; unattended: boolean; agentDir: string }> {
   const providers = await PiModelsStore.listPublic();
   const apiKeys: Record<string, string> = {};
   for (const [name, provider] of Object.entries(providers)) {
@@ -35,11 +35,12 @@ async function loadHostConfiguration(): Promise<{ providers: Record<string, PiPr
   }
   const mcp = await getMcpManagement();
   const builtin = await builtinToolFlags();
-  // extraSkillPaths = enabled plugin skill roots + external sync mirrors
-  // (TODO-004). The Pi host learns the sync mirrors through THIS config
-  // channel — it cannot read the sync source list itself because the host
-  // bundle runs without the Electron DB.
-  return { providers, apiKeys, extraSkillPaths: [...(await getEnabledPluginSkillRoots()), ...(await skillSyncMirrorRoots())], gitBash: process.platform === "win32" ? resolveGitBash() : null, browserToolsEnabled: !mcp.browserDisabled, webToolsEnabled: builtin.web, imageToolEnabled: builtin.image, agentDir: piPrivateAgentDir() };
+  // extraSkillPaths = external sync mirrors (TODO-004). The Pi host learns
+  // the sync mirrors through THIS config channel — it cannot read the sync
+  // source list itself because the host bundle runs without the Electron DB.
+  return { providers, apiKeys, extraSkillPaths: await skillSyncMirrorRoots(), gitBash: process.platform === "win32" ? resolveGitBash() : null, browserToolsEnabled: !mcp.browserDisabled, webToolsEnabled: builtin.web, imageToolEnabled: builtin.image, scheduleToolsEnabled: builtin.schedule, wechatToolEnabled: builtin.wechat,
+    // Resolved here (DB + in-process tracker); the host only sees the bool.
+    unattended: isUnattendedSession(sessionId), agentDir: piPrivateAgentDir() };
 }
 
 export class PiAgentSdkProvider implements AgentProvider {
@@ -56,7 +57,7 @@ export class PiAgentSdkProvider implements AgentProvider {
   };
 
   async startTurn(req: StartTurnRequest, ctx: ProviderContext): Promise<TurnHandle> {
-    const config = await loadHostConfiguration();
+    const config = await loadHostConfiguration(req.sessionId);
     if (Object.keys(config.providers).length === 0) {
       ctx.emit({ type: "error", sessionId: req.sessionId, message: "Pi 未配置任何模型:请先在「设置 → 模型配置」中添加模型后再发送。", code: "PI_NO_MODEL" });
       ctx.emit({ type: "turn.done", sessionId: req.sessionId, reason: "error" });

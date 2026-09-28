@@ -1,13 +1,14 @@
 /**
- * web_search — titles, links and short snippets only; full text is
- * web_fetch's job, so a search costs a few hundred tokens instead of a
+ * mario_web_search — titles, links and short snippets only; full text is
+ * mario_web_fetch's job, so a search costs a few hundred tokens instead of a
  * results page's 10K+.
  *
  * Backends: Bing (default) and Baidu read the engine's own results page in a
- * hidden window and need no key; 博查 / 智谱 / Tavily are search APIs that need
- * the user's key (reachable from mainland networks, unlike Brave / DuckDuckGo).
- * A keyed backend that fails (bad key, quota, network) falls back to Bing and
- * the result says so, rather than leaving the model with nothing.
+ * hidden window and need no key. 博查 / 智谱 / Tavily / Exa / Brave are
+ * optional search APIs that need the user's key (Brave may need a proxy from
+ * mainland networks). A keyed backend that fails (missing / bad key, quota,
+ * network) falls back to Bing and the result says so, rather than leaving the
+ * model with nothing.
  */
 import type { WebContents } from "electron";
 import type { WebSearchBackend, WebSearchKeyedBackend } from "@contracts/ipc";
@@ -39,6 +40,8 @@ export const WEB_SEARCH_BACKEND_LABEL: Record<WebSearchBackend, string> = {
   bocha: "博查",
   zhipu: "智谱",
   tavily: "Tavily",
+  exa: "Exa",
+  brave: "Brave",
 };
 
 const API_TIMEOUT_MS = 15_000;
@@ -58,11 +61,48 @@ function records(v: unknown): Record<string, unknown>[] {
   return Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => !!x && typeof x === "object") : [];
 }
 
-async function postJson(url: string, key: string, body: unknown): Promise<unknown> {
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+/** Strip HTML tags / common entities (Brave wraps matches in <strong>). */
+function stripTags(s: unknown): string {
+  if (typeof s !== "string") return "";
+  return clean(
+    s
+      .replace(/<[^>]*>/g, "")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;|&#x27;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&"),
+  );
+}
+
+/** Short human message from a search API's error body. */
+function apiErrorMessage(json: unknown, text: string): string {
+  const j = asRecord(json) ?? {};
+  const err = j.error;
+  const errRec = asRecord(err);
+  const detail = j.detail;
+  const detailRec = asRecord(detail);
+  return (
+    (typeof err === "string" ? clean(err) : "") ||
+    clean(errRec?.message) ||
+    clean(errRec?.detail) ||
+    clean(j.msg) ||
+    clean(j.message) ||
+    (typeof detail === "string" ? clean(detail) : clean(detailRec?.error)) ||
+    clip(clean(text), 160)
+  );
+}
+
+async function requestJson(url: string, init: { method: "GET" | "POST"; headers: Record<string, string>; body?: unknown }): Promise<unknown> {
   const res = await engineFetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-    body: JSON.stringify(body),
+    method: init.method,
+    headers: init.headers,
+    ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
     signal: AbortSignal.timeout(API_TIMEOUT_MS),
   });
   const text = await res.text();
@@ -73,18 +113,18 @@ async function postJson(url: string, key: string, body: unknown): Promise<unknow
     // non-JSON error bodies are reported raw below
   }
   if (!res.ok) {
-    const j = (json ?? {}) as Record<string, unknown>;
-    const err = j.error as Record<string, unknown> | undefined;
-    const detail = j.detail as Record<string, unknown> | string | undefined;
-    const message =
-      clean(err?.message) ||
-      clean(j.msg) ||
-      clean(j.message) ||
-      (typeof detail === "string" ? clean(detail) : clean(detail?.error)) ||
-      clip(clean(text), 160);
+    const message = apiErrorMessage(json, text);
     throw new Error(`HTTP ${res.status}${message ? ` ${message}` : ""}`);
   }
   return json;
+}
+
+function postJson(url: string, key: string, body: unknown): Promise<unknown> {
+  return requestJson(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+    body,
+  });
 }
 
 async function searchBocha(query: string, count: number, key: string): Promise<SearchHit[]> {
@@ -135,6 +175,54 @@ async function searchTavily(query: string, count: number, key: string): Promise<
     snippet: clean(r.content),
     date: clean(r.published_date).slice(0, 10) || undefined,
   }));
+}
+
+/** Exa `/search` response → hits. Pure (exported for the offline smoke). */
+export function parseExaResponse(json: unknown): SearchHit[] {
+  return records(asRecord(json)?.results).map((r) => {
+    const highlights = Array.isArray(r.highlights)
+      ? clean(r.highlights.filter((h): h is string => typeof h === "string").join(" "))
+      : "";
+    return {
+      title: clean(r.title),
+      url: clean(r.url),
+      snippet: highlights || clean(r.summary) || clean(r.text),
+      date: clean(r.publishedDate).slice(0, 10) || undefined,
+    };
+  });
+}
+
+async function searchExa(query: string, count: number, key: string): Promise<SearchHit[]> {
+  const json = await requestJson("https://api.exa.ai/search", {
+    method: "POST",
+    headers: { "x-api-key": key, "content-type": "application/json" },
+    body: { query, numResults: count, contents: { highlights: true } },
+  });
+  return parseExaResponse(json);
+}
+
+/** Brave Web Search response → hits. Pure (exported for the offline smoke). */
+export function parseBraveResponse(json: unknown): SearchHit[] {
+  const web = asRecord(asRecord(json)?.web);
+  return records(web?.results).map((r) => {
+    const profile = asRecord(r.profile);
+    return {
+      title: stripTags(r.title),
+      url: clean(r.url),
+      snippet: stripTags(r.description),
+      site: clean(profile?.name) || undefined,
+      date: clean(r.age) || clean(r.page_age).slice(0, 10) || undefined,
+    };
+  });
+}
+
+async function searchBrave(query: string, count: number, key: string): Promise<SearchHit[]> {
+  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${Math.min(count, 20)}`;
+  const json = await requestJson(url, {
+    method: "GET",
+    headers: { Accept: "application/json", "X-Subscription-Token": key },
+  });
+  return parseBraveResponse(json);
 }
 
 /** Result extraction on the engine's own page. Selectors follow the current
@@ -208,11 +296,20 @@ async function searchBrowser(engine: "bing" | "baidu", query: string, count: num
 
 async function searchOnce(backend: WebSearchBackend, query: string, count: number): Promise<SearchHit[]> {
   if (backend === "bing" || backend === "baidu") return searchBrowser(backend, query, count);
-  const key = readBuiltinToolSecret(backend as WebSearchKeyedBackend);
+  const key = readBuiltinToolSecret(backend satisfies WebSearchKeyedBackend);
   if (!key) throw new Error("没有配置 API Key");
-  if (backend === "bocha") return searchBocha(query, count, key);
-  if (backend === "zhipu") return searchZhipu(query, count, key);
-  return searchTavily(query, count, key);
+  switch (backend) {
+    case "bocha":
+      return searchBocha(query, count, key);
+    case "zhipu":
+      return searchZhipu(query, count, key);
+    case "tavily":
+      return searchTavily(query, count, key);
+    case "exa":
+      return searchExa(query, count, key);
+    case "brave":
+      return searchBrave(query, count, key);
+  }
 }
 
 /** Tidy hits: drop entries without a title/URL, links back into a search
@@ -223,7 +320,7 @@ function tidy(hits: SearchHit[], count: number): SearchHit[] {
   for (const h of hits) {
     const url = h.url.trim();
     if (!h.title || !/^https?:\/\//i.test(url) || seen.has(url)) continue;
-    // Keep search-engine redirect links (Baidu's /link?url=…) — web_fetch
+    // Keep search-engine redirect links (Baidu's /link?url=…) — mario_web_fetch
     // follows them; drop links to another results page.
     if (matchSearchEngine(url) && !/\/link\?|\/ck\/a\?/.test(url)) continue;
     seen.add(url);
@@ -252,7 +349,7 @@ export async function runWebSearch(
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     if (chosen === "bing" || chosen === "baidu") throw new Error(`${WEB_SEARCH_BACKEND_LABEL[chosen]}搜索失败:${error}`);
-    log.warn(`web_search: ${chosen} failed (${error}); falling back to bing`);
+    log.warn(`mario_web_search: ${chosen} failed (${error}); falling back to bing`);
     outcome = { hits: tidy(await searchOnce("bing", query, count), count), backend: "bing", fallback: { from: chosen, error } };
   }
   cache.set(cacheKey, { at: Date.now(), outcome });
@@ -267,7 +364,7 @@ function text(t: string): BuiltinToolResult {
   return { content: [{ type: "text", text: t }] };
 }
 
-/** The web_search tool. */
+/** The mario_web_search tool. */
 export async function webSearch(args: { query?: unknown; count?: unknown }): Promise<BuiltinToolResult> {
   const query = clean(args.query).slice(0, 300);
   if (!query) return text("❌ query 不能为空");
@@ -297,6 +394,6 @@ export async function webSearch(args: { query?: unknown; count?: unknown }): Pro
     if (h.snippet) lines.push(`   ${h.snippet}`);
     if (meta) lines.push(`   (${meta})`);
   });
-  lines.push("", "需要详细内容时用 web_fetch 读取对应链接;引用时注明来源。");
+  lines.push("", "需要详细内容时用 mario_web_fetch 读取对应链接;引用时注明来源。");
   return text(lines.join("\n"));
 }

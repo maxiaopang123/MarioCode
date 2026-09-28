@@ -37,7 +37,7 @@ export type SnapshotMode = "both" | "interactive" | "text";
 /**
  * Main-content text extraction, spliced into page scripts as source (these
  * scripts can't import — see the file header). Shared by the agent snapshot
- * and the web_fetch reader so both read a page the same way.
+ * and the mario_web_fetch reader so both read a page the same way.
  *
  * `mcMainRoot(document)` picks the content root: the longest <main> /
  * [role=main] when it holds a real share of the page text, else the longest

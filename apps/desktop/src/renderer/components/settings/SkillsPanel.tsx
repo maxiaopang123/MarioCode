@@ -58,7 +58,9 @@ import {
   IconFolder,
   IconFileText,
   IconRefresh,
+  IconWorld,
 } from "@renderer/lib/icons.js";
+import { SkillMarketDialog } from "./SkillMarketDialog.js";
 import type { SkillInfo, SkillSource, ExternalSkillInfo, SkillTool, SkillSyncSource, SkillSyncStatus } from "@contracts/ipc";
 
 /** Skill name charset — mirrored from the zod schema in the contract. The
@@ -74,9 +76,9 @@ const EMPTY_PANEL_SKILLS: SkillInfo[] = [];
 /** Selection in the left list. `"new"` = the transient create entry;
  *  `null` = empty state. An existing skill is keyed by `${source}:${name}`
  *  (a name can appear under both global + project; the key disambiguates). */
-/** The scopes this editor can read/write. Plugin-contributed skills are
- *  excluded — they're read-only inventory owned by the Plugins panel. */
-type EditableSkillSource = Exclude<SkillSource, "plugin">;
+/** The scopes this editor can read/write. Synced skills are excluded —
+ *  they're a read-only mirror owned by the skill sync section. */
+type EditableSkillSource = Exclude<SkillSource, "sync">;
 
 type Selection =
   | { kind: "skill"; source: EditableSkillSource; name: string }
@@ -143,11 +145,11 @@ export function SkillsPanel() {
       // Show both project-scoped and global skills. Global skills live under
       // ~/.mcode/skills (populated by the Import feature or the new-skill
       // form's global scope) and are editable/deletable here the same way
-      // project skills are. Plugin-contributed skills are excluded — they
-      // are read-only inventory owned by the Plugins panel (install/enable/
-      // uninstall there), and this editor's save/delete would reject them.
+      // project skills are. Synced skills are excluded — they are a
+      // read-only mirror rewritten by the sync engine (managed in the sync
+      // section below), and this editor's save/delete would reject them.
       setPanelSkills(
-        skills.length ? skills.filter((s) => s.source !== "plugin") : EMPTY_PANEL_SKILLS,
+        skills.length ? skills.filter((s) => s.source !== "sync") : EMPTY_PANEL_SKILLS,
       );
     } catch (err) {
       console.error("SkillsPanel load failed:", err);
@@ -183,6 +185,8 @@ export function SkillsPanel() {
   const [pendingDelete, setPendingDelete] = useState<{ source: EditableSkillSource; name: string } | null>(null);
   // Import dialog open state.
   const [importOpen, setImportOpen] = useState(false);
+  // Skill market dialog open state (TODO-020).
+  const [marketOpen, setMarketOpen] = useState(false);
   // External sync sources (TODO-004): user directories mirrored into
   // ~/.mcode/skills-sync and injected into Claude / Pi / Codex.
   const [syncRows, setSyncRows] = useState<SyncRow[]>(EMPTY_SYNC_ROWS);
@@ -250,7 +254,7 @@ export function SkillsPanel() {
   }, [loadPanelSkills, managedProjectId, activeProjectId, reloadSkills]);
 
   const startEdit = async (skill: SkillInfo) => {
-    // Plugin rows are filtered out of panelSkills, so the wide SkillSource
+    // Synced rows are filtered out of panelSkills, so the wide SkillSource
     // can only be global|project here.
     setSelected({ kind: "skill", source: skill.source as EditableSkillSource, name: skill.name });
     setNewForm(null);
@@ -260,9 +264,9 @@ export function SkillsPanel() {
     try {
       const { content } = await api.skills.read({
         projectPath: projectPath ?? undefined,
-        // Plugin rows are filtered out of panelSkills — only editable
+        // Synced rows are filtered out of panelSkills — only editable
         // sources reach this call.
-        source: skill.source as Exclude<SkillSource, "plugin">,
+        source: skill.source as Exclude<SkillSource, "sync">,
         name: skill.name,
       });
       setEditContent(content);
@@ -615,6 +619,15 @@ export function SkillsPanel() {
               <IconDownload size={12} />
               {t("settings.skills.importSkill")}
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMarketOpen(true)}
+              className="w-full justify-center gap-1"
+            >
+              <IconWorld size={12} />
+              {t("settings.skillMarket.open")}
+            </Button>
           </div>
         </aside>
 
@@ -682,6 +695,12 @@ export function SkillsPanel() {
         onOpenChange={setImportOpen}
         projectPath={projectPath}
         onImported={() => void refreshAfterMutation()}
+      />
+
+      <SkillMarketDialog
+        open={marketOpen}
+        onOpenChange={setMarketOpen}
+        onInstalled={() => void refreshAfterMutation()}
       />
     </div>
   );

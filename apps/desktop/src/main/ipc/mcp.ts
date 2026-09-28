@@ -34,11 +34,14 @@ import {
   MCP_RESERVED_NAMES,
   MCP_WEB_SERVER_NAME,
   MCP_IMAGE_SERVER_NAME,
+  MCP_SCHEDULE_SERVER_NAME,
+  MCP_WECHAT_SERVER_NAME,
   type McpScope,
   type McpServerConfig,
   type McpServerEntry,
 } from "@contracts/ipc";
 import { resolveImageEndpoint } from "@main/tools/builtinToolsConfig.js";
+import { clawBotService } from "@main/clawbot/ClawBotService.js";
 import {
   listMcpSync,
   scanMcpSyncCandidates,
@@ -53,12 +56,6 @@ import { samePath } from "@main/lib/pathGuard.js";
 import { log } from "@main/lib/logger.js";
 import { MCODE_CONFIG_DIR } from "@main/providers/claude-sdk/customEnv.js";
 import { resolveSdkBinaryPath } from "@main/providers/claude-sdk/sdkBinaryPath.js";
-import {
-  listPluginMcpPanelEntries,
-  getPluginMcpServerConfig,
-  getPluginMcpServers,
-  setPluginMcpDisabled,
-} from "@main/plugins/pluginManager.js";
 import {
   readUserClaudeJson,
   writeUserClaudeJson,
@@ -80,9 +77,11 @@ function findKnownProject(projectPath: string) {
 }
 
 /** Description lines for the built-in server rows. */
-const BUILTIN_DETAIL = "browser_navigate / browser_snapshot / browser_click 等应用内浏览器工具";
-const WEB_TOOLS_DETAIL = "web_search / web_fetch 联网搜索与网页正文读取(来源在「内置工具」页设置)";
-const IMAGE_TOOL_DETAIL = "image_generate 图片生成(模型在「内置工具」页设置)";
+const BUILTIN_DETAIL = "browser_navigate / browser_snapshot / browser_click 等应用内浏览器工具(在「MarioTool」页设置)";
+const WEB_TOOLS_DETAIL = "mario_web_search / mario_web_fetch 联网搜索与网页正文读取(来源在「MarioTool」页设置)";
+const IMAGE_TOOL_DETAIL = "mario_image_generate 图片生成(模型在「MarioTool」页设置)";
+const SCHEDULE_TOOLS_DETAIL = "mario_schedule_list / create / update / delete 定时任务(在「MarioTool」页设置,任务在「定时任务」页管理)";
+const WECHAT_TOOL_DETAIL = "mario_wechat_notify 微信通知(在「MarioTool」页设置,绑定在「消息通知 → 微信 ClawBot」)";
 
 /* ── OAuth needs-auth state ──
  * The CLI records remote servers that demanded OAuth but hold no stored
@@ -237,9 +236,6 @@ async function resolveRemoteServerConfig(
   // stash holding the configs of servers the user turned off.
   const fromUserFile = async () => asRemote(mcpServersOf(await readUserClaudeJson())[name]);
   const fromStash = async () => asRemote((await getMcpManagement()).userDisabled?.[name]);
-  // Plugin scope: `<plugin>__<server>`, including servers on the per-server
-  // disable list (the panel keeps showing their OAuth row).
-  const fromPlugin = async () => asRemote(await getPluginMcpServerConfig(name));
   // Project scope: the row's own project first, then any other known project.
   const fromProjects = async () => {
     const roots = projectPath ? [projectPath, ...ProjectRepo.list().map((p) => p.path)] : ProjectRepo.list().map((p) => p.path);
@@ -255,9 +251,8 @@ async function resolveRemoteServerConfig(
   // token, so try the row's own scope first.
   const loaders: Array<() => Promise<Remote | null>> = [];
   if (scope === "user") loaders.push(fromUserFile, fromStash);
-  if (scope === "plugin") loaders.push(fromPlugin);
   if (scope === "project") loaders.push(fromProjects);
-  loaders.push(fromUserFile, fromStash, fromPlugin, fromProjects);
+  loaders.push(fromUserFile, fromStash, fromProjects);
 
   const tried = new Set<() => Promise<Remote | null>>();
   for (const load of loaders) {
@@ -504,18 +499,6 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
       }
     }
 
-    // Plugin-contributed servers: entries of ENABLED plugins, namespaced
-    // "<plugin>__<server>". The per-server toggle flips the denylist in the
-    // plugins settings; the plugin's own enable switch is the master gate.
-    // One scan for every plugin server's config (the per-row lookup would
-    // re-walk the plugin tree once per row).
-    const pluginConfigs = new Map(await getPluginMcpServers());
-    for (const entry of await listPluginMcpPanelEntries()) {
-      servers.push(entry);
-      const config = pluginConfigs.get(entry.name);
-      if (config) rememberRemote("plugin", entry.name, config);
-    }
-
     // Built-in in-process servers: the browser, web search / fetch, and image
     // generation (which only registers once an image model is configured).
     servers.push(
@@ -527,6 +510,22 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
         kind: "builtin",
         detail: resolveImageEndpoint().ok ? IMAGE_TOOL_DETAIL : `${IMAGE_TOOL_DETAIL};尚未配置,开着也不会注册`,
         enabled: !state.imageToolDisabled,
+      },
+      {
+        name: MCP_SCHEDULE_SERVER_NAME,
+        scope: "builtin",
+        kind: "builtin",
+        detail: SCHEDULE_TOOLS_DETAIL,
+        enabled: !state.scheduleToolsDisabled,
+      },
+      {
+        name: MCP_WECHAT_SERVER_NAME,
+        scope: "builtin",
+        kind: "builtin",
+        detail: clawBotService.getStatus().state === "unbound"
+          ? `${WECHAT_TOOL_DETAIL};微信 ClawBot 尚未绑定,开着也不会注册`
+          : WECHAT_TOOL_DETAIL,
+        enabled: !state.wechatToolDisabled,
       },
     );
 
@@ -571,7 +570,7 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
     }
 
     servers.sort((a, b) =>
-      a.scope === b.scope ? a.name.localeCompare(b.name) : a.scope === "user" ? -1 : b.scope === "user" ? 1 : a.scope === "project" ? -1 : b.scope === "plugin" ? -1 : 1,
+      a.scope === b.scope ? a.name.localeCompare(b.name) : a.scope === "user" ? -1 : b.scope === "user" ? 1 : a.scope === "project" ? -1 : 1,
     );
     return { servers };
   });
@@ -584,16 +583,11 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
         const state = await getMcpManagement();
         if (input.name === MCP_WEB_SERVER_NAME) state.webToolsDisabled = !input.enabled;
         else if (input.name === MCP_IMAGE_SERVER_NAME) state.imageToolDisabled = !input.enabled;
+        else if (input.name === MCP_SCHEDULE_SERVER_NAME) state.scheduleToolsDisabled = !input.enabled;
+        else if (input.name === MCP_WECHAT_SERVER_NAME) state.wechatToolDisabled = !input.enabled;
         else state.browserDisabled = !input.enabled;
         saveMcpManagement(state);
         return { ok: true };
-      }
-
-      if (input.scope === "plugin") {
-        // Plugin-contributed server: flip its entry on the plugins.mcpDisabled
-        // denylist. The config itself lives in the plugin tree and is never
-        // rewritten here.
-        return setPluginMcpDisabled(input.name, !input.enabled);
       }
 
       if (input.scope === "project") {

@@ -47,72 +47,6 @@ import {
   type SharedProviderDiscoveredModel,
   type SharedProviderDiscoveryResult,
 } from "./sharedProvider.js";
-import type {
-  PluginState,
-  PluginMarketplaceState,
-  PluginsInstallLocalInput,
-  PluginsInstallGitInput,
-  PluginsInstallMarketplaceInput,
-  PluginsSetEnabledInput,
-  PluginsRemoveInput,
-  PluginsMarketplaceAddInput,
-  PluginsMarketplaceRemoveInput,
-  PluginsMarketplaceRefreshInput,
-} from "./plugin.js";
-
-// Re-export the plugin contracts so consumers can import from "@contracts/ipc"
-// (mirrors the relay.ts pattern).
-export {
-  BUILTIN_MARKETPLACES,
-  PLUGINS_ENABLED_SETTING_KEY,
-  PLUGINS_MARKETPLACES_SETTING_KEY,
-  PLUGINS_MCP_DISABLED_SETTING_KEY,
-  PLUGIN_MANIFEST_DIRS,
-  PLUGIN_NAME_RE,
-  PluginManifestSchema,
-  PluginMarketEntrySourceSchema,
-  PluginMarketEntrySchema,
-  PluginMarketplaceManifestSchema,
-  PluginsListSchema,
-  PluginsInstallLocalSchema,
-  PluginsInstallGitSchema,
-  PluginsInstallMarketplaceSchema,
-  PluginsSetEnabledSchema,
-  PluginsRemoveSchema,
-  PluginsMarketplaceListSchema,
-  PluginsMarketplaceAddSchema,
-  PluginsMarketplaceRemoveSchema,
-  PluginsMarketplaceRefreshSchema,
-} from "./plugin.js";
-export type {
-  PluginManifest,
-  PluginMarketEntrySource,
-  PluginMarketplaceManifest,
-  PluginSkillSummary,
-  PluginCommandSummary,
-  PluginAgentSummary,
-  PluginHookSummary,
-  PluginMcpKind,
-  PluginMcpServerSummary,
-  PluginComponents,
-  PluginSourceKind,
-  PluginSourceInfo,
-  PluginState,
-  PluginMarketplaceRecord,
-  PluginMarketEntry,
-  PluginMarketplaceState,
-  PluginsListInput,
-  PluginsInstallLocalInput,
-  PluginsInstallGitInput,
-  PluginsInstallMarketplaceInput,
-  PluginsSetEnabledInput,
-  PluginsRemoveInput,
-  PluginsMarketplaceListInput,
-  PluginsMarketplaceAddInput,
-  PluginsMarketplaceRemoveInput,
-  PluginsMarketplaceRefreshInput,
-} from "./plugin.js";
-
 export {
   ScheduledTaskCreateSchema,
   ScheduledTaskUpdateSchema,
@@ -382,49 +316,46 @@ export function normalizeProxyUrl(input: string): string | null {
 }
 
 /**
- * Built-in agent tools (Settings → 内置工具): `web_search` / `web_fetch` and
- * `image_generate`, registered on Claude, Codex and Pi. The non-secret config
+ * Built-in agent tools (Settings → 内置工具): `mario_web_search` / `mario_web_fetch` and
+ * `mario_image_generate`, registered on Claude, Codex and Pi. The non-secret config
  * is one JSON blob under this key (see {@link BuiltinToolsConfigSchema}); it
- * is written only through `builtinTools.save`, which also owns the API keys
- * (encrypted under a separate key, never sent to the renderer). The on/off
+ * is written only through `builtinTools.save`, which also owns the optional
+ * search-API keys (encrypted under a separate key, never sent to the
+ * renderer). Search defaults to keyless Bing in a hidden browser window;
+ * image generation reuses a shared provider's endpoint + key. The on/off
  * switches live in MCP management state (`webToolsDisabled` /
  * `imageToolDisabled`), so the MCP panel's built-in group and this page flip
  * the same flags. Read fresh on every turn.
  */
 export const BUILTIN_TOOLS_CONFIG_SETTING_KEY = "builtinTools.config";
 
-/** Where web_search gets results: a hidden browser window on Bing / Baidu
- *  (no key), or a search API that needs the user's key. */
-export const WebSearchBackendSchema = z.enum(["bing", "baidu", "bocha", "zhipu", "tavily"]);
+/** Where mario_web_search gets results: a hidden browser window on Bing / Baidu
+ *  (no key), or an optional search API that needs the user's key (a failing
+ *  keyed backend falls back to Bing). A stored value outside this enum fails
+ *  the search section and parseBuiltinToolsConfig falls back to Bing. */
+export const WebSearchBackendSchema = z.enum(["bing", "baidu", "bocha", "zhipu", "tavily", "exa", "brave"]);
 export type WebSearchBackend = z.infer<typeof WebSearchBackendSchema>;
-export const WEB_SEARCH_KEYED_BACKENDS = ["bocha", "zhipu", "tavily"] as const;
+export const WEB_SEARCH_KEYED_BACKENDS = ["bocha", "zhipu", "tavily", "exa", "brave"] as const;
 export type WebSearchKeyedBackend = (typeof WEB_SEARCH_KEYED_BACKENDS)[number];
-/** Stored secrets: one per keyed search backend, plus the image endpoint's
- *  key when the image source is a custom endpoint. */
-export type BuiltinToolsSecretId = WebSearchKeyedBackend | "image";
 
 /** `WxH` pixels or `auto` — what OpenAI-compatible images endpoints accept. */
 export const IMAGE_SIZE_RE = /^(auto|\d{3,4}x\d{3,4})$/;
-/** `image.source` value for an endpoint typed into the page instead of a
- *  shared provider's. */
-export const IMAGE_SOURCE_CUSTOM = "custom";
 
 export const BuiltinToolsConfigSchema = z.object({
   search: z.object({
     backend: WebSearchBackendSchema,
-    /** Default result count per web_search call (the model may ask for fewer or more, ≤ 10). */
+    /** Default result count per mario_web_search call (the model may ask for fewer or more, ≤ 10). */
     maxResults: z.number().int().min(1).max(10),
   }),
   fetch: z.object({
-    /** Default characters per web_fetch call (the model may pass maxChars within 1000–20000). */
+    /** Default characters per mario_web_fetch call (the model may pass maxChars within 1000–20000). */
     maxChars: z.number().int().min(1000).max(20000),
   }),
   image: z.object({
-    /** A shared provider id (its endpoint + key are reused), IMAGE_SOURCE_CUSTOM,
-     *  or "" when image generation isn't configured. */
+    /** A shared provider id (its endpoint + key are reused), or "" when image
+     *  generation isn't configured. Unknown ids (incl. a legacy "custom")
+     *  resolve to not-configured. Legacy `baseUrl` fields are stripped on parse. */
     source: z.string().max(64),
-    /** OpenAI-compatible base URL (…/v1); only read when source is custom. */
-    baseUrl: z.string().max(2048),
     /** Image model id, e.g. gpt-image-1 / cogview-4 / doubao-seedream-3-0-t2i. */
     model: z.string().max(256),
     /** Default size when the model doesn't pass one. */
@@ -436,7 +367,7 @@ export type BuiltinToolsConfig = z.infer<typeof BuiltinToolsConfigSchema>;
 export const DEFAULT_BUILTIN_TOOLS_CONFIG: BuiltinToolsConfig = {
   search: { backend: "bing", maxResults: 5 },
   fetch: { maxChars: 5000 },
-  image: { source: "", baseUrl: "", model: "", size: "1024x1024" },
+  image: { source: "", model: "", size: "1024x1024" },
 };
 
 /** Section-wise lenient parse: a malformed section falls back to its default
@@ -459,18 +390,35 @@ export function parseBuiltinToolsConfig(raw: string | null | undefined): Builtin
   return { search: section("search"), fetch: section("fetch"), image: section("image") };
 }
 
-/** Why image_generate isn't usable yet (the page renders the localized text). */
-export type ImageToolIssue = "noSource" | "providerMissing" | "noBaseUrl" | "noModel" | "noKey";
+/** Why mario_image_generate isn't usable yet (the page renders the localized text).
+ *  noKey = the chosen shared provider has no API key. */
+export type ImageToolIssue = "noSource" | "providerMissing" | "noModel" | "noKey";
 
-/** Settings → 内置工具 page state. Secrets are reported by presence only. */
+/** Settings → 内置工具 page state. Search keys are reported by presence only. */
 export interface BuiltinToolsState {
   config: BuiltinToolsConfig;
   webToolsEnabled: boolean;
   imageToolEnabled: boolean;
-  keys: Record<BuiltinToolsSecretId, boolean>;
-  /** null = image_generate is configured (it registers whenever enabled). */
+  /** Agent browser tools (browser_*; Claude MCP server mcode-browser).
+   *  Same flag as the MCP page row — `!McpManagementState.browserDisabled`. */
+  browserToolsEnabled: boolean;
+  /** mario_schedule_* (Claude MCP server mcode-schedule) —
+   *  `!McpManagementState.scheduleToolsDisabled`. */
+  scheduleToolsEnabled: boolean;
+  /** mario_wechat_notify (Claude MCP server mcode-wechat) switch —
+   *  `!McpManagementState.wechatToolDisabled`. It registers only once
+   *  ClawBot has been bound (see wechatStatus). */
+  wechatToolEnabled: boolean;
+  /** ClawBot readiness as seen by mario_wechat_notify. */
+  wechatStatus: WechatToolStatus;
+  keys: Record<WebSearchKeyedBackend, boolean>;
+  /** null = mario_image_generate is configured (it registers whenever enabled). */
   imageIssue: ImageToolIssue | null;
 }
+
+/** ClawBot readiness for mario_wechat_notify: never bound / bound but WeChat
+ *  needs a fresh message from the user first / can send / broken. */
+export type WechatToolStatus = "unbound" | "needs-interaction" | "ready" | "error";
 
 const SecretInputSchema = z.string().max(4096).nullable().optional();
 
@@ -480,8 +428,17 @@ export const BuiltinToolsSaveSchema = z.object({
   config: BuiltinToolsConfigSchema.optional(),
   webToolsEnabled: z.boolean().optional(),
   imageToolEnabled: z.boolean().optional(),
+  browserToolsEnabled: z.boolean().optional(),
+  scheduleToolsEnabled: z.boolean().optional(),
+  wechatToolEnabled: z.boolean().optional(),
   keys: z
-    .object({ bocha: SecretInputSchema, zhipu: SecretInputSchema, tavily: SecretInputSchema, image: SecretInputSchema })
+    .object({
+      bocha: SecretInputSchema,
+      zhipu: SecretInputSchema,
+      tavily: SecretInputSchema,
+      exa: SecretInputSchema,
+      brave: SecretInputSchema,
+    })
     .optional(),
 });
 export type BuiltinToolsSaveInput = z.infer<typeof BuiltinToolsSaveSchema>;
@@ -2846,11 +2803,11 @@ export interface GitWorktreeRemoveResult {
  *  and the user sends it as a normal turn (SDK is started with
  *  `skills: "all"`, so the agent recognizes and runs the skill). */
 
-/** Where a composer skill was discovered. "plugin" = contributed by an
- *  ENABLED plugin (read-only inventory: the composer menu lists it and the
+/** Where a composer skill was discovered. "sync" = mirrored from an external
+ *  skill sync source (read-only inventory: the composer menu lists it and the
  *  SDK loads it per-turn, but it has no user-editable file root — the skills
  *  read/save/delete handlers reject this source). */
-export type SkillSource = "global" | "project" | "plugin";
+export type SkillSource = "global" | "project" | "sync";
 
 /** One registered AI backend surfaced to the renderer via `provider.list`.
  *  The capabilities descriptor drives which composer chips / dropdown entries
@@ -3073,6 +3030,71 @@ export const SkillsSyncRescanSchema = z.object({
   id: z.string().min(1).optional(),
 });
 export type SkillsSyncRescanInput = z.infer<typeof SkillsSyncRescanSchema>;
+
+/* ── Skill marketplace (settings panel, TODO-020) ──
+ *  A "market" is a git repo (https) or a local directory whose tree contains
+ *  SKILL.md-bearing folders. The tree is materialized under
+ *  ~/.mcode/skill-market/<id>/; installing copies one skill folder into
+ *  ~/.mcode/skills so all three engines load it on the next turn. */
+
+/** Setting key: JSON array of user-added market records `{id,name,url,addedAt}`.
+ *  Builtin markets are never stored — they are always present. */
+export const SKILL_MARKET_SOURCES_SETTING_KEY = "skillMarket.sources";
+
+/** Markets that ship with the app (cannot be removed). */
+export const BUILTIN_SKILL_MARKETS: readonly { id: string; name: string; url: string }[] = [
+  { id: "anthropics-skills", name: "Anthropic Skills", url: "https://github.com/anthropics/skills.git" },
+];
+
+/** One installable skill found in a market tree. */
+export interface SkillMarketEntry {
+  marketId: string;
+  name: string;
+  description: string;
+  /** Posix path relative to the market tree root: the dir containing SKILL.md. */
+  relPath: string;
+  /** True when ~/.mcode/skills/<name> already exists. */
+  installed: boolean;
+}
+
+/** One market with its fetch state and scanned skills. */
+export interface SkillMarketState {
+  id: string;
+  name: string;
+  url: string;
+  builtin: boolean;
+  /** ISO time the local tree was last materialized, or null if never fetched. */
+  fetchedAt: string | null;
+  /** Last add/refresh error, or null. */
+  error: string | null;
+  skills: SkillMarketEntry[];
+}
+
+export const SkillMarketListSchema = z.object({});
+export type SkillMarketListInput = z.infer<typeof SkillMarketListSchema>;
+
+export const SkillMarketAddSchema = z.object({
+  url: z.string().min(1).max(500),
+  name: z.string().min(1).max(80).optional(),
+});
+export type SkillMarketAddInput = z.infer<typeof SkillMarketAddSchema>;
+
+export const SkillMarketRemoveSchema = z.object({
+  id: z.string().min(1),
+});
+export type SkillMarketRemoveInput = z.infer<typeof SkillMarketRemoveSchema>;
+
+export const SkillMarketRefreshSchema = z.object({
+  id: z.string().min(1),
+});
+export type SkillMarketRefreshInput = z.infer<typeof SkillMarketRefreshSchema>;
+
+export const SkillMarketInstallSchema = z.object({
+  marketId: z.string().min(1),
+  relPath: z.string().min(1).max(300),
+  name: z.string().regex(SKILL_NAME_RE, "invalid skill name"),
+});
+export type SkillMarketInstallInput = z.infer<typeof SkillMarketInstallSchema>;
 
 /* ── External MCP config sync (settings panel) ──
  *  TODO-004 (MCP half): besides the one-shot import above, the user can
@@ -3327,11 +3349,16 @@ export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 export interface McpManagementState {
   /** Built-in mcode-browser server disabled. Absent/false = enabled. */
   browserDisabled?: boolean;
-  /** Built-in web_search / web_fetch (mcode-web) disabled. Absent/false = enabled. */
+  /** Built-in mario_web_search / mario_web_fetch (mcode-web) disabled. Absent/false = enabled. */
   webToolsDisabled?: boolean;
-  /** Built-in image_generate (mcode-image) disabled. Absent/false = enabled
+  /** Built-in mario_image_generate (mcode-image) disabled. Absent/false = enabled
    *  (it still registers only once an image model is configured). */
   imageToolDisabled?: boolean;
+  /** Built-in mario_schedule_* (mcode-schedule) disabled. Absent/false = enabled. */
+  scheduleToolsDisabled?: boolean;
+  /** Built-in mario_wechat_notify (mcode-wechat) disabled. Absent/false = enabled
+   *  (it still registers only once ClawBot has been bound). */
+  wechatToolDisabled?: boolean;
   /** User-scope servers the user turned OFF. Their full configs are stashed
    *  here (keyed by name) so re-enabling restores them exactly; the config
    *  file meanwhile stays free of them, which is what keeps the binary from
@@ -3344,11 +3371,9 @@ export interface McpManagementState {
   projectEnabled?: Array<{ projectPath: string; name: string }>;
 }
 
-/** Which source a listed MCP server comes from. "plugin" = contributed by an
- *  enabled plugin (namespaced `<plugin>__<server>`); toggling it flips the
- *  per-server entry on the plugins.mcpDisabled list without touching the
- *  plugin's own enable state. */
-export type McpScope = "user" | "project" | "builtin" | "plugin";
+/** Which source a listed MCP server comes from. "builtin" = one of Mcode's
+ *  in-process servers (browser / web / image / schedule / wechat). */
+export type McpScope = "user" | "project" | "builtin";
 
 /** Transport kind shown in the panel badges; "builtin" = in-process server. */
 export type McpKind = "stdio" | "http" | "sse" | "builtin";
@@ -3387,11 +3412,10 @@ export const McpListSchema = z.object({
 });
 export type McpListInput = z.infer<typeof McpListSchema>;
 
-/** Toggle a server. `projectPath` is required for scope "project". Scope
- *  "plugin" toggles one plugin-contributed server (plugins.mcpDisabled). */
+/** Toggle a server. `projectPath` is required for scope "project". */
 export const McpToggleSchema = z.object({
   name: z.string().min(1),
-  scope: z.enum(["user", "project", "builtin", "plugin"]),
+  scope: z.enum(["user", "project", "builtin"]),
   projectPath: z.string().optional(),
   enabled: z.boolean(),
 });
@@ -3399,14 +3423,13 @@ export type McpToggleInput = z.infer<typeof McpToggleSchema>;
 
 /** Run the OAuth browser login for a remote (http/sse) MCP server via the
  *  Claude CLI (`claude mcp login`). The server is registered under exactly
- *  `name` (the namespaced `<plugin>__<server>` form for plugin servers) for
- *  the duration of the flow and restored afterwards; the token itself persists
+ *  `name` for the duration of the flow and restored afterwards; the token itself persists
  *  in the CLI's credential store.
  *
  *  `url`/`kind` are only a fallback identity. The CLI keys OAuth credentials by
  *  a hash of the server NAME plus its `{ type, url, headers }`, so the main
  *  process resolves the server's real config by name across every source
- *  (user file / disable stash / plugin / project .mcp.json) and re-registers it
+ *  (user file / disable stash / project .mcp.json) and re-registers it
  *  verbatim — headers included. Registering a stripped config would store the
  *  token under a key the per-turn injected server never looks up. */
 export const McpAuthorizeSchema = z.object({
@@ -3418,7 +3441,7 @@ export const McpAuthorizeSchema = z.object({
    *  "github") resolves to the config that row actually points at — picking the
    *  other one's url/headers would file the token under a key the server never
    *  looks up. */
-  scope: z.enum(["user", "project", "builtin", "plugin"]).optional(),
+  scope: z.enum(["user", "project", "builtin"]).optional(),
   /** Project whose .mcp.json the row came from (scope "project"). */
   projectPath: z.string().optional(),
 });
@@ -3438,11 +3461,20 @@ const MCP_NAME_RE = /^[A-Za-z0-9_-]+$/;
 
 /** Reserved server name — collides with the built-in in-process server. */
 export const MCP_RESERVED_NAME = "mcode-browser";
-/** The built-in web_search / web_fetch server and the image_generate server. */
+/** The built-in mario_web_search / mario_web_fetch server and the mario_image_generate server. */
 export const MCP_WEB_SERVER_NAME = "mcode-web";
 export const MCP_IMAGE_SERVER_NAME = "mcode-image";
+/** The built-in mario_schedule_* server and the mario_wechat_notify server. */
+export const MCP_SCHEDULE_SERVER_NAME = "mcode-schedule";
+export const MCP_WECHAT_SERVER_NAME = "mcode-wechat";
 /** Every built-in server name; user servers may not take one. */
-export const MCP_RESERVED_NAMES: readonly string[] = [MCP_RESERVED_NAME, MCP_WEB_SERVER_NAME, MCP_IMAGE_SERVER_NAME];
+export const MCP_RESERVED_NAMES: readonly string[] = [
+  MCP_RESERVED_NAME,
+  MCP_WEB_SERVER_NAME,
+  MCP_IMAGE_SERVER_NAME,
+  MCP_SCHEDULE_SERVER_NAME,
+  MCP_WECHAT_SERVER_NAME,
+];
 
 /** Add a user-scope server. Rejected when the name already exists (enabled in
  *  the config file or stashed as disabled). The config is written into
@@ -4838,11 +4870,11 @@ export interface RpcMap {
   /** What the engines' network route resolves to right now (Settings → 网络).
    *  The setting itself goes through setting.get/set. */
   "network.proxyStatus": () => Promise<NetworkProxyStatus>;
-  /** Settings → 内置工具: config, switches, which keys are stored. */
+  /** Settings → 内置工具: config, switches, which search keys are stored, image readiness. */
   "builtinTools.get": () => Promise<BuiltinToolsState>;
-  /** Save config / switches / keys (any subset). */
+  /** Save config / switches / search keys (any subset). */
   "builtinTools.save": (input: BuiltinToolsSaveInput) => Promise<BuiltinToolsSaveResult>;
-  /** One real web_search with the saved settings. */
+  /** One real mario_web_search with the saved settings. */
   "builtinTools.testSearch": (input: BuiltinToolsTestSearchInput) => Promise<BuiltinToolsTestSearchResult>;
   /** Check for updates on the GitHub Releases channel. Returns the current
    *  version when up-to-date, the new version when available, or an error.
@@ -4910,6 +4942,16 @@ export interface RpcMap {
   "skills.syncRemove": (input: SkillsSyncRemoveInput) => Promise<{ ok: boolean; error?: string }>;
   /** Force a rescan of one source (or all when id omitted). */
   "skills.syncRescan": (input: SkillsSyncRescanInput) => Promise<{ ok: boolean; error?: string }>;
+  /** Skill marketplace (TODO-020): list markets with scanned skills. */
+  "skills.marketList": (input: SkillMarketListInput) => Promise<{ markets: SkillMarketState[] }>;
+  /** Add a market source (https git URL or absolute local dir). */
+  "skills.marketAdd": (input: SkillMarketAddInput) => Promise<{ ok: boolean; error?: string }>;
+  /** Remove a user-added market (builtins refuse). */
+  "skills.marketRemove": (input: SkillMarketRemoveInput) => Promise<{ ok: boolean; error?: string }>;
+  /** Re-fetch a market's tree (also the first fetch for builtins). */
+  "skills.marketRefresh": (input: SkillMarketRefreshInput) => Promise<{ ok: boolean; error?: string }>;
+  /** Copy one market skill into ~/.mcode/skills. */
+  "skills.marketInstall": (input: SkillMarketInstallInput) => Promise<{ ok: boolean; error?: string }>;
   // MCP management (settings panel)
   /** List all MCP servers across the three sources (user config file, project
    *  .mcp.json, built-in mcode-browser) with their enabled state. */
@@ -5039,42 +5081,6 @@ export interface RpcMap {
   "scheduler.delete": (input: { id: string }) => Promise<void>;
   "scheduler.runNow": (input: { id: string }) => Promise<{ task: ScheduledTask }>;
   "scheduler.setEnabled": (input: { id: string; enabled: boolean }) => Promise<{ task: ScheduledTask }>;
-  // ── Plugins (settings panel; docs/plugin-feasibility.md v1) ──
-  /** List installed plugins (manifest + component summaries + enable state).
-   *  Enabled plugins are delivered to providers at the next turn start. */
-  "plugins.list": () => Promise<{ plugins: PluginState[] }>;
-  /** Install from a local plugin directory or .zip. Lands DISABLED; the
-   *  renderer shows the component-review dialog and calls setEnabled. */
-  "plugins.installLocal": (
-    input: PluginsInstallLocalInput,
-  ) => Promise<{ ok: boolean; error?: string; plugin?: PluginState }>;
-  /** Install by shallow-cloning a git repository. Same review flow. */
-  "plugins.installGit": (
-    input: PluginsInstallGitInput,
-  ) => Promise<{ ok: boolean; error?: string; plugin?: PluginState }>;
-  /** Install one entry of a user-added marketplace. Same review flow. */
-  "plugins.installMarketplace": (
-    input: PluginsInstallMarketplaceInput,
-  ) => Promise<{ ok: boolean; error?: string; plugin?: PluginState }>;
-  /** Enable/disable a plugin for subsequent turns. */
-  "plugins.setEnabled": (input: PluginsSetEnabledInput) => Promise<{ ok: boolean; error?: string }>;
-  /** Uninstall every installed version of a plugin. Rejected while any turn
-   *  is running. */
-  "plugins.remove": (input: PluginsRemoveInput) => Promise<{ ok: boolean; error?: string }>;
-  /** List user-added marketplaces with their parsed entries. */
-  "plugins.marketplaceList": () => Promise<{ marketplaces: PluginMarketplaceState[] }>;
-  /** Add a marketplace (git URL or local directory). */
-  "plugins.marketplaceAdd": (
-    input: PluginsMarketplaceAddInput,
-  ) => Promise<{ ok: boolean; error?: string }>;
-  /** Remove a marketplace (cloned tree deleted; installed plugins stay). */
-  "plugins.marketplaceRemove": (
-    input: PluginsMarketplaceRemoveInput,
-  ) => Promise<{ ok: boolean; error?: string }>;
-  /** Re-fetch a marketplace's tree. */
-  "plugins.marketplaceRefresh": (
-    input: PluginsMarketplaceRefreshInput,
-  ) => Promise<{ ok: boolean; error?: string }>;
   // ── Mobile companion (LAN pairing + device management) ──
   /** Begin a pairing session: returns QR URL + 6-digit code + endpoint.
    *  Optional `host` overrides auto-detected LAN IP (for multi-NIC machines
@@ -5330,6 +5336,12 @@ export const IPC = {
   SKILLS_SYNC_REMOVE: "skills:syncRemove",
   SKILLS_SYNC_RESCAN: "skills:syncRescan",
   SKILLS_SYNC_CHANGED: "skills:syncChanged",
+  // Skill marketplace (TODO-020)
+  SKILLS_MARKET_LIST: "skills:marketList",
+  SKILLS_MARKET_ADD: "skills:marketAdd",
+  SKILLS_MARKET_REMOVE: "skills:marketRemove",
+  SKILLS_MARKET_REFRESH: "skills:marketRefresh",
+  SKILLS_MARKET_INSTALL: "skills:marketInstall",
   // MCP management (settings panel): list / toggle / add / remove / import
   MCP_LIST: "mcp:list",
   MCP_TOGGLE: "mcp:toggle",
@@ -5399,19 +5411,6 @@ export const IPC = {
   CLAWBOT_GET_CHAT_SETTINGS: "clawbot:getChatSettings",
   CLAWBOT_UPDATE_CHAT_SETTINGS: "clawbot:updateChatSettings",
   CLAWBOT_RESUME_CHAT: "clawbot:resumeChat",
-  // Plugins (settings panel): list/install (local/git/marketplace)/enable/
-  // remove + marketplace management. No push channel — every RPC resolves
-  // when done and the panel re-lists.
-  PLUGINS_LIST: "plugins:list",
-  PLUGINS_INSTALL_LOCAL: "plugins:installLocal",
-  PLUGINS_INSTALL_GIT: "plugins:installGit",
-  PLUGINS_INSTALL_MARKETPLACE: "plugins:installMarketplace",
-  PLUGINS_SET_ENABLED: "plugins:setEnabled",
-  PLUGINS_REMOVE: "plugins:remove",
-  PLUGINS_MARKETPLACE_LIST: "plugins:marketplaceList",
-  PLUGINS_MARKETPLACE_ADD: "plugins:marketplaceAdd",
-  PLUGINS_MARKETPLACE_REMOVE: "plugins:marketplaceRemove",
-  PLUGINS_MARKETPLACE_REFRESH: "plugins:marketplaceRefresh",
   // Mobile companion (LAN pairing + device management) — invoke/handle (RPC).
   MOBILE_START_PAIRING: "mobile:startPairing",
   MOBILE_GET_PAIRING: "mobile:getPairing",

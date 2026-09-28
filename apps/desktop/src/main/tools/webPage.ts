@@ -1,6 +1,6 @@
 /**
- * Hidden-window page loading for the built-in web tools: web_search's
- * browser backends (Bing / Baidu result pages) and web_fetch. A real Chromium
+ * Hidden-window page loading for the built-in web tools: mario_web_search's
+ * browser backends (Bing / Baidu result pages) and mario_web_fetch. A real Chromium
  * page means JS-rendered sites read the same as static ones, with no HTML
  * parser dependency in main.
  *
@@ -127,7 +127,7 @@ export async function withHiddenPage<T>(
     );
     const first = await Promise.race([loaded, domReadyEvent, sleep(timeoutMs).then(() => "timeout" as const)]);
     if (downloadBlocked.delete(wc.id)) {
-      throw new Error("这个链接是文件下载,不是网页;web_fetch 只读网页正文");
+      throw new Error("这个链接是文件下载,不是网页;mario_web_fetch 只读网页正文");
     }
     if (!domReady) {
       if (first === "timeout") throw new Error(`页面加载超时(${Math.round(timeoutMs / 1000)} 秒)`);

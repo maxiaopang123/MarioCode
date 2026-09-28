@@ -37,7 +37,6 @@ import { resolveGitBash } from "@main/lib/binaryResolve.js";
 import { samePath } from "@main/lib/pathGuard.js";
 import { getMcpManagement, readProjectMcpServers } from "@main/lib/mcpConfig.js";
 import { getOutputStyleSetting } from "@main/lib/outputStyleConfig.js";
-import { getEnabledPlugins, getPluginMcpServers } from "@main/plugins/pluginManager.js";
 import { skillSyncPluginRootsSync } from "@main/lib/skillSync.js";
 import { resolveSubagentModelValue } from "@main/lib/subagentModel.js";
 import { normalizeBashCommand } from "@main/lib/msysPath.js";
@@ -63,17 +62,26 @@ import {
   BROWSER_TOOL_SPECS,
   BROWSER_TOOLS_FLOW,
 } from "@main/browser/agentBrowserTools.js";
-import { MCP_IMAGE_SERVER_NAME, MCP_WEB_SERVER_NAME } from "@contracts/ipc";
 import {
-  BUILTIN_READONLY_TOOLS,
+  MCP_IMAGE_SERVER_NAME,
+  MCP_SCHEDULE_SERVER_NAME,
+  MCP_WEB_SERVER_NAME,
+  MCP_WECHAT_SERVER_NAME,
+} from "@contracts/ipc";
+import {
   BUILTIN_TOOL_SPECS,
+  SCHEDULE_FLOW,
   WEB_TOOLS_FLOW,
+  WECHAT_FLOW,
+  builtinToolNeedsApproval,
   type BuiltinToolFlags,
 } from "@main/tools/builtinToolSpecs.js";
 import { builtinToolFlags } from "@main/tools/builtinToolsConfig.js";
 import { webSearch } from "@main/tools/webSearch.js";
 import { webFetch } from "@main/tools/webFetch.js";
 import { imageGenerate } from "@main/tools/imageGenerate.js";
+import { invokeBuiltinTool } from "@main/tools/builtinTools.js";
+import { isUnattendedSession } from "@main/tools/unattended.js";
 
 // Lazy-load the Agent SDK so the (large) module and its bundled claude binary
 // stay out of the main-process startup path. The SDK is only needed once the
@@ -534,9 +542,11 @@ async function buildBrowserMcpServer(
 }
 
 /**
- * In-process MCP servers for the built-in tools: `mcode-web` (web_search /
- * web_fetch — read-only, auto-approved like the read-only browser tools) and
- * `mcode-image` (image_generate — spends money, normal approval). Only the
+ * In-process MCP servers for the built-in tools: `mcode-web` (mario_web_search /
+ * mario_web_fetch — read-only, auto-approved like the read-only browser tools) and
+ * `mcode-image` (mario_image_generate — spends money, normal approval),
+ * `mcode-schedule` (mario_schedule_*) and `mcode-wechat` (mario_wechat_notify)
+ * — approval per builtinToolNeedsApproval (see canUseTool). Only the
  * servers whose switch is on this turn are built; descriptions come from
  * builtinToolSpecs.ts, implementations from main/tools. The generated image
  * reaches the conversation as the tool result's image block.
@@ -548,12 +558,12 @@ async function buildBuiltinToolServers(flags: BuiltinToolFlags, sessionId: strin
     servers[MCP_WEB_SERVER_NAME] = createSdkMcpServer({
       name: MCP_WEB_SERVER_NAME,
       version: "1.0.0",
-      instructions: "MarioCode 内置联网工具。" + WEB_TOOLS_FLOW,
+      instructions: "MarioTool:MarioCode 内置联网工具。" + WEB_TOOLS_FLOW,
       alwaysLoad: true,
       tools: [
         {
-          name: "web_search",
-          description: BUILTIN_TOOL_SPECS.web_search.description,
+          name: BUILTIN_TOOL_SPECS.mario_web_search.name,
+          description: BUILTIN_TOOL_SPECS.mario_web_search.description,
           inputSchema: {
             query: z.string().describe("搜索关键词"),
             count: z.number().optional().describe("返回条数,1–10,默认按设置"),
@@ -561,8 +571,8 @@ async function buildBuiltinToolServers(flags: BuiltinToolFlags, sessionId: strin
           handler: async (args: Record<string, unknown>) => webSearch(args),
         },
         {
-          name: "web_fetch",
-          description: BUILTIN_TOOL_SPECS.web_fetch.description,
+          name: BUILTIN_TOOL_SPECS.mario_web_fetch.name,
+          description: BUILTIN_TOOL_SPECS.mario_web_fetch.description,
           inputSchema: {
             url: z.string().describe("网页地址,http(s)://"),
             offset: z.number().optional().describe("从正文第几个字开始读,续读时填上次结果末尾给出的值"),
@@ -578,12 +588,12 @@ async function buildBuiltinToolServers(flags: BuiltinToolFlags, sessionId: strin
     servers[MCP_IMAGE_SERVER_NAME] = createSdkMcpServer({
       name: MCP_IMAGE_SERVER_NAME,
       version: "1.0.0",
-      instructions: "MarioCode 内置图片生成工具。每次调用都会产生费用并需要用户审批;除非用户要求,不要为同一需求反复重画。",
+      instructions: "MarioTool:MarioCode 内置图片生成工具。每次调用都会产生费用并需要用户审批;除非用户要求,不要为同一需求反复重画。",
       alwaysLoad: true,
       tools: [
         {
-          name: "image_generate",
-          description: BUILTIN_TOOL_SPECS.image_generate.description,
+          name: BUILTIN_TOOL_SPECS.mario_image_generate.name,
+          description: BUILTIN_TOOL_SPECS.mario_image_generate.description,
           inputSchema: {
             prompt: z.string().describe("图片描述:主体、风格、构图、光线、色调等"),
             size: z.string().optional().describe("尺寸,如 1024x1024 / 1536x1024 / 1024x1536,省略用设置里的默认值"),
@@ -594,11 +604,113 @@ async function buildBuiltinToolServers(flags: BuiltinToolFlags, sessionId: strin
       ],
     });
   }
+  if (flags.schedule) {
+    // Handlers go through invokeBuiltinTool: it re-reads the switch and
+    // applies the unattended refusal for the mutating tools.
+    const call = (name: string) => async (args: Record<string, unknown>) =>
+      invokeBuiltinTool(name, args, { toolCallId: randomUUID(), sessionId, turnNumber });
+    const definition = {
+      name: z.string().optional().describe("任务名称"),
+      prompt: z.string().optional().describe("到点后发给 Agent 的提示词:写成具体的只读 / 检查 / 汇总类指令"),
+      scheduleKind: z.enum(["one-time", "daily", "weekly"]).optional().describe("one-time 一次性 / daily 每天 / weekly 每周"),
+      timeOfDay: z.string().optional().describe("每天 / 每周任务的时间,\"HH:mm\"(24 小时制)"),
+      weekdays: z.array(z.number()).optional().describe("每周任务的星期,1=周一 … 7=周日"),
+      runAt: z.string().optional().describe("一次性任务的执行时间,带时区偏移的 ISO 时间,如 2026-09-28T09:00:00+08:00"),
+      pushEnabled: z.boolean().optional().describe("true=任务结束后把结果摘要推送到微信"),
+      projectId: z.string().optional().describe("所属项目 id,省略=当前会话的项目"),
+      providerId: z.string().optional().describe("执行引擎 id(claude-sdk / codex-sdk / pi-sdk),省略=当前会话的引擎"),
+    };
+    servers[MCP_SCHEDULE_SERVER_NAME] = createSdkMcpServer({
+      name: MCP_SCHEDULE_SERVER_NAME,
+      version: "1.0.0",
+      instructions: "MarioTool:MarioCode 内置定时任务工具。" + SCHEDULE_FLOW,
+      alwaysLoad: true,
+      tools: [
+        {
+          name: BUILTIN_TOOL_SPECS.mario_schedule_list.name,
+          description: BUILTIN_TOOL_SPECS.mario_schedule_list.description,
+          inputSchema: { projectId: z.string().optional().describe("只看这个项目的任务,省略=全部") },
+          handler: call(BUILTIN_TOOL_SPECS.mario_schedule_list.name),
+        },
+        {
+          name: BUILTIN_TOOL_SPECS.mario_schedule_create.name,
+          description: BUILTIN_TOOL_SPECS.mario_schedule_create.description,
+          inputSchema: {
+            ...definition,
+            name: z.string().describe("任务名称"),
+            prompt: z.string().describe("到点后发给 Agent 的提示词:写成具体的只读 / 检查 / 汇总类指令"),
+            scheduleKind: z.enum(["one-time", "daily", "weekly"]).describe("one-time 一次性 / daily 每天 / weekly 每周"),
+          },
+          handler: call(BUILTIN_TOOL_SPECS.mario_schedule_create.name),
+        },
+        {
+          name: BUILTIN_TOOL_SPECS.mario_schedule_update.name,
+          description: BUILTIN_TOOL_SPECS.mario_schedule_update.description,
+          inputSchema: {
+            id: z.string().describe("任务 id(mario_schedule_list 里查)"),
+            ...definition,
+            enabled: z.boolean().optional().describe("false=暂停,true=恢复"),
+          },
+          handler: call(BUILTIN_TOOL_SPECS.mario_schedule_update.name),
+        },
+        {
+          name: BUILTIN_TOOL_SPECS.mario_schedule_delete.name,
+          description: BUILTIN_TOOL_SPECS.mario_schedule_delete.description,
+          inputSchema: { id: z.string().describe("任务 id(mario_schedule_list 里查)") },
+          handler: call(BUILTIN_TOOL_SPECS.mario_schedule_delete.name),
+        },
+      ],
+    });
+  }
+  if (flags.wechat) {
+    servers[MCP_WECHAT_SERVER_NAME] = createSdkMcpServer({
+      name: MCP_WECHAT_SERVER_NAME,
+      version: "1.0.0",
+      instructions: "MarioTool:MarioCode 内置微信通知工具。" + WECHAT_FLOW,
+      alwaysLoad: true,
+      tools: [
+        {
+          name: BUILTIN_TOOL_SPECS.mario_wechat_notify.name,
+          description: BUILTIN_TOOL_SPECS.mario_wechat_notify.description,
+          inputSchema: { text: z.string().describe("要发给用户的纯文本消息,简洁") },
+          handler: async (args: Record<string, unknown>) =>
+            invokeBuiltinTool(BUILTIN_TOOL_SPECS.mario_wechat_notify.name, args, { toolCallId: randomUUID(), sessionId, turnNumber }),
+        },
+      ],
+    });
+  }
   return servers;
 }
 
-/** canUseTool names of the read-only built-in tools (`mcp__mcode-web__web_search` …). */
-const BUILTIN_READONLY_MCP_TOOLS = new Set([...BUILTIN_READONLY_TOOLS].map((name) => `mcp__${MCP_WEB_SERVER_NAME}__${name}`));
+/** canUseTool name → built-in tool id, for every server/tool pair we
+ *  register (`mcp__mcode-web__mario_web_search` → `mario_web_search` …). Only
+ *  the exact pairs count: a tool name under the wrong server is not ours. */
+const BUILTIN_MCP_TOOL_IDS: ReadonlyMap<string, string> = new Map(
+  (
+    [
+      [MCP_WEB_SERVER_NAME, [BUILTIN_TOOL_SPECS.mario_web_search.name, BUILTIN_TOOL_SPECS.mario_web_fetch.name]],
+      [MCP_IMAGE_SERVER_NAME, [BUILTIN_TOOL_SPECS.mario_image_generate.name]],
+      [
+        MCP_SCHEDULE_SERVER_NAME,
+        [
+          BUILTIN_TOOL_SPECS.mario_schedule_list.name,
+          BUILTIN_TOOL_SPECS.mario_schedule_create.name,
+          BUILTIN_TOOL_SPECS.mario_schedule_update.name,
+          BUILTIN_TOOL_SPECS.mario_schedule_delete.name,
+        ],
+      ],
+      [MCP_WECHAT_SERVER_NAME, [BUILTIN_TOOL_SPECS.mario_wechat_notify.name]],
+    ] as const
+  ).flatMap(([server, tools]) => tools.map((tool): [string, string] => [`mcp__${server}__${tool}`, tool])),
+);
+
+/** True when canUseTool may allow this built-in MCP tool without asking
+ *  (builtinToolNeedsApproval with the session's unattended state). */
+function builtinMcpToolSkipsApproval(toolName: string, sessionId: string): boolean {
+  const id = BUILTIN_MCP_TOOL_IDS.get(toolName);
+  if (!id) return false;
+  return !builtinToolNeedsApproval(id, isUnattendedSession(sessionId));
+}
 
 /** Tools that mutate files on disk — auto-approved under `acceptEdits`
  *  mode without prompting the user. Mirrors Claude Code's own grouping. */
@@ -644,8 +756,10 @@ function isReadOnlyBrowserTool(toolName: string): boolean {
 function shouldAutoApprove(mode: PermissionMode | undefined, toolName: string): boolean {
   if (!mode) return false;
   if (mode === "bypassPermissions" || mode === "dontAsk") return true;
-  // Read-only browser / built-in web tools never need approval — they can't change anything.
-  if (isReadOnlyBrowserTool(toolName) || BUILTIN_READONLY_MCP_TOOLS.has(toolName)) return true;
+  // Read-only browser tools never need approval — they can't change anything.
+  // (Built-in MarioTool tools are decided earlier in canUseTool by
+  // builtinMcpToolSkipsApproval.)
+  if (isReadOnlyBrowserTool(toolName)) return true;
   if (mode === "acceptEdits") return FILE_EDIT_TOOLS.has(toolName);
   return false;
 }
@@ -1106,6 +1220,14 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
           ? { behavior: "allow", updatedInput: effectiveInput }
           : { behavior: "allow" };
       }
+      // Built-in MarioTool tools follow the shared policy: read-only ones
+      // always pass; schedule mutations / WeChat notify pass without asking
+      // in unattended runs (the schedule tools then refuse in execute).
+      if (builtinMcpToolSkipsApproval(toolName, req.sessionId)) {
+        return effectiveInput
+          ? { behavior: "allow", updatedInput: effectiveInput }
+          : { behavior: "allow" };
+      }
       const mode = ctx.getPermissionMode?.();
       if (shouldAutoApprove(mode, toolName)) {
         return effectiveInput
@@ -1259,17 +1381,13 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     // unlisted server would never load anyway).
     // --- Per-turn host-side config reads (parallelized) ---
     // Everything below used to be awaited one after another, putting the sum
-    // of five settings/file reads (+ the plugin tree scan) on the critical
-    // path before query() can even spawn the CLI. They're mutually
-    // independent, so they run as one Promise.all batch; the only ordering
-    // that matters is where results land on `options` afterwards, which
-    // mirrors the original sequential composition exactly (mcpServers ←
-    // browser server, settings ← MCP lists → outputStyle → plugin hooks).
-    // One scan feeds both plugin consumers: the plugins option below and the
-    // plugin-MCP merge (which accepts a precomputed set to avoid a second
-    // directory scan).
-    const enabledPluginsPromise = getEnabledPlugins();
-    const [mcpState, browserServer, projectMcpRecord, outputStyle, enabledPlugins, pluginMcp, userPrompt, builtinServers] =
+    // of the settings/file reads on the critical path before query() can
+    // even spawn the CLI. They're mutually independent, so they run as one
+    // Promise.all batch; the only ordering that matters is where results land
+    // on `options` afterwards, which mirrors the original sequential
+    // composition exactly (mcpServers ← browser server, settings ← MCP lists
+    // → outputStyle).
+    const [mcpState, browserServer, projectMcpRecord, outputStyle, userPrompt, builtinServers] =
       await Promise.all([
         getMcpManagement(),
         // Pure constructor after the (cached) SDK import — building it
@@ -1278,8 +1396,6 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
         buildBrowserMcpServer(req.cwd, ctx, req.sessionId, req.turnNumber),
         readProjectMcpServers(req.cwd),
         getOutputStyleSetting(),
-        enabledPluginsPromise,
-        enabledPluginsPromise.then((plugins) => getPluginMcpServers(plugins)),
         loadUserSystemPrompt({ cwd: req.cwd, sessionId: req.sessionId }),
         builtinToolFlags().then((flags) => buildBuiltinToolServers(flags, req.sessionId, req.turnNumber)),
       ]);
@@ -1333,45 +1449,19 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
       };
     }
 
-    // --- Plugins (settings → Plugins; docs/plugin-feasibility.md v1) ---
-    // Enabled plugins ride the SDK's native loader: skills/commands/agents
-    // are assembled by the CLI engine per turn (zero host-side copying). Two
-    // host-side rails:
-    //  1. skipMcpDiscovery — Mcode owns plugin MCP connections and injects
-    //     them into options.mcpServers below under "<plugin>__<server>"
-    //     (session-level granularity; the MCP panel lists/toggles them).
-    //  2. disableAllHooks — v1 runs NO plugin hooks. Hooks would otherwise
-    //     be executed natively by the CLI engine; they are parsed + shown in
-    //     the panel, never run (per-hook review is the v1.5 plan).
-    // Synced external skills (TODO-004) ride the same plugins channel: the
-    // sync engine materializes one local plugin dir per enabled source under
-    // ~/.mcode/skills-sync-plugins (manifest + skills/ copies).
+    // --- Synced external skills (TODO-004) ---
+    // Synced skills ride the SDK's native plugins channel: the sync engine
+    // materializes one local plugin dir per enabled source under
+    // ~/.mcode/skills-sync-plugins (manifest + skills/ copies), and the CLI
+    // engine assembles them per turn (zero host-side copying).
+    // skipMcpDiscovery: these dirs carry skills only, never MCP servers.
     const syncPluginRoots = skillSyncPluginRootsSync();
-    if (enabledPlugins.length > 0 || syncPluginRoots.length > 0) {
-      options.plugins = enabledPlugins.map((p) => ({
+    if (syncPluginRoots.length > 0) {
+      options.plugins = syncPluginRoots.map((dir) => ({
         type: "local" as const,
-        path: p.rootDir,
+        path: dir,
         skipMcpDiscovery: true,
       }));
-      for (const dir of syncPluginRoots) {
-        options.plugins.push({ type: "local" as const, path: dir, skipMcpDiscovery: true });
-      }
-      if (enabledPlugins.some((p) => p.hasHooks)) {
-        options.settings = {
-          ...(typeof options.settings === "object" ? options.settings : {}),
-          disableAllHooks: true,
-        };
-      }
-      if (pluginMcp.length > 0) {
-        const servers = options.mcpServers ?? {};
-        for (const [name, config] of pluginMcp) {
-          // Contracts McpServerConfig is transport-shape-compatible with the
-          // SDK's McpServerConfig union (stdio/http/sse); the cast is for the
-          // passthrough extras the SDK type doesn't model.
-          servers[name] = config as unknown as NonNullable<Options["mcpServers"]>[string];
-        }
-        options.mcpServers = servers;
-      }
     }
 
     const gate = makeSettleGate();

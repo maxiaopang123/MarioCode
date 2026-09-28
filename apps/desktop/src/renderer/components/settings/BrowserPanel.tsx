@@ -8,16 +8,16 @@ import { SettingRow } from "./SettingRow.js";
 import {
   BROWSER_DATA_DIR_SETTING_KEY,
   BROWSER_PERSIST_LOGIN_SETTING_KEY,
-  BROWSER_SCREENSHOT_DIR_SETTING_KEY,
 } from "@contracts/ipc";
 
 /**
- * Browser settings — screenshot directory, browser data directory, sign-in
- * persistence, cache.
+ * Browser settings — browser data directory, sign-in persistence, cache.
  *
- * - Screenshot dir: where the agent's browser_screenshot tool saves PNGs
- *   (bound to `browser.screenshotDir`; the main-process saver reads it on
- *   every save — no store field / no new IPC).
+ * Agent browser-tool settings (the browser_* on/off switch and the
+ * screenshot / PDF output folder `browser.screenshotDir`) live on the
+ * MarioTool page (BuiltinToolsPanel); a hint line here points there. The
+ * settings below are shared: the agent tools drive this same session.
+ *
  * - Data dir: where the embedded browser's session data (cookies, form/login
  *   records, localStorage, IndexedDB …) lives. Bound to `browser.dataDir`; the
  *   main process reads it when creating the browser session. Electron caches
@@ -36,10 +36,9 @@ export function BrowserPanel() {
   return (
     <section className="mx-auto w-full max-w-3xl space-y-4">
       <PanelHeader title={t("settings.browser.title")} />
+      <p className="text-[0.7857em] text-content-subtle">{t("settings.browser.agentToolsHint")}</p>
 
-      {/* 存储位置 — 截图目录与数据目录合并为一张卡(两行) */}
       <SettingsSection title={t("settings.browser.sectionStorage")}>
-        <ScreenshotDirRow />
         <DataDirRow />
       </SettingsSection>
 
@@ -52,81 +51,8 @@ export function BrowserPanel() {
   );
 }
 
-function ScreenshotDirRow() {
-  const { t } = useI18n();
-  const [dir, setDir] = useState("");
-  const [loaded, setLoaded] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  // Load the current setting on mount (panel is freshly mounted per nav
-  // switch, so reload its value each time it's shown).
-  useEffect(() => {
-    setSaved(false);
-    void (async () => {
-      const { value } = await api.setting.get({ key: BROWSER_SCREENSHOT_DIR_SETTING_KEY });
-      setDir(value ?? "");
-      setLoaded(true);
-    })();
-  }, []);
-
-  const pickDir = async () => {
-    const { path } = await api.pickFolder();
-    if (path) {
-      setDir(path);
-      setSaved(false);
-    }
-  };
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      await api.setting.set({ key: BROWSER_SCREENSHOT_DIR_SETTING_KEY, value: dir.trim() });
-      setSaved(true);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <SettingRow
-      layout="vertical"
-      title={t("settings.browser.screenshotDir")}
-      desc={t("settings.browser.screenshotDirDesc")}
-    >
-      <div className="flex gap-2">
-        <Input
-          value={dir}
-          onChange={(e) => {
-            setDir((e.target as HTMLInputElement).value);
-            setSaved(false);
-          }}
-          placeholder={t("settings.browser.screenshotPlaceholder")}
-          spellCheck={false}
-          disabled={!loaded}
-          className="min-w-0 flex-1 font-mono"
-        />
-        <Button variant="secondary" size="sm" onClick={() => void pickDir()} disabled={!loaded}>
-          {t("settings.browser.chooseDir")}
-        </Button>
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => void save()}
-          disabled={saving || !loaded}
-        >
-          {saving ? t("settings.saving") : t("common.save")}
-        </Button>
-      </div>
-      {saved && (
-        <p className="mt-1 text-[0.7857em] text-accent">{t("settings.browser.savedScreenshot")}</p>
-      )}
-    </SettingRow>
-  );
-}
-
 /** Browser session data directory (cookies / form & login records / local
- *  storage / IndexedDB …). Mirrors ScreenshotDirRow; the main process
+ *  storage / IndexedDB …). Mirrors MarioTool's OutputDirRow; the main process
  *  reads `browser.dataDir` when creating the browser session partition. */
 function DataDirRow() {
   const { t } = useI18n();

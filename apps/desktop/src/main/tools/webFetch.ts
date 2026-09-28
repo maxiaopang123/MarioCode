@@ -1,5 +1,5 @@
 /**
- * web_fetch — a page's main content as light Markdown, in bounded slices.
+ * mario_web_fetch — a page's main content as light Markdown, in bounded slices.
  *
  * The page loads in a hidden window (webPage.ts) and goes through the same
  * main-content extractor as browser_snapshot (MAIN_TEXT_JS). The whole
@@ -7,9 +7,9 @@
  * `userData/web-cache/`, so reading on with `offset` never reloads the page
  * and never puts more than one slice in the model's context.
  *
- * Refused: non-http(s) URLs, local / private-network hosts (web_fetch is
+ * Refused: non-http(s) URLs, local / private-network hosts (mario_web_fetch is
  * auto-approved; reaching into the LAN stays with the approval-gated browser
- * tools), and search-engine result pages (web_search is the bounded way to
+ * tools), and search-engine result pages (mario_web_search is the bounded way to
  * search). Search-engine redirect links such as Baidu's /link?url= are
  * allowed — the check runs again on the URL the page finally lands on.
  */
@@ -120,7 +120,7 @@ async function writeCache(page: CachedPage, links: boolean): Promise<void> {
       }
     }
   } catch (err) {
-    log.warn(`web_fetch: cache write failed: ${err instanceof Error ? err.message : String(err)}`);
+    log.warn(`mario_web_fetch: cache write failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -144,7 +144,7 @@ async function loadPage(url: string, links: boolean): Promise<CachedPage> {
     settleMs: 600,
     waitForStableText: true,
   })) as { kind: string; url: string; title: string; text?: string; source?: string };
-  if (result.kind === "pdf") throw new Error("这是 PDF 文件,web_fetch 暂不支持;可以用 browser_navigate 打开查看,或下载后用文件工具读取");
+  if (result.kind === "pdf") throw new Error("这是 PDF 文件,mario_web_fetch 暂不支持;可以用 browser_navigate 打开查看,或下载后用文件工具读取");
   return {
     url,
     finalUrl: result.url || url,
@@ -155,7 +155,7 @@ async function loadPage(url: string, links: boolean): Promise<CachedPage> {
   };
 }
 
-/** The web_fetch tool. */
+/** The mario_web_fetch tool. */
 export async function webFetch(args: {
   url?: unknown;
   offset?: unknown;
@@ -172,11 +172,11 @@ export async function webFetch(args: {
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return errorResult("只支持 http / https 网址");
   if (isPrivateHost(parsed.hostname)) {
-    return errorResult("web_fetch 不读取本地或内网地址;需要的话请用 browser_navigate + browser_snapshot(需用户审批)");
+    return errorResult("mario_web_fetch 不读取本地或内网地址;需要的话请用 browser_navigate + browser_snapshot(需用户审批)");
   }
   const engine = matchSearchEngine(parsed.href);
   if (engine && !isSearchRedirect(parsed)) {
-    return errorResult(`这是搜索引擎 ${engine} 的页面;搜索请用 web_search,它只返回标题、链接和摘要`);
+    return errorResult(`这是搜索引擎 ${engine} 的页面;搜索请用 mario_web_search,它只返回标题、链接和摘要`);
   }
 
   const url = parsed.href;
@@ -202,9 +202,9 @@ export async function webFetch(args: {
     } catch {
       landed = null;
     }
-    if (landed && isPrivateHost(landed.hostname)) return errorResult("该网址跳转到了本地或内网地址,web_fetch 不读取");
+    if (landed && isPrivateHost(landed.hostname)) return errorResult("该网址跳转到了本地或内网地址,mario_web_fetch 不读取");
     const landedEngine = landed ? matchSearchEngine(landed.href) : null;
-    if (landedEngine) return errorResult(`该网址落在了搜索引擎 ${landedEngine} 的页面上;搜索请用 web_search`);
+    if (landedEngine) return errorResult(`该网址落在了搜索引擎 ${landedEngine} 的页面上;搜索请用 mario_web_search`);
     await writeCache(page, links);
   }
 
@@ -220,6 +220,6 @@ export async function webFetch(args: {
   ];
   if (total === 0) lines.push("(页面没有可读的正文,可能需要登录,或内容在图片、视频里)");
   else lines.push(slice || "(offset 已超出正文末尾)");
-  if (end < total) lines.push("", `(未完,续读:web_fetch({url:${JSON.stringify(url)}, offset:${end}}))`);
+  if (end < total) lines.push("", `(未完,续读:mario_web_fetch({url:${JSON.stringify(url)}, offset:${end}}))`);
   return text(lines.join("\n"));
 }

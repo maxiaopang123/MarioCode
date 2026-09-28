@@ -3,7 +3,7 @@
  *
  * The real logger imports `electron` for `app.getPath("userData")`, and that
  * package's CJS entry does a dynamic `require("fs")` which cannot survive an
- * ESM bundle. Aliased in run.sh — same trick plugins-smoke uses for the
+ * ESM bundle. Aliased in run.sh — same trick the (removed) plugins-smoke used for the
  * repositories module.
  */
 type Level = "INFO" | "WARN" | "ERROR";

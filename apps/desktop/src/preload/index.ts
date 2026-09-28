@@ -251,7 +251,7 @@ const api = {
       ipcRenderer.invoke(IPC.NETWORK_PROXY_STATUS)) as RpcMap["network.proxyStatus"],
   },
 
-  /** Settings → 内置工具: web_search / web_fetch / image_generate config. */
+  /** Settings → 内置工具: mario_web_search / mario_web_fetch / mario_image_generate config. */
   builtinTools: {
     get: (() => ipcRenderer.invoke(IPC.BUILTIN_TOOLS_GET)) as RpcMap["builtinTools.get"],
     save: ((input) => ipcRenderer.invoke(IPC.BUILTIN_TOOLS_SAVE, input)) as RpcMap["builtinTools.save"],
@@ -532,6 +532,16 @@ const api = {
       ipcRenderer.invoke(IPC.SKILLS_SYNC_REMOVE, input)) as RpcMap["skills.syncRemove"],
     syncRescan: ((input) =>
       ipcRenderer.invoke(IPC.SKILLS_SYNC_RESCAN, input)) as RpcMap["skills.syncRescan"],
+    marketList: ((input) =>
+      ipcRenderer.invoke(IPC.SKILLS_MARKET_LIST, input)) as RpcMap["skills.marketList"],
+    marketAdd: ((input) =>
+      ipcRenderer.invoke(IPC.SKILLS_MARKET_ADD, input)) as RpcMap["skills.marketAdd"],
+    marketRemove: ((input) =>
+      ipcRenderer.invoke(IPC.SKILLS_MARKET_REMOVE, input)) as RpcMap["skills.marketRemove"],
+    marketRefresh: ((input) =>
+      ipcRenderer.invoke(IPC.SKILLS_MARKET_REFRESH, input)) as RpcMap["skills.marketRefresh"],
+    marketInstall: ((input) =>
+      ipcRenderer.invoke(IPC.SKILLS_MARKET_INSTALL, input)) as RpcMap["skills.marketInstall"],
   },
 
   /** MCP server management (settings panel): list the three server sources
@@ -652,42 +662,6 @@ const api = {
     save: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_SAVE, input)) as RpcMap["sharedProviders.save"],
     remove: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_REMOVE, input)) as RpcMap["sharedProviders.remove"],
     discoverModels: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_DISCOVER_MODELS, input)) as RpcMap["sharedProviders.discoverModels"],
-  },
-
-  /** Plugins (settings panel): install/enable/remove over ~/.mcode/plugins +
-   *  marketplace management. Installs land disabled; the panel's review
-   *  dialog calls setEnabled. All RPCs resolve when done (no push channel). */
-  plugins: {
-    list: (() => ipcRenderer.invoke(IPC.PLUGINS_LIST)) as RpcMap["plugins.list"],
-    installLocal: ((input) =>
-      ipcRenderer.invoke(IPC.PLUGINS_INSTALL_LOCAL, input)) as RpcMap["plugins.installLocal"],
-    installGit: ((input) =>
-      ipcRenderer.invoke(IPC.PLUGINS_INSTALL_GIT, input)) as RpcMap["plugins.installGit"],
-    installMarketplace: ((input) =>
-      ipcRenderer.invoke(
-        IPC.PLUGINS_INSTALL_MARKETPLACE,
-        input,
-      )) as RpcMap["plugins.installMarketplace"],
-    setEnabled: ((input) =>
-      ipcRenderer.invoke(IPC.PLUGINS_SET_ENABLED, input)) as RpcMap["plugins.setEnabled"],
-    remove: ((input) => ipcRenderer.invoke(IPC.PLUGINS_REMOVE, input)) as RpcMap["plugins.remove"],
-    marketplaceList: (() =>
-      ipcRenderer.invoke(IPC.PLUGINS_MARKETPLACE_LIST)) as RpcMap["plugins.marketplaceList"],
-    marketplaceAdd: ((input) =>
-      ipcRenderer.invoke(
-        IPC.PLUGINS_MARKETPLACE_ADD,
-        input,
-      )) as RpcMap["plugins.marketplaceAdd"],
-    marketplaceRemove: ((input) =>
-      ipcRenderer.invoke(
-        IPC.PLUGINS_MARKETPLACE_REMOVE,
-        input,
-      )) as RpcMap["plugins.marketplaceRemove"],
-    marketplaceRefresh: ((input) =>
-      ipcRenderer.invoke(
-        IPC.PLUGINS_MARKETPLACE_REFRESH,
-        input,
-      )) as RpcMap["plugins.marketplaceRefresh"],
   },
 
   // ── Push events (main → renderer) ──

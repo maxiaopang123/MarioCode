@@ -9,6 +9,7 @@ import {
   toolSummary,
   type ToolUseBlock,
 } from "./MessageBlocks.js";
+import { toolDisplayName } from "@renderer/lib/builtinToolNames.js";
 
 /**
  * Compact "current operation" ticker for the collapsed procedural card.
@@ -59,7 +60,7 @@ function TickerRow({ op, running }: { op: ToolUseBlock; running: boolean }) {
       {status === "done" && <IconCheck size={12} className="shrink-0 text-content-subtle" />}
       <ToolIcon name={op.toolName} className="shrink-0 text-content-muted" />
       <span className={cn("font-medium", running ? "text-content" : "text-content-muted")}>
-        {op.toolName}
+        {toolDisplayName(op.toolName)}
       </span>
       <span className="truncate font-mono text-content-subtle">{toolSummary(op.toolName, op.input)}</span>
     </span>

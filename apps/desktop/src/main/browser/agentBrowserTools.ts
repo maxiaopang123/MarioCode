@@ -216,7 +216,7 @@ function isAllowedUrl(url: string): boolean {
 // "navigate to a search engine → snapshot → click results → snapshot…", and
 // every snapshot of a link-dense results page is 10K+ tokens that then rides
 // along in the history for the rest of the session (user-reported context
-// blow-up under Pi, which has no native search). Until a bounded `web_search`
+// blow-up under Pi, which has no native search). Until a bounded `mario_web_search`
 // tool exists, search-engine pages are refused at BOTH ends of the loop:
 // navigate (can't open the engine, homepage included — so the model can't type
 // a query into the box either) and read (snapshot/find/evaluate/screenshot on
@@ -232,7 +232,7 @@ export { matchSearchEngine };
 function searchEngineBlockedResult(label: string, action: "navigate" | "read", url?: string): ToolResult {
   const where = action === "navigate" ? `拦截: ${label}` : `当前页面是搜索引擎 ${label}${url ? `: ${url}` : ""}`;
   const instead = webToolsEnabledSync()
-    ? "请改用 web_search 工具搜索(只返回标题、链接和摘要),需要细节再用 web_fetch 读取具体链接;"
+    ? "请改用 mario_web_search 工具搜索(只返回标题、链接和摘要),需要细节再用 mario_web_fetch 读取具体链接;"
     : "当前没有可用的网页搜索工具:请直接告诉用户你无法联网搜索,让用户提供资料或具体链接;";
   return errorResult(
     `内置浏览器不允许用于搜索引擎检索(${where})。${instead}` +
@@ -1168,7 +1168,7 @@ export const BROWSER_TOOLS_FLOW =
   "典型流程: navigate → (wait 等内容出现) → snapshot 读内容与元素索引 → 按需 type 填表(接 keys:Enter 提交)/ select 选下拉 / upload_file 传附件 / click 点击 / scroll 翻页 / find 精查 / screenshot 截图 / save_pdf 存档;" +
   "只操作页面时用 snapshot 的 mode=interactive,读文章用 mode=text,正文没读完按结果末尾给出的 offset 续读;只找某段内容用 find,避免整页抓取;触发下载后用 downloads 查看进度与保存路径。" +
   "禁止把浏览器当搜索引擎用:不要打开 Google/Bing/百度等搜索站输入关键词检索(会被拦截,且搜索结果页快照极大);" +
-  "需要搜索时用 web_search 工具(若可用);没有搜索工具时直接告知用户你无法联网搜索,已知具体网址则直接 navigate 打开。";
+  "需要搜索时用 mario_web_search 工具(若可用);没有搜索工具时直接告知用户你无法联网搜索,已知具体网址则直接 navigate 打开。";
 
 /**
  * Build the system-prompt section teaching the browser tools — one promptSnippet
@@ -1177,7 +1177,7 @@ export const BROWSER_TOOLS_FLOW =
  */
 export function browserToolsUsagePrompt(): string {
   const lines = [
-    `## 浏览器工具(控制应用内浏览器)`,
+    `## MarioTool · 浏览器工具(控制应用内浏览器)`,
     `当需要打开网页、查看页面内容、或与网页交互时使用这组工具:`,
     ...Object.values(BROWSER_TOOL_SPECS).map((s) => `- ${s.promptSnippet}`),
     BROWSER_TOOLS_FLOW,

@@ -58,7 +58,7 @@ export const en = {
   "layout.newSessionInProject": "Start a new session in the current project",
   "layout.needProject": "Open a project first",
   "layout.scheduledTasks": "Scheduled tasks",
-  "layout.pluginsAndSkills": "Plugins & skills",
+  "layout.skills": "Skills",
 
   /* ── stream sidebar (session-first left-bar view) ── */
   "layout.stream.modeLabel": "Sidebar view",

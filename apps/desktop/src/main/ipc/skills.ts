@@ -39,11 +39,15 @@ import {
   SkillsSyncSetEnabledSchema,
   SkillsSyncRemoveSchema,
   SkillsSyncRescanSchema,
+  SkillMarketListSchema,
+  SkillMarketAddSchema,
+  SkillMarketRemoveSchema,
+  SkillMarketRefreshSchema,
+  SkillMarketInstallSchema,
 } from "@contracts/ipc";
 import type { SkillInfo, SkillSource, ExternalSkillInfo, SkillTool } from "@contracts/ipc";
 import { ProjectRepo } from "@main/store/repositories.js";
 import { log } from "@main/lib/logger.js";
-import { getEnabledPluginSkillRoots } from "@main/plugins/pluginManager.js";
 import {
   listSkillSync,
   addSkillSyncSource,
@@ -52,6 +56,14 @@ import {
   rescanSkillSync,
   skillSyncMirrorRoots,
 } from "@main/lib/skillSync.js";
+import { parseSkillFrontmatter, readTextHead } from "@main/lib/skillFrontmatter.js";
+import {
+  listMarkets,
+  addMarket,
+  removeMarket,
+  refreshMarket,
+  installFromMarket,
+} from "@main/lib/skillMarket.js";
 
 /** Case-insensitive, normalized equality for project-root matching — same
  *  helper logic the file handlers use (they inline it as `samePath`). Paths
@@ -102,70 +114,6 @@ async function safeRealPath(p: string): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-/** Read up to `maxBytes` of a file as utf-8 text. Returns null on any error. */
-async function readTextHead(filePath: string, maxBytes = 8192): Promise<string | null> {
-  try {
-    const handle = await fs.open(filePath, "r");
-    try {
-      const buf = Buffer.alloc(maxBytes);
-      const { bytesRead } = await handle.read(buf, 0, maxBytes, 0);
-      return buf.subarray(0, bytesRead).toString("utf-8");
-    } finally {
-      await handle.close();
-    }
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Parse the YAML frontmatter of a SKILL.md file. We only need `name`,
- * `description`, and (optionally) `argument-hint` / `argumentHint`, so a
- * hand-rolled line scan is enough — no yaml dependency. The frontmatter is
- * the YAML block delimited by `---` lines at the top of the file.
- *
- * Returns whatever fields were found; the caller fills in fallbacks
- * (e.g. name ← directory name).
- */
-function parseSkillFrontmatter(md: string): {
-  name?: string;
-  description?: string;
-  argumentHint?: string;
-} {
-  // Frontmatter must be the very first thing in the file: "---\n".
-  if (!md.startsWith("---\n") && !md.startsWith("---\r\n")) return {};
-  // Find the closing "---" on its own line. Split on newlines so the leading
-  // "---" line isn't matched by the closing fence regex.
-  const lines = md.split(/\r?\n/);
-  let end = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === "---") {
-      end = i;
-      break;
-    }
-  }
-  if (end === -1) return {};
-  const fm = lines.slice(1, end);
-
-  const out: { name?: string; description?: string; argumentHint?: string } = {};
-  for (const raw of fm) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const m = line.match(/^([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.*)$/);
-    if (!m) continue;
-    const key = m[1].toLowerCase();
-    // Strip surrounding quotes (single/double) and trailing whitespace.
-    let val = m[2].trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
-    }
-    if (key === "name") out.name = val;
-    else if (key === "description") out.description = val;
-    else if (key === "argument-hint" || key === "argumenthint") out.argumentHint = val;
-  }
-  return out;
 }
 
 /**
@@ -434,29 +382,15 @@ export async function listSkillsForProject(projectPath: string | undefined): Pro
     // a broken skills dir must never break the composer.
     log.warn(`skills.list scan failed: ${(err as Error).message}`);
   }
-  // Enabled plugins' skills LAST — lowest precedence (project > global >
-  // plugin): scanned into a side map so a plugin skill never overrides a
-  // same-named user skill, it only fills the gaps. The SDK loads these the
-  // same way it loads user skills (`skills: "all"`), so a `/name` pill works
-  // identically for either source.
-  try {
-    const pluginByName = new Map<string, SkillInfo>();
-    for (const dir of await getEnabledPluginSkillRoots()) {
-      await scanSkillsRoot(dir, "plugin", pluginByName);
-    }
-    for (const [name, info] of pluginByName) {
-      if (!byName.has(name)) byName.set(name, info);
-    }
-  } catch (err) {
-    log.warn(`plugin skills scan failed: ${(err as Error).message}`);
-  }
-  // Synced external skills (TODO-004): one mirror dir per enabled source,
-  // lowest precedence after plugins — a synced skill never overrides a
-  // same-named user/project/plugin skill.
+  // Synced external skills (TODO-004) LAST — lowest precedence (project >
+  // global > sync): one mirror dir per enabled source, scanned into a side
+  // map so a synced skill never overrides a same-named user/project skill, it
+  // only fills the gaps. The SDK loads these the same way it loads user
+  // skills, so a `/name` pill works identically for either source.
   try {
     const syncByName = new Map<string, SkillInfo>();
     for (const dir of await skillSyncMirrorRoots()) {
-      await scanSkillsRoot(dir, "plugin", syncByName);
+      await scanSkillsRoot(dir, "sync", syncByName);
     }
     for (const [name, info] of syncByName) {
       if (!byName.has(name)) byName.set(name, info);
@@ -502,10 +436,10 @@ function resolveSkillRootForRequest(
   source: SkillSource,
   projectPath: string | undefined,
 ): string | null {
-  // Plugin skills are read-only inventory contributed by enabled plugins —
-  // listed in the composer menu, but there is no user-editable file root
-  // (the files live under the plugin's install dir and vanish on uninstall).
-  if (source === "plugin") return null;
+  // Synced skills are read-only inventory mirrored from an external sync
+  // source — listed in the composer menu, but there is no user-editable file
+  // root (the mirror is rewritten by the sync engine on every refresh).
+  if (source === "sync") return null;
   if (source === "global") {
     return resolveSkillRoot("global", "");
   }
@@ -730,5 +664,40 @@ export function registerSkillsHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(IPC.SKILLS_SYNC_RESCAN, async (_evt, raw) => {
     const input = SkillsSyncRescanSchema.parse(raw);
     return rescanSkillSync(input.id);
+  });
+
+  // ── Skill marketplace (TODO-020) ──
+  const wrap = async (fn: () => Promise<void>): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      await fn();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  };
+
+  ipcMain.handle(IPC.SKILLS_MARKET_LIST, async (_evt, raw) => {
+    SkillMarketListSchema.parse(raw);
+    return { markets: await listMarkets() };
+  });
+
+  ipcMain.handle(IPC.SKILLS_MARKET_ADD, async (_evt, raw) => {
+    const input = SkillMarketAddSchema.parse(raw);
+    return wrap(() => addMarket(input.url, input.name));
+  });
+
+  ipcMain.handle(IPC.SKILLS_MARKET_REMOVE, async (_evt, raw) => {
+    const input = SkillMarketRemoveSchema.parse(raw);
+    return wrap(() => removeMarket(input.id));
+  });
+
+  ipcMain.handle(IPC.SKILLS_MARKET_REFRESH, async (_evt, raw) => {
+    const input = SkillMarketRefreshSchema.parse(raw);
+    return wrap(() => refreshMarket(input.id));
+  });
+
+  ipcMain.handle(IPC.SKILLS_MARKET_INSTALL, async (_evt, raw) => {
+    const input = SkillMarketInstallSchema.parse(raw);
+    return wrap(() => installFromMarket(input.marketId, input.relPath, input.name));
   });
 }

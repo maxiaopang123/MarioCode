@@ -20,7 +20,10 @@ function normalizedUrl(value: string): string {
   return parsed.toString();
 }
 
-function routingFingerprint(value: Pick<SharedProviderSaveInput, "baseUrl" | "modelsEndpoint" | "endpointOverrides" | "protocols" | "models">): string {
+/** Only the destinations the saved key can be sent to. Model lists, model
+ * interfaces and protocol toggles don't change where the key goes, so editing
+ * them must not force the user to re-enter the key. */
+function routingFingerprint(value: Pick<SharedProviderSaveInput, "baseUrl" | "modelsEndpoint" | "endpointOverrides">): string {
   const endpointOverrides = Object.entries(value.endpointOverrides ?? {})
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([protocol, url]) => [protocol, normalizedUrl(url)]);
@@ -28,10 +31,6 @@ function routingFingerprint(value: Pick<SharedProviderSaveInput, "baseUrl" | "mo
     baseUrl: normalizedUrl(value.baseUrl),
     modelsEndpoint: value.modelsEndpoint ? normalizedUrl(value.modelsEndpoint) : null,
     endpointOverrides,
-    protocols: [...value.protocols].sort(),
-    modelInterfaces: value.models
-      .map((model) => ({ id: model.id, interfaces: model.interfaces ?? null }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
   });
 }
 
@@ -75,12 +74,6 @@ function encryptRequired(value: string): string {
   return safeStorage.encryptString(value).toString("base64");
 }
 
-function referencedSession(runtimeId: string): { id: string } | undefined {
-  return getDb().prepare(
-    "SELECT id FROM sessions WHERE custom_model_id = ? OR model = ? OR substr(model, 1, length(?) + 1) = ? LIMIT 1",
-  ).get(runtimeId, runtimeId, runtimeId, `${runtimeId}/`) as { id: string } | undefined;
-}
-
 export function listPublic(): SharedProviderPublic[] {
   const keys = parseKeys();
   return parseMeta().map((provider) => ({ ...provider, hasApiKey: decryptCipher(keys[provider.id]) !== null }));
@@ -122,7 +115,7 @@ export function save(input: SharedProviderSaveInput): SharedProviderPublic[] {
   if (apiKey.length > 0 && apiKey.trim().length === 0) throw new Error("API key cannot contain only whitespace");
   const previous = index >= 0 ? providers[index]! : null;
   if (previous && apiKey.length === 0 && routingFingerprint(previous) !== routingFingerprint(value)) {
-    throw new Error("The provider endpoint or protocols changed; enter the API key again before saving so the saved key is never reused with a new destination");
+    throw new Error("The provider URL changed; enter the API key again before saving so the saved key is never sent to a new destination");
   }
   if (apiKey.length > 0) keys[id] = encryptRequired(apiKey);
   if (index < 0 && !keys[id]) throw new Error("A new shared provider requires an API key");
@@ -140,13 +133,6 @@ export function save(input: SharedProviderSaveInput): SharedProviderPublic[] {
     hasApiKey: Boolean(keys[id]),
     enabledAgents: value.enabledAgents,
   });
-  if (index >= 0) {
-    const removedModel = previous!.models.some((model) => !provider.models.some((next) => next.id === model.id));
-    const disabledAgent = previous!.enabledAgents.some((agent) => !provider.enabledAgents.includes(agent));
-    if ((removedModel || disabledAgent) && referencedSession(sharedRuntimeId(id))) {
-      throw new Error("Shared provider is used by an existing session; its models and enabled agents cannot be removed");
-    }
-  }
   if (index >= 0) providers[index] = provider;
   else providers.push(provider);
   writeBoth(providers, keys);
@@ -156,9 +142,8 @@ export function save(input: SharedProviderSaveInput): SharedProviderPublic[] {
 export function remove(id: string): SharedProviderPublic[] {
   const providers = parseMeta();
   if (!providers.some((provider) => provider.id === id)) throw new Error(`Shared provider not found: ${id}`);
-  const runtimeId = sharedRuntimeId(id);
-  const referenced = referencedSession(runtimeId);
-  if (referenced) throw new Error(`Shared provider is used by session ${referenced.id}; reassign that session before removing it`);
+  // Sessions still pointing at a removed provider fail their next turn with
+  // an explicit "provider not found" error in every engine; no silent fallback.
   const next = providers.filter((provider) => provider.id !== id);
   const keys = parseKeys();
   delete keys[id];

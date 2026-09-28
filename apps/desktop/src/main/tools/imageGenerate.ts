@@ -1,7 +1,7 @@
 /**
- * image_generate — one image from an OpenAI-compatible `images/generations`
- * endpoint: a shared provider's (its key reused) or a custom one saved on the
- * built-in tools page. Works with any engine, unlike Codex's native image
+ * mario_image_generate — one image from the OpenAI-compatible
+ * `images/generations` endpoint of the shared provider chosen on the built-in
+ * tools page (its key reused). Works with any engine, unlike Codex's native image
  * tool, which needs an OpenAI-shaped provider.
  *
  * The original bytes are saved beside the browser screenshots
@@ -55,7 +55,7 @@ function saveImage(buf: Buffer, mimeType: string, ctx: ImageToolContext): string
     writeFileSync(file, buf);
     return file;
   } catch (err) {
-    log.warn(`image_generate: save failed: ${err instanceof Error ? err.message : String(err)}`);
+    log.warn(`mario_image_generate: save failed: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
@@ -76,7 +76,7 @@ async function readImage(item: Record<string, unknown>): Promise<{ buf: Buffer; 
   throw new Error("接口返回里没有图片(既没有 b64_json 也没有 url)");
 }
 
-/** The image_generate tool. */
+/** The mario_image_generate tool. */
 export async function imageGenerate(
   args: { prompt?: unknown; size?: unknown },
   ctx: ImageToolContext,
@@ -84,7 +84,7 @@ export async function imageGenerate(
   const prompt = typeof args.prompt === "string" ? args.prompt.trim().slice(0, MAX_PROMPT_CHARS) : "";
   if (!prompt) return errorResult("prompt 不能为空");
   const endpoint = resolveImageEndpoint();
-  if (!endpoint.ok) return errorResult("图片生成还没有配置好(设置 → 内置工具),请告诉用户先配置图片模型");
+  if (!endpoint.ok) return errorResult("图片生成还没有配置好(设置 → MarioTool),请告诉用户先配置图片模型");
   const size = typeof args.size === "string" && IMAGE_SIZE_RE.test(args.size.trim()) ? args.size.trim() : endpoint.size;
 
   let json: Record<string, unknown>;
@@ -130,7 +130,7 @@ export async function imageGenerate(
     registerImageArtifact(display.data, savedPath);
   }
   ctx.onImage?.({ toolCallId: ctx.toolCallId, data: display.data, mimeType: display.mimeType });
-  log.info(`image_generate: ${endpoint.model} ${size} → ${savedPath ?? "(not saved)"}`);
+  log.info(`mario_image_generate: ${endpoint.model} ${size} → ${savedPath ?? "(not saved)"}`);
 
   const revised = typeof item.revised_prompt === "string" ? item.revised_prompt.trim() : "";
   const dims = decoded.isEmpty() ? size : `${decoded.getSize().width}x${decoded.getSize().height}`;

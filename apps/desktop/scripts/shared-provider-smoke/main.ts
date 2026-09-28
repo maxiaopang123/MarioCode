@@ -232,25 +232,21 @@ for (const mutation of protectedRouteMutations) {
   try { SharedProviderStore.save({ ...base, id: saved[0]!.id, ...mutation }); }
   catch (error) { if (error instanceof Error && error.message.includes("enter the API key again")) protectedRouteChanges++; }
 }
-check("models endpoint, endpoint overrides, and protocol changes each require a new key", protectedRouteChanges === protectedRouteMutations.length);
+check("models endpoint and endpoint override changes each require a new key", protectedRouteChanges === protectedRouteMutations.length);
 const interfaceFingerprintProvider = SharedProviderStore.save({
   ...base,
   name: "Interface Fingerprint Provider",
   enabledAgents: ["claude"],
   apiKey: "INTERFACE_FINGERPRINT_SECRET",
 }).find((provider) => provider.name === "Interface Fingerprint Provider")!;
-let modelInterfaceChangeBlocked = false;
-try {
-  SharedProviderStore.save({
-    ...base,
-    id: interfaceFingerprintProvider.id,
-    enabledAgents: ["claude"],
-    models: [{ id: "synthetic-model", interfaces: ["chat-completions"] }],
-  });
-} catch (error) {
-  modelInterfaceChangeBlocked = error instanceof Error && error.message.includes("enter the API key again");
-}
-check("model interface changes cannot silently reuse the saved key", modelInterfaceChangeBlocked);
+SharedProviderStore.save({
+  ...base,
+  id: interfaceFingerprintProvider.id,
+  enabledAgents: ["claude"],
+  models: [{ id: "synthetic-model", interfaces: ["chat-completions"] }, { id: "added-model" }],
+});
+check("model and interface edits keep the saved key without re-entry", SharedProviderStore.resolveApiKey(interfaceFingerprintProvider.id) === "INTERFACE_FINGERPRINT_SECRET"
+  && SharedProviderStore.getPublic(interfaceFingerprintProvider.id)?.models.length === 2);
 SharedProviderStore.remove(interfaceFingerprintProvider.id);
 SharedProviderStore.save({
   ...base,
@@ -344,24 +340,19 @@ setEncryptionAvailable(true);
 
 addSession("session-pi", null, `${runtimeId}/synthetic-model`);
 addSession("session-codex", null, `${runtimeId}/synthetic-model`);
-let blocked = false;
-try { SharedProviderStore.remove(saved[0]!.id); } catch { blocked = true; }
-check("Pi/Codex prefixed model references block removal", blocked);
-
-let shrinkBlocked = false;
-try {
-  SharedProviderStore.save({
-    ...base,
-    id: saved[0]!.id,
-    enabledAgents: ["claude"],
-    models: [{ id: "replacement-model" }],
-  });
-} catch { shrinkBlocked = true; }
-check("referenced provider blocks model shrink and agent disable", shrinkBlocked && SharedProviderStore.listPublic()[0]!.models[0]!.id === "synthetic-model");
+SharedProviderStore.save({
+  ...base,
+  id: saved[0]!.id,
+  enabledAgents: ["claude"],
+  models: [{ id: "replacement-model" }],
+});
+check("referenced provider can still drop models and agents", SharedProviderStore.getPublic(saved[0]!.id)?.models[0]?.id === "replacement-model");
 
 corruptSharedKey(saved[0]!.id);
 check("corrupt ciphertext reports no usable key", SharedProviderStore.listPublic()[0]!.hasApiKey === false);
 let corruptSaveBlocked = false;
 try { SharedProviderStore.save({ ...base, id: saved[0]!.id }); } catch { corruptSaveBlocked = true; }
 check("corrupt saved key requires replacement on save", corruptSaveBlocked);
+SharedProviderStore.remove(saved[0]!.id);
+check("provider referenced by sessions can be removed", SharedProviderStore.getPublic(saved[0]!.id) === null);
 process.stdout.write(`shared-provider smoke passed (${checks} checks)\n`);

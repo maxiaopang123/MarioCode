@@ -131,7 +131,8 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
   const snapshot = getFileSnapshot(req.sessionId);
   const extension = createMcodeExtension({ ctx, cwd: req.cwd, strict, sessionId: req.sessionId, projectPath: req.cwd, turnNumber: req.turnNumber, browserToolsEnabled: config.browserToolsEnabled, userSystemPrompt: config.userSystemPrompt,
     browserBridge: { specs: config.browserToolSpecs, usagePrompt: config.browserUsagePrompt, invoke: (name, args, meta) => reverse(turnId, "browser", { name, args, meta } as never) as never }, snapshot,
-    builtinTools: { web: config.webToolsEnabled === true, image: config.imageToolEnabled === true },
+    builtinTools: { web: config.webToolsEnabled === true, image: config.imageToolEnabled === true, schedule: config.scheduleToolsEnabled === true, wechat: config.wechatToolEnabled === true },
+    unattended: config.unattended === true,
     builtinBridge: { invoke: (name, args, meta) => reverse(turnId, "builtinTool", { name, args, meta } as never) as never },
     permissionState: (toolName) => reverse(turnId, "permissionState", { toolName } as never) as never });
   const loader = await buildPiSkillLoader({ sdk, cwd: req.cwd, agentDir: config.agentDir, allowNames: req.skills?.length ? req.skills : undefined, extraSkillPaths: config.extraSkillPaths, extensionFactories: [extension] });

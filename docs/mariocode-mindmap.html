@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MarioCode 真正的项目思维导图</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #18252b;
+      --muted: #60727b;
+      --paper: #f4f8f7;
+      --surface: #ffffff;
+      --line: #bdd0cd;
+      --teal: #147970;
+      --teal-dark: #0e5c57;
+      --blue: #376ca9;
+      --amber: #aa6c19;
+      --violet: #7654a8;
+      --rose: #a34c67;
+      --shadow: 0 18px 54px rgb(18 67 70 / 12%);
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--paper); }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(rgb(255 255 255 / 72%), rgb(255 255 255 / 72%)),
+        repeating-linear-gradient(0deg, transparent 0 27px, rgb(30 95 89 / 4%) 28px),
+        var(--paper);
+      font: 15px/1.45 Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+
+    .page { width: min(1720px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 46px; }
+    .masthead { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+    .eyebrow { margin: 0 0 5px; color: var(--teal); font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(28px, 4vw, 46px); line-height: 1.05; letter-spacing: -.02em; }
+    .subtitle { max-width: 760px; margin: 9px 0 0; color: var(--muted); }
+    .version { flex: 0 0 auto; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: rgb(255 255 255 / 68%); font-size: 12px; white-space: nowrap; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-bottom: 14px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: rgb(255 255 255 / 84%);
+      box-shadow: 0 8px 22px rgb(30 63 69 / 5%);
+    }
+
+    .search { flex: 1 1 300px; min-width: 210px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; outline: none; color: var(--ink); background: var(--surface); }
+    .search:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb(20 121 112 / 13%); }
+    .tool-button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); }
+    .tool-button:hover { border-color: var(--teal); color: var(--teal); }
+    .zoom-label { display: flex; align-items: center; gap: 7px; margin-left: auto; color: var(--muted); font-size: 13px; }
+    .zoom { width: 105px; accent-color: var(--teal); }
+    .match-count { min-width: 104px; color: var(--muted); font-size: 13px; text-align: right; }
+
+    .map-shell { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: rgb(255 255 255 / 76%); box-shadow: var(--shadow); }
+    .map-scroll { overflow: auto; min-height: 660px; background: radial-gradient(circle at center, rgb(227 243 240 / 35%), transparent 39%); }
+    #mindmap { display: block; width: 100%; min-width: 980px; height: auto; min-height: 660px; }
+
+    .branch-line { fill: none; stroke: var(--line); stroke-width: 3; stroke-linecap: round; }
+    .child-line { fill: none; stroke: var(--line); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 5 6; }
+    .node { cursor: pointer; }
+    .node rect { stroke-width: 1.5; transition: filter .15s ease, opacity .15s ease; }
+    .node:hover rect { filter: drop-shadow(0 6px 8px rgb(24 68 71 / 16%)); }
+    .node text { pointer-events: none; text-anchor: middle; dominant-baseline: middle; }
+    .root rect { fill: #145f5a; stroke: #0b4e4a; }
+    .root text { fill: #f7fffd; font-weight: 700; }
+    .root .sub { fill: rgb(247 255 253 / 76%); font-size: 13px; font-weight: 400; }
+    .branch-node rect { fill: #e5f3f0; stroke: var(--teal); }
+    .branch-node text { fill: var(--teal-dark); font-size: 17px; font-weight: 700; }
+    .child-node rect { fill: var(--surface); stroke: #b7c9c7; }
+    .child-node text { fill: var(--ink); font-size: 13px; }
+    .branch-group:nth-of-type(2) .branch-node rect { fill: #e8f0fb; stroke: var(--blue); }
+    .branch-group:nth-of-type(2) .branch-node text { fill: #28588f; }
+    .branch-group:nth-of-type(3) .branch-node rect { fill: #fff1dc; stroke: var(--amber); }
+    .branch-group:nth-of-type(3) .branch-node text { fill: #85500d; }
+    .branch-group:nth-of-type(4) .branch-node rect { fill: #f0eafb; stroke: var(--violet); }
+    .branch-group:nth-of-type(4) .branch-node text { fill: #5f418c; }
+    .branch-group:nth-of-type(5) .branch-node rect { fill: #fbeaf0; stroke: var(--rose); }
+    .branch-group:nth-of-type(5) .branch-node text { fill: #873c55; }
+    .branch-group.is-collapsed .child-line, .branch-group.is-collapsed .child-node { display: none; }
+    .branch-group.is-dimmed, .branch-group.is-dimmed .branch-line { opacity: .14; }
+    .branch-group.is-match .branch-node rect { filter: drop-shadow(0 0 10px rgb(20 121 112 / 35%)); stroke-width: 3; }
+    .child-node.is-match rect { fill: #fff0b9; stroke: #d59d35; }
+    .child-node.is-dimmed { opacity: .2; }
+    .hint { padding: 9px 16px 11px; border-top: 1px solid rgb(189 208 205 / 70%); color: var(--muted); font-size: 12px; }
+
+    .footer { display: flex; justify-content: space-between; gap: 18px; margin-top: 14px; color: var(--muted); font-size: 12px; }
+    .footer code { color: var(--ink); }
+
+    @media (max-width: 760px) {
+      .page { width: min(100% - 18px, 680px); padding-top: 18px; }
+      .masthead { align-items: flex-start; flex-direction: column; }
+      .version { align-self: flex-start; }
+      .zoom-label { margin-left: 0; }
+      .match-count { width: 100%; text-align: left; }
+      .footer { flex-direction: column; gap: 5px; }
+    }
+
+    @media print {
+      .toolbar, .hint, .footer { display: none; }
+      .page { width: 100%; padding: 0; }
+      .map-shell { border: 0; box-shadow: none; }
+      .map-scroll { overflow: visible; }
+      #mindmap { min-width: 0; }
+      body { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">MarioCode / Real Mind Map</p>
+        <h1>项目代码与功能全景</h1>
+        <p class="subtitle">中心节点是 MarioCode，一级枝干按主题向四周放射，二级节点展开具体代码模块和产品能力。</p>
+      </div>
+      <div class="version">desktop 0.1.54 · Claude SDK 0.3.258</div>
+    </header>
+
+    <section class="toolbar" aria-label="思维导图控制">
+      <input id="search" class="search" type="search" placeholder="搜索：RuntimeManager、浏览器、SQLite……" aria-label="搜索思维导图节点">
+      <button class="tool-button" id="expand" type="button">展开全部</button>
+      <button class="tool-button" id="collapse" type="button">收起全部</button>
+      <button class="tool-button" id="clear" type="button">清除搜索</button>
+      <label class="zoom-label">缩放 <input id="zoom" class="zoom" type="range" min="0.72" max="1.35" value="1" step="0.01"></label>
+      <span class="match-count" id="match-count" aria-live="polite">8 个一级分支</span>
+    </section>
+
+    <section class="map-shell" aria-label="MarioCode 项目思维导图">
+      <div class="map-scroll">
+        <svg id="mindmap" viewBox="0 0 1600 1100" role="img" aria-labelledby="map-title map-desc">
+          <title id="map-title">MarioCode 项目代码与功能思维导图</title>
+          <desc id="map-desc">中心节点 MarioCode 向外连接产品定位、代码框架、三进程架构、Agent Runtime、Provider、Agent 能力、IDE 工具、数据配置和开发验证。</desc>
+          <g id="viewport"></g>
+        </svg>
+      </div>
+      <div class="hint">点击一级节点折叠或展开它的二级节点；搜索会高亮匹配枝干；滚动条可查看放射图的完整边缘。</div>
+    </section>
+
+    <footer class="footer">
+      <span>核心阅读路径：<code>RuntimeManager → Provider → RuntimeEvent → sessionStore</code></span>
+      <span>文件：<code>docs/mariocode-mindmap.html</code></span>
+    </footer>
+  </main>
+
+  <script>
+    const mapData = [
+      { title: "产品定位", items: ["Electron 三栏 AI IDE", "Claude / Pi / Codex", "不重写 Agent Loop", "流式输出与工具审批", "桌面端 + 手机远程"] },
+      { title: "代码框架", items: ["packages/contracts", "apps/desktop", "main / preload / renderer", "docs / prototypes", "pnpm + Turbo + TypeScript"] },
+      { title: "三进程架构", items: ["Renderer：React + Zustand", "Preload：window.api", "Main：RuntimeManager", "IPC + Zod 安全边界", "SQLite / IDE Services"] },
+      { title: "Agent Runtime", items: ["用户输入与附件", "RuntimeManager 选 Provider", "ProviderContext + TurnHandle", "RuntimeEvent 事件流", "持久化 / 手机广播 / 通知"] },
+      { title: "Provider 层", items: ["Claude：query + MCP", "Pi：独立 host + Extension", "Codex：App Server", "Adapter 统一事件", "审批 / 恢复 / 自定义模型"] },
+      { title: "Agent 能力", items: ["多轮对话与恢复", "AskUserQuestion", "计划模式与计划审批", "后台子代理与 Transcript", "Token / Context 用量"] },
+      { title: "IDE 与工具", items: ["文件树 + Monaco + Diff", "Git + Worktree + 冲突解决", "Terminal：xterm + node-pty", "Browser：拾取 / 操作 / 截图", "LSP：TS / Python / Go / Java"] },
+      { title: "数据与运维", items: ["SQLite：项目 / 会话 / 消息", "全局与项目系统提示词", "i18n / 主题 / 字体", "web_search / web_fetch / image_generate", "代理 / 运行时 / 插件 / Scheduler"] }
+    ];
+
+    const svg = document.getElementById("mindmap");
+    const viewport = document.getElementById("viewport");
+    const search = document.getElementById("search");
+    const zoom = document.getElementById("zoom");
+    const count = document.getElementById("match-count");
+    const center = { x: 800, y: 550 };
+    const collapsed = new Set();
+
+    const escapeXml = (value) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&apos;" }[char]));
+    const angleFor = (index) => -Math.PI / 2 + index * (Math.PI * 2 / mapData.length);
+    const polar = (angle, radius) => ({ x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius });
+
+    function wrapLabel(value, maxChars = 12) {
+      const parts = [];
+      let line = "";
+      for (const char of value) {
+        if (line.length >= maxChars && char !== " ") {
+          parts.push(line);
+          line = "";
+        }
+        line += char;
+      }
+      if (line) parts.push(line);
+      return parts.slice(0, 2);
+    }
+
+    function textBlock(x, y, lines, className, lineHeight = 16) {
+      const start = y - ((lines.length - 1) * lineHeight) / 2;
+      return `<text class="${className}" x="${x}" y="${start}">${lines.map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`).join("")}</text>`;
+    }
+
+    function roundedNode(x, y, width, height, className, label, extra = "") {
+      const lines = wrapLabel(label, className.includes("branch-node") ? 9 : 15);
+      return `<g class="node ${className}" data-label="${escapeXml(label.toLowerCase())}" ${extra}><rect x="${x - width / 2}" y="${y - height / 2}" width="${width}" height="${height}" rx="${className.includes("root") ? 22 : 13}" ry="${className.includes("root") ? 22 : 13}"></rect>${textBlock(x, y, lines, "node-label", 16)}</g>`;
+    }
+
+    function render() {
+      const out = [];
+      out.push(`<g class="root node" data-label="mariocode ai 编程 ide"><rect x="620" y="475" width="360" height="150" rx="30"></rect>${textBlock(800, 525, ["MarioCode"], "node-label", 20)}${textBlock(800, 570, ["Agent SDK 桌面端 AI 编程 IDE"], "sub", 16)}</g>`);
+
+      mapData.forEach((branch, index) => {
+        const angle = angleFor(index);
+        const branchPoint = polar(angle, 285);
+        const branchWidth = 190;
+        const branchHeight = 62;
+        const branchEdge = polar(angle, 285 - 35);
+        const items = branch.items;
+        const tangent = { x: -Math.sin(angle), y: Math.cos(angle) };
+        const radial = { x: Math.cos(angle), y: Math.sin(angle) };
+        const isCollapsed = collapsed.has(index);
+        out.push(`<g class="branch-group${isCollapsed ? " is-collapsed" : ""}" data-index="${index}" data-label="${escapeXml((branch.title + " " + items.join(" ")).toLowerCase())}">`);
+        out.push(`<path class="branch-line" d="M ${branchEdge.x} ${branchEdge.y} L ${center.x + (branchEdge.x - center.x) * .55} ${center.y + (branchEdge.y - center.y) * .55} L ${branchPoint.x} ${branchPoint.y}"></path>`);
+        const spacing = items.length > 5 ? 62 : 70;
+        items.forEach((item, itemIndex) => {
+          const offset = (itemIndex - (items.length - 1) / 2) * spacing;
+          const child = { x: branchPoint.x + radial.x * 190 + tangent.x * offset, y: branchPoint.y + radial.y * 190 + tangent.y * offset };
+          const childWidth = 190;
+          const childHeight = wrapLabel(item, 15).length > 1 ? 52 : 42;
+          const branchChildEdge = { x: branchPoint.x + radial.x * 75, y: branchPoint.y + radial.y * 75 };
+          out.push(`<path class="child-line" d="M ${branchChildEdge.x} ${branchChildEdge.y} Q ${child.x - radial.x * 90} ${child.y - radial.y * 90} ${child.x - radial.x * 88} ${child.y - radial.y * 88}"></path>`);
+          out.push(roundedNode(child.x, child.y, childWidth, childHeight, "child-node", item, `data-item-index="${itemIndex}"`));
+        });
+        out.push(roundedNode(branchPoint.x, branchPoint.y, branchWidth, branchHeight, "branch-node", branch.title, `data-branch-index="${index}"`));
+        out.push("</g>");
+      });
+      viewport.innerHTML = out.join("");
+      attachNodeHandlers();
+      applySearch();
+      applyZoom();
+    }
+
+    function attachNodeHandlers() {
+      viewport.querySelectorAll(".branch-node").forEach((node) => {
+        node.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const index = Number(node.dataset.branchIndex);
+          if (collapsed.has(index)) collapsed.delete(index); else collapsed.add(index);
+          render();
+        });
+      });
+      viewport.querySelectorAll(".child-node").forEach((node) => {
+        node.addEventListener("click", (event) => {
+          event.stopPropagation();
+          node.classList.toggle("is-match");
+        });
+      });
+    }
+
+    function applySearch() {
+      const query = search.value.trim().toLowerCase();
+      let matched = 0;
+      viewport.querySelectorAll(".branch-group").forEach((group) => {
+        const branchMatch = !query || group.dataset.label.includes(query);
+        group.classList.toggle("is-dimmed", Boolean(query && !branchMatch));
+        group.classList.toggle("is-match", Boolean(query && branchMatch));
+        if (branchMatch) matched += 1;
+        group.querySelectorAll(".child-node").forEach((node) => {
+          const itemMatch = !query || node.dataset.label.includes(query);
+          node.classList.toggle("is-dimmed", Boolean(query && !itemMatch && !branchMatch));
+          node.classList.toggle("is-match", Boolean(query && itemMatch));
+        });
+      });
+      const rootMatch = !query || "mariocode ai 编程 ide".includes(query);
+      viewport.querySelector(".root").classList.toggle("is-match", Boolean(query && rootMatch));
+      count.textContent = query ? `${matched} 个匹配枝干` : `${mapData.length} 个一级分支`;
+    }
+
+    function applyZoom() {
+      const scale = Number(zoom.value);
+      const tx = center.x * (1 - scale);
+      const ty = center.y * (1 - scale);
+      viewport.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
+    }
+
+    document.getElementById("expand").addEventListener("click", () => { collapsed.clear(); render(); });
+    document.getElementById("collapse").addEventListener("click", () => { mapData.forEach((_, index) => collapsed.add(index)); render(); });
+    document.getElementById("clear").addEventListener("click", () => { search.value = ""; applySearch(); search.focus(); });
+    search.addEventListener("input", applySearch);
+    zoom.addEventListener("input", applyZoom);
+    render();
+  </script>
+</body>
+</html>

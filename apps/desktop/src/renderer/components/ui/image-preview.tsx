@@ -24,7 +24,7 @@
  * so the caller (e.g. ImageGallery) can keep its own index in sync; `index` is
  * the current position, used to initialize the lightbox view.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog } from "./dialog.js";
 import { cn } from "@renderer/lib/cn.js";
 import { api } from "@renderer/lib/api.js";
@@ -135,6 +135,15 @@ export interface ImageWithPreviewProps {
   /** Fired when the user navigates inside the lightbox, so the caller can sync
    *  its own index (and thus which thumbnail is shown). */
   onNavigate?: (index: number) => void;
+  /** Custom thumbnail content, replacing the default bounded `<img>` + hover
+   *  badge. The wrapper button and the lightbox behave exactly the same — this
+   *  only swaps what the trigger LOOKS like, so callers with their own frame
+   *  (markdown single-image figure / gallery tile) can reuse this lightbox
+   *  instead of reimplementing it. When set, the wrapper drops its own
+   *  border/background/width so the supplied node owns the visuals. */
+  thumb?: ReactNode;
+  /** Title/tooltip on the trigger (defaults to 「点击查看大图」). */
+  triggerTitle?: string;
 }
 
 export function ImageWithPreview({
@@ -147,6 +156,8 @@ export function ImageWithPreview({
   gallery,
   index = 0,
   onNavigate,
+  thumb,
+  triggerTitle,
 }: ImageWithPreviewProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -315,12 +326,16 @@ export function ImageWithPreview({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title={t("layout.image.clickToView")}
+        title={triggerTitle ?? t("layout.image.clickToView")}
         className={cn(
-          "group relative block w-fit overflow-hidden rounded-lg border border-edge bg-surface-muted/60 shadow-sm transition-all hover:border-accent/60 hover:shadow-md",
+          "group relative block",
+          !thumb &&
+            "w-fit overflow-hidden rounded-lg border border-edge bg-surface-muted/60 shadow-sm transition-all hover:border-accent/60 hover:shadow-md",
           className,
         )}
       >
+        {thumb ?? (
+          <>
         <img
           src={src}
           alt={alt}
@@ -338,6 +353,8 @@ export function ImageWithPreview({
           <IconArrowsMaximize size={12} />
           {t("layout.image.view")}
         </span>
+          </>
+        )}
       </button>
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Portal>

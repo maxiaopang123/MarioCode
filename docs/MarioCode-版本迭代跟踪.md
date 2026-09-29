@@ -2,13 +2,13 @@
 
 > 只记录功能 TODO 进度和 Git 版本，保持简单。
 
-最后更新：2026-09-26
+最后更新：2026-09-29
 
 ## 功能 TODO
 
 状态：⚪ 未开始　🟡 进行中　🟢 已完成　🔴 阻塞　⏸ 暂定（条件不具备，等条件到位再排期）
 
-## 当前进度（2026-09-26）
+## 当前进度（2026-09-29）
 
 核心多 Agent 链路已经完成一轮闭环：共享提供商支持按模型分别勾选 Claude / Codex / Pi 接口；Claude、Codex、Pi 会按各自协议生成运行配置；共享提供商在已有回合运行时更新不会再阻塞或误切断旧回合；Codex 的 Responses 回合也已补上最终消息兜底，解决网关漏发流式文本时的空回问题。 TODO-004 的 MCP 同步已补上多源并发写入保护，并通过 Electron smoke 回归；当前仍待三个 Provider 的真机加载验收。
 
@@ -16,7 +16,26 @@
 
 9/26 夜：TODO-013 snapshot 瘦身完成（`d36e806`，同页工具结果 18–21K → 3–7K 字符）；TODO-004 三个 Provider 的加载用真实引擎验过（`3b794c5`，`pnpm test:sync-load` 7/7），收成 100%；TODO-005 内置网页搜索 / 网页读取 / 图片生成完成（`c24b661`，设置 → 内置工具）。
 
-仍需人工验收：TODO-005 在三个引擎的真实对话里调用（要模型额度）、真实图片模型出图；TODO-006 三端提示词一致性、TODO-007 / TODO-014 的运行时视觉检查、TODO-009 真实 Pi 会话、TODO-015 的真实系统代理和 Claude / Codex 端到端；Pi 真实模型调用也还没验。`apps/desktop/release/` 里的 0.1.54 安装包是旧代码打的（自动更新指向上游 + 坏的 Pi host），要 `pnpm package` 重打后才能发。`dbdab86` 之后的本地提交都还没推送（截至 `2eedfbf` 共 54 个）。
+9/28：界面焕新 v3 落地到真实代码（原型 `prototypes/ui-refresh-v3.html`）——最左项目栏 + 会话列 + 右缘竖向工具条 + 底部全局状态栏，配色改成取自应用图标的石墨 + 薄荷；**项目树视图已删除**（项目管理搬到项目栏头像右键）、设置改成悬浮窗口、LSP 导航项先收起。模型配置页重做并**删掉旧版专属配置**，「加载模型」弹窗支持逐模型勾选接口 + 生图，密钥保留规则放宽到「按 origin」。剩下的尾巴见 TODO-024。以上均通过 tsc + build，浅 / 深色真机截图看过；`pnpm dev` 首屏要等约 40 秒（开发模式逐文件编译 + `sessionStore.ts` 超 500KB 走 Babel 慢路径），用户暂不处理。
+
+9/28–9/29：v3 原型里剩下的前端全部落地（TODO-025）——「本会话」可折叠浮窗（任务 / 子代理 / 计划 / 书签 / 大纲 / 缓存与速度 / 用量）、缓存命中率与输出速度三处展示（TODO-023）、回复里的图片与文件路径标签（TODO-022）；TODO-024 ①「图片模型」改下拉已完成。`styles.css` 途中被 PowerShell 按 GBK 读写弄乱过中文注释，已按提交版本恢复。
+
+**Git 状态（9/29 核对）**：当前在分支 `ui-refresh-v3`，**v3 这批改动全部未提交**（工作区约 200 个文件）；`ee5c88c`（TODO-019 / 020）是最新提交；`dbdab86` 之后共 60 个提交，都没推送（分支无远端）。
+
+仍需人工验收：TODO-005 在三个引擎的真实对话里调用（要模型额度）、真实图片模型出图；TODO-006 三端提示词一致性、TODO-007 / TODO-014 的运行时视觉检查、TODO-009 真实 Pi 会话、TODO-015 的真实系统代理和 Claude / Codex 端到端；TODO-019 / 020 真实调用与界面；TODO-022 / 023 / 025 真实对话里的图片、标签和缓存 / 速度数值；Pi 真实模型调用也还没验。`apps/desktop/release/` 里的 0.1.54 安装包是旧代码打的（自动更新指向上游 + 坏的 Pi host），要 `pnpm package` 重打后才能发。
+
+### 未完成清单（9/29）
+
+| 类别 | 条目 | 剩下什么 |
+|---|---|---|
+| 🟡 已实现、待收尾 | TODO-025 界面焕新 v3 落地 | 提交；删掉已无引用的 `ActivityCluster.tsx`；真 app 人工看一遍 |
+| | TODO-022 回复里的图片 + 路径标签（92%） | 网络图片自动加载设置、纯文本识别开关、正文 / 工具卡同图去重 |
+| | TODO-023 缓存率与速度（75%） | 计时写进 `TurnUsageRecord` 持久化（现在重开会话就没了）、首字延迟、OpenAI 桥 / Codex / Pi 缓存字段核对 |
+| | TODO-024 模型配置收尾（33%） | ② 密钥规则拍板（要你定）、③ 旧版专属配置的遗留数据怎么处理（要你定） |
+| | TODO-019 定时器 + 微信通知（90%）、TODO-020 技能市场（90%） | 只差真实使用验收 |
+| ⚪ 未开始 | TODO-021 出错后自动「继续」 | 方案已写，待动工 |
+| | TODO-008 DeepSeek Harness 第四个 Provider | 先做 1–2 天可行性验证 |
+| ⏸ 等条件 | TODO-010 / 011 / 012 / 016 / 017 / 018 | 各自的解除条件见表格备注 |
 
 回归脚本（在 `apps/desktop` 下跑）：`pnpm test:sync-load`（TODO-004，同步产物被三个引擎加载）、`pnpm test:web-tools`（TODO-005，真实搜索 / 读网页 + 本地假图片接口）、`pnpm test:builtin-tools-electron`（TODO-005，先 `pnpm build`，真 app 设置页截图）。`pnpm test:pi-host` 要求项目和全局两套 Pi 运行时，本机只有项目的 0.83.0，可用 `node scripts/test-pi-host.mjs node_modules/@earendil-works/pi-coding-agent` 代跑。
 
@@ -25,17 +44,22 @@
 | `TODO-001` | 定时任务 | 100% | 🟢 已完成 | `c4f35af` | 已实现一次/每天/每周、启停、立即运行、异常恢复与防重叠 |
 | `TODO-002` | 微信 ClawBot 信息推送（二维码绑定 + iLink Bot API） | 100% | 🟢 已完成 | `c4f35af` | 已实现二维码绑定、安全凭证、单一用户锁定、消息激活与定时任务结果推送；已通过构建、测试和代码复审 |
 | `TODO-003` | 微信 ClawBot 对话接入 MarioCode | 100% | 🟢 已完成 | `dbdab86` | 已实现绑定者私聊纯文本接入、专用微信助手项目、按会话隔离、Agent/模型选择、`新会话` 指令及安全恢复；已通过冷构建、启动检查、回归测试与独立代码审查 |
-| `TODO-004` | 外部工具 Skill / MCP 同步（非复制导入） | 100% | 🟢 已完成 | `b2dfcdb` `ddad88d` `c66f635` `3b794c5` | P1。Skills 单向复制同步 + MCP 多源配置同步（Claude/Codex/Cursor/Zcode 配置文件 → ~/.mcode/.claude.json，watch 实时跟随、停用/移除自动撤回、本地手改优先）均已落地；多源并发写入保护和 Electron smoke 已通过；**三个 Provider 加载已用真实引擎验过**（`pnpm test:sync-load`：Claude CLI 列出同步的 skill 并连上两个 MCP server、Codex app-server 列出 skill 并启动两个 server、Pi loader 从镜像读到 skill，含 npx 同形的 `.cmd` 启动器，7/7）；Pi 不支持 MCP（设计如此） |
+| `TODO-004` | 外部工具 Skill / MCP 同步（非复制导入） | 100% | 🟢 已完成 | `b2dfcdb` `ddad88d` `c66f635` `3b794c5` | P1。Skills 单向复制同步 + MCP 多源配置同步（Claude/Codex/Cursor/Zcode 配置文件 → ~/.mariocode/.claude.json，watch 实时跟随、停用/移除自动撤回、本地手改优先）均已落地；多源并发写入保护和 Electron smoke 已通过；**三个 Provider 加载已用真实引擎验过**（`pnpm test:sync-load`：Claude CLI 列出同步的 skill 并连上两个 MCP server、Codex app-server 列出 skill 并启动两个 server、Pi loader 从镜像读到 skill，含 npx 同形的 `.cmd` 启动器，7/7）；Pi 不支持 MCP（设计如此） |
 | `TODO-005` | 内置工具：网页搜索 + 图片生成 | 100% | 🟢 已完成 | `c24b661` | P2。三端共用的 `web_search` / `web_fetch` / `image_generate`（`main/tools/`），设置 → 内置工具。搜索默认必应，必应 / 百度免 Key；博查 / 智谱 / Tavily / Exa / Brave 为可选 Key 后端，失败退回必应；图片来源只能选共享提供商；读网页走隐藏窗口 + 与 snapshot 同一套正文提取、30 分钟缓存按 offset 续读；图片走 OpenAI 兼容 `/images/generations`，每次审批。已通过 typecheck、build、`pnpm test:web-tools`（14 项）、`pnpm test:builtin-tools-electron`（真 app 截图）；**未验证**：三端真实对话调用、五个 Key 后端真 Key（Exa / Brave 仅离线解析用例）、真实图片模型 |
-| `TODO-006` | 统一系统提示词 | 100% | 🟢 已完成 | `8aaa72a`（功能）+ `8c7f02f`（预览对齐） | P4（原建议提前到 TODO-005 之前，已兑现）。用户可编辑的全局（settings 表）+ 项目级（`<project>/.mcode/prompt.md`）系统提示词，Claude / Codex / Pi 三端同位注入（身份之后、工具指引之前）；设置页新增「系统提示词」面板：两级编辑器、字数上限 20000、按 Agent 分层预览。三个待拍板已定：项目级存文件、Codex 走 `thread/start` / `thread/resume` 的 `developerInstructions`、模板库不做。叠加顺序已写进 `AGENTS.md`「统一系统提示词」节。已通过 `pnpm typecheck`；**真机三端一致性验证未做**（见规划详情） |
+| `TODO-006` | 统一系统提示词 | 100% | 🟢 已完成 | `8aaa72a`（功能）+ `8c7f02f`（预览对齐） | P4（原建议提前到 TODO-005 之前，已兑现）。用户可编辑的全局（settings 表）+ 项目级（`<project>/.mariocode/prompt.md`）系统提示词，Claude / Codex / Pi 三端同位注入（身份之后、工具指引之前）；设置页新增「系统提示词」面板：两级编辑器、字数上限 20000、按 Agent 分层预览。三个待拍板已定：项目级存文件、Codex 走 `thread/start` / `thread/resume` 的 `developerInstructions`、模板库不做。叠加顺序已写进 `AGENTS.md`「统一系统提示词」节。已通过 `pnpm typecheck`；**真机三端一致性验证未做**（见规划详情） |
 | `TODO-007` | 聊天框界面渲染优化（含前端 UI 体检） | 100% | 🟢 已完成 | `baa45a4`…`bf5672b`（11 个） | **P0（原 P3，2026-09-20 上调）**。体检 + 原七项里**静态就能做完的五项**：焦点环、死代码清场、手机端 i18n、`Hint` 提示层两批替换、文件树删除确认框提到树根。原第 5、6 项与第 7 项第二步不是没做完，是**条件不具备**，已拆成 `TODO-010` / `TODO-011` 暂定；第 3 项欠的 lint 规则拆成 `TODO-012`。**运行时验收仍待人工完成**（见规划详情末尾） |
 | `TODO-008` | DeepSeek Harness（dsh）接入为第四个 Provider | 0% | ⚪ 未开始 | - | P3。先做 1–2 天可行性 spike；照 Pi 的「独立 host 进程 + MessageAdapter」模板接入 |
 | `TODO-009` | 禁止 agent 用内置浏览器访问搜索引擎 | 100% | 🟢 已完成 | `81fe292` | TODO-005 落地前的止血：Pi 无搜索工具时模型拿浏览器去搜索引擎翻页，每次 snapshot 10K+ token。三端共用的 `agentBrowserTools` 加守卫——navigate 到搜索站（含首页）拒绝，snapshot/find/evaluate/screenshot 发现当前页是搜索站也拒绝；只拦搜索站自身域名，产品子域不受影响；提示词同步补禁令。写死名单、暂无开关。已通过 tsc 与 28 条域名规则用例；**真机验证未做**（需 `pnpm dev` + Pi 跑一轮，确认模型回「无法联网搜索」而非去开浏览器） |
 | `TODO-013` | 内置浏览器 snapshot 瘦身（降 token） | 100% | 🟢 已完成 | `d36e806` | `browser_snapshot` 加 `mode`（both / interactive / text）、`maxChars`、`offset`；元素一行一个、去 selector 行、展示 40 个（interactive 80 个）；正文改为主内容提取（main / article / 段落最集中的块），去导航 / 页脚 / 侧栏，默认 4000 字、按 offset 续读。真实页面同页对比：菜鸟教程 18.2K→3.2K、MDN 21.6K→6.7K、新浪 21.3K→5.9K、博客园 19.1K→5.9K 字符。`browser_search` 并入 TODO-005 的免 Key 搜索后端，不单做 |
 | `TODO-014` | UI 焕新（四阶段） | 100% | 🟢 已完成 | `7791101`…`abefc47`（16 个） | 原型 `prototypes/ui-refresh.html`：设计基础 → 外壳导航 → 聊天界面 → 设置弹层；浅 / 深两套主题、翡翠绿只做点缀，会话行 30px、聊天正文 15px、标题 24px/500、字号 11px 起步。已通过 tsc；**真 app 验收未做**（小徽标字变大后显挤、侧栏 / 标题栏 / 页签布局最可能出问题） |
 | `TODO-015` | 网络设置：直连 / 跟随系统代理 / 自定义代理 | 100% | 🟢 已完成 | `4277991` | 设置 →「AI 能力」→「网络」。统一管 Claude（对话、连接测试、标题 / 提交信息生成）、Codex（每轮启动 app-server）、Pi（常驻 host 空闲时重启换路由）和 OpenAI 协议的本地 bridge，下一轮对话生效；跟随系统时环境变量优先，直连设 `NO_PROXY=*`，localhost 一律绕开，Pi host 加 `NODE_USE_ENV_PROXY=1`。已通过 tsc + Electron 33 对本地假代理 5 种场景实跑；**未验证**：真实系统代理读取、Claude / Codex 二进制端到端、界面真机查看；**未覆盖**：内置浏览器、插件下载、运行时下载 |
-| `TODO-019` | MarioTool：定时器 + 微信通知 | 90% | 🟡 进行中（已实现待验收） | 未提交 | 三端新增 `mario_schedule_list / create / update / delete`（Claude MCP server `mcode-schedule`）和 `mario_wechat_notify`（`mcode-wechat`），设置 → MarioTool 新增「定时任务」「微信通知」两节开关，MCP 页内置组多两行。审批统一走 `builtinToolNeedsApproval`：查看免审批；创建 / 修改 / 删除与微信通知在普通对话里要审批，在无人值守运行（定时任务 / 微信对话）里不审批——定时器改动在执行时直接拒绝，微信通知直接发；微信每会话 10 分钟最多 5 条。已通过 tsc + 离线用例（审批真值表、参数合并校验）；**未验证**：三端真实对话调用、真实微信推送、无人值守运行里的拒绝链路 |
-| `TODO-020` | 移除插件功能 + 技能市场 | 90% | 🟡 进行中（已实现待验收） | 未提交 | 插件功能已移除（设置页、左栏入口改为「技能」、per-turn 投递、MCP 插件组）。技能市场：Skills 设置页新增「技能市场」对话框，来源 = 内置 anthropics/skills + 用户添加的 https Git 仓库 / 本地文件夹，树缓存在 `~/.mcode/skill-market/<id>/`，安装即复制到 `~/.mcode/skills`（三引擎下一轮生效）。已通过 tsc + 离线用例（`apps/desktop/scripts/skill-market-smoke`：扫描、安装、路径守卫、本地源添加/刷新/移除）；**未验证**：真实 GitHub 拉取、界面真机查看 |
+| `TODO-019` | MarioTool：定时器 + 微信通知 | 90% | 🟡 进行中（已实现待验收） | `ee5c88c` | 三端新增 `mario_schedule_list / create / update / delete`（Claude MCP server `mariocode-schedule`）和 `mario_wechat_notify`（`mariocode-wechat`），设置 → MarioTool 新增「定时任务」「微信通知」两节开关，MCP 页内置组多两行。审批统一走 `builtinToolNeedsApproval`：查看免审批；创建 / 修改 / 删除与微信通知在普通对话里要审批，在无人值守运行（定时任务 / 微信对话）里不审批——定时器改动在执行时直接拒绝，微信通知直接发；微信每会话 10 分钟最多 5 条。已通过 tsc + 离线用例（审批真值表、参数合并校验）；**未验证**：三端真实对话调用、真实微信推送、无人值守运行里的拒绝链路 |
+| `TODO-020` | 移除插件功能 + 技能市场 | 90% | 🟡 进行中（已实现待验收） | `ee5c88c` | 插件功能已移除（设置页、左栏入口改为「技能」、per-turn 投递、MCP 插件组）。技能市场：Skills 设置页新增「技能市场」对话框，来源 = 内置 anthropics/skills + 用户添加的 https Git 仓库 / 本地文件夹，树缓存在 `~/.mariocode/skill-market/<id>/`，安装即复制到 `~/.mariocode/skills`（三引擎下一轮生效）。已通过 tsc + 离线用例（`apps/desktop/scripts/skill-market-smoke`：扫描、安装、路径守卫、本地源添加/刷新/移除）；**未验证**：真实 GitHub 拉取、界面真机查看 |
+| `TODO-021` | 出错后自动发送「继续」（设置里可开关） | 0% | ⚪ 未开始 | - | 2026-09-28 立项。回合因网络断流 / 超时 / 5xx / 429 / 网关空响应截断等非人为原因中断时，自动对同一会话发「继续」；鉴权、余额、上下文超长、用户手动停止、等审批一律不自动续跑。带退避、次数上限、按回合去重、工具中断时的幂等提示，聊天里标出「自动继续」。参考 DeepSeek Harness 插件 dsh-auto-continue、Claude Code 插件 cc-resume-watchdog。设置 → Agent，默认关闭。方案与待拍板见规划详情 TODO-021 |
+| `TODO-022` | 回复里渲染图片 + 文件路径可点开（为生图铺路） | 92% | 🟡 进行中（已实现待验收） | 未提交 | 原型 `prototypes/ui-refresh-v3.html#imgs`。**已做**：回复里的图片内联（单张大图 + 信息条四个操作，同段多张排三列方格，灯箱左右切换，读取中 / 找不到 / 网络图片三种占位）；网络图片点「加载图片」经主进程 `net:fetchImage` 拉取（CSP 不动）；行内代码和纯文本里的路径都变文件标签（单击选中、双击打开跳行、悬停卡片带缩略图）；相对路径按会话目录（工作树按 checkout）；生图联动（提示词要求 `![](保存路径)`，放行工具输出目录里的图片）；旧 `FileLink` 改双击。tsc + build + 真机截图 + 路径识别离线用例 20 条。**未做**：自动加载网络图片的设置、纯文本识别开关、正文 / 工具卡同图去重。**未验证**：真实模型回复 |
+| `TODO-024` | 模型配置收尾三件（生图标记接入 / 密钥规则拍板 / 旧版数据清理） | 33% | 🟡 进行中（① 已做，②③ 待你拍板） | 未提交 | 2026-09-28 立项，均不影响当前使用。① 🟢 **生图标记接入 MarioTool 已完成**（9/28）：「图片模型」改成下拉（候选 = 所选提供商里标了生图的模型），当前手打值保留为「未标记生图」条目 + 「手动输入模型 id」开关，主进程不因未标记而拒绝；没有任何标记时提示并可跳到模型配置；两个 smoke 测试已同步，tsc 通过；② **密钥规则拍板**：留空密钥保存时，只有「出现新的 scheme+host+port」才要求重填（只改路径 / 移除地址都保留），用户提出这条是否还有必要——保留的理由是防止把有效密钥发给新服务器，去掉的话换地址就沿用旧密钥，改动很小；③ **旧版数据清理**：旧版专属配置页已删（界面只剩公用提供商），但之前在那里存过的 Claude 端点 / Pi Provider 配置与密钥仍在本地，旧会话照常能用、输入框模型列表里也还能看到，却没有入口再改或删——要么给一个一次性「迁移到公用提供商 / 清理」入口，要么确认就这么留着。详见规划详情 TODO-024 |
+| `TODO-023` | 会话里显示缓存命中率与输出速度 | 75% | 🟡 进行中（已实现待验收） | 未提交 | 原型 `prototypes/ui-refresh-v3.html`。**已做**：署名行「缓存 xx% · xx tok/s」、「本会话」浮窗「缓存与速度」段（本轮 / 平均 + 每轮柱状图）、输入框右侧指标组（上下文环从模型胶囊挪到这里）；速度在渲染端按增量计时（`lib/genTimer.ts`），不含工具执行和等待审批。**未做**：计时写进 `TurnUsageRecord` 持久化（现在只在内存，重开会话后旧回合没有速度）、首字延迟、OpenAI 桥 / Codex / Pi 缓存字段核对。**未验证**：真实回合的数值。口径见规划详情 |
+| `TODO-025` | 界面焕新 v3 落地到真实代码 | 95% | 🟡 进行中（已实现待提交） | 未提交（分支 `ui-refresh-v3`） | 原型 `prototypes/ui-refresh-v3.html`。**已做**：最左项目栏 + 会话列 + 右缘工具条 + 底部状态栏、石墨 + 薄荷配色；删掉项目树视图；设置改悬浮窗口；模型配置页重做、删旧版专属配置、「加载模型」逐模型勾选接口 + 生图；「本会话」可折叠浮窗（只动 clip-path 的折叠动画，Esc / 点外面收起）取代原活动台下拉；配套 TODO-022 / 023。tsc + build + 浅 / 深色真机截图。**剩下**：提交这批改动；`ActivityCluster.tsx` 已无桌面引用，删还是留；真 app 人工走一遍 |
 | `TODO-010` | 聊天流渲染性能：行高估值与流式重算（原 TODO-007 第 5、6 项） | 0% | ⏸ 暂定 | - | P1。**解除条件：把应用跑起来采一次数**。两项都按「先量后改」的口径走，而行高分布与分组耗时都拿不到静态答案。文档里备了一段开发者工具即贴即用的行高统计脚本；分组耗时要现加 dev-only `performance.mark`。没有真实数字之前不要改 `estimatedItemSize`，也不要动分组切点——切错会让聊天记录错乱 |
 | `TODO-011` | 文件树 / 会话树拍平虚拟化（原 TODO-007 第 7 项第二步） | 0% | ⏸ 暂定 | - | P3。**解除条件：出现真实的大仓库卡顿反馈**。第一步（删除确认框提到树根）已随 TODO-007 落地；第二步要把递归树拍平交给 LegendList，连带重写展开折叠、键盘导航、拖拽与右键菜单的掌控，估 3～5 天，属于「有人抱怨再做」的那类 |
 | `TODO-012` | 前端 lint 基建：从零搭 ESLint + 禁止 JSX 文本出现 CJK | 0% | ⏸ 暂定 | - | P2。**解除条件：确认要不要引入这套工具链**。本仓库根本没装 ESLint——两个包都没有 `lint` script，也没有任何 `eslint.config.*` / `.eslintrc*`，`turbo.json` 里的 `lint` task 一直在跑空（源码里残留的 `// eslint-disable-next-line` 是上游留下的）。TODO-007 第 3 项欠的那条「挡中文回流」规则要落地，得先把这套装起来 |
@@ -92,7 +116,7 @@
 - **顺带记录**：`@legendapp/list` 钉在 `3.0.0-beta.44`——产品最核心的聊天视窗跑在 beta 库上。`sessionStore.ts` 10341 行、`ChatPane.tsx` 4416 行（本文档原记 216KB），拆分仍是可维护性欠账，但因 selector 纪律好，当前不直接转化为性能问题。
 - **工作量**：1–3 项合计约 1 天；第 4 项分批 1–2 天；第 7 项第一步半天。拆出去的三条见 `TODO-010` / `TODO-011` / `TODO-012`。
 - **1–3 项的验证（2026-09-20，依赖已装好）**：
-  - `pnpm typecheck` **通过**（`@mcode/contracts` + `@mcode/desktop`，3 个 task 全绿）。
+  - `pnpm typecheck` **通过**（`@mariocode/contracts` + `@mariocode/desktop`，3 个 task 全绿）。
   - `pnpm build` **通过**（electron-vite 三段全部产出）；抽查构建产物确认两条焦点环规则与迁移后的英文文案都进了 bundle。
   - 另跑了一次性 Node 校验脚本，查四件事：① 每个区域文件 zh / en 键集完全一致；② 跨区域无重名键（后 spread 会静默覆盖）；③ renderer 全量 **2488 处** `t(…)` / `translate(…)` 字面量调用的键都能在合并后的 **2246** 个键里找到；④ `components/mobile` 剥掉注释后不再有中文字面量。四项全过。
   - 安装侧注意：`registry.npmjs.org` 在本机不可达，需走 `registry.npmmirror.com`（仓库 `.npmrc` 已配好 Electron 二进制镜像，registry 本身要另配）。`cpu-features`（`ssh2` 的可选依赖）因本机没有 C++ 编译器编译失败，属可选依赖，不影响安装与构建。
@@ -155,24 +179,24 @@
 ### TODO-004 外部工具 Skill / MCP 同步
 
 - **目标**：用户设备上已有的 skills / MCP servers（Claude Code `~/.claude`、Codex `~/.codex`、Cursor `~/.cursor`、Zcode `~/.agents` + `~/.zcode`）自动出现在 MarioCode 里，源头增删改自动跟随，不必重新添加。
-- **现状**：**Skills 单向复制同步已落地（2026-09-23）**；**MCP 多源配置同步已落地（2026-09-23）**。**三个 provider 的加载已验（2026-09-26，`3b794c5`）**：`pnpm test:sync-load` 在临时目录按同步引擎的产物布局（skill 镜像、合成的 Claude 插件目录、`.claude.json` 的 mcpServers、Codex config.toml）放好测试 skill 与两个 stdio MCP server（一个 `node`，一个 npx 同形的 `.cmd` 启动器），再用 provider 同样的参数问真实引擎——Claude CLI 列出 `mcode-sync-…:skill` 且两个 server 均 connected 带工具，Codex app-server 经 `skills/extraRoots/set` 列出 skill 且两个 server 启动带工具，Pi loader 从镜像读到 skill；不发模型请求。设置页「添加源 → 同步」的界面流程仍按 Electron smoke 的覆盖为准。
+- **现状**：**Skills 单向复制同步已落地（2026-09-23）**；**MCP 多源配置同步已落地（2026-09-23）**。**三个 provider 的加载已验（2026-09-26，`3b794c5`）**：`pnpm test:sync-load` 在临时目录按同步引擎的产物布局（skill 镜像、合成的 Claude 插件目录、`.claude.json` 的 mcpServers、Codex config.toml）放好测试 skill 与两个 stdio MCP server（一个 `node`，一个 npx 同形的 `.cmd` 启动器），再用 provider 同样的参数问真实引擎——Claude CLI 列出 `mariocode-sync-…:skill` 且两个 server 均 connected 带工具，Codex app-server 经 `skills/extraRoots/set` 列出 skill 且两个 server 启动带工具，Pi loader 从镜像读到 skill；不发模型请求。设置页「添加源 → 同步」的界面流程仍按 Electron smoke 的覆盖为准。
 - **MCP 同步落地详情（2026-09-23）**：
-  1. **同步引擎** `main/lib/mcpSync.ts`：用户在设置页添加外部 MCP 配置文件作为同步源（预设探测 Claude Code `~/.claude.json` / Codex `~/.codex/config.toml` / Cursor `~/.cursor/mcp.json` / Zcode `~/.zcode/mcp.json`，也支持手动选任意文件），引擎把每个源里可识别的 server 归一化为 `McpServerConfig` 后合并进 `~/.mcode/.claude.json` 的 `mcpServers`——该文件同时是 Claude 二进制的加载点与 Codex config.toml 物料来源，一处生效三端通吃。源文件只读，改动经父目录 `fs.watch`（600ms 防抖；watch 目录而非文件，因为 CLI 用替换式重写）实时跟随。
+  1. **同步引擎** `main/lib/mcpSync.ts`：用户在设置页添加外部 MCP 配置文件作为同步源（预设探测 Claude Code `~/.claude.json` / Codex `~/.codex/config.toml` / Cursor `~/.cursor/mcp.json` / Zcode `~/.zcode/mcp.json`，也支持手动选任意文件），引擎把每个源里可识别的 server 归一化为 `McpServerConfig` 后合并进 `~/.mariocode/.claude.json` 的 `mcpServers`——该文件同时是 Claude 二进制的加载点与 Codex config.toml 物料来源，一处生效三端通吃。源文件只读，改动经父目录 `fs.watch`（600ms 防抖；watch 目录而非文件，因为 CLI 用替换式重写）实时跟随。
   2. **合并规则**：单向（源 → 镜像），权属表 `mcpSync.ownership`（settings 表）记录每源上轮同步进去的名字；再同步只替换/撤回自己拥有的名字，用户在面板手加/导入的同名条目经 `clearOwnershipFor` 摘除权属、永久保留（本地优先）；已存在的本地条目不同名覆盖、状态栏显示冲突名单。停用源 = 撤回其同步条目（冻结但继续加载会留下静默陈旧 server）；移除源 = 撤回 + 停止监听。
   3. **并发保护**：多个源同时变更时，共享镜像文件的读改写经全局串行锁排队，避免 Codex/Cursor 等 watcher 互相覆盖；Electron smoke 已覆盖两源共存、停用、重新启用和移除流程。
-  4. **Codex TOML 归一化**：`[mcp_servers.*]` 的 `command/args/env`（stdio）与 `url/http_headers`（http）映射到 `McpServerConfig`（用 `smol-toml` 解析）；env 值里引用用户环境的 `${VAR}`/`$VAR`/`%VAR%` 被丢弃（Mcode 子进程里解析不出来，留着只会得到字面量）。
+  4. **Codex TOML 归一化**：`[mcp_servers.*]` 的 `command/args/env`（stdio）与 `url/http_headers`（http）映射到 `McpServerConfig`（用 `smol-toml` 解析）；env 值里引用用户环境的 `${VAR}`/`$VAR`/`%VAR%` 被丢弃（MarioCode 子进程里解析不出来，留着只会得到字面量）。
   5. **进程隔离**：与 skillSync 同一约定——模块不 import Electron，renderer 通知走注入的 `setMcpSyncChangeListener`，Electron 入口接线 `sendToRenderer(IPC.MCP_SYNC_CHANGED)`。
   6. **契约 + UI**：`mcp.syncList/syncScan/syncAdd/syncSetEnabled/syncRemove/syncRescan` 六个 IPC；MCP 设置页顶部新增「外部配置源同步」区块（开关 + server 数 + 上次同步时间/错误 + 移除 + 重新同步 + 添加对话框）。
 - **Skills 同步落地详情（2026-09-23）**：
-  1. **同步引擎** `main/lib/skillSync.ts`：用户添加外部技能根目录（如 `~/.codex/skills`），引擎把每个含 `SKILL.md` 的子目录复制镜像到 `~/.mcode/skills-sync/<sourceId>/`，源目录用递归 `fs.watch` + 400ms 防抖实时跟随；禁用源 = 冻结镜像保留，移除源 = 删镜像 + 删合成插件目录。
-  2. **Claude 侧可见**：每次同步后合成一个本地插件目录 `~/.mcode/skills-sync-plugins/mcode-sync-<id>/.claude-plugin/plugin.json` + `skills/` 子目录拷贝，provider 启动时经 `options.plugins` 注入（`skipMcpDiscovery`），优先级最低。
+  1. **同步引擎** `main/lib/skillSync.ts`：用户添加外部技能根目录（如 `~/.codex/skills`），引擎把每个含 `SKILL.md` 的子目录复制镜像到 `~/.mariocode/skills-sync/<sourceId>/`，源目录用递归 `fs.watch` + 400ms 防抖实时跟随；禁用源 = 冻结镜像保留，移除源 = 删镜像 + 删合成插件目录。
+  2. **Claude 侧可见**：每次同步后合成一个本地插件目录 `~/.mariocode/skills-sync-plugins/mariocode-sync-<id>/.claude-plugin/plugin.json` + `skills/` 子目录拷贝，provider 启动时经 `options.plugins` 注入（`skipMcpDiscovery`），优先级最低。
   3. **Pi / Codex 侧可见**：Pi 走 host config 的 `extraSkillPaths`（主进程在 `loadHostConfiguration` 里把 `skillSyncMirrorRoots()` 追加进去）；Codex `skillRootsFor()` 直接加镜像根目录。
   4. **设置页**：SkillsPanel 顶部新增「外部源同步」区块：添加目录（原生文件夹选择器）、启停开关、skill 数 / 上次同步时间 / 错误提示、移除、手动「重新同步」。
   5. **进程隔离**：`skillSync.ts` 不许 import Electron（`build-pi-host.mjs` 会拒绝）；renderer 通知走注入的 `setSkillSyncChangeListener`，Electron 入口接线 `sendToRenderer(IPC.SKILLS_SYNC_CHANGED)`，Pi host 不接线。
   6. **契约**：`packages/contracts/src/ipc.ts` 新增 `SkillSyncSource` / `SkillSyncStatus` 类型 + `skills.syncList / syncAdd / syncSetEnabled / syncRemove / syncRescan` 五个 IPC；preload + webApi stub 已注册。
 - **方案要点**：
   1. Skills：**已改拍板为纯复制镜像**（不用 junction/symlink——Windows 权限 + claude 二进制跟随性有风险）；Claude 用合成插件目录而非直接塞 `$CLAUDE_CONFIG_DIR/skills`（保持用户全局目录干净）；Pi 经 `extraSkillPaths`；Codex 加镜像根。
-  2. MCP：多源读取（`~/.claude.json`、`~/.codex/config.toml` 的 `[mcp_servers]`、`~/.cursor/mcp.json`）归一化后合并进 `~/.mcode/.claude.json`，条目打 `source` 标记；源文件 watch 变更增量同步；本地手改优先、同名冲突提示。
+  2. MCP：多源读取（`~/.claude.json`、`~/.codex/config.toml` 的 `[mcp_servers]`、`~/.cursor/mcp.json`）归一化后合并进 `~/.mariocode/.claude.json`，条目打 `source` 标记；源文件 watch 变更增量同步；本地手改优先、同名冲突提示。
   3. 设置页：每个源一个开关 + 最近同步时间 + 冲突列表。
 - **工作量**：中（3–5 天）。**风险**：Windows junction 是否被 claude 二进制 / Codex 正常跟随需实测；各家 MCP 配置字段形状不一致（Codex TOML 的 env / args）需归一化。
 - **实验方案**（补自上一会话，尚未跑）：
@@ -202,19 +226,19 @@
 - **实验方案**（补自上一会话，尚未跑）：
   1. 网络可达性先测：主进程分别探 博查 / 智谱 / Tavily / Brave 的连通与延迟，据此定默认后端（本机连 github 都不通，海外 API 大概率废）。
   2. 端到端用 Pi 测（无原生能力最干净）：「搜一下 X 并总结」看工具卡片；「画一张 Y」看 image block + 右键「在资源管理器中显示」。
-  3. Claude 自定义端点：`mcp__mcode-tools__web_search` 自动放行；原生 WebSearch 在自定义端点报错时模型是否会自己切到内置。
+  3. Claude 自定义端点：`mcp__mariocode-tools__web_search` 自动放行；原生 WebSearch 在自定义端点报错时模型是否会自己切到内置。
   4. Codex 双份工具：原生 webSearch 开着时模型选哪个，定去重策略。
   5. 零 key 浏览器抓取：10 次查询的成功率 / 耗时 / 反爬，决定能否当兜底。
 - **待拍板**：默认搜索后端（建议博查）；图片生成要不要进审批（花钱）；结果条数与摘要长度上限。
 - **拍板结果（2026-09-26）**：默认必应（免 Key，开箱可用；本机直连实测博查 / 智谱 / Tavily / 必应 / 百度可达，Brave、DuckDuckGo 超时所以没接），博查 / 智谱 / Tavily 作为可选 Key 后端、失败自动退回必应；图片生成每次审批（Full Access / 始终允许除外）；默认 5 条、摘要 ≤200 字、正文每次 5000 字，设置页可调。图片来源没做成「模型能力位」，改为设置页选共享提供商或填自定义接口 + 模型名——图片模型不会混进对话模型列表。
 - **后续调整（产品决策）**：图片来源只能选共享提供商，自定义接口及其 Key 移除（旧的 `custom` 图片源视为未配置，`builtinTools.keys` 里的 `image` 条目自动剔除）。第三方搜索 API 作为**可选**后端保留：默认仍是免 Key 的必应（百度同为免 Key），博查 / 智谱 / Tavily 恢复，新增 Exa（`api.exa.ai/search`）与 Brave（`api.search.brave.com`，有免费档）；Key 加密存在原来的 `builtinTools.keys`，用户已存的博查 / 智谱 / Tavily Key 继续可用；任何 Key 后端失败（含没填 Key）都退回必应。可达性：Brave 本机直连超时，大陆使用可能需要在 设置 → 网络 配代理；DuckDuckGo 仍不接。
-- **落地（2026-09-26，`c24b661`）**：核心在 `main/tools/`（描述 `builtinToolSpecs.ts` / 配置 `builtinToolsConfig.ts` / 隐藏窗口 `webPage.ts` / 三个工具 / 调用入口 `builtinTools.ts`）；Claude = 进程内 MCP `mcode-web` + `mcode-image`，Codex = dynamicTools（image_generate 手动审批），Pi = 扩展注册 + `builtinTool` 反向调用回主进程；设置 → 内置工具（来源、Key 加密存、条数 / 字数、测试搜索、图片接口），MCP 页内置组多两行、与之共用开关；Pi / Codex 注入工具说明，预览面板同步。控上下文 1–3、5 已做（缓存：搜索 10 分钟内存、网页 30 分钟磁盘）；4（副模型二级压缩）没做。验证：`pnpm test:web-tools`（活网络 + 本地假图片接口，14 项）、`pnpm test:builtin-tools-electron`（真 app 点进设置页截图、IPC、开关联动、Pi 预览）。详见 `AGENTS.md`「内置工具」节。
+- **落地（2026-09-26，`c24b661`）**：核心在 `main/tools/`（描述 `builtinToolSpecs.ts` / 配置 `builtinToolsConfig.ts` / 隐藏窗口 `webPage.ts` / 三个工具 / 调用入口 `builtinTools.ts`）；Claude = 进程内 MCP `mariocode-web` + `mariocode-image`，Codex = dynamicTools（image_generate 手动审批），Pi = 扩展注册 + `builtinTool` 反向调用回主进程；设置 → 内置工具（来源、Key 加密存、条数 / 字数、测试搜索、图片接口），MCP 页内置组多两行、与之共用开关；Pi / Codex 注入工具说明，预览面板同步。控上下文 1–3、5 已做（缓存：搜索 10 分钟内存、网页 30 分钟磁盘）；4（副模型二级压缩）没做。验证：`pnpm test:web-tools`（活网络 + 本地假图片接口，14 项）、`pnpm test:builtin-tools-electron`（真 app 点进设置页截图、IPC、开关联动、Pi 预览）。详见 `AGENTS.md`「内置工具」节。
 
 ### TODO-006 统一系统提示词 · 🟢 已完成（2026-09-21 功能落地，2026-09-22 收尾）
 
 - **目标**：一份用户可编辑的全局系统提示词（+ 可选项目级），三端一致注入，与现有身份提示、输出风格并存。
 - **落地方式**（`8aaa72a`，19 个文件 +971）：
-  1. 存储：全局进 settings 表 `agent.systemPrompt.global`（复用通用 setting.get/set，不开专用 IPC）；项目级存 **文件** `<project>/.mcode/prompt.md`（`lib/userSystemPrompt.ts`），选文件不选 DB 是为了能像 CLAUDE.md / AGENTS.md 一样随仓库提交；清空即删文件。每级上限 20000 字符（`SYSTEM_PROMPT_MAX_CHARS`），面板拒存、加载端同界截断。每 turn 现读不缓存；工作树会话先探 cwd 再回退项目根。
+  1. 存储：全局进 settings 表 `agent.systemPrompt.global`（复用通用 setting.get/set，不开专用 IPC）；项目级存 **文件** `<project>/.mariocode/prompt.md`（`lib/userSystemPrompt.ts`），选文件不选 DB 是为了能像 CLAUDE.md / AGENTS.md 一样随仓库提交；清空即删文件。每级上限 20000 字符（`SYSTEM_PROMPT_MAX_CHARS`），面板拒存、加载端同界截断。每 turn 现读不缓存；工作树会话先探 cwd 再回退项目根。
   2. 注入：三端同位——身份之后、工具指引之前。Claude `appends.splice(1, 0, …)` 进 `systemPrompt.append`；Pi 主进程 join 后经 host 协议 `userSystemPrompt` 字段送给 `before_agent_start` 注入器；Codex 走 `thread/start` 与 `thread/resume` 的 **`developerInstructions`**（全局 + 项目合并为一条 developer message），`CODEX_HOME/AGENTS.md` 保持只放身份与工具指引。格式统一由 `systemPrompt.ts` 的 `formatUser*Section` 生成：`## 用户全局指令` / `## 项目指令`，两级同在时项目段带一句「冲突以项目指令为准」。
   3. 设置页新增「系统提示词」面板（`SystemPromptPanel.tsx`）：全局 / 项目两个编辑器（项目可切换）、字数、保存反馈；「提示词预览」按 Agent 列出模型实际收到的层级（`lib/systemPromptPreview.ts`），引擎自有层只标位置不伪造文本，MarioCode 自有层直接 import provider 用的同一常量。
   4. 叠加顺序（含 output-style / CLAUDE.md / AGENTS.md 的位置）已写进 `AGENTS.md`「统一系统提示词」节，改注入必须同步改预览。
@@ -226,7 +250,7 @@
   4. 长提示词开销（2K / 8K 对首 token 延迟与 ContextRing 读数）⏳ **真机未做**。
   - 2–4 的验收手法：`pnpm dev` → 设置 → 系统提示词，全局填「每次回复末尾加 [MC]」，项目填「回复用英文」，分别用三个 Agent 各发一句「你好」；预期三端都带 `[MC]` 且英文回复；再在预览面板核对三端 `user.*` 两段文本一致且项目段带冲突说明。
 - **已定的拍板**：项目级 = 文件；Codex = `developerInstructions`；模板库 = 不做（待有需求再立项）。
-- **副作用面**：`.mcode/prompt.md` 是新落盘文件，随项目提交与否由用户仓库的 `.gitignore` 决定（本仓库未忽略 `.mcode/`）；未改任何 provider 的既有身份 / 工具提示文本。
+- **副作用面**：`.mariocode/prompt.md` 是新落盘文件，随项目提交与否由用户仓库的 `.gitignore` 决定（本仓库未忽略 `.mariocode/`）；未改任何 provider 的既有身份 / 工具提示文本。
 
 ### TODO-008 DeepSeek Harness（dsh）接入
 
@@ -278,6 +302,108 @@
 - **分阶段粗估**：0 决策 + 网关实测 1–2 天 → 1 服务端 MVP（部署、渠道与单价、注册登录、手动充值或兑换码）1–2 周 → 2 客户端 MVP（账户模块、登录、官方提供商、余额与余额不足卡片）约 1 周 → 3 在线充值 1 周以上（看商户资质）→ 4 打磨（消费明细对到会话、单价展示、试用额度、团队账户）。
 - **MVP 验收标志**：新用户登录 → 看到官方模型 → Claude / Codex / Pi 各对话一轮 → 后台三笔扣费、客户端余额同步减少 → 余额用完出现「去充值」卡片。
 
+### TODO-021 出错后自动发送「继续」（可在设置里开关）· ⚪ 未开始
+
+- **问题**：同时开很多会话时，某个回合因网络断流、网关超时、上游 5xx / 429、网关空响应截断等**非人为原因**中断后，会话就停在那里，直到用户发现并手动发一句「继续」。能不能由 MarioCode 在这类情况下主动发送「继续」，让任务接着跑？做成设置里的开关，用户自己决定开不开。
+- **外部参考（2026-09-28 调研）**：
+  1. [dsh-auto-continue](https://github.com/HsiangNianian/dsh-auto-continue)（DeepSeek Harness Web UI 插件）：非人为中断后模拟用户发送「继续」，消息和手动输入一样进会话记录。功能有：错误分类（网络 / 超时 / 5xx / 429 自动续跑；401/403、鉴权、余额 / 配额、未知模型、上下文超长视为永久错误，只通知不重试）、指数退避（20s → 40s → 80s…，有上限）、续跑文本模板（可带 `{code}` `{tool}` 等占位）、幂等守卫（中断在工具执行中途时提示模型先检查状态、不要重跑）、全局暂停与按会话暂停、通知按钮「立即继续 / 暂停 1 小时」、循环保护（模型重复同一段话时打断），全部在设置卡片里可配。[GitHub topic auto-continue](https://github.com/topics/auto-continue) 下还有同类的 dsh-llm-retry-settings（按 provider / 模型设重试策略、输出被 token 上限截断时自动续写）。
+  2. [cc-resume-watchdog](https://github.com/nnemirovsky/cc-resume-watchdog)（Claude Code 插件）：只恢复「流在中途断掉、但请求和账户都正常」的几类错误（连接中断、响应停滞、服务端中途报错、电脑睡眠、连接失败、请求超时）；额度用完、需要重新登录、prompt 过长、模型拒答一律不恢复。按消息 uuid 去重、每小时限次，防止失败循环跑飞。作者说明 Claude Code 在流已经吐出内容后不会自动重试（怕工具被执行两次），这类回合结束时不触发任何 hook，所以只能在外部盯着补发。
+  （以上为转述，Content was rephrased for compliance with licensing restrictions。）
+- **我们已有的基础**：`SdkMessageAdapter` 已能识别网关空响应截断并发 `turn.incomplete`（`dangling-tools` / `empty-response` / `unfinished-text`），界面上已经提示「发送「继续」可恢复」；error 子类型的 result 也会出错误卡片。缺的只是「自动发送」这一步。
+- **初步方案（未动工）**：
+  1. **放在主进程、provider 中立**：在 `RuntimeManager` 回合结束处判断，命中条件就对同一会话调一次 `sendTurn`，Claude / Codex / Pi 三端共用，不在各 adapter 里各做一份。
+  2. **只续跑可恢复的失败**：网络断流 / 超时 / 5xx / 429 / `Stream closed` / `turn.incomplete` 三种形态；**永不自动续跑**：用户手动停止、鉴权失败、余额或配额不足、模型不存在、上下文超长、模型拒答、等审批 / 等回答（那是在等人，不是出错）。分类规则集中在一个纯函数里，方便写用例。
+  3. **防跑飞**：每次续跑前等待并指数退避（如 20s / 40s / 80s，封顶）；每会话连续自动续跑上限（如 3 次）、每小时总上限；同一次失败只续跑一次（按回合 id 去重）；续跑后又立刻失败且没有任何新输出时停止，改为提醒用户。
+  4. **幂等提示**：如果中断时有工具调用没拿到结果（`dangling-tools`），续跑文本改为「上一步工具可能已经执行，先检查当前状态再继续，不要重复执行」，避免重复 `git push`、重复写文件等。
+  5. **看得见**：自动发出的「继续」在聊天里标成「自动继续 · 第 n 次 · 原因」，与手动消息区分；达到上限后出琥珀色卡片「已自动继续 3 次仍失败」+ 系统通知；侧栏「等你处理」提醒只计入**自动续跑放弃后**的出错会话，正在退避等待的不算。
+  6. **设置**：设置 →「Agent」下新增「出错后自动继续」：总开关（默认关闭）、最多连续次数、退避起始间隔、续跑文本（默认「继续」，可自定义）、是否对网关空响应截断也生效。先做全局设置，按会话暂停放到二期。
+  7. **与无人值守的关系**：定时任务 / 微信对话这类无人值守回合最需要它，是否默认对它们开启待拍板。
+- **待拍板**：默认开还是关（建议关）；上限次数与退避间隔的默认值；无人值守回合是否默认开启；是否一并做「循环保护」（模型反复输出同一段话时打断），建议拆成单独 TODO。
+- **工作量粗估**：2–3 天（分类纯函数 + 用例、RuntimeManager 续跑与退避、设置项与 i18n、聊天内「自动继续」标识与上限卡片）。
+
+### TODO-022 回复里渲染图片 + 文件路径可点开 · 🟡 92%
+
+- **已落地（2026-09-28）**：`components/chat/MarkdownImage.tsx`（`MarkdownLocalImage` 大图 / 方格、`MarkdownRemoteImage`、`MarkdownGallery`）+ `Markdown.tsx` 的 `rehypeImageGallery`（同一段落里只有 2+ 张图时改成网格容器）；`ImageWithPreview` 新增 `thumb` / `triggerTitle`，大图和方格复用同一个灯箱。网络图片：`net:fetchImage`（`main/ipc/files.ts` 的 `fetchRemoteImage`：只收 http(s)、15 秒超时、必须 `image/*`、上限 12MB、不带 cookie 和 referrer，走 Electron `net.fetch` 即跟随系统代理）。文件标签：`components/chat/FileChip.tsx` + `lib/fileLink.ts` 的 `classifyInlinePath`（只认整段行内代码；裸文件名必须是已知扩展名，`console.log` 这类保持代码；`:行号[:列]` 剥出来用于跳行；绝对路径以分隔符结尾 = 文件夹，双击在系统文件管理器里显示）。已过 tsc + build + 真机截图（`.turbo/v3-022.mjs`，浅 / 深色、悬停卡、选中态、占位态）。
+- **9/29 补上**：纯文本（不在反引号里）的路径识别——`Markdown.tsx` 的 `rehypePathChips` + `fileLink.ts` 的 `splitProsePaths`，规则按原方案「宁可漏认」：绝对路径，或含分隔符且以扩展名结尾的相对路径，可带 `:行号[:列]`；裸文件名只在反引号里认；URL（所在词含 `://`）、邮箱、`2026/09/28`、`1/2`、`TCP/IP`、词中间的 `/b/c` 都不认。离线用例 `.turbo/prose-check.mjs` 15/15。相对路径图片：聊天里按会话项目根解析（`.md` 预览仍按文件目录）。
+- **9/29 第二批**：工作树会话的回复路径 / 图片 / 工具卡链接按 checkout 解析（ChatPane `renderRoot`）；中文紧跟路径不再被吞（末段无扩展名时在 ASCII→中文处截断，离线用例增至 20 条全过）；生图联动——`mario_image_generate` 描述要求模型用 `![名称](保存路径)` 引用，且 `file.readBinary` 放行工具输出目录里的图片（原图在项目外，之前读不出来）；旧 `FileLink` 裸路径形态改为单击选中 / 双击打开（链接形态不变）。
+- **与原方案的差异**：网络图片自动加载设置、纯文本识别开关没做；同一张图正文与工具卡都出现时工具卡不折叠；文件夹双击是在系统文件管理器里显示，不是文件树定位；全是中文的末段（「D:\work\实验报告里」）仍无法判断边界。
+
+- **目标**：接入生图后，模型在回复里写出生成图片的地址（`![hero](outputs/splash/hero.png)` 或绝对路径）就直接显示图片；回复里提到的文件 / 目录路径可以一键打开（参考 Codex 的会话页）。原型：`prototypes/ui-refresh-v3.html#imgs`（悬停卡常开演示：`#imgs,fpop`）。
+- **现状（2026-09-28 读代码）**：
+  1. 已能显示：用户附图、浏览器截图（多张成图集）、`mario_image_generate` 的结果——都是 base64 image block，走 `MessageBlocks` + 灯箱。
+  2. `Markdown.tsx` 的 `img`：本地路径在聊天里（无 baseDir）只渲染成 `FileLink` 标签；`.md` 预览有 baseDir 时才用 `MarkdownLocalImage` 经 `file.readBinary` 内联。
+  3. 网络图片会输出 `<img src>`，但主进程 CSP 是 `img-src 'self' data:`，打包后被拦成空白。
+  4. `FileLink` 已经能把路径变成可点链接（单击解析：唯一匹配直接 `openFileInIde`，多个出候选菜单），但只在 markdown 链接 / 行内代码等位置生效，样式是虚线下划线。
+- **方案（未动工）**：
+  1. **本地图片内联**：聊天里给 `MarkdownBaseDirContext` 传会话 cwd（工作树会话用 checkout），相对路径据此解析、绝对路径直接读；复用 `MarkdownLocalImage`（main 侧路径守卫不变，只允许已知项目与工具输出目录 `browser.screenshotDir`）。单张最大宽 520px、底部信息条（文件名 / 尺寸 / 大小 + 在编辑器打开 / 在文件夹中显示 / 复制 / 作为附件），连续多张排三列网格，点开进现有灯箱并能左右切换；读取中骨架屏、找不到文件给占位。大图做缩略（沿用 image_generate 的 JPEG 副本思路），避免 base64 撑内存。
+  2. **网络图片（已定：默认点击后加载）**：默认显示「网络图片 · 域名 · 加载图片」占位，点击后经主进程代理拉取（走 `engineFetch` 同一网络路由、限大小 / 类型、转 data URL），不放宽 CSP；设置 → 外观加「自动加载网络图片：从不 / 信任的域名 / 总是」。
+  3. **文件路径标签**：扩展识别范围到纯文本里的路径，渲染成等宽小标签（文件类型图标 + 路径 + 行号）。**双击打开**（文件 → 编辑器并跳行、目录 → 文件树定位、图片 → 灯箱），单击只是选中高亮（可 Ctrl C 复制路径），键盘 Enter 等同双击；悬停 400ms 出卡片（图片带缩略图、目录显示文件数，按钮：在文件夹中显示 / 复制路径，并提示「双击打开」）。识别在渲染期只做正则，解析仍是双击时 IPC（保持 `FileLink` 现有的零渲染开销设计）。现有 `FileLink` 的单击打开要一并改成双击，两处行为保持一致。
+  - **纯文本识别规则（已定，默认开启，设置里可关）**：只认「像路径」的片段，宁可漏认不误认——① 绝对路径（`C:\…`、`D:/…`、`/Users/…`、`~/…`）；② 相对路径必须含 `/` 或 `\` 且以已知扩展名结尾或以分隔符结尾（`src/app.ts`、`outputs/splash/`、`./x.md`），可带 `:行号[:列]`；③ 裸文件名（`README.md`）只在行内代码里识别。排除：URL（有 `scheme://`）、版本号 / 数字串（`0.3.238`、`1/2`）、邮箱、代码块内部（代码块保持原样，不插标签）。识别到但双击时解析不到的，沿用 `FileLink` 的「未找到匹配文件」菜单。
+  4. **生图联动**：`mario_image_generate` 的提示词说明里要求模型用 `![名称](原图路径)` 引用结果，这样同一张图既有工具卡、也能在正文里按模型安排的位置出现；同一张图在同一轮重复出现时正文优先、工具卡折叠。
+- **已拍板（2026-09-28）**：路径标签**双击打开**；网络图片**默认点击后加载**；纯文本路径识别**默认开启、按上面的严格规则**，设置里可关。
+- **工作量粗估**：3–4 天（本地图片 1 天、路径标签 1–1.5 天、网络图片代理与设置 1 天、生图提示词联动与回归 0.5 天）。
+
+### TODO-023 会话里显示缓存命中率与输出速度 · 🟡 75%
+
+- **已落地（2026-09-28）**：`lib/genTimer.ts`（渲染端按 text / thinking 增量计时，模块级 Map，不触发渲染；工具调用或 2 秒无增量即断段）、`lib/sessionMetrics.ts`（命中率分母 = `totalProcessedTokens - outputTokens`，平均按 token 加权；Pi 的累计 usage 按 `turnTokens.ts` 同一规则取差值；量不出来返回 null，界面显示「—」）；store `turnGenBySession`（回合结束追加，上限 200）。界面：`MessageBlocks` 署名行 chips、`SessionFloat` 的「缓存与速度」段、`SessionMetrics`（输入框右侧，窄于 44rem 只留上下文环）。
+- **与原方案的差异**：计时没写进 `TurnUsageRecord`，重开会话后历史回合没有速度；首字延迟没记；OpenAI 桥 / Codex / Pi 的缓存字段没逐个核对。
+
+- **目标**：在会话界面看到每轮（单次）与本会话平均的缓存命中率，以及输出 token 速度（tok/s）。
+- **展示位置（原型已画）**：① 每条助手回复的署名行，在「用时」后面加两枚小标签「缓存 93%」「64 tok/s」，悬停显示明细（读取 / 输入 / 写入 token、输出 token 与生成用时）；② 「本会话」浮窗新增「缓存与速度」一节：两张卡片（大字 = 本轮，小字 = 本会话平均），下方每轮缓存命中迷你柱状图（本轮高亮、明显掉档的轮用琥珀色，悬停说明原因如「换了模型，缓存失效」）；③ 本会话输入框右侧的指标组「◔ 23% | ⚡ 84% | 57 tok/s」（上下文 / 本会话平均缓存 / 本会话平均速度，悬停带本轮值，点击展开「本会话」浮窗）。**不放全局状态栏**（2026-09-28 定）：这些都是按会话算的，状态栏只放全局信息（引擎就绪、网络、运行中 / 等你处理数量、今日用量合计、定时、手机）。
+- **口径（已定）**：
+  1. **缓存命中率** = `cacheRead / (input + cacheRead + cacheCreation)`，只算输入侧；**平均按 token 加权**（Σ读取 / Σ全部输入），不是各轮百分比的简单平均。第一轮冷启动为 0% 是正常的，照常计入。子代理的 token 暂不计入（`TurnUsageRecord.subagentTokens` 不分输入 / 缓存）。
+  2. **输出速度** = 输出 tokens / 实际生成时间。生成时间只算模型在吐字的时间：一轮里每次模型调用的「首个增量 → 最后一个增量」相加，**不含**工具执行、等待审批 / 回答、首字延迟；首字延迟单独记，放在悬停说明里。平均 = Σ输出 tokens / Σ生成时间。
+  3. 端点不返回缓存字段（部分 OpenAI 协议网关）时显示「—」并在悬停里说明，不显示 0%。
+- **数据来源**：缓存三项已在 `TurnUsageRecord`（`cacheReadTokens` / `cacheCreationTokens`，Claude 来自 SDK usage，OpenAI 协议桥需确认是否回译 `prompt_tokens_details.cached_tokens`；Codex / Pi 要各自核对 usage 字段）。速度需要新增：adapter 在每次模型调用的首个 / 最后一个 text·thinking 增量打时间戳，回合结束汇总成 `generationMs`、`firstTokenMs` 写进 `TurnUsageRecord`（跨进程时间戳沿用现有 turn-end 快照的对齐方式）。三端都要接。
+- **待拍板**：thinking 输出算不算进 tok/s（建议算，Claude 的 output_tokens 本就含 thinking）；设置里是否提供开关隐藏署名行的指标（默认显示）。
+- **工作量粗估**：2–3 天（契约与持久化 0.5 天、三端 adapter 计时 1–1.5 天、UI 三处与 i18n 0.5 天、桥 / Codex / Pi 缓存字段核对 0.5 天）。
+
+### TODO-024 模型配置收尾三件（2026-09-28 立项，均不影响当前使用）
+
+界面焕新 v3 落地时顺手改完了模型配置页（左列表 + 右表单三段、「加载模型」弹窗逐模型勾选接口与生图、密钥保留规则放宽、保存后不再关表单），剩下三件不着急的尾巴记在这里。
+
+**① 生图标记接入 MarioTool 内置工具 · 🟢 已完成（2026-09-28）**
+
+> 按下面的方案落地在 `BuiltinToolsPanel.tsx`：下拉 + 保留当前手打值（标「未标记生图」）+「手动输入模型 id」开关 + 无标记时的引导跳转；主进程 `resolveImageEndpoint()` 语义未改。以下为动工前的记录。
+
+现状（两套数据各说各话）：
+- 模型侧已经有标记：`SharedProviderModelSchema.imageGeneration?: boolean`（`packages/contracts/src/sharedProvider.ts`），「加载模型」弹窗每行有「生图」chip（默认关）、模型配置表单每行有星星开关。
+- 工具侧完全不知道它存在：`BuiltinToolsConfigSchema.image = { source, model, size }`（`packages/contracts/src/ipc.ts`）里 `source` 是共享提供商 id、**`model` 是一个 `z.string().max(256)` 自由文本**；设置 → MarioTool 的「图片模型」就是一个 `Input`（占位符 `gpt-image-1`，失焦/回车才保存，见 `BuiltinToolsPanel.tsx`）。用户得自己去服务商文档里抄模型 id，抄错了只能等模型调用时报错。
+- 主进程 `resolveImageEndpoint()`（`main/tools/builtinToolsConfig.ts`）只校验「source 非空且不是遗留的 `custom`」→ 提供商存在 → 协议（chat-completions 优先，其次 responses）→ `endpointUrl` → `model.trim()` 非空 → 有 Key，返回 `{baseUrl, apiKey, model, size, label}`；失败时给 `ImageToolIssue = noSource | providerMissing | noModel | noKey`，面板用 `ISSUE` 映射成文案。`mario_image_generate` 的注册条件是 `!imageToolDisabled && resolveImageEndpoint().ok`。
+
+要做的改动：
+1. **「图片模型」从输入框改成下拉**：候选 = `providers.find(p => p.id === source)?.models.filter(m => m.imageGeneration)`，显示 `label ?? id`（下面用等宽小字显示 id）。面板已经在 `useEffect` 里调了 `api.sharedProviders.list()` 拿到 `providers`，**不需要新 IPC**。
+2. **「图片来源」只列有生图模型的提供商**：`providers.filter(p => p.models.some(m => m.imageGeneration))`。全局一个都没有时，把现在的 `imageNoProviders` 警告换成「去 设置 → 模型配置 给生图模型勾上「生图」」，并给一个直接跳过去的入口（`setSettingsOpen(true, "custom-models")`）。
+3. **不能把老配置弄没**（关键）：现在用户的 `image.model` 是手打的，几乎不会正好等于某个标了生图的模型。所以
+   - 下拉要把**当前存的值**作为一个额外条目保留（标注「当前值 · 未标记生图」），不然一进页面选择就被清空；
+   - 保留一个「手动输入」小开关，切回自由文本，供标记没来得及打、或服务商模型 id 不在列表里的情况；
+   - **主进程语义不变**：`resolveImageEndpoint()` 仍然只要求 `model` 非空，**不因为「没标记生图」而拒绝**。标记只驱动界面候选，避免把现在能用的配置判成坏配置。面板可以在这种情况下显示一条灰色提示（不是 warning、不拦保存）。
+4. **顺带（可选）**：模型配置左侧提供商列表给「有生图模型」的提供商加一个小标记，和现有的引擎图标排在一起；「加载模型」弹窗里已勾生图的行也可以更醒目一点。
+
+要新增的 i18n 词条（zh/en 同步）：`settings.builtinTools.imageModelPick`（下拉标签/占位）、`imageModelManual`（手动输入开关）、`imageModelUnmarked`（当前值未标记生图的灰色提示）、`imageNoMarkedModels`（全局没有标记时的引导 + 跳转按钮文案）。
+
+边界情况：
+- 提供商被删/改名 → 已有 `providerMissing` 覆盖，不用新 issue。
+- 某个标了生图的模型，其提供商只开了 `anthropic` 协议 → `resolveImageEndpoint` 的 `protocol` 为 null、回落 `provider.baseUrl`，仍会去 POST `{baseUrl}/images/generations`。要不要在界面上提示「这个提供商没有 OpenAI 兼容协议，生图可能打不通」，做的时候一并想清楚。
+- 「加载模型」弹窗的生图默认是关的，所以**不会自动给任何模型打标记**，老提供商升级后列表会是空的——第 2、3 点的引导文案就是为这个准备的。
+- 切换「图片来源」时，如果新来源里没有当前 `model`，要顺手清空或自动选中它的第一个生图模型（别留下跨提供商的脏值）。
+
+验证：`pnpm test:builtin-tools-electron`（先 `pnpm build`；真 app 截 MarioTool 页 + 核对 IPC 与开关联动）要跟着更新——它现在断言的是输入框形态。`pnpm test:web-tools` 里的「旧配置迁移」用例补一条：`image.model` 是未标记的手打值时，`resolveImageEndpoint()` 仍然 ok。
+
+工作量粗估：0.5 天（面板 + i18n 0.3 天，两个测试脚本更新 0.2 天）。
+
+**② 密钥保留规则是否保留（待拍板）**
+- 现状（`sharedProviderOrigins` / `sharedProviderAddsOrigin`，contracts，主进程校验与面板提示共用）：留空密钥保存时，只有**出现新的 scheme + host + port**（换服务器、https→http 降级）才要求重填；只改路径（补 `/v1`、加尾斜杠）或移除某个地址都保留已存密钥。改之前是比对整串 URL 指纹，任何地址微调都逼用户重打长密钥。
+- 用户提的问题：这条是否还有必要——「密钥错了本来就用不了」。
+- 保留的理由：拦的不是打错字，是**把有效密钥发给新的收件人**。换成别人的中转站时如果沿用旧密钥，对方会收到一个能用的官方密钥，请求还会正常成功，损失发生在「发出去」那一刻。
+- 去掉的成本：很小——删掉 store 里那三行判断 + 面板的 `needsKeyForNewOrigin`（含内联警告与保存禁用）即可；中间做法是不拦、保存后给一条提示。
+- 回归脚本已在：`.turbo/v3-keytest.mjs`（隔离 profile 起真 app，8 步：create / 无改动 / 加模型 / 改路径 / 同源覆盖 / 换 host / http 降级 / 换 host+新密钥）。真要改，跑它确认行为。
+
+**③ 旧版专属配置的遗留数据**
+- 现状：旧版专属配置页（`CustomModelsPanel.tsx`）已删，设置 → 模型配置只剩公用提供商。但之前在那里存过的 Claude 自定义端点（`customModel` 表 + 加密 token）和 Pi Provider（`~/.pi/agent/models.json` + 加密 key）**数据都还在**：引用它们的旧会话照常能跑，输入框的模型下拉里也可能还列着它们，只是界面上没有入口再编辑或删除。
+- 要做（二选一）：给一个一次性入口（列出遗留配置 → 迁移成公用提供商 / 删除），或者确认就这么留着、只在文档里说明。
+- 风险点：Pi 的旧配置写在用户本机 `~/.pi/agent/models.json`（不属于隔离的公用配置），迁移要小心不要动到用户自己手写的条目。
+
 ## Git 版本记录
 
 | 版本 | 日期 | Commit | 主要更新 | 状态 |
@@ -307,7 +433,7 @@
 | 开发版 | 2026-09-16 | `d102f73` | Claude、Codex 和 Pi 共用模型提供商 | 已提交、已推送 |
 | 开发版 | 2026-09-15 | `2480799` | 支持本地 Agent 和独立 Pi Node host | 已提交、已推送 |
 | 开发版 | 2026-09-15 | `e69e6d7` | MarioCode 名称与应用图标 | 已提交、已推送 |
-| `v0.2.2` | 2026-09-15 | `130fd90` | 原 Mcode v0.2.2 基线 | 已发布 |
+| `v0.2.2` | 2026-09-15 | `130fd90` | 原 MarioCode v0.2.2 基线 | 已发布 |
 
 ## 更新方法
 

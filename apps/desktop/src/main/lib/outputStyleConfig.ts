@@ -11,8 +11,8 @@
  *    live probes; an unknown name is NOT fatal — the CLI falls back to the
  *    default style);
  *  - custom: the frontmatter `name` of a markdown file under
- *    ~/.mcode/output-styles/ (the user scope under the redirected
- *    CLAUDE_CONFIG_DIR — files in ~/.claude are invisible to Mcode sessions).
+ *    ~/.mariocode/output-styles/ (the user scope under the redirected
+ *    CLAUDE_CONFIG_DIR — files in ~/.claude are invisible to MarioCode sessions).
  *    Verified live: frontmatter names containing spaces match verbatim.
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -22,12 +22,12 @@ import {
   AGENT_OUTPUT_STYLE_SETTING_KEY,
   type OutputStyleEntry,
 } from "@contracts/ipc";
-import { MCODE_CONFIG_DIR } from "@main/providers/claude-sdk/customEnv.js";
+import { MARIOCODE_CONFIG_DIR } from "@main/providers/claude-sdk/customEnv.js";
 import { awaitDb } from "@main/store/db.js";
 import { SettingRepo } from "@main/store/repositories.js";
 
-/** User-scope output-style directory under Mcode's redirected config root. */
-const USER_STYLE_DIR = join(MCODE_CONFIG_DIR, "output-styles");
+/** User-scope output-style directory under MarioCode's redirected config root. */
+const USER_STYLE_DIR = join(MARIOCODE_CONFIG_DIR, "output-styles");
 
 /** Built-in styles shipped inside the claude binary. `minCliVersion` gates
  *  styles the bundled CLI predates (Concise landed in 2.1.237) so the panel
@@ -109,7 +109,7 @@ function parseStyleFrontmatter(md: string): { name?: string; description?: strin
   return out;
 }
 
-/** Scan ~/.mcode/output-styles/*.md. The frontmatter `name` is the value the
+/** Scan ~/.mariocode/output-styles/*.md. The frontmatter `name` is the value the
  *  CLI matches on; the filename (sans extension) is the fallback when the
  *  file has no frontmatter name. Unreadable files degrade to that same
  *  fallback instead of failing the whole list. */

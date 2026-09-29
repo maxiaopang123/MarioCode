@@ -1,162 +1,180 @@
-"""Export MarioCode app icons (PNG / ICO / ICNS) from the approved artwork.
+"""Generate every MarioCode icon from code (no source artwork needed).
 
-The source PNG preserves the approved rounded M, graphite and sage-mint design.
-Only resizing and format conversion are applied; transparency is preserved.
-The original procedural renderer remains available for reference.
+Two variants of the same geometric M (graphite strokes + sage-mint diagonal):
+  - dark  (A): graphite rounded tile, near-white M, mint gradient diagonal.
+               Used for the APP icon everywhere the OS draws it (taskbar,
+               installer, exe, dock, notifications) and the dark-theme logo.
+  - light (C): white→mist tile with a hairline border, graphite M, mint
+               diagonal. Used for the in-app logo under the light theme.
+
+The geometry matches build/icon-dark.svg / build/icon-light.svg (1024 space):
+tile x/y 32..992, rx 224; strokes 124 wide with round caps/joins;
+left stem (318,330)->(318,694), left diagonal (318,330)->(512,620),
+mint diagonal (512,620)->(706,330), right stem (706,330)->(706,694).
+Rendered at 4x and downscaled so edges are anti-aliased while everything
+outside the tile stays fully transparent.
+
+Outputs:
+  build/icon-source.png, build/icon-source-light.png   1024 masters
+  build/icon.png (1024), build/icon.ico, build/icon.icns   app icon (dark)
+  src/renderer/brand-logo.png        in-app logo, dark theme
+  src/renderer/brand-logo-light.png  in-app logo, light theme
+  src/renderer/favicon.png (64)      dark
 
 Run from the repo root:
     python apps/desktop/build/gen_icon.py
 """
 from __future__ import annotations
 
-import math
-import argparse
 import struct
-import zlib
+from io import BytesIO
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw
 
 OUT_DIR = Path(__file__).resolve().parent
-SIZE = 1024  # master size; everything else is derived
+RENDERER_DIR = OUT_DIR.parent / "src" / "renderer"
+SIZE = 1024
+SS = 4  # supersampling factor
+BIG = SIZE * SS
+
+TILE = (32, 32, 992, 992)
+RADIUS = 224
+STROKE = 124
+LEFT = [(318, 330), (318, 694)]
+LEFT_DIAG = [(318, 330), (512, 620)]
+MINT_DIAG = [(512, 620), (706, 330)]
+RIGHT = [(706, 330), (706, 694)]
+
+VARIANTS = {
+    "dark": {
+        "bg_top": (0x2B, 0x3F, 0x39),
+        "bg_bottom": (0x15, 0x20, 0x1D),
+        "ink": (0xF4, 0xF7, 0xF5),
+        # mint gradient along the diagonal: light at the top-right end,
+        # deeper at the bottom-left end
+        "mint_top": (0xB5, 0xEB, 0xCF),
+        "mint_bottom": (0x7F, 0xD1, 0xA8),
+        "shine": True,
+        "border": None,
+    },
+    "light": {
+        "bg_top": (0xFF, 0xFF, 0xFF),
+        "bg_bottom": (0xEA, 0xF1, 0xED),
+        "ink": (0x22, 0x33, 0x2E),
+        "mint_top": (0x6F, 0xBF, 0x97),
+        "mint_bottom": (0x6F, 0xBF, 0x97),
+        "shine": False,
+        "border": ((0xD5, 0xE0, 0xDA), 6),
+    },
+}
 
 
-def _rounded_gradient(size: int, radius: float, top, bottom) -> Image.Image:
-    """A size×size RGBA image with a vertical gradient clipped to a rounded rect.
+def _s(v: float) -> int:
+    return int(round(v * SS))
 
-    To get truly transparent corners (alpha exactly 0), we render at 4x scale
-    with a hard rounded-rect mask, then downscale with LANCZOS. The
-    supersampling makes the rounded-rect edge anti-aliased while keeping the
-    corners fully transparent (rather than the 4x-mask's bleed-through of ~45).
-    """
-    ss = 4
-    big = size * ss
-    grad = Image.new("RGB", (big, big), 0)
-    px = grad.load()
-    for y in range(big):
-        t = y / (big - 1)
-        r = int(top[0] * (1 - t) + bottom[0] * t)
-        g = int(top[1] * (1 - t) + bottom[1] * t)
-        b = int(top[2] * (1 - t) + bottom[2] * t)
-        for x in range(big):
-            px[x, y] = (r, g, b)
 
-    mask = Image.new("L", (big, big), 0)
+def _vertical_gradient(top, bottom, y0: float, y1: float) -> Image.Image:
+    """BIG×BIG RGB image: `top` above y0, `bottom` below y1, linear between."""
+    strip = Image.new("RGB", (1, BIG))
+    px = strip.load()
+    a, b = _s(y0), _s(y1)
+    for y in range(BIG):
+        t = 0.0 if y <= a else 1.0 if y >= b else (y - a) / max(1, b - a)
+        px[0, y] = tuple(int(top[i] * (1 - t) + bottom[i] * t) for i in range(3))
+    return strip.resize((BIG, BIG), Image.NEAREST)
+
+
+def _tile_mask() -> Image.Image:
+    mask = Image.new("L", (BIG, BIG), 0)
     ImageDraw.Draw(mask).rounded_rectangle(
-        [0, 0, big - 1, big - 1], radius=radius * ss, fill=255
+        [_s(TILE[0]), _s(TILE[1]), _s(TILE[2]) - 1, _s(TILE[3]) - 1],
+        radius=_s(RADIUS), fill=255,
     )
-    big_rgba = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    big_rgba.paste(grad, (0, 0), mask)
-    # Downscale: this is where the AA edge is produced, from clean 0/255 alphas.
-    return big_rgba.resize((size, size), Image.LANCZOS)
+    return mask
 
 
-def _font(name: str, size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(name, size)
+def _stroke_mask(*polylines) -> Image.Image:
+    """Round-capped, round-joined thick polylines as an L mask."""
+    mask = Image.new("L", (BIG, BIG), 0)
+    d = ImageDraw.Draw(mask)
+    w = _s(STROKE)
+    r = w / 2
+    for line in polylines:
+        pts = [(_s(x), _s(y)) for x, y in line]
+        d.line(pts, fill=255, width=w)
+        for x, y in pts:
+            d.ellipse([x - r, y - r, x + r, y + r], fill=255)
+    return mask
 
 
-def render_master() -> Image.Image:
-    s = SIZE
-    radius = s * 0.22  # macOS-style squircle-ish rounding
+def render(variant: str) -> Image.Image:
+    v = VARIANTS[variant]
+    img = Image.new("RGBA", (BIG, BIG), (0, 0, 0, 0))
+    tile = _tile_mask()
 
-    # Background gradient: indigo #4F46E5 -> deep #0B1021.
-    img = _rounded_gradient(
-        s, radius, top=(79, 70, 229), bottom=(11, 16, 33)
-    )
+    # Tile background.
+    img.paste(_vertical_gradient(v["bg_top"], v["bg_bottom"], TILE[1], TILE[3]), (0, 0), tile)
 
-    # Soft inner glow / vignette to add depth. Only the ellipse should light up
-    # the center; the corners must stay fully transparent. Build the glow as an
-    # RGBA image whose alpha is the blurred ellipse, so empty (corner) areas
-    # keep alpha 0 (not ~45 from a global brightness scale).
-    glow = Image.new("L", (s, s), 0)
-    ImageDraw.Draw(glow).ellipse(
-        [int(s * 0.18), int(s * 0.10), int(s * 0.82), int(s * 0.72)],
-        fill=255, outline=0,
-    )
-    glow = glow.filter(ImageFilter.GaussianBlur(s * 0.10))
-    # Tint the glow bluish, then use the blurred ellipse as the alpha channel.
-    glow_color = Image.new("RGB", (s, s), (120, 110, 255))
-    glow_rgba = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    glow_rgba.paste(glow_color, (0, 0), glow)
-    # Dim the glow's contribution to ~18% so it reads as a subtle sheen.
-    r, g, b, a = glow_rgba.split()
-    dimmed = Image.merge(
-        "RGBA",
-        (r.point(lambda v: int(v * 0.18)),
-         g.point(lambda v: int(v * 0.18)),
-         b.point(lambda v: int(v * 0.18)),
-         a),
-    )
-    img.alpha_composite(dimmed)
+    # Subtle top sheen (dark variant): white 10% → 0 over the top half.
+    if v["shine"]:
+        sheen_alpha = Image.new("L", (1, BIG))
+        px = sheen_alpha.load()
+        top, mid = _s(TILE[1]), _s(TILE[1] + (TILE[3] - TILE[1]) / 2)
+        for y in range(BIG):
+            t = 0.0 if y <= top else 1.0 if y >= mid else (y - top) / (mid - top)
+            px[0, y] = int(255 * 0.10 * (1 - t))
+        sheen_alpha = sheen_alpha.resize((BIG, BIG), Image.NEAREST)
+        sheen_alpha = Image.composite(sheen_alpha, Image.new("L", (BIG, BIG), 0), tile)
+        sheen = Image.new("RGBA", (BIG, BIG), (255, 255, 255, 0))
+        sheen.putalpha(sheen_alpha)
+        img.alpha_composite(sheen)
 
-    # The 'M'.
-    font = _font(r"C:\Windows\Fonts\impact.ttf", int(s * 0.72))
-    m_img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    d = ImageDraw.Draw(m_img)
-    # Measure the glyph to center it (biased slightly left/up).
-    bbox = d.textbbox((0, 0), "M", font=font)
-    w = bbox[2] - bbox[0]
-    h = bbox[3] - bbox[1]
-    tx = (s - w) / 2 - bbox[0] - int(s * 0.02)
-    ty = (s - h) / 2 - bbox[1] - int(s * 0.06)
-    # Subtle drop shadow behind the M.
-    shadow = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).text((tx, ty), "M", font=font, fill=(0, 0, 0, 120))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(s * 0.012))
-    img.alpha_composite(shadow)
-    # The M itself, pure white.
-    d.text((tx, ty), "M", font=font, fill=(255, 255, 255, 255))
-    img.alpha_composite(m_img)
+    # Hairline border (light variant).
+    if v["border"]:
+        color, width = v["border"]
+        ImageDraw.Draw(img).rounded_rectangle(
+            [_s(TILE[0]), _s(TILE[1]), _s(TILE[2]) - 1, _s(TILE[3]) - 1],
+            radius=_s(RADIUS), outline=color + (255,), width=_s(width),
+        )
 
-    # Code-chevron accent in the lower-right: a small ">" bracket in accent cyan.
-    acc = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    ad = ImageDraw.Draw(acc)
-    cx, cy = int(s * 0.70), int(s * 0.74)
-    arm = int(s * 0.085)
-    thick = max(8, int(s * 0.028))
-    ad.line(
-        [(cx - arm, cy - arm), (cx, cy), (cx - arm, cy + arm)],
-        fill=(125, 211, 252, 255), width=thick, joint="curve",
-    )
-    img.alpha_composite(acc)
+    ink = Image.new("RGBA", (BIG, BIG), v["ink"] + (255,))
+    # 1) left stem + left diagonal
+    img.paste(ink, (0, 0), _stroke_mask(LEFT, LEFT_DIAG))
+    # 2) mint diagonal (gradient from its top end to its bottom end)
+    mint = _vertical_gradient(v["mint_top"], v["mint_bottom"], 330 - STROKE / 2, 620 + STROKE / 2)
+    img.paste(mint, (0, 0), _stroke_mask(MINT_DIAG))
+    # 3) right stem on top, so it cleanly overlaps the mint stroke's end
+    img.paste(ink, (0, 0), _stroke_mask(RIGHT))
 
-    return img
+    # Keep everything outside the tile fully transparent.
+    alpha = Image.composite(img.getchannel("A"), Image.new("L", (BIG, BIG), 0), tile)
+    img.putalpha(alpha)
+    return img.resize((SIZE, SIZE), Image.LANCZOS)
 
 
-# ── PNG ──────────────────────────────────────────────────────────────────────
+# ── writers ──────────────────────────────────────────────────────────────────
 def write_png(img: Image.Image, path: Path, size: int) -> None:
     img.resize((size, size), Image.LANCZOS).save(path, "PNG", optimize=True)
 
 
-# ── ICO (Windows, multi-size) ────────────────────────────────────────────────
-# Encode the ICO container by hand: PIL's ICO writer occasionally collapses
-# multi-size RGBA inputs to a single 16×16 entry. Writing the directory +
-# PNG-encoded entries ourselves guarantees every size is present.
 def _png_bytes(img: Image.Image) -> bytes:
-    from io import BytesIO
     b = BytesIO()
     img.save(b, format="PNG", optimize=True)
     return b.getvalue()
 
 
 def write_ico(img: Image.Image, path: Path) -> None:
+    """Hand-written multi-size ICO (PIL's writer can collapse sizes)."""
     sizes = [16, 24, 32, 48, 64, 128, 256]
-    frames = [img.resize((s, s), Image.LANCZOS) for s in sizes]
-    blobs = [_png_bytes(f) for f in frames]
-
-    n = len(sizes)
-    # ICONDIR (6 bytes) + ICONDIRENTRY (16 bytes each) + image data.
-    header = struct.pack("<HHH", 0, 1, n)  # reserved, type=1 (icon), count
-    offset = 6 + 16 * n
+    blobs = [_png_bytes(img.resize((s, s), Image.LANCZOS)) for s in sizes]
+    header = struct.pack("<HHH", 0, 1, len(sizes))
+    offset = 6 + 16 * len(sizes)
     entries = bytearray()
-    for (s, blob) in zip(sizes, blobs):
-        # entry: w(1) h(1) colors(1) reserved(1) planes(2) bpp(2) size(4) offset(4)
+    for s, blob in zip(sizes, blobs):
         w = 0 if s >= 256 else s
-        entries += struct.pack(
-            "<BBBBHHII", w, w, 0, 0, 1, 32, len(blob), offset
-        )
+        entries += struct.pack("<BBBBHHII", w, w, 0, 0, 1, 32, len(blob), offset)
         offset += len(blob)
-
     with open(path, "wb") as f:
         f.write(header)
         f.write(entries)
@@ -164,29 +182,22 @@ def write_ico(img: Image.Image, path: Path) -> None:
             f.write(blob)
 
 
-# ── ICNS (macOS) ─────────────────────────────────────────────────────────────
-# Minimal pack-as-ic09 (512x512@1x 1024) + ic08 (256x256@1x 512) + ic07 (128).
-# PIL can write ICNS directly; we rely on that for correctness.
 def write_icns(img: Image.Image, path: Path) -> None:
-    # PIL's ICNS writer wants a square source and picks sizes itself.
     img.save(path, format="ICNS")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=OUT_DIR / "icon-source.png")
-    args = parser.parse_args()
-    with Image.open(args.source) as source:
-        master = source.convert("RGBA")
-    if master.width != master.height:
-        raise ValueError("App icon source must be square")
-    write_png(master, OUT_DIR / "icon.png", 1024)
-    write_ico(master, OUT_DIR / "icon.ico")
-    write_icns(master, OUT_DIR / "icon.icns")
-    renderer_dir = OUT_DIR.parent / "src" / "renderer"
-    write_png(master, renderer_dir / "brand-logo.png", 1024)
-    write_png(master, renderer_dir / "favicon.png", 64)
-    print("Exported app icons, renderer brand logo and favicon from", args.source)
+    dark = render("dark")
+    light = render("light")
+    dark.save(OUT_DIR / "icon-source.png", "PNG", optimize=True)
+    light.save(OUT_DIR / "icon-source-light.png", "PNG", optimize=True)
+    write_png(dark, OUT_DIR / "icon.png", 1024)
+    write_ico(dark, OUT_DIR / "icon.ico")
+    write_icns(dark, OUT_DIR / "icon.icns")
+    write_png(dark, RENDERER_DIR / "brand-logo.png", 512)
+    write_png(light, RENDERER_DIR / "brand-logo-light.png", 512)
+    write_png(dark, RENDERER_DIR / "favicon.png", 64)
+    print("OK: app icon (dark), in-app logos (dark + light), favicon")
 
 
 if __name__ == "__main__":

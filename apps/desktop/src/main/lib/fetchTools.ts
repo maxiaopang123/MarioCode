@@ -81,7 +81,7 @@ const PROXY_REFUSED_RE = /Failed to connect to (?:127\.0\.0\.1|localhost|\[?::1\
 
 /** Shallow-clone a git repo into `dest` (which must not exist).
  *
- *  Proxy fallback: Mcode spawns git with the inherited environment, so a
+ *  Proxy fallback: MarioCode spawns git with the inherited environment, so a
  *  machine whose git config / shell env points at a currently-dead local
  *  proxy (Clash/v2ray off — "Failed to connect to 127.0.0.1 port 7897") fails
  *  on the very first hop. When — and only when — the failure is a proxy

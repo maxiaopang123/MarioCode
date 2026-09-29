@@ -22,7 +22,7 @@ import { useI18n, type MessageId } from "@renderer/lib/i18n/index.js";
 import { Button } from "@renderer/components/ui/index.js";
 import { PanelHeader } from "./PanelHeader.js";
 import { SettingsSection } from "./SettingsSection.js";
-import type { RuntimeAgentId, RuntimeAgentState, RuntimeCandidate } from "@contracts/ipc";
+import type { RuntimeAgentId, RuntimeAgentState, RuntimeCandidate, RuntimeMode } from "@contracts/ipc";
 import { getProviderIcon } from "@renderer/lib/providerIcon.js";
 import {
   IconCheck,
@@ -46,6 +46,41 @@ const AGENT_META: Record<RuntimeAgentId, { label: string }> = {
   codex: { label: "Codex" },
   pi: { label: "Pi" },
 };
+
+/** Shell commands that update a user-owned local install (not translated). */
+const UPDATE_COMMANDS: Record<RuntimeAgentId, string> = {
+  claude: "npm install -g @anthropic-ai/claude-code@latest",
+  codex: "npm install -g @openai/codex@latest",
+  pi: "npm install -g @earendil-works/pi-coding-agent@latest",
+};
+
+/** Amber reminder: the best local install was skipped for being too old. */
+function TooOldNotice({ state, name }: { state: RuntimeAgentState; name: string }) {
+  const { t } = useI18n();
+  const info = state.localTooOld;
+  if (!info) return null;
+  return (
+    <div className="ml-7 mt-1 flex items-start gap-1.5 rounded bg-warning/10 px-2 py-1.5 text-xs text-warning">
+      <IconAlertTriangle size={12} className="mt-px shrink-0" />
+      <div className="min-w-0 space-y-0.5">
+        <p className="break-words" title={info.path}>
+          {t("settings.runtimes.tooOldNotice", {
+            name,
+            version: info.version ?? t("settings.runtimes.versionUnknown"),
+            min: info.minVersion,
+          })}
+        </p>
+        <p className="break-all text-content-muted">
+          {t("settings.runtimes.updateCommandLabel")}{" "}
+          <code className="font-mono select-all">{UPDATE_COMMANDS[state.agent]}</code>
+          {state.agent === "claude" && (
+            <span className="ml-2 text-content-subtle">({t("settings.runtimes.claudeUpdateAlt")})</span>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function formatBytes(n: number): string {
   if (n <= 0) return "—";
@@ -154,8 +189,8 @@ function RuntimeRow({
     }
   };
 
-  /** Escape hatch for when the registry path fails: @mcode/runtime-pi not
-   *  published yet / stale mirror / offline. Pick the agent's LOCAL path —
+  /** Escape hatch for when the online install fails: npm/mirror unreachable
+   *  / stale mirror / offline. Pick the agent's LOCAL path —
    *  an install directory (claude: dir with claude.exe; codex: dir with
    *  vendor/; pi: dir with node_modules/, i.e. what `pnpm pack:pi-runtime`
    *  stages) or a .tgz. */
@@ -204,7 +239,10 @@ function RuntimeRow({
   // Truthy guards everywhere — a stale main process (older list shape) must
   // degrade to "no version shown", never render "vundefined".
   const details: string[] = [];
-  if (state.source === "external") {
+  if (state.source === "local") {
+    details.push(state.activeVersion ? `v${state.activeVersion}` : t("settings.runtimes.versionUnknown"));
+    details.push(t("settings.runtimes.detailLocal"));
+  } else if (state.source === "external") {
     details.push(state.activeVersion ? `v${state.activeVersion}` : t("settings.runtimes.versionUnknown"));
     details.push(t("settings.runtimes.externalOwnership"));
   } else if (state.installedVersion) {
@@ -305,6 +343,7 @@ function RuntimeRow({
           {runtimeDiagnostic(state.diagnostic, t)}
         </p>
       )}
+      <TooOldNotice state={state} name={meta.label} />
 
       {/* Expanded details: source / versions / disk / load path */}
       {expanded && (
@@ -393,7 +432,7 @@ function RuntimeSourceControls({ state, disabled, onReload }: {
     setNodePath(state.configuredNodePath ?? "");
   }, [state.configuredPath, state.configuredNodePath]);
   const unavailable = disabled || pending;
-  const select = async (mode: "managed" | "external") => {
+  const select = async (mode: RuntimeMode) => {
     if (mode === "external" && !path.trim()) {
       setError(t("settings.runtimes.pathRequired"));
       return;
@@ -426,9 +465,14 @@ function RuntimeSourceControls({ state, disabled, onReload }: {
   return (
     <div className="ml-7 mt-2 space-y-2 pb-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant={state.selectedMode !== "external" ? "outline" : "ghost"} size="sm"
+        <Button variant={state.selectedMode === "auto" ? "outline" : "ghost"} size="sm"
+          disabled={unavailable} onClick={() => void select("auto")}>
+          {state.selectedMode === "auto" && <IconCheck size={12} />}
+          {t("settings.runtimes.modeAuto")}
+        </Button>
+        <Button variant={state.selectedMode === "managed" ? "outline" : "ghost"} size="sm"
           disabled={unavailable} onClick={() => void select("managed")}>
-          {state.selectedMode !== "external" && <IconCheck size={12} />}
+          {state.selectedMode === "managed" && <IconCheck size={12} />}
           {t("settings.runtimes.modeManaged")}
         </Button>
         <Button variant={editing ? "outline" : "ghost"} size="sm" disabled={unavailable}
@@ -437,6 +481,9 @@ function RuntimeSourceControls({ state, disabled, onReload }: {
           {t("settings.runtimes.modeExternal")}
         </Button>
       </div>
+      {state.selectedMode === "auto" && !editing && (
+        <p className="text-xs text-content-subtle">{t("settings.runtimes.modeAutoHint")}</p>
+      )}
       {editing && (
         <div className="space-y-2 rounded-lg border border-edge bg-surface-muted/30 p-3">
           <p className="text-xs text-content-subtle">{t("settings.runtimes.externalHint")}</p>
@@ -444,16 +491,34 @@ function RuntimeSourceControls({ state, disabled, onReload }: {
             {pending ? <IconLoader2 size={12} className="animate-spin" /> : <IconRefresh size={12} />}
             {t("settings.runtimes.discover")}
           </Button>
-          {candidates.map((candidate) => (
-            <button key={candidate.path} type="button" disabled={unavailable}
-              onClick={() => setPath(candidate.path)}
-              className={cn("block w-full rounded border px-2 py-1.5 text-left text-xs hover:bg-surface-hover disabled:opacity-50",
-                path === candidate.path ? "border-accent" : "border-edge")}>
-              <span className="block break-all font-mono">{candidate.path}</span>
-              <span className="text-content-subtle">{candidate.version ? `v${candidate.version}` : t("settings.runtimes.versionUnknown")}</span>
-              {candidate.diagnostic && <span className="ml-2 text-content-subtle">{runtimeDiagnostic(candidate.diagnostic, t)}</span>}
-            </button>
-          ))}
+          {candidates.map((candidate) => {
+            // Too-old installs are listed (so the user sees why) but can't be picked.
+            const tooOld = candidate.tooOld === true;
+            return (
+              <button key={candidate.path} type="button" disabled={unavailable || tooOld}
+                aria-disabled={unavailable || tooOld}
+                onClick={() => { if (!tooOld) setPath(candidate.path); }}
+                className={cn("block w-full rounded border px-2 py-1.5 text-left text-xs disabled:opacity-50",
+                  tooOld ? "cursor-not-allowed" : "hover:bg-surface-hover",
+                  path === candidate.path ? "border-accent" : "border-edge")}>
+                <span className="block break-all font-mono">{candidate.path}</span>
+                <span className="text-content-subtle">{candidate.version ? `v${candidate.version}` : t("settings.runtimes.versionUnknown")}</span>
+                {tooOld && (
+                  <span className="ml-2 rounded bg-warning/15 px-1.5 py-px text-[0.92em] font-medium text-warning">
+                    {t("settings.runtimes.tooOldBadge")}
+                  </span>
+                )}
+                {tooOld ? (
+                  <span className="ml-2 text-warning">
+                    {t("settings.runtimes.tooOldCandidate", {
+                      version: candidate.version ?? t("settings.runtimes.versionUnknown"),
+                      min: candidate.minVersion ?? "",
+                    })}
+                  </span>
+                ) : candidate.diagnostic && <span className="ml-2 text-content-subtle">{runtimeDiagnostic(candidate.diagnostic, t)}</span>}
+              </button>
+            );
+          })}
           <label className="block text-xs text-content-muted">
             {t(state.agent === "pi" ? "settings.runtimes.piPathLabel" : "settings.runtimes.binaryPathLabel")}
             <input value={path} onChange={(event) => setPath(event.target.value)} disabled={unavailable}
@@ -499,6 +564,8 @@ function sourceLabel(state: RuntimeAgentState, t: (key: MessageId) => string): s
       return t("settings.runtimes.source.bundled");
     case "external":
       return t("settings.runtimes.source.external");
+    case "local":
+      return t("settings.runtimes.source.local");
     default:
       return t("settings.runtimes.statusNotInstalled");
   }
@@ -548,6 +615,14 @@ function StatusBadge({ state }: { state: RuntimeAgentState }) {
       <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-[0.72em] text-accent">
         <IconCheck size={9} />
         {t("settings.runtimes.statusInstalled")}
+      </span>
+    );
+  }
+  if (state.source === "local") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-[0.72em] text-accent">
+        <IconCheck size={9} />
+        {t("settings.runtimes.statusLocal")}
       </span>
     );
   }

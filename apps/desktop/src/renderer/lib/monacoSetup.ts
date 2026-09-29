@@ -69,9 +69,9 @@ self.MonacoEnvironment = {
 loader.config({ monaco });
 
 /**
- * Editor color schemes ("mcode-dark", "mcode-one-dark", …) — defined in
+ * Editor color schemes ("mariocode-dark", "mariocode-one-dark", …) — defined in
  * lib/editorThemes.ts as pickable presets and registered here at module load
- * (side effect), before any Editor mounts. The two "Mcode" schemes inherit
+ * (side effect), before any Editor mounts. The two "MarioCode" schemes inherit
  * the stock vs-dark / vs token colors and only re-paint the chrome
  * (background, gutters, line numbers, selection, widgets, scrollbars, diff
  * gutters) so the editor melts into the surrounding panes; the rest carry

@@ -6,7 +6,7 @@
  * ## Route decision (vs the official @openai/codex-sdk)
  * The published TS SDK wraps `codex exec --experimental-json`: one process
  * per turn, NO approval callbacks, NO interrupt API, NO diff/usage events.
- * Mcode's core interactions (tool approval, plan approval, per-turn file
+ * MarioCode's core interactions (tool approval, plan approval, per-turn file
  * card + rewind) need the app-server protocol — the same one the VS Code
  * extension speaks. We spawn the vendored binary directly; the only thing
  * we take from the npm package is the platform binary itself.
@@ -29,16 +29,17 @@
  *     `dynamicTools` (functions the server calls back over JSON-RPC).
  *   - Model/auth: third-party Responses-API endpoints from
  *     CodexModelsStore — config.toml [model_providers] materialized into the
- *     isolated CODEX_HOME (~/.mcode/codex); keys ride the process env
- *     (MCODE_CODEX_KEY_<ID>), never disk. Model ids look like
+ *     isolated CODEX_HOME (~/.mariocode/codex); keys ride the process env
+ *     (MARIOCODE_CODEX_KEY_<ID>), never disk. Model ids look like
  *     "providerId/modelId" (same shape as Pi).
  *   - Process model: one app-server per TURN (like Claude's one CLI per
  *     turn), thread identity persisted via ctx.onProviderSessionId and
  *     restored with thread/resume on subsequent turns.
  */
 import { randomUUID } from "node:crypto";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { MARIOCODE_HOME } from "@main/lib/appHome.js";
 import { promises as fs, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import type {
@@ -107,7 +108,7 @@ import { isUnattendedSession } from "@main/tools/unattended.js";
 
 /** Codex's own permission presets — the official Permission Profiles surface
  *  (labels and semantics lifted verbatim from the codex binary's profile
- *  definitions; NOT Mcode-invented combinations):
+ *  definitions; NOT MarioCode-invented combinations):
  *    :read-only          "Read Only"    — read workspace files; approval
  *                                        required to edit or access internet
  *    :workspace          "Default"      — read+edit workspace files, run
@@ -194,7 +195,7 @@ function codexModeToPolicy(mode: CodexPermissionMode): {
 
 /* ── static baseline for the model picker ── */
 // No builtinModels: codex's own catalog entries (gpt-5.x via ChatGPT auth)
-// are unreachable inside Mcode's isolated CODEX_HOME (no auth.json is ever
+// are unreachable inside MarioCode's isolated CODEX_HOME (no auth.json is ever
 // written there), and the picker drives off the user-configured
 // `codexAvailableModels` projection instead. Dynamic model/list discovery is
 // a possible future enhancement, not wired today.
@@ -421,7 +422,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
           modelProvider: providerId,
           ...(userSystemPrompt ? { developerInstructions: userSystemPrompt } : {}),
           // Experimental (requires initialize capabilities.experimentalApi):
-          // register Mcode's host-side tools (ask/plan/browser).
+          // register MarioCode's host-side tools (ask/plan/browser).
           dynamicTools: buildDynamicTools(browserToolsEnabled, builtinFlags),
         };
         let threadId: string | null = null;
@@ -459,7 +460,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
         adapter.setMainThreadId(threadId);
         ctx.onProviderSessionId?.(threadId);
 
-        // Register Mcode's skill roots so the model can invoke user/project
+        // Register MarioCode's skill roots so the model can invoke user/project
         // skills ($name). Best-effort: failure only means no skills.
         try {
           await client.request("skills/extraRoots/set", {
@@ -632,11 +633,11 @@ async function buildCodexEnv(ctx: ProviderContext): Promise<Record<string, strin
   return withEngineNetworkEnv(env);
 }
 
-/** Mcode skill roots made visible to codex: the global manager root plus
+/** MarioCode skill roots made visible to codex: the global manager root plus
  *  the project's .claude/skills (same pair the Claude provider exposes via
  *  Options.skills discovery). Only existing dirs are sent. */
 function skillRootsFor(cwd: string): string[] {
-  const roots = [path.join(homedir(), ".mcode", "skills"), path.join(cwd, ".claude", "skills"), ...skillSyncMirrorRootsSync()];
+  const roots = [path.join(MARIOCODE_HOME, "skills"), path.join(cwd, ".claude", "skills"), ...skillSyncMirrorRootsSync()];
   return roots.filter((r) => {
     try {
       return statSync(r).isDirectory();
@@ -1518,7 +1519,7 @@ function optDevice(v: unknown): "desktop" | "iphone" | "android" | undefined {
  *  paths for local images, not inline base64). */
 async function writeTempImage(base64: string, mimeType: string): Promise<string> {
   const ext = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : mimeType.includes("gif") ? "gif" : "png";
-  const file = path.join(tmpdir(), `mcode-codex-${randomUUID()}.${ext}`);
+  const file = path.join(tmpdir(), `mariocode-codex-${randomUUID()}.${ext}`);
   await fs.writeFile(file, Buffer.from(base64, "base64"));
   return file;
 }

@@ -45,7 +45,7 @@ const APP_NAME = "MarioCode";
 const REPO_URL = "https://github.com/maxiaopang123/MarioCode";
 /** GitHub Releases latest URL — where the user lands to manually download on
  *  macOS when Squirrel.Mac can't auto-install (ad-hoc signature). */
-const RELEASES_URL = "https://github.com/huangbh2020/mcode/releases/latest";
+const RELEASES_URL = "https://github.com/maxiaopang123/MarioCode/releases/latest";
 /** SPDX license identifier. */
 const LICENSE = "MIT";
 

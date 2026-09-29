@@ -3,20 +3,20 @@
  * ids live in main/tools/builtinToolSpecs.ts and main/browser/agentBrowserTools.ts
  * (the renderer can't import main); this mirrors the ids + `label`s there.
  * Codex / Pi report the bare id, Claude the MCP-qualified one
- * (`mcp__mcode-web__…` / `mcp__mcode-image__…` / `mcp__mcode-browser__…`).
+ * (`mcp__mariocode-web__…` / `mcp__mariocode-image__…` / `mcp__mariocode-browser__…`).
  * The names are product names, so they aren't localized.
  */
 
 /** Claude MCP server name per built-in tool id. */
 const MARIO_TOOLS: { id: string; server: string; label: string }[] = [
-  { id: "mario_web_search", server: "mcode-web", label: "Mario Web 搜索器" },
-  { id: "mario_web_fetch", server: "mcode-web", label: "Mario Web 阅读器" },
-  { id: "mario_image_generate", server: "mcode-image", label: "Mario 图片生成器" },
-  { id: "mario_schedule_list", server: "mcode-schedule", label: "Mario 定时器 · 查看" },
-  { id: "mario_schedule_create", server: "mcode-schedule", label: "Mario 定时器 · 创建" },
-  { id: "mario_schedule_update", server: "mcode-schedule", label: "Mario 定时器 · 修改" },
-  { id: "mario_schedule_delete", server: "mcode-schedule", label: "Mario 定时器 · 删除" },
-  { id: "mario_wechat_notify", server: "mcode-wechat", label: "Mario 微信通知" },
+  { id: "mario_web_search", server: "mariocode-web", label: "Mario Web 搜索器" },
+  { id: "mario_web_fetch", server: "mariocode-web", label: "Mario Web 阅读器" },
+  { id: "mario_image_generate", server: "mariocode-image", label: "Mario 图片生成器" },
+  { id: "mario_schedule_list", server: "mariocode-schedule", label: "Mario 定时器 · 查看" },
+  { id: "mario_schedule_create", server: "mariocode-schedule", label: "Mario 定时器 · 创建" },
+  { id: "mario_schedule_update", server: "mariocode-schedule", label: "Mario 定时器 · 修改" },
+  { id: "mario_schedule_delete", server: "mariocode-schedule", label: "Mario 定时器 · 删除" },
+  { id: "mario_wechat_notify", server: "mariocode-wechat", label: "Mario 微信通知" },
 ];
 
 /** Agent browser tools (BROWSER_TOOL_SPECS) → action name, shown as
@@ -49,7 +49,7 @@ const BUILTIN_TOOL_LABELS: Record<string, string> = (() => {
     map[`mcp__${server}__${id}`] = label;
   };
   for (const tool of MARIO_TOOLS) add(tool.id, tool.server, tool.label);
-  for (const [id, action] of Object.entries(BROWSER_ACTIONS)) add(id, "mcode-browser", `Mario 浏览器 · ${action}`);
+  for (const [id, action] of Object.entries(BROWSER_ACTIONS)) add(id, "mariocode-browser", `Mario 浏览器 · ${action}`);
   return map;
 })();
 

@@ -11,7 +11,7 @@
  *    Detached because git forbids the same branch in two worktrees, and a
  *    branch name is a user-level decision this flow deliberately defers.
  *
- *  - "branch" — checked out on a GENERATED `mcode/<dirname>` ref (directory
+ *  - "branch" — checked out on a GENERATED `mariocode/<dirname>` ref (directory
  *    and branch share the name) for real feature work: commits inside are
  *    named and durable, visible in `git log --all`, and recoverable after a
  *    forced removal via the retained branch (remove only ever uses
@@ -92,11 +92,11 @@ export function worktreeDirFor(repoPath: string, sessionId: string): string {
   return join(managedWorktreeRoot(), repoName, sessionId.slice(-12));
 }
 
-/** Prefix for generated worktree branches (`mcode/<dirname>`). Doubles as the
+/** Prefix for generated worktree branches (`mariocode/<dirname>`). Doubles as the
  *  ownership marker for remove-time branch cleanup: only refs under this
  *  prefix are ever auto-deleted, and only with `git branch -d` (merged-only,
  *  by git's own design). */
-export const MCODE_BRANCH_PREFIX = "mcode";
+export const MARIOCODE_BRANCH_PREFIX = "mariocode";
 
 /** Extra refname hardening beyond nextWorktreeDir's filesystem sanitize: git
  *  refnames additionally forbid trailing dots, dot-dot sequences and a leading
@@ -121,7 +121,7 @@ function sanitizeBranchName(name: string): string {
  *  loss of that property costs nothing.
  *
  *  With `branchStyle: true` the SAME probe loop must also find a free
- *  `mcode/<dirname>` BRANCH (directory and branch share the name). Directory
+ *  `mariocode/<dirname>` BRANCH (directory and branch share the name). Directory
  *  and branch lifetimes diverge: a forced removal of an unmerged tree KEEPS
  *  its branch (git branch -d refuses), so a later directory number can be
  *  free while its branch name is still taken — `worktree add -b` would then
@@ -160,9 +160,9 @@ export async function nextWorktreeDir(
       .catch(() => false);
     if (taken) continue;
     if (opts.branchStyle && git) {
-      // Free directory AND a free mcode/<dirname> ref (rev-parse rejects a
+      // Free directory AND a free mariocode/<dirname> ref (rev-parse rejects a
       // missing ref, so resolve == exists here).
-      const ref = `${MCODE_BRANCH_PREFIX}/${sanitizeBranchName(`${safe}-${n}`)}`;
+      const ref = `${MARIOCODE_BRANCH_PREFIX}/${sanitizeBranchName(`${safe}-${n}`)}`;
       const refTaken = await git
         .revparse(["--verify", "--end-of-options", `refs/heads/${ref}`])
         .then(() => true)
@@ -233,7 +233,7 @@ export async function createDetachedWorktree(
   }
 }
 
-/** Create a worktree checked out on a GENERATED branch `mcode/<dirname>`
+/** Create a worktree checked out on a GENERATED branch `mariocode/<dirname>`
  *  (directory and branch share the name — nextWorktreeDir's branchStyle
  *  probe already guaranteed the ref is free, closing the "directory free /
  *  branch leftover from a forced removal" dead end). Same contract as
@@ -249,7 +249,7 @@ export async function createBranchedWorktree(
   try {
     const git = (await loadSimpleGit())(repoPath);
     const base = (await git.revparse(["--verify", "--end-of-options", `${baseRef}^{commit}`])).trim();
-    const branch = `${MCODE_BRANCH_PREFIX}/${sanitizeBranchName(basename(targetPath))}`;
+    const branch = `${MARIOCODE_BRANCH_PREFIX}/${sanitizeBranchName(basename(targetPath))}`;
     await mkdir(dirname(targetPath), { recursive: true });
     await git.raw(["worktree", "add", "-b", branch, targetPath, base]);
     const wtGit = (await loadSimpleGit())(targetPath);
@@ -384,8 +384,8 @@ async function commitAll(
     const msg = (err as Error).message || "";
     if (/author identity|user\.name|user\.email/i.test(msg)) {
       await wtGit.raw([
-        "-c", "user.name=Mcode",
-        "-c", "user.email=mcode@local",
+        "-c", "user.name=MarioCode",
+        "-c", "user.email=mariocode@local",
         "commit", "-m", message,
       ]);
     } else {
@@ -497,7 +497,7 @@ export async function mergeBackWorktree(
  *  (3) `exportPatch` persists the FULL unmerged work (commits since the
  *  merge-base PLUS uncommitted edits) under userData/worktree-snapshots/
  *  before deleting. A missing directory is self-healed via `git worktree
- *  prune`. A generated `mcode/*` branch is deleted alongside (`git branch
+ *  prune`. A generated `mariocode/*` branch is deleted alongside (`git branch
  *  -d` — unmerged refs are refused and RETAINED, surfacing as
  *  `retainedBranch`). */
 export async function removeWorktree(
@@ -643,7 +643,7 @@ export async function removeWorktree(
       if (patched) broadcastSessionChanged(patched);
     }
 
-    // Branch-style cleanup: a generated mcode/* ref dies with its worktree —
+    // Branch-style cleanup: a generated mariocode/* ref dies with its worktree —
     // but ONLY via `git branch -d` (git itself refuses when the branch holds
     // unmerged commits), and only while the ref still points at THIS
     // worktree's HEAD (a user `git switch` away means it's no longer ours to
@@ -651,7 +651,7 @@ export async function removeWorktree(
     // discarded commits live on the retained branch — reported so the UI can
     // tell the user where to find them.
     let retainedBranch: string | undefined;
-    if (entry?.branch.startsWith(`${MCODE_BRANCH_PREFIX}/`) && entry.head) {
+    if (entry?.branch.startsWith(`${MARIOCODE_BRANCH_PREFIX}/`) && entry.head) {
       const refBranch = entry.branch;
       try {
         const tip = await git

@@ -6,7 +6,7 @@
  * ~/.zcode/mcp.json, or any picked file) as sync sources in the settings
  * panel. Each ENABLED source is parsed (read-only — the file is never
  * written), every recognized server is normalized into McpServerConfig and
- * mirrored into ~/.mcode/.claude.json's `mcpServers`. That file is the
+ * mirrored into ~/.mariocode/.claude.json's `mcpServers`. That file is the
  * single point of truth for BOTH Claude (the binary loads it directly) and
  * Codex (config.toml materialization reads it), so one mirror serves every
  * provider.
@@ -182,7 +182,7 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 }
 
 /** True when a string value references the user's own environment
- *  ("${VAR}", "$VAR", "%VAR%") — unresolvable inside Mcode's subprocess. */
+ *  ("${VAR}", "$VAR", "%VAR%") — unresolvable inside MarioCode's subprocess. */
 const ENV_REF_RE = /\$\{[^}]+\}|\$[A-Za-z_][A-Za-z0-9_]*|%[^%]+%/;
 
 /** Drop env values that reference the user's environment (Codex-style
@@ -357,7 +357,7 @@ export async function scanMcpSyncCandidates(): Promise<McpSyncCandidate[]> {
 
 /* ── Merge engine ── */
 
-/** Sync one source into ~/.mcode/.claude.json: read the source, upsert the
+/** Sync one source into ~/.mariocode/.claude.json: read the source, upsert the
  *  servers it provides, retract names it no longer provides (only ones it
  *  still owns and that match the config it wrote). Never throws — errors
  *  land in the source status. */

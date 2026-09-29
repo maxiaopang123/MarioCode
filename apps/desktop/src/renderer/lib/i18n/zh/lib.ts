@@ -28,6 +28,7 @@ export const zh = {
   "lib.commands.focusComposer": "聚焦聊天输入框",
   "lib.commands.voiceDictation": "语音输入(按住说话 / 连按开关)",
   "lib.commands.toggleLeft": "切换左侧栏",
+  "lib.commands.nextAttention": "跳到下一个等你处理的会话",
   "lib.commands.toggleRight": "切换右侧栏",
   "lib.commands.toggleTerminal": "切换底部终端",
   "lib.commands.toggleBrowser": "切换浏览器面板",

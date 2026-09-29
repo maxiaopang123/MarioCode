@@ -1,17 +1,17 @@
 /**
  * Codex model-providers configuration types.
  *
- * Mcode drives the Codex agent harness with user-configured third-party model
+ * MarioCode drives the Codex agent harness with user-configured third-party model
  * providers (OpenAI-compatible endpoints that speak the Responses API). The
  * provider list lives in the settings table (`codexProviders`, metadata only)
  * plus a safeStorage-encrypted key map (`codexProviderKeys`); at turn time the
  * provider materializes them into `<CODEX_HOME>/config.toml`'s
  * `[model_providers.<id>]` tables and injects each decrypted key into the
- * app-server subprocess env (`MCODE_CODEX_KEY_<ID>` — referenced by the TOML
+ * app-server subprocess env (`MARIOCODE_CODEX_KEY_<ID>` — referenced by the TOML
  * `env_key` field). Cleartext keys never touch disk or IPC.
  *
  * ⚠️ Codex only supports `wire_api = "responses"` (the Chat Completions wire
- * API is deprecated upstream). Endpoints must expose `/v1/responses` — Mcode's
+ * API is deprecated upstream). Endpoints must expose `/v1/responses` — MarioCode's
  * Claude-side custom models (chat-completions bridge) are NOT reusable here.
  */
 

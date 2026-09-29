@@ -3,9 +3,9 @@
  * page under "Skills".
  *
  * The list shows BOTH project-scoped skills (<project>/.claude/skills) and
- * global skills (~/.mcode/skills, Mcode's own CLAUDE_CONFIG_DIR). Global skills
+ * global skills (~/.mariocode/skills, MarioCode's own CLAUDE_CONFIG_DIR). Global skills
  * are populated by the "Import" feature, which scans external tools (Claude
- * Code, Codex, Zcode) and copies selected skills into ~/.mcode/skills so they
+ * Code, Codex, Zcode) and copies selected skills into ~/.mariocode/skills so they
  * become available to the SDK (including under custom endpoints) — or created
  * directly via the new-skill form's scope selector. Both kinds can be viewed,
  * edited, and deleted here. With no project at all, the panel degrades to
@@ -86,7 +86,7 @@ type Selection =
   | null;
 
 interface NewForm {
-  /** Where the skill will be created: project dir or the global ~/.mcode/skills.
+  /** Where the skill will be created: project dir or the global ~/.mariocode/skills.
    *  Defaults to "project" (current behavior); forced to "global" when no
    *  project exists at all (the only creatable scope then). */
   scope: EditableSkillSource;
@@ -137,13 +137,13 @@ export function SkillsPanel() {
     setListLoading(true);
     try {
       // Without a project (no projects exist at all), list global skills only —
-      // projectPath is optional in the contract and main scans ~/.mcode/skills
+      // projectPath is optional in the contract and main scans ~/.mariocode/skills
       // alone when it's absent.
       const { skills } = await api.skills.list(
         projectPath ? { projectPath } : {},
       );
       // Show both project-scoped and global skills. Global skills live under
-      // ~/.mcode/skills (populated by the Import feature or the new-skill
+      // ~/.mariocode/skills (populated by the Import feature or the new-skill
       // form's global scope) and are editable/deletable here the same way
       // project skills are. Synced skills are excluded — they are a
       // read-only mirror rewritten by the sync engine (managed in the sync
@@ -188,7 +188,7 @@ export function SkillsPanel() {
   // Skill market dialog open state (TODO-020).
   const [marketOpen, setMarketOpen] = useState(false);
   // External sync sources (TODO-004): user directories mirrored into
-  // ~/.mcode/skills-sync and injected into Claude / Pi / Codex.
+  // ~/.mariocode/skills-sync and injected into Claude / Pi / Codex.
   const [syncRows, setSyncRows] = useState<SyncRow[]>(EMPTY_SYNC_ROWS);
 
   const loadSyncRows = useCallback(async () => {
@@ -398,7 +398,7 @@ export function SkillsPanel() {
 
       {/* ───────── External skill source sync (TODO-004) ───────── */}
       {/* One-way mirror of user-chosen skill directories into
-          ~/.mcode/skills-sync, kept up to date by a file watcher. The mirror
+          ~/.mariocode/skills-sync, kept up to date by a file watcher. The mirror
           is injected into Claude (synthesized local plugins), Pi
           (additionalSkillPaths) and Codex (skill roots), so skills authored
           in other tools (e.g. ~/.codex/skills) show up here and in the
@@ -797,7 +797,7 @@ function SkillSourceEditor({
 
 /** Structured form for creating a new skill (scope / name / description /
  *  body). The scope selector picks between the managed project and the global
- *  ~/.mcode/skills root; the project option is disabled when no project
+ *  ~/.mariocode/skills root; the project option is disabled when no project
  *  exists (the form then locks to global). */
 function NewSkillForm({
   form,
@@ -845,7 +845,7 @@ function NewSkillForm({
         ) : (
           <>
             {t("settings.skills.newSkillGlobalIntro1")}
-            <code className="rounded bg-surface-muted px-0.5">~/.mcode/skills</code>
+            <code className="rounded bg-surface-muted px-0.5">~/.mariocode/skills</code>
             {t("settings.skills.newSkillGlobalIntro2")}
             <code className="rounded bg-surface-muted px-0.5">allowed-tools</code>
             {t("settings.skills.newSkillIntro3")}
@@ -980,7 +980,7 @@ const TOOL_BADGE_CLS: Record<SkillTool, string> = {
 const TOOL_ORDER: SkillTool[] = ["claude-code", "codex", "zcode", "local"];
 
 /** Modal dialog for importing skills from external tools (Claude Code, Codex,
- *  Zcode) into Mcode's own ~/.mcode/skills directory. On open, scans all
+ *  Zcode) into MarioCode's own ~/.mariocode/skills directory. On open, scans all
  *  external sources; presents a TAB-PER-AGENT, checkbox-selectable list; and
  *  copies the selected skill directories on confirm. Skills already present
  *  at the destination are marked and excluded from selection.
@@ -1265,7 +1265,7 @@ function ImportSkillsDialog({
           <Dialog.Title className="px-4 pt-4">{t("settings.skills.importTitle")}</Dialog.Title>
           <Dialog.Description className="px-4 pt-1">
             {t("settings.skills.importDesc1")}
-            <code className="rounded bg-surface-muted px-0.5">~/.mcode/skills</code>
+            <code className="rounded bg-surface-muted px-0.5">~/.mariocode/skills</code>
           </Dialog.Description>
           <Dialog.Close />
 

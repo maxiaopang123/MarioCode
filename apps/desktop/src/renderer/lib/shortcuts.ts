@@ -33,6 +33,8 @@ export const DEFAULT_SHORTCUTS: ShortcutBindings = {
   "files.search": { key: "f", cmd: true, shift: true, alt: false },
   "view.settings": { key: ",", cmd: true, shift: false, alt: false },
   "session.new": { key: "n", cmd: true, shift: false, alt: false },
+  // Jump to the next session waiting on you (approval / question / error).
+  "session.next-attention": { key: "j", cmd: true, shift: false, alt: false },
   "layout.toggle-left": { key: "b", cmd: true, shift: false, alt: false },
   "layout.toggle-right": { key: "b", cmd: true, shift: true, alt: false },
   "layout.toggle-bottom-terminal": { key: "`", cmd: true, shift: false, alt: false },

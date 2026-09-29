@@ -83,8 +83,8 @@ eq(
 );
 eq(
   "session header auto-added for opencode",
-  resolveUpstreamHeaders(undefined, OPENCODE, "mcode-sess1"),
-  { [SESSION_HEADER]: "mcode-sess1" },
+  resolveUpstreamHeaders(undefined, OPENCODE, "mariocode-sess1"),
+  { [SESSION_HEADER]: "mariocode-sess1" },
 );
 eq(
   "no session id → no session header",
@@ -93,12 +93,12 @@ eq(
 );
 eq(
   "user-supplied session header wins (any casing → no duplicate)",
-  resolveUpstreamHeaders({ "X-Opencode-Session": "mine" }, OPENCODE, "mcode-sess1"),
+  resolveUpstreamHeaders({ "X-Opencode-Session": "mine" }, OPENCODE, "mariocode-sess1"),
   { "X-Opencode-Session": "mine" },
 );
 eq(
   "user session header kept even on a non-session gateway",
-  resolveUpstreamHeaders({ "x-opencode-session": "mine" }, DEEPSEEK, "mcode-sess1"),
+  resolveUpstreamHeaders({ "x-opencode-session": "mine" }, DEEPSEEK, "mariocode-sess1"),
   { "x-opencode-session": "mine" },
 );
 eq(
@@ -153,9 +153,9 @@ function cfgFor(protocol: "anthropic" | "openai", baseUrl: string, headers?: Rec
 {
   const env = buildCustomEnv(cfgFor("anthropic", OPENCODE), { sessionId: "sess-42" });
   eq(
-    "anthropic + opencode: session header named after the Mcode session",
+    "anthropic + opencode: session header named after the MarioCode session",
     env.ANTHROPIC_CUSTOM_HEADERS,
-    `${SESSION_HEADER}: mcode-sess-42`,
+    `${SESSION_HEADER}: mariocode-sess-42`,
   );
 }
 
@@ -164,7 +164,7 @@ function cfgFor(protocol: "anthropic" | "openai", baseUrl: string, headers?: Rec
   const raw = env.ANTHROPIC_CUSTOM_HEADERS ?? "";
   check(
     "anthropic + opencode without a session: stable process-wide id",
-    /^x-opencode-session: mcode-[0-9a-f]{12}$/.test(raw),
+    /^x-opencode-session: mariocode-[0-9a-f]{12}$/.test(raw),
     raw,
   );
   const again = buildCustomEnv(cfgFor("anthropic", OPENCODE)).ANTHROPIC_CUSTOM_HEADERS;
@@ -192,7 +192,7 @@ function cfgFor(protocol: "anthropic" | "openai", baseUrl: string, headers?: Rec
     eq(
       "inherited value also survives the opencode auto-injection",
       parseCustomHeaderLines(env2.ANTHROPIC_CUSTOM_HEADERS),
-      { "x-inherited": "yes", "x-foo": "old", [SESSION_HEADER]: "mcode-s1" },
+      { "x-inherited": "yes", "x-foo": "old", [SESSION_HEADER]: "mariocode-s1" },
     );
   } finally {
     if (prev === undefined) delete process.env.ANTHROPIC_CUSTOM_HEADERS;
@@ -278,7 +278,7 @@ try {
   const injected = await postThroughBridge(OPENCODE);
   check(
     "bridge + opencode, nothing configured: session header injected",
-    /^mcode-[0-9a-f]{12}$/.test(injected[SESSION_HEADER] ?? ""),
+    /^mariocode-[0-9a-f]{12}$/.test(injected[SESSION_HEADER] ?? ""),
     injected[SESSION_HEADER],
   );
   eq(

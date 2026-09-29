@@ -138,14 +138,10 @@ export function ComposerToolbar({
           <PermissionChip layout="pill" />
         </>
       )}
-      {contextSnapshot && (
-        <>
-          <span className="composer-minipill-mid" aria-hidden />
-          <span className="composer-minipill-ringseg">
-            <ContextRing snapshot={contextSnapshot} history={usageHistory} />
-          </span>
-        </>
-      )}
+      {/* The context ring moved OUT of the pill (界面焕新 v3): it now sits with
+          the session's other metrics at the composer's right end
+          (SessionMetrics), so occupancy / cache / speed read as one group
+          instead of one figure inside the settings pill. */}
     </div>
   );
 }

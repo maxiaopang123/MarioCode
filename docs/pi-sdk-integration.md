@@ -1,11 +1,11 @@
 # Pi SDK 集成文档
 
-> 本文档记录 Pi SDK(`@earendil-works/pi-coding-agent`)接入 Mcode 的架构决策与实现说明。
+> 本文档记录 Pi SDK(`@earendil-works/pi-coding-agent`)接入 MarioCode 的架构决策与实现说明。
 > 后续接入其他 SDK 时,参照本文的**可扩展性设计**模式,而非复制实现细节。
 
 ## 1. 背景
 
-Mcode 已有 `AgentProvider` 抽象层(`packages/contracts/src/provider.ts`),后端链路
+MarioCode 已有 `AgentProvider` 抽象层(`packages/contracts/src/provider.ts`),后端链路
 (RuntimeManager / DB / IPC `provider.list`)完全 provider 中立。但接入 Pi SDK 前:
 
 - 前端没有任何 provider 选择 UI(渲染端从不调用 `api.provider.list`)
@@ -151,7 +151,7 @@ apps/desktop/src/renderer/components/settings/PiModelsPanel.tsx  # 双栏表单
 ```
 
 **设计决策**:
-- **API Key 在 GUI 设置中直接维护**: 用户在面板填明文 key,Mcode 用
+- **API Key 在 GUI 设置中直接维护**: 用户在面板填明文 key,MarioCode 用
   `safeStorage.encryptString` 加密后存 settings 表的 `piProviderKeys` 键
   (同 `customModelKeys` 模式)。turn 开始时 `PiAgentSdkProvider` 创建
   `ModelRuntime` 并对每个已配 key 的 provider 调 `setRuntimeApiKey(name, key)`,

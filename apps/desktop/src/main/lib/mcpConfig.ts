@@ -2,9 +2,9 @@
  * MCP config file IO + management state for the settings panel's MCP section.
  *
  * Three server sources (see contracts/ipc.ts "MCP management"):
- *  - user scope: the `mcpServers` object of ~/.mcode/.claude.json. This is the
+ *  - user scope: the `mcpServers` object of ~/.mariocode/.claude.json. This is the
  *    CLI's own user-level config location (CLAUDE_CONFIG_DIR is always set to
- *    ~/.mcode), so whatever sits in the file is loaded automatically by the
+ *    ~/.mariocode), so whatever sits in the file is loaded automatically by the
  *    claude binary — the file itself is the enable mechanism. Disabling a
  *    server means moving its config OUT of the file into the settings-table
  *    stash (MCP_MANAGEMENT_SETTING_KEY), re-enabling moves it back.
@@ -12,7 +12,7 @@
  *    records explicit enables in the management state; the provider passes
  *    per-turn enabled/disabledMcpjsonServers so no CLI approval dialog is
  *    ever needed (our onUserDialog bridge cancels unknown kinds).
- *  - builtin: the in-process mcode-browser server; only its disabled flag
+ *  - builtin: the in-process mariocode-browser server; only its disabled flag
  *    lives in the management state.
  *
  * The user config file is a big grab-bag the CLI rewrites frequently (project
@@ -24,6 +24,7 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { MARIOCODE_HOME } from "@main/lib/appHome.js";
 import {
   McpServerConfigSchema,
   MCP_MANAGEMENT_SETTING_KEY,
@@ -34,14 +35,14 @@ import {
 import { awaitDb } from "@main/store/db.js";
 import { SettingRepo } from "@main/store/repositories.js";
 
-/** Mcode's own ~/.mcode/.claude.json — the CLI's user-level config file under
+/** MarioCode's own ~/.mariocode/.claude.json — the CLI's user-level config file under
  *  the redirected CLAUDE_CONFIG_DIR. User-scope MCP servers live in its
  *  top-level `mcpServers` object. */
 /** Resolve lazily so isolated Electron smoke runs can redirect USERPROFILE
  * before booting the app, and so every read/write in one process uses the same
  * current home directory. */
 function userClaudeJsonPath(): string {
-  return path.join(homedir(), ".mcode", ".claude.json");
+  return path.join(MARIOCODE_HOME, ".claude.json");
 }
 
 /** The real Claude CLI's config file — scanned (read-only) by the import
@@ -71,7 +72,7 @@ async function readJson(file: string): Promise<unknown> {
 async function writeJson(file: string, value: unknown): Promise<void> {
   const text = JSON.stringify(value, null, 2);
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.mcode-tmp`;
+  const tmp = `${file}.mariocode-tmp`;
   try {
     await fs.writeFile(tmp, text, "utf-8");
     await fs.rename(tmp, file);
@@ -85,7 +86,7 @@ async function writeJson(file: string, value: unknown): Promise<void> {
   }
 }
 
-/** Read the whole ~/.mcode/.claude.json object. Returns {} when the file is
+/** Read the whole ~/.mariocode/.claude.json object. Returns {} when the file is
  *  missing or unparseable (the CLI creates/populates it on first run; a
  *  missing file simply means "no user-scope servers yet"). */
 export async function readUserClaudeJson(): Promise<Record<string, unknown>> {
@@ -93,7 +94,7 @@ export async function readUserClaudeJson(): Promise<Record<string, unknown>> {
   return asRecord(parsed) ?? {};
 }
 
-/** Overwrite ~/.mcode/.claude.json. Callers must pass a value derived from
+/** Overwrite ~/.mariocode/.claude.json. Callers must pass a value derived from
  *  readUserClaudeJson() (read-modify-write) so unknown keys survive. */
 export async function writeUserClaudeJson(cfg: Record<string, unknown>): Promise<void> {
   await writeJson(userClaudeJsonPath(), cfg);

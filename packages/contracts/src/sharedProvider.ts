@@ -18,6 +18,52 @@ const HttpUrlSchema = z.string().trim().max(2_048).url().refine((value) => {
   return authority.length > 0 && !authority.includes("@");
 }, "must be an http(s) URL without embedded credentials, query, or fragment");
 
+/** Every origin (scheme + authority) a provider's saved API key can be sent
+ *  to: the base URL, the models endpoint, and any per-protocol override.
+ *  Parsed with the same string walk as HttpUrlSchema so this package stays
+ *  free of the DOM `URL` global. */
+export function sharedProviderOrigins(value: {
+  baseUrl: string;
+  modelsEndpoint?: string;
+  endpointOverrides?: Partial<Record<SharedProviderProtocol, string>>;
+}): string[] {
+  const origins = new Set<string>();
+  const add = (url?: string): void => {
+    const trimmed = url?.trim();
+    if (!trimmed) return;
+    const scheme = /^(https?):\/\//i.exec(trimmed);
+    if (!scheme) return;
+    const remainder = trimmed.slice(scheme[0].length);
+    const slash = remainder.indexOf("/");
+    const authority = (slash < 0 ? remainder : remainder.slice(0, slash)).toLowerCase();
+    if (authority) origins.add(`${scheme[1]!.toLowerCase()}://${authority}`);
+  };
+  add(value.baseUrl);
+  add(value.modelsEndpoint);
+  for (const url of Object.values(value.endpointOverrides ?? {})) add(url);
+  return [...origins].sort();
+}
+
+/**
+ * True when saving `next` would send the stored key somewhere `previous` never
+ * sent it — a different host/port, or an https→http downgrade. Those edits
+ * require re-entering the key so a saved credential is never silently
+ * forwarded to a new server.
+ *
+ * Deliberately narrower than comparing whole URLs (which is what this used to
+ * do): editing only the PATH on an already-trusted origin (fixing `/v1`,
+ * adding a trailing slash) keeps the key, and REMOVING a destination is always
+ * safe. Both main (enforcement) and the settings panel (pre-submit warning)
+ * call this, so the rule exists once.
+ */
+export function sharedProviderAddsOrigin(
+  previous: Parameters<typeof sharedProviderOrigins>[0],
+  next: Parameters<typeof sharedProviderOrigins>[0],
+): boolean {
+  const known = new Set(sharedProviderOrigins(previous));
+  return sharedProviderOrigins(next).some((origin) => !known.has(origin));
+}
+
 export const SharedProviderModelSchema = z.object({
   id: z.string().trim().min(1).max(256),
   label: z.string().trim().min(1).max(256).optional(),
@@ -27,6 +73,10 @@ export const SharedProviderModelSchema = z.object({
   maxTokens: z.number().int().positive().optional(),
   reasoning: z.boolean().optional(),
   input: z.array(z.enum(["text", "image"])).min(1).max(2).optional(),
+  /** The model can generate images (images/generations endpoint). A user
+   *  marker picked in the "加载模型" dialog; informational for now — the
+   *  MarioTool image generator still takes its model from 内置工具 settings. */
+  imageGeneration: z.boolean().optional(),
 }).strict();
 
 export type SharedProviderModel = z.infer<typeof SharedProviderModelSchema>;

@@ -4,7 +4,7 @@
 // Bundles main.ts with esbuild (tsconfig paths resolve @main/* / @contracts/*),
 // swapping the logger / db / repositories modules for in-memory stubs, then
 // runs it under plain node with HOME/USERPROFILE pointed at a temp dir so the
-// real ~/.mcode is never touched. No network: git sources are only classified,
+// real ~/.mariocode is never touched. No network: git sources are only classified,
 // never cloned; the add/refresh flow is exercised with local-directory sources.
 //
 //   node apps/desktop/scripts/skill-market-smoke/run.mjs
@@ -35,7 +35,7 @@ function findEsbuild() {
 }
 
 const esbuild = findEsbuild();
-const out = mkdtempSync(path.join(tmpdir(), "mcode-skill-market-smoke-"));
+const out = mkdtempSync(path.join(tmpdir(), "mariocode-skill-market-smoke-"));
 const home = path.join(out, "home");
 const stubs = path.join(here, "stubs.ts");
 const STUBBED = new Set(["@main/lib/logger.js", "@main/store/db.js", "@main/store/repositories.js"]);

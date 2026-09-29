@@ -3,7 +3,7 @@
  *
  * This is deliberately far more locked down than the main window's preload: the
  * browser view loads arbitrary remote pages, so it must NOT expose any Node
- * capability. The only bridge is `window.mcodeBridge.pickElement(data)`,
+ * capability. The only bridge is `window.mariocodeBridge.pickElement(data)`,
  * invoked by the picker script (injected via `webContents.executeJavaScript`
  * into the page's main world) when the user clicks an element in pick mode.
  *
@@ -16,11 +16,11 @@
  */
 import { contextBridge, ipcRenderer } from "electron";
 
-contextBridge.exposeInMainWorld("mcodeBridge", {
+contextBridge.exposeInMainWorld("mariocodeBridge", {
   /** Forward a picked element's data to the main process. The picker script
    *  calls this synchronously on click; main relays it to the renderer as a
    *  `browser:event` / `pickResult` push. */
   pickElement: (data: unknown): void => {
-    ipcRenderer.send("__mcode_pick_result__", data);
+    ipcRenderer.send("__mariocode_pick_result__", data);
   },
 });

@@ -90,7 +90,7 @@ try {
   // mirror/DNS problems. cwd MUST be better-sqlite3's own directory:
   // prebuild-install reads ./package.json from its cwd to learn the package
   // name + version it is provisioning (from the install dir it would read
-  // @mcode/desktop's and fetch nonsense).
+  // @mariocode/desktop's and fetch nonsense).
   const out = execFileSync(process.execPath, [prebuildBin, ...args, "--verbose"], {
     env,
     cwd: pkgDir,

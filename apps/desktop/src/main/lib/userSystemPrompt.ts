@@ -3,7 +3,7 @@
  *
  * Two scopes, both plain text the user edits in settings → 系统提示词:
  *  - global: settings table, AGENT_SYSTEM_PROMPT_GLOBAL_SETTING_KEY;
- *  - project: `<project>/.mcode/prompt.md` (PROJECT_SYSTEM_PROMPT_RELATIVE_PATH),
+ *  - project: `<project>/.mariocode/prompt.md` (PROJECT_SYSTEM_PROMPT_RELATIVE_PATH),
  *    a file so it can be committed and shared like CLAUDE.md / AGENTS.md.
  *
  * Every provider calls `loadUserSystemPrompt` at turn start and appends the
@@ -64,9 +64,9 @@ export async function readProjectPrompt(
   }
 }
 
-/** Write the project prompt file (creating `.mcode/`). Whitespace-only
+/** Write the project prompt file (creating `.mariocode/`). Whitespace-only
  *  content deletes the file instead, so clearing the editor leaves no stub
- *  behind; the `.mcode/` directory itself is left alone. */
+ *  behind; the `.mariocode/` directory itself is left alone. */
 export async function writeProjectPrompt(
   projectRoot: string,
   content: string,
@@ -99,7 +99,7 @@ export async function loadGlobalUserPrompt(): Promise<string> {
 }
 
 /**
- * Resolve the roots to probe for `.mcode/prompt.md`, most specific first:
+ * Resolve the roots to probe for `.mariocode/prompt.md`, most specific first:
  * the turn's cwd, then — when the session runs in a worktree whose checkout
  * doesn't carry the file (it's often gitignored) — the project root itself.
  * Duplicates are removed so a plain (non-worktree) session probes once.

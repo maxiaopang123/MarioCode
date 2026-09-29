@@ -7,7 +7,7 @@
  * (listDirGuarded reads the filesystem only). Aliased in run.sh.
  */
 export const app = {
-  getPath: () => process.env["SMOKE_USER_DATA"] ?? "/tmp/mcode-worktree-env-smoke",
+  getPath: () => process.env["SMOKE_USER_DATA"] ?? "/tmp/mariocode-worktree-env-smoke",
   isPackaged: false,
 };
 

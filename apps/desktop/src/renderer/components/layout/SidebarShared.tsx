@@ -1,178 +1,36 @@
 /**
- * Shared pieces between the two left-bar views (classic tree `LeftBar` and
- * session-first `StreamSidebar`): the sidebar shell (top strip, nav row
- * shape, 全部会话 / 按项目 switch, footer), the rename dialog, the session
- * context menu (with its optional worktree action group), and the
- * hover-revealed icon button. Both views must look and act identically in
- * these places, so they live in exactly one place.
+ * Shared sidebar pieces (the project tree view was removed 2026-09-28; the
+ * session column and the composer's directory chip still share these): the
+ * nav row shape, the rename dialog, the session context menu (with its
+ * optional worktree action group), the archived-shelf row, and the
+ * hover-revealed icon button.
  *
  * The worktree group (合并回 / 重命名 / 移除) renders only for rows bound
- * to an isolated checkout AND when the host supplies the callback — the
- * tree view wires them to its bar-level dialogs, the stream view to its
- * own; entries the host omits simply don't render.
+ * to an isolated checkout AND when the host supplies the callback; entries
+ * the host omits simply don't render.
  */
 import { useEffect, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
   IconCopy,
-  IconFocus,
   IconFolder,
   IconGitFork,
   IconGitMerge,
-  IconLayoutSidebarLeftExpand,
-  IconMoon,
   IconPencil,
   IconPin,
   IconPinnedFilled,
-  IconSettings,
-  IconSun,
   IconTrash,
 } from "@renderer/lib/icons.js";
 import { cn } from "@renderer/lib/cn.js";
-import { isMac } from "@renderer/lib/platform.js";
-import { useTheme, applyThemeClass } from "@renderer/lib/theme.js";
-import { api } from "@renderer/lib/api.js";
-import { resolveShortcut, acceleratorToDisplayString } from "@renderer/lib/shortcuts.js";
-import { Button, Dialog, Hint, Input } from "@renderer/components/ui/index.js";
+import { Button, Dialog, Input } from "@renderer/components/ui/index.js";
 import { useCursorAnchor } from "@renderer/hooks/useCursorAnchor.js";
-import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import type { Session } from "@contracts/session";
 import { useI18n } from "@renderer/lib/i18n/index.js";
-import { BrandLogo } from "./BrandLogo.js";
 
-/* ── Sidebar shell: top strip / nav rows / view switch / footer ── */
-
-/** Row shape for the sidebar's nav entries (quick actions, 连接手机, the
- *  footer's 设置): 30px rows, regular weight, neutral hover. */
+/** Row shape for sidebar nav rows (连接手机's row variant): 30px rows,
+ *  regular weight, neutral hover. */
 export const SIDEBAR_NAV_ITEM =
   "group/nav flex h-[30px] w-full items-center gap-2.5 rounded-lg px-2 transition-colors [font-size:var(--right-panel-font-size)]";
-
-const SIDEBAR_ICON_BUTTON =
-  "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-content-subtle transition-colors " +
-  "hover:bg-surface-hover hover:text-content disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
-
-/** Top strip of both views. -mt-2 cancels the root's pt-2 so the strip spans
- *  the Titlebar's 40px band; it doubles as a window drag handle and the
- *  button opts out. mac: the traffic lights (trafficLightPosition
- *  {x:20,y:13}, ending ~x=72) own the left edge, so only the collapse toggle
- *  sits past them. win/linux: collapse toggle + brand mark. */
-export function SidebarTopStrip() {
-  const { t } = useI18n();
-  const setLeftOpen = useSessionStore((s) => s.setLeftOpen);
-  const overrides = useSessionStore((s) => s.shortcutOverrides);
-  const accel = resolveShortcut("layout.toggle-left", overrides);
-  return (
-    <div
-      className={cn("-mt-2 mb-1 flex h-10 shrink-0 items-center gap-2", isMac ? "pl-[70px]" : "pl-0.5")}
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <Hint label={t("layout.hideLeftPanel") + (accel ? ` (${acceleratorToDisplayString(accel)})` : "")}>
-        <button
-          type="button"
-          onClick={() => setLeftOpen(false)}
-          className={SIDEBAR_ICON_BUTTON}
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          <IconLayoutSidebarLeftExpand size={18} className="shrink-0" />
-        </button>
-      </Hint>
-      {!isMac && (
-        <>
-          <BrandLogo size={20} />
-          <span className="truncate text-[13px] font-semibold text-content">MarioCode</span>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** 全部会话 (session stream) | 按项目 (project tree) — heads the list in both
- *  views, so switching never moves the control. */
-export function LeftBarModeSwitch() {
-  const { t } = useI18n();
-  const mode = useSessionStore((s) => s.leftBarMode);
-  const setLeftBarMode = useSessionStore((s) => s.setLeftBarMode);
-  const options = [
-    { value: "stream", label: t("layout.stream.modeStream") },
-    { value: "tree", label: t("layout.stream.modeTree") },
-  ] as const;
-  return (
-    <div
-      role="radiogroup"
-      aria-label={t("layout.stream.modeLabel")}
-      className="flex shrink-0 items-center gap-0.5"
-    >
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={mode === o.value}
-          onClick={() => {
-            if (mode !== o.value) void setLeftBarMode(o.value);
-          }}
-          className={cn(
-            "h-[22px] whitespace-nowrap rounded px-2 transition-colors [font-size:var(--rp-fs-sm)]",
-            mode === o.value
-              ? "bg-surface-hover text-content"
-              : "text-content-subtle hover:text-content",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** Footer of both views: 设置 as a nav row, then locate-active-session and
- *  the light/dark quick toggle. No top rule — the sidebar sits straight on
- *  the window ground. */
-export function SidebarFooter({ onLocate }: { onLocate: () => void }) {
-  const { t } = useI18n();
-  const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
-  const activeSessionId = useSessionStore((s) => s.activeSessionId);
-  // useTheme subscribes to theme.changed, so the icon follows changes made
-  // elsewhere (settings, or the OS flipping while in "system" mode). The
-  // toggle lands on the explicit theme opposite to what's rendering.
-  const { effective: effectiveTheme } = useTheme();
-  const toggleTheme = () => {
-    const next = effectiveTheme === "dark" ? "light" : "dark";
-    void api.theme.set({ theme: next }).then((s) => {
-      applyThemeClass(s.effective);
-    });
-  };
-  return (
-    <div className="flex shrink-0 items-center gap-0.5 pt-1.5">
-      <button
-        type="button"
-        onClick={() => setSettingsOpen(true)}
-        className={cn(SIDEBAR_NAV_ITEM, "min-w-0 flex-1 text-content hover:bg-surface-hover")}
-      >
-        <IconSettings size={16} className="shrink-0 text-content-muted" />
-        <span className="truncate">{t("layout.settings")}</span>
-      </button>
-      {/* Disabled with no active session, and a disabled button dispatches
-          no pointer events for the hint — keep the native title for it. */}
-      <Hint label={t("layout.locateSession")}>
-        <button
-          type="button"
-          onClick={onLocate}
-          disabled={!activeSessionId}
-          title={!activeSessionId ? t("layout.locateSession") : undefined}
-          className={SIDEBAR_ICON_BUTTON}
-        >
-          <IconFocus size={16} />
-        </button>
-      </Hint>
-      <Hint label={effectiveTheme === "dark" ? t("layout.themeToLight") : t("layout.themeToDark")}>
-        <button type="button" onClick={toggleTheme} className={SIDEBAR_ICON_BUTTON}>
-          {effectiveTheme === "dark" ? <IconSun size={16} /> : <IconMoon size={16} />}
-        </button>
-      </Hint>
-    </div>
-  );
-}
 
 /* ── Hover-revealed inline icon button (archive / delete) ── */
 

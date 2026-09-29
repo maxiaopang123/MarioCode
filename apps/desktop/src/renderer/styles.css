@@ -101,37 +101,47 @@ div:has(> [role="menu"]) {
    * is the inset well inside cards (code blocks, table heads). In light both
    * sit one soft step below white; dark splits them in opposite directions
    * (ground darker than the cards, wells lighter). */
+  /* 界面焕新 v3 (prototypes/ui-refresh-v3.html): the palette is taken from
+   * the app icon — graphite #283833 + mint #8BC0A3 — so every neutral
+   * carries a faint green-grey bias in the same hue as the icon. */
   --surface: 255 255 255; /* white — center pane, right panel, popups */
-  --surface-base: 243 244 246; /* window ground: sidebar track, titlebar */
-  --surface-muted: 243 244 246; /* inset wells */
+  --surface-base: 239 241 239; /* window ground: rail, session column, titlebar */
+  --surface-muted: 244 246 244; /* inset wells */
   /* Hover/active fill. Must stay visible on BOTH white and --surface-muted
    * (sidebar rows hover on the track), and must NOT equal --edge — a hover
    * row next to a same-valued border reads as one blob. */
-  --surface-hover: 234 236 240;
+  --surface-hover: 229 234 231;
   /* content (text). --content-subtle carries 11px metadata, so it is held
    * at ≥4.5:1 on white (≈4.8:1; ≈4.3:1 on the muted track). */
-  --content: 17 19 24;
-  --content-muted: 73 78 89; /* ≈8.3:1 on white */
-  --content-subtle: 110 115 126;
+  --content: 26 34 31;
+  --content-muted: 78 89 84; /* ≈7:1 on white */
+  --content-subtle: 108 119 114;
   /* borders. Ordered deepest → lightest: --input-edge > --edge > --panel-edge,
    * all deeper than --surface-hover so separators never read as hover. */
-  --edge: 226 228 233; /* card outlines, in-panel separators */
+  --edge: 225 230 227; /* card outlines, in-panel separators */
   /* Structural pane dividers (three-pane shell borders, splitter hairlines,
    * tab-strip underline) run the full window height, so they sit one step
    * lighter than card borders. */
-  --panel-edge: 231 233 237;
+  --panel-edge: 230 234 231;
   /* Composer input box outline — the strongest border, so the box reads at
    * a glance (dark needs the brighter-than-edge direction, light the
    * deeper-than-edge direction). Only the composer container uses it. */
-  --input-edge: 213 216 222;
+  --input-edge: 208 215 211;
   /* accent + status. Light text-bearing tokens sit at the 700 stop: the 600
    * shades resolved to ~3.2:1 (amber) / ~3.8:1 (emerald) on white — below
    * the 4.5:1 AA bar for the small colored text they feed (approval prompts,
    * diff tallies, status labels). Dark keeps its 400/500 shades, which pass
    * from the other side on near-black. Icons/dots only need the 3:1
    * non-text bar, but sharing the darker token keeps light chrome coherent. */
-  --accent: 5 150 105; /* emerald-600 — brand: buttons, icons, focus rings */
-  --accent-strong: 4 120 87; /* emerald-700 — small accent TEXT (≥4.5:1) */
+  --accent: 92 160 128; /* mint (icon #8BC0A3 one stop deeper) — brand fills, icons, focus rings */
+  --accent-strong: 44 112 83; /* #2C7053 — small accent TEXT (≈5.9:1 on white) */
+  /* Primary action (send, 新建, primary buttons): the icon's graphite in
+   * light, the icon's mint in dark (with ink-green text on top). */
+  --primary: 40 56 51;
+  --primary-hover: 28 41 37;
+  --on-primary: 255 255 255;
+  /* Left project rail ground — one step below the window ground. */
+  --rail: 233 236 234;
   /* Inline code span foreground — plain body color on BOTH themes (GitHub
    * convention): the recess background already marks the span as code, so the
    * text itself stays neutral. Light dropped the accent tint after emerald-600
@@ -214,22 +224,26 @@ div:has(> [role="menu"]) {
    * darkest, the floating work cards sit one step up, and inset wells inside
    * cards (code blocks, tool results) one more step up. Hover sits above all
    * three and must not equal --edge. */
-  --surface-base: 14 15 17; /* #0e0f11 — window ground: sidebar track, titlebar */
-  --surface: 23 24 27; /* #17181b — center pane, right panel, popups */
-  --surface-muted: 29 31 35; /* #1d1f23 — inset wells inside cards */
-  --surface-hover: 43 46 52; /* #2b2e34 — hover/active fills on all three layers */
-  --content: 236 237 240; /* ≈16:1 on --surface */
+  --surface-base: 12 15 14; /* window ground: session column, titlebar */
+  --surface: 22 27 25; /* center pane, right panel, popups */
+  --surface-muted: 28 34 31; /* inset wells inside cards */
+  --surface-hover: 40 48 44; /* hover/active fills on all three layers */
+  --content: 234 239 236; /* ≈15:1 on --surface */
   /* Secondary/tertiary text. --content-subtle carries 11–12px metadata
    * (paths, timestamps, hints), so it stays ≥5:1 on --surface — a notch
    * brighter than the prototype's #7c818b, which only just cleared 4.5:1. */
-  --content-muted: 172 176 185; /* #acb0b9 — ≈9:1; lists / tables / tool-card labels */
-  --content-subtle: 134 139 149; /* #868b95 — ≈5.2:1; metadata / markers / hints */
-  --edge: 39 41 47; /* #27292f — card outlines, in-panel separators */
-  --panel-edge: 39 41 47; /* mirrors dark --edge — the lighter structural
+  --content-muted: 173 184 178; /* ≈8.5:1; lists / tables / tool-card labels */
+  --content-subtle: 136 147 141; /* ≈5.5:1; metadata / markers / hints */
+  --edge: 38 46 43; /* card outlines, in-panel separators */
+  --panel-edge: 38 46 43; /* mirrors dark --edge — the lighter structural
                            * divider is a light-mode-only concern */
-  --input-edge: 55 58 65; /* #373a41 — composer outline, the strongest border */
-  --accent: 16 185 129; /* emerald-500 */
-  --accent-strong: 52 211 153; /* emerald-400 — small accent TEXT on near-black */
+  --input-edge: 60 70 66; /* composer outline, the strongest border */
+  --accent: 120 184 150; /* mint — fills stay legible under both white and ink text */
+  --accent-strong: 170 215 190; /* small accent TEXT on near-black */
+  --primary: 139 192 163; /* the icon's mint */
+  --primary-hover: 162 209 183;
+  --on-primary: 18 31 25;
+  --rail: 8 11 10;
   --danger: 248 113 113; /* red-400 */
   --warning: 251 191 36; /* amber-400 */
   --info: 167 139 250; /* violet-400 */
@@ -2274,4 +2288,612 @@ html.sketch body::after {
 }
 html.sketch.dark body::after {
   opacity: 0.55;
+}
+
+/* ───────────── 界面焕新 v3 (prototypes/ui-refresh-v3.html) ─────────────
+ * Project rail, tinted project avatars, session-column rows, tool strip.
+ * Kept here (not in Tailwind utilities) where a rule needs --av / color-mix
+ * or a theme-scoped variant. */
+
+/* Tinted project avatar — the hue arrives as --av (a hex); the chip is a
+ * soft tint + faint ring with the initial in the hue itself. Dark mixes
+ * the hue toward white so it stays legible on the near-black ground. */
+.proj-av {
+  background: color-mix(in srgb, var(--av) 15%, transparent);
+  color: var(--av);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--av) 20%, transparent);
+}
+.dark .proj-av {
+  background: color-mix(in srgb, var(--av) 28%, transparent);
+  color: color-mix(in srgb, var(--av) 45%, white);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--av) 36%, transparent);
+}
+
+/* Rail cells: every cell 36×36 r10; content is a ~28px visual block
+ * (logo 28, avatar 28, line icons 18px / stroke 1.6). */
+.rail-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 10px;
+  color: rgb(var(--content-subtle));
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.rail-btn:hover {
+  background: rgb(var(--surface-hover));
+  color: rgb(var(--content));
+}
+.rail-btn svg {
+  stroke-width: 1.6;
+}
+.rail-btn[data-on="true"] {
+  background: rgb(var(--surface));
+  color: rgb(var(--content));
+  box-shadow: var(--shadow-1), inset 0 0 0 1px rgb(var(--edge));
+}
+.dark .rail-btn[data-on="true"] {
+  background: rgb(var(--surface-hover));
+  box-shadow: inset 0 0 0 1px rgb(var(--primary) / 0.35);
+}
+/* Selected indicator bar hugging the rail's left edge. */
+.rail-btn[data-on="true"]::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: rgb(var(--content));
+}
+.dark .rail-btn[data-on="true"]::before {
+  background: rgb(var(--primary));
+}
+.rail-btn:hover .proj-av {
+  background: color-mix(in srgb, var(--av) 22%, transparent);
+}
+.rail-btn[data-on="true"] .proj-av {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--av) 38%, transparent);
+}
+/* Status pip (top-right): unread = accent dot, running = spinning ring. */
+.rail-pip {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  background: rgb(var(--accent));
+  box-shadow: 0 0 0 2px rgb(var(--rail));
+}
+.rail-btn[data-on="true"] .rail-pip {
+  box-shadow: 0 0 0 2px rgb(var(--surface));
+}
+.rail-pip[data-run="true"] {
+  background: rgb(var(--rail));
+  border: 1.75px solid rgb(var(--accent) / 0.25);
+  border-top-color: rgb(var(--accent));
+  animation: spin 0.9s linear infinite;
+}
+/* Waiting-on-you count (bottom-right). */
+.rail-cnt {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3.5px;
+  border-radius: 9999px;
+  background: rgb(var(--warning));
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  box-shadow: 0 0 0 2px rgb(var(--rail));
+}
+.dark .rail-cnt {
+  color: rgb(var(--surface-base));
+}
+
+/* Session-column row: active = raised card in light, filled in dark. */
+.srow-active {
+  background: rgb(var(--surface));
+  box-shadow: var(--shadow-1), inset 0 0 0 1px rgb(var(--edge));
+}
+.dark .srow-active {
+  background: rgb(var(--surface-hover));
+  box-shadow: none;
+}
+
+/* Tool strip cells mirror the rail's cells (slightly smaller). */
+.strip-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: rgb(var(--content-subtle));
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.strip-btn:hover {
+  background: rgb(var(--surface-hover));
+  color: rgb(var(--content));
+}
+.strip-btn svg {
+  stroke-width: 1.6;
+}
+.strip-btn[data-on="true"] {
+  background: rgb(var(--surface));
+  color: rgb(var(--content));
+  box-shadow: var(--shadow-1), inset 0 0 0 1px rgb(var(--edge));
+}
+.dark .strip-btn[data-on="true"] {
+  background: rgb(var(--surface-hover));
+  box-shadow: none;
+}
+
+/* ───────── 本会话浮窗 (prototypes/ui-refresh-v3.html「本会话」) ─────────
+ * Fold/expand animates ONLY clip-path: the card's width and inner layout
+ * never change, so nothing reflows or re-wraps mid-animation. The collapsed
+ * state clips everything except a pill-sized rect in the top-right corner;
+ * the header's title and summary cross-fade in the same grid cell so the pill
+ * shows the summary and the card shows the title.
+ *
+ * The hairline + shadow come from `filter: drop-shadow` on the OUTER element
+ * so they trace the CLIPPED shape (a pill gets a pill outline). A border on
+ * the card would stay rectangular and leak outside the clip.
+ *
+ * No backdrop-filter: re-blurring a translucent layer on every scroll frame
+ * of the stream underneath it was a measurable cost for no design gain. */
+.fsess {
+  --pill-w: 300px;
+  --pill-h: 34px;
+  --fs-in: 380ms cubic-bezier(0.22, 1, 0.36, 1);
+  --fs-out: 260ms cubic-bezier(0.5, 0, 0.2, 1);
+  filter: drop-shadow(0 0 0.5px rgb(24 24 22 / 0.35)) drop-shadow(0 12px 24px rgb(24 24 22 / 0.14));
+}
+.dark .fsess {
+  filter: drop-shadow(0 0 0.5px rgb(255 255 255 / 0.28)) drop-shadow(0 14px 28px rgb(0 0 0 / 0.55));
+}
+.fs-card {
+  clip-path: inset(0 0 0 0 round 14px);
+  transition: clip-path var(--fs-in);
+  will-change: clip-path;
+}
+.fsess[data-folded="true"] .fs-card {
+  clip-path: inset(0 0 calc(100% - var(--pill-h)) calc(100% - var(--pill-w)) round 17px);
+  transition: clip-path var(--fs-out) 40ms;
+}
+/* Header: title (expanded) and summary (folded) share one grid cell. */
+.fs-swap > * {
+  grid-area: 1 / 1;
+}
+.fs-title {
+  justify-self: start;
+  transition: opacity 160ms ease 80ms, transform var(--fs-in);
+}
+.fs-sum {
+  justify-self: end;
+  opacity: 0;
+  transform: translateX(6px);
+  transition: opacity 120ms ease, transform var(--fs-in);
+}
+.fsess[data-folded="true"] .fs-title {
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 100ms ease, transform var(--fs-out);
+}
+.fsess[data-folded="true"] .fs-sum {
+  opacity: 1;
+  transform: none;
+  transition: opacity 180ms ease 90ms, transform var(--fs-out) 40ms;
+}
+.fs-body {
+  transition: opacity 220ms ease 90ms, transform var(--fs-in);
+}
+.fsess[data-folded="true"] .fs-body {
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 110ms ease, transform var(--fs-out);
+  pointer-events: none;
+}
+.fsess[data-folded="true"] .fs-chev {
+  transform: rotate(180deg);
+}
+.fs-chev {
+  transition: transform var(--fs-in);
+}
+/* Per-turn cache sparkline. Bar heights ride --h so the markup stays free of
+ * computed styles beyond the one custom property. */
+.fs-spark i {
+  flex: 1;
+  height: max(3px, var(--h));
+  border-radius: 3px 3px 1px 1px;
+  background: rgb(var(--accent) / 0.35);
+}
+.fs-spark i[data-cur="true"] {
+  background: rgb(var(--accent));
+}
+.fs-spark i[data-low="true"] {
+  background: rgb(var(--warning) / 0.55);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fs-card,
+  .fs-title,
+  .fs-sum,
+  .fs-body,
+  .fs-chev {
+    transition: none !important;
+  }
+}
+
+/* Per-turn cache / speed pill in the reply byline (TODO-023). A pill, not
+ * another "·"-separated clause: these are ratios about the turn, while the
+ * rest of the row is one timing sentence. */
+.chat-perf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  background: rgb(var(--surface-hover));
+  color: rgb(var(--content-muted));
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+
+/* Composer-right session metrics (界面焕新 v3 `.sess-metrics`). The two chips
+ * are the first thing to go when the composer's host gets narrow — the
+ * context ring is the one figure worth keeping at every width. Container
+ * queries on the action row, matching the toolbar's own tiers. */
+@container (width < 44rem) {
+  [data-chat-root] .sess-metrics-chips {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Images inside a reply (TODO-022, 界面焕新 v3 `.md-img` / `.img-grid`)
+ *
+ * Three shapes, all driven by components/chat/MarkdownImage.tsx:
+ *  - `.md-figure`   a lone picture: bounded width, bottom info bar with the
+ *                   file name, dimensions/size and four actions.
+ *  - `.md-gallery`  2+ pictures from one paragraph: equal-width square tiles,
+ *                   file name revealed on hover.
+ *  - `.md-img-state` loading / missing / remote placeholders. They keep the
+ *                   cell's footprint, so a broken path in a three-image grid
+ *                   shows WHICH one failed instead of silently shrinking the
+ *                   row.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+
+.md-figure {
+  max-width: 520px;
+  margin: 10px 0 16px;
+  overflow: hidden;
+  border: 1px solid rgb(var(--edge));
+  border-radius: var(--radius-lg, 12px);
+  background: rgb(var(--surface-muted));
+}
+/* The trigger button supplied by ImageWithPreview. */
+.md-figure-pic {
+  width: 100%;
+  cursor: zoom-in;
+}
+.md-figure-img {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  background: rgb(var(--surface-muted));
+}
+.md-figure-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 6px 0 11px;
+  border-top: 1px solid rgb(var(--edge));
+  font-size: 12px;
+  color: rgb(var(--content-subtle));
+}
+.md-figure-nm {
+  min-width: 0;
+  overflow: hidden;
+  font-family: theme("fontFamily.mono");
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgb(var(--content));
+}
+.md-figure-meta {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.md-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  max-width: 520px;
+  margin: 8px 0 16px;
+}
+/* Tile trigger. `!important` overrides the inline max-width/max-height that
+ * ImageWithPreview puts on its default <img> — here the grid owns the size. */
+.md-cell {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid rgb(var(--edge));
+  border-radius: 10px;
+  cursor: zoom-in;
+  transition:
+    transform var(--dur-1, 120ms) var(--ease, ease),
+    box-shadow var(--dur-1, 120ms) var(--ease, ease);
+}
+.md-cell:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md, 0 4px 12px rgb(0 0 0 / 0.12));
+}
+.md-cell-img {
+  display: block;
+  width: 100%;
+  max-width: none !important;
+  max-height: none !important;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+.md-cell-cap {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 16px 8px 6px;
+  overflow: hidden;
+  background: linear-gradient(transparent, rgb(0 0 0 / 0.55));
+  font-family: theme("fontFamily.mono");
+  font-size: 11px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+  opacity: 0;
+  transition: opacity var(--dur-1, 120ms) var(--ease, ease);
+}
+.md-cell:hover .md-cell-cap {
+  opacity: 1;
+}
+
+.md-img-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  border: 1px dashed rgb(var(--edge));
+  border-radius: 10px;
+  background: rgb(var(--surface-muted));
+  text-align: center;
+}
+.md-img-state-tile {
+  aspect-ratio: 1;
+}
+/* Standalone (non-grid) placeholder: as wide as the figure it stands in for,
+ * but short — it is a status line, not a picture. */
+.md-img-state-block {
+  max-width: 320px;
+  margin: 10px 0 16px;
+  padding: 14px 12px;
+}
+.md-img-state-t {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgb(var(--content-muted));
+}
+.md-img-state-d {
+  max-width: 100%;
+  overflow: hidden;
+  font-family: theme("fontFamily.mono");
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgb(var(--content-subtle));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * File-path chips in a reply (TODO-022, v3 prototype `.fchip` / `.fpop`)
+ * Single click selects (text becomes the selection → Ctrl+C copies the
+ * path), double click opens; the hover card is portaled to <body> with
+ * fixed positioning so the transcript's overflow never clips it.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 22px;
+  margin: 0 1px;
+  padding: 0 7px;
+  border: 1px solid rgb(var(--edge));
+  border-radius: 6px;
+  background: rgb(var(--surface-muted));
+  font-family: theme("fontFamily.mono");
+  font-size: 12px;
+  line-height: 1;
+  color: rgb(var(--content));
+  vertical-align: 1px;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.fchip-ic {
+  flex: none;
+  color: rgb(var(--content-subtle));
+}
+.fchip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fchip em {
+  font-style: normal;
+  color: rgb(var(--content-subtle));
+}
+.fchip:hover,
+.fchip-on {
+  border-color: rgb(var(--accent) / 0.55);
+  background: rgb(var(--accent) / 0.07);
+}
+.fchip:focus-visible {
+  outline: 2px solid rgb(var(--accent) / 0.6);
+  outline-offset: 1px;
+}
+.fchip-sel {
+  border-color: rgb(var(--accent));
+  background: rgb(var(--accent) / 0.12);
+  box-shadow: 0 0 0 3px rgb(var(--accent) / 0.12);
+}
+/* The chip text is the DOM selection while selected; hide the native
+ * highlight so the chip's own state is the only visual. */
+.fchip-sel ::selection {
+  background: transparent;
+}
+.fchip-opening {
+  animation: fchip-open 420ms ease;
+}
+@keyframes fchip-open {
+  40% {
+    transform: scale(0.96);
+    background: rgb(var(--accent) / 0.22);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fchip-opening {
+    animation: none;
+  }
+}
+
+.fpop {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid rgb(var(--edge));
+  border-radius: 12px;
+  background: rgb(var(--surface));
+  box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.28);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgb(var(--content));
+  animation: fpop-rise 160ms ease;
+}
+@keyframes fpop-rise {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+.fpop-thumb {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgb(var(--surface-muted));
+}
+.fpop-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fpop-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+.fpop-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.fpop-meta,
+.fpop-path {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgb(var(--content-subtle));
+}
+.fpop-hint {
+  flex: none;
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgb(var(--surface-hover));
+  font-size: 11px;
+  font-weight: 500;
+  color: rgb(var(--content-subtle));
+}
+.fpop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.fpop-cand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-family: theme("fontFamily.mono");
+  font-size: 11.5px;
+  text-align: left;
+  color: rgb(var(--content-muted));
+}
+.fpop-cand:hover {
+  background: rgb(var(--surface-hover));
+  color: rgb(var(--content));
+}
+.fpop-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+.fpop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 7px;
+  font-size: 12px;
+  color: rgb(var(--content-muted));
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.fpop-btn:hover {
+  background: rgb(var(--surface-hover));
+  color: rgb(var(--content));
+}
+.fpop-btn-primary {
+  border: 1px solid rgb(var(--edge));
+  color: rgb(var(--content));
 }

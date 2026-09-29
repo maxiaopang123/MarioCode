@@ -74,7 +74,7 @@ export function resolveProtocol(p: Protocol | undefined): Protocol {
  *
  * Needed because gateways differ in what they want beyond a bearer token: a
  * routing hint, an org/tenant id, or a non-standard auth scheme. It is also
- * how a user overrides the session id Mcode auto-supplies for endpoints known
+ * how a user overrides the session id MarioCode auto-supplies for endpoints known
  * to require one — see `providers/upstreamHeaders.ts` for the delivery rules
  * and the auto-injection.
  *

@@ -39,9 +39,9 @@ import type {
 } from "@contracts/mobile";
 import { translate } from "@renderer/lib/i18n/core.js";
 
-const TOKEN_KEY = "mcode-web-token";
-const ENDPOINT_KEY = "mcode-web-endpoint";
-const THEME_KEY = "mcode-web-theme";
+const TOKEN_KEY = "mariocode-web-token";
+const ENDPOINT_KEY = "mariocode-web-endpoint";
+const THEME_KEY = "mariocode-web-theme";
 
 /** Current UI language for error messages. This module must NOT import
  *  sessionStore: lib/api.ts constructs `createWebApi()` during module
@@ -508,6 +508,14 @@ const skills: Api["skills"] = {
     marketInstall: () => webUnsupported("skills.marketInstall"),
 };
 
+/** Remote-image fetch is a desktop-only affordance (the phone shell has no
+ *  main process to proxy through). Resolving with an error — rather than
+ *  throwing like `webUnsupported` — keeps the reply's image placeholder in its
+ *  「加载失败」 state instead of surfacing an exception. */
+const net: Api["net"] = {
+  fetchImage: () => Promise.resolve({ dataUrl: "", error: "unsupported-on-web" }),
+};
+
 const file: Api["file"] = {
   readFile: (input) => rpc("file:readFile", input),
   readBinary: (input) => rpc("file:readBinary", input),
@@ -639,6 +647,7 @@ export function createWebApi(): Api {
     piModels,
     codexModels,
     skills,
+    net,
     file,
     git,
     claude,

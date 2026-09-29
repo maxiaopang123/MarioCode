@@ -20,12 +20,12 @@ const THEME_TRANSITION_MS = 260;
 /** localStorage key mirroring the last applied theme style. Read
  *  synchronously by initFoucGuard() before React mounts (SQLite/IPC aren't
  *  up yet), written by applyThemeStyle() on every change. */
-const THEME_STYLE_CACHE_KEY = "mcode-theme-style";
+const THEME_STYLE_CACHE_KEY = "mariocode-theme-style";
 
 /** localStorage key mirroring the last applied custom UI font. Same FOUC
  *  pattern as THEME_STYLE_CACHE_KEY: initFoucGuard() reads it synchronously,
  *  applyUiFontFamily() writes it on every change. */
-const UI_FONT_CACHE_KEY = "mcode-ui-font";
+const UI_FONT_CACHE_KEY = "mariocode-ui-font";
 
 /** The stylesheet default UI font stack — MUST stay in sync with the
  *  `var(--app-font, …)` fallback in styles.css's base font rule. When the

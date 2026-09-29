@@ -36,7 +36,9 @@ import { isMac } from "@renderer/lib/platform.js";
 import { DEFAULT_SHORTCUTS } from "@renderer/lib/shortcuts.js";
 import { voiceHandleFor } from "@renderer/lib/voiceController.js";
 import { translate, type MessageId } from "@renderer/lib/i18n/core.js";
+import { nextAttentionSessionId } from "@renderer/lib/attention.js";
 import {
+  IconBell,
   IconPlus,
   IconMessage,
   IconColumns3,
@@ -148,6 +150,19 @@ const STATIC_COMMANDS: StaticCommandDef[] = [
       void s.startSession();
     },
     available: (s) => s.activeProjectId !== null,
+  },
+  {
+    id: "session.next-attention",
+    labelKey: "lib.commands.nextAttention",
+    group: "会话",
+    keywords: ["attention", "waiting", "approval", "next", "等你", "待处理", "审批", "下一个"],
+    icon: IconBell,
+    defaultAccelerator: DEFAULT_SHORTCUTS["session.next-attention"],
+    perform: (s) => {
+      const id = nextAttentionSessionId(s);
+      if (id) void s.openTab(id);
+    },
+    available: (s) => nextAttentionSessionId(s) !== null,
   },
   {
     id: "tab.close",

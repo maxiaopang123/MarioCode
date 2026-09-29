@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-OUT=$(mktemp -d /tmp/mcode-model-anchor-smoke.XXXXXX)
+OUT=$(mktemp -d /tmp/mariocode-model-anchor-smoke.XXXXXX)
 trap 'rm -rf "$OUT"' EXIT
 
 ESBUILD=$(find ../../node_modules/.pnpm -path "*esbuild/bin/esbuild" -type f 2>/dev/null | sort -V | tail -1)

@@ -4,9 +4,9 @@
  * The user attaches external skill directories (Claude Code ~/.claude/skills,
  * Codex ~/.codex/skills, Zcode ~/.agents/skills, or any picked folder) as
  * sync sources in the settings panel. Each ENABLED source is mirrored by
- * copy into `~/.mcode/skills-sync/<sourceId>/` and followed in real time
+ * copy into `~/.mariocode/skills-sync/<sourceId>/` and followed in real time
  * with fs.watch; the composer `/` menu scans the mirror root as an extra
- * skills root alongside the global (~/.mcode/skills) and project roots.
+ * skills root alongside the global (~/.mariocode/skills) and project roots.
  *
  * Design decisions (from the TODO-004 sign-off):
  *  - Separate mirror directory per source, plain COPY sync (no junctions /
@@ -24,8 +24,8 @@
 import { watch, type FSWatcher } from "node:fs";
 import { promises as fs } from "node:fs";
 import { existsSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
+import { MARIOCODE_HOME } from "@main/lib/appHome.js";
 import { createHash } from "node:crypto";
 import {
   SKILL_SYNC_SOURCES_SETTING_KEY,
@@ -45,12 +45,12 @@ export function setSkillSyncChangeListener(listener: () => void): void {
 }
 
 /** Root of all per-source mirror directories. */
-export const SKILL_SYNC_ROOT = path.join(homedir(), ".mcode", "skills-sync");
+export const SKILL_SYNC_ROOT = path.join(MARIOCODE_HOME, "skills-sync");
 
 /** Synthesized plugin dirs (Claude-side skill visibility): one per source,
  *  holding a minimal `.claude-plugin/plugin.json` + a `skills/` directory
  *  whose children are copies of the mirror's skill folders. */
-export const SKILL_SYNC_PLUGINS_ROOT = path.join(homedir(), ".mcode", "skills-sync-plugins");
+export const SKILL_SYNC_PLUGINS_ROOT = path.join(MARIOCODE_HOME, "skills-sync-plugins");
 
 /** Debounce window for fs.watch bursts (editors save via rename storms). */
 const WATCH_DEBOUNCE_MS = 400;
@@ -195,7 +195,7 @@ async function runSync(source: SkillSyncSource): Promise<void> {
  *  Layout: `<root>/<pluginName>/.claude-plugin/plugin.json` + `skills/<name>/…`
  *  (copied). Failures only degrade Claude-side visibility, never the mirror. */
 async function materializeSyncPlugin(source: SkillSyncSource): Promise<void> {
-  const pluginName = `mcode-sync-${source.id.replace(/[^\w.-]/g, "-").toLowerCase()}`;
+  const pluginName = `mariocode-sync-${source.id.replace(/[^\w.-]/g, "-").toLowerCase()}`;
   const pluginDir = path.join(SKILL_SYNC_PLUGINS_ROOT, pluginName);
   const mirror = mirrorDirFor(source.id);
   try {
@@ -232,7 +232,7 @@ async function materializeSyncPlugin(source: SkillSyncSource): Promise<void> {
 /** Remove the synthesized plugin dir for one source (mirror removal calls
  *  this alongside deleting the mirror). */
 export async function removeSyncPluginDir(id: string): Promise<void> {
-  const pluginName = `mcode-sync-${id.replace(/[^\w.-]/g, "-").toLowerCase()}`;
+  const pluginName = `mariocode-sync-${id.replace(/[^\w.-]/g, "-").toLowerCase()}`;
   await fs.rm(path.join(SKILL_SYNC_PLUGINS_ROOT, pluginName), { recursive: true, force: true }).catch(() => {});
 }
 
@@ -252,7 +252,7 @@ export function skillSyncPluginRootsSync(): string[] {
   const roots: string[] = [];
   for (const s of sources) {
     if (!s.enabled) continue;
-    const pluginName = `mcode-sync-${s.id.replace(/[^\w.-]/g, "-").toLowerCase()}`;
+    const pluginName = `mariocode-sync-${s.id.replace(/[^\w.-]/g, "-").toLowerCase()}`;
     const dir = path.join(SKILL_SYNC_PLUGINS_ROOT, pluginName);
     try {
       if (existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) roots.push(dir);

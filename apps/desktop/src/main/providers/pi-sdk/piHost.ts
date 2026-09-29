@@ -9,7 +9,7 @@ import { PI_1M_CONTEXT_WINDOW } from "@contracts/piModel";
 import { PiMessageAdapter } from "./PiMessageAdapter.js";
 import { buildPiTokenSnapshot } from "./piTokenUsage.js";
 import { buildPiSkillLoader, rewriteSkillPrefix, createMntNormalizingReadTool } from "./piSkillBridge.js";
-import { createMcodeExtension } from "./mcodeExtension.js";
+import { createMarioCodeExtension } from "./mariocodeExtension.js";
 import { normalizePiRegisteredModel } from "./piRegisteredModel.js";
 import { dropFileSnapshot, getFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
 import { isMainToPiHost, PI_HOST_PROTOCOL_VERSION, type MainToPiHost, type PiHostReverseMethod, type PiHostToMain, type PiHostTurnConfig } from "./piHostProtocol.js";
@@ -129,7 +129,7 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
   const strict = req.permissionMode !== "bypassPermissions" && req.permissionMode !== "dontAsk";
   dropFileSnapshot(req.sessionId);
   const snapshot = getFileSnapshot(req.sessionId);
-  const extension = createMcodeExtension({ ctx, cwd: req.cwd, strict, sessionId: req.sessionId, projectPath: req.cwd, turnNumber: req.turnNumber, browserToolsEnabled: config.browserToolsEnabled, userSystemPrompt: config.userSystemPrompt,
+  const extension = createMarioCodeExtension({ ctx, cwd: req.cwd, strict, sessionId: req.sessionId, projectPath: req.cwd, turnNumber: req.turnNumber, browserToolsEnabled: config.browserToolsEnabled, userSystemPrompt: config.userSystemPrompt,
     browserBridge: { specs: config.browserToolSpecs, usagePrompt: config.browserUsagePrompt, invoke: (name, args, meta) => reverse(turnId, "browser", { name, args, meta } as never) as never }, snapshot,
     builtinTools: { web: config.webToolsEnabled === true, image: config.imageToolEnabled === true, schedule: config.scheduleToolsEnabled === true, wechat: config.wechatToolEnabled === true },
     unattended: config.unattended === true,

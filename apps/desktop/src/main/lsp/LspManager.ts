@@ -1231,7 +1231,7 @@ class LspManagerImpl {
     const spec = LANGUAGE_SPECS[handle.language];
     const result = (await this.sendRequest(handle, "initialize", {
       processId: process.pid,
-      clientInfo: { name: "mcode", version: "1.0" },
+      clientInfo: { name: "mariocode", version: "1.0" },
       rootUri,
       capabilities: {
         textDocument: {

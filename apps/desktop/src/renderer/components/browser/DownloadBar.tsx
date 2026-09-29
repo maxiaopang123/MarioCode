@@ -16,7 +16,7 @@ import {
  * state). One chip per tracked download: spinner while downloading, terminal
  * state styling after. A completed chip's click opens the file with the OS
  * default app; the folder button always reveals it in
- * `<系统下载>/mcode-browser/`. Chips auto-dismiss ~8s after reaching a
+ * `<系统下载>/mariocode-browser/`. Chips auto-dismiss ~8s after reaching a
  * terminal state (timer held by the parent) and can be removed manually.
  *
  * The bar takes layout height when non-empty, which shrinks the stage — the

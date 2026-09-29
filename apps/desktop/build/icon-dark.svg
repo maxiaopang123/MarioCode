@@ -1,0 +1,24 @@
+<!-- MarioCode app icon, dark variant (A). Reference vector; the PNG/ICO/ICNS are produced by gen_icon.py with the same geometry. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2B3F39"/>
+      <stop offset="1" stop-color="#15201D"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="0" y1="268" x2="0" y2="682" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B5EBCF"/>
+      <stop offset="1" stop-color="#7FD1A8"/>
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#bg)"/>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#shine)"/>
+  <g fill="none" stroke-width="124" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M318 330 V694 M318 330 L512 620" stroke="#F4F7F5"/>
+    <path d="M512 620 L706 330" stroke="url(#mint)"/>
+    <path d="M706 330 V694" stroke="#F4F7F5"/>
+  </g>
+</svg>

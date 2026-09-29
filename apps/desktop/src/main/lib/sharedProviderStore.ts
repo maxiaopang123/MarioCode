@@ -3,6 +3,7 @@ import { safeStorage } from "electron";
 import {
   SharedProviderPublicSchema,
   SharedProviderSaveInputSchema,
+  sharedProviderAddsOrigin,
   sharedRuntimeId,
   type SharedProviderProtocol,
   type SharedProviderPublic,
@@ -13,26 +14,6 @@ import { getDb } from "@main/store/db.js";
 const META_KEY = "sharedProviders.meta";
 const SECRET_KEY = "sharedProviders.keys";
 type CipherMap = Record<string, string>;
-
-function normalizedUrl(value: string): string {
-  const parsed = new URL(value);
-  parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
-  return parsed.toString();
-}
-
-/** Only the destinations the saved key can be sent to. Model lists, model
- * interfaces and protocol toggles don't change where the key goes, so editing
- * them must not force the user to re-enter the key. */
-function routingFingerprint(value: Pick<SharedProviderSaveInput, "baseUrl" | "modelsEndpoint" | "endpointOverrides">): string {
-  const endpointOverrides = Object.entries(value.endpointOverrides ?? {})
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([protocol, url]) => [protocol, normalizedUrl(url)]);
-  return JSON.stringify({
-    baseUrl: normalizedUrl(value.baseUrl),
-    modelsEndpoint: value.modelsEndpoint ? normalizedUrl(value.modelsEndpoint) : null,
-    endpointOverrides,
-  });
-}
 
 function readSetting(key: string): string | null {
   const row = getDb().prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined;
@@ -114,8 +95,11 @@ export function save(input: SharedProviderSaveInput): SharedProviderPublic[] {
   const apiKey = value.apiKey ?? "";
   if (apiKey.length > 0 && apiKey.trim().length === 0) throw new Error("API key cannot contain only whitespace");
   const previous = index >= 0 ? providers[index]! : null;
-  if (previous && apiKey.length === 0 && routingFingerprint(previous) !== routingFingerprint(value)) {
-    throw new Error("The provider URL changed; enter the API key again before saving so the saved key is never sent to a new destination");
+  // A stored key may only go where it already went. Editing the PATH of an
+  // already-trusted origin keeps it (the common "fix /v1" edit); pointing the
+  // provider at a new host/port — or downgrading to http — needs it re-typed.
+  if (previous && apiKey.length === 0 && sharedProviderAddsOrigin(previous, value)) {
+    throw new Error("接口地址指向了新的服务器；为避免把已保存的密钥发往新目标，请重新填写 API Key 后保存");
   }
   if (apiKey.length > 0) keys[id] = encryptRequired(apiKey);
   if (index < 0 && !keys[id]) throw new Error("A new shared provider requires an API key");

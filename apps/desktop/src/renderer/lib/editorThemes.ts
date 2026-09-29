@@ -9,7 +9,7 @@
  * app's effective light/dark mode and the user's persisted choice
  * (`settings` key `ui.editorTheme`, one id per mode).
  *
- * The two "Mcode" presets keep the original design goal — the editor chrome
+ * The two "MarioCode" presets keep the original design goal — the editor chrome
  * (background, gutters, widgets, scrollbars, diff tints) mirrors the app's
  * styles.css tokens so it melts into the surrounding panes, while syntax
  * tokens inherit the stock vs-dark / vs palette. The rest are faithful
@@ -41,13 +41,13 @@ export interface EditorThemePreset {
 }
 
 export const EDITOR_THEME_IDS = [
-  "mcode-dark",
-  "mcode-one-dark",
-  "mcode-monokai",
-  "mcode-solarized-dark",
-  "mcode-light",
-  "mcode-solarized-light",
-  "mcode-github-light",
+  "mariocode-dark",
+  "mariocode-one-dark",
+  "mariocode-monokai",
+  "mariocode-solarized-dark",
+  "mariocode-light",
+  "mariocode-solarized-light",
+  "mariocode-github-light",
 ] as const;
 export type EditorThemeId = (typeof EDITOR_THEME_IDS)[number];
 
@@ -61,11 +61,11 @@ export interface EditorThemeChoice {
   light: EditorThemeId;
 }
 
-/** Defaults: the "Mcode" pair — chrome mirroring styles.css tokens with the
+/** Defaults: the "MarioCode" pair — chrome mirroring styles.css tokens with the
  *  stock vs-dark / vs token palettes (i.e. the pre-setting appearance). */
 export const DEFAULT_EDITOR_THEME_CHOICE: EditorThemeChoice = {
-  dark: "mcode-dark",
-  light: "mcode-light",
+  dark: "mariocode-dark",
+  light: "mariocode-light",
 };
 
 /** Parse the persisted `ui.editorTheme` value. Any malformed JSON or unknown
@@ -91,9 +91,9 @@ export function parseEditorThemeChoice(raw: string | null | undefined): EditorTh
 
 export const EDITOR_THEME_PRESETS: EditorThemePreset[] = [
   {
-    id: "mcode-dark",
+    id: "mariocode-dark",
     mode: "dark",
-    labelKey: "settings.appearance.schemeMcodeDark",
+    labelKey: "settings.appearance.schemeMarioCodeDark",
     swatch: {
       background: "#17181b",
       keyword: "#569cd6",
@@ -144,7 +144,7 @@ export const EDITOR_THEME_PRESETS: EditorThemePreset[] = [
     },
   },
   {
-    id: "mcode-one-dark",
+    id: "mariocode-one-dark",
     mode: "dark",
     labelKey: "settings.appearance.schemeOneDark",
     swatch: {
@@ -210,7 +210,7 @@ export const EDITOR_THEME_PRESETS: EditorThemePreset[] = [
     },
   },
   {
-    id: "mcode-monokai",
+    id: "mariocode-monokai",
     mode: "dark",
     labelKey: "settings.appearance.schemeMonokai",
     swatch: {
@@ -278,7 +278,7 @@ export const EDITOR_THEME_PRESETS: EditorThemePreset[] = [
     },
   },
   {
-    id: "mcode-solarized-dark",
+    id: "mariocode-solarized-dark",
     mode: "dark",
     labelKey: "settings.appearance.schemeSolarizedDark",
     swatch: {
@@ -345,9 +345,9 @@ export const EDITOR_THEME_PRESETS: EditorThemePreset[] = [
     },
   },
   {
-    id: "mcode-light",
+    id: "mariocode-light",
     mode: "light",
-    labelKey: "settings.appearance.schemeMcodeLight",
+    labelKey: "settings.appearance.schemeMarioCodeLight",
     swatch: {
       background: "#ffffff",
       keyword: "#0000ff",
@@ -398,7 +398,7 @@ export const EDITOR_THEME_PRESETS: EditorThemePreset[] = [
     },
   },
   {
-    id: "mcode-solarized-light",
+    id: "mariocode-solarized-light",
     mode: "light",
     labelKey: "settings.appearance.schemeSolarizedLight",
     swatch: {
@@ -465,7 +465,7 @@ export const EDITOR_THEME_PRESETS: EditorThemePreset[] = [
     },
   },
   {
-    id: "mcode-github-light",
+    id: "mariocode-github-light",
     mode: "light",
     labelKey: "settings.appearance.schemeGithubLight",
     swatch: {

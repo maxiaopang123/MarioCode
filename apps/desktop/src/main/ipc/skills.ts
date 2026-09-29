@@ -1,7 +1,7 @@
 /**
  * IPC handler for skill discovery. The composer's `/` menu lists skills the
  * user has installed; we discover them by scanning the local filesystem
- * (user-global `~/.mcode/skills/` + active-project `.claude/skills/`) and
+ * (user-global `~/.mariocode/skills/` + active-project `.claude/skills/`) and
  * parsing each skill's SKILL.md frontmatter.
  *
  * We deliberately do NOT call the SDK's `Query.supportedCommands()` for the
@@ -9,14 +9,14 @@
  * fresh query per turn, so there is no live handle to query between turns.
  * Scanning the disk is instant, runs without booting the claude binary, and
  * matches what the SDK itself scans when `skills: "all"` is passed (the
- * binary scans $CLAUDE_CONFIG_DIR/skills, which we point at ~/.mcode/skills).
+ * binary scans $CLAUDE_CONFIG_DIR/skills, which we point at ~/.mariocode/skills).
  * Selecting a skill inserts `/name` into the textarea; the user sends it as a
  * normal turn and the SDK (started with `skills: "all"`) recognizes and runs it.
  *
  * Additionally, the settings panel's "Import" feature scans external tools'
  * skill directories (Claude Code ~/.claude/skills, Codex ~/.codex/skills,
  * Zcode ~/.agents/skills + ~/.zcode/skills + plugin cache) and copies selected
- * skills into ~/.mcode/skills so they become available in Mcode. The user can
+ * skills into ~/.mariocode/skills so they become available in MarioCode. The user can
  * also point it at a local directory (a single skill or a collection) or a
  * single markdown file (imported as a one-file skill, materialized as
  * <name>/SKILL.md).
@@ -25,6 +25,7 @@ import type { IpcMain } from "electron";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import path, { sep } from "node:path";
+import { MARIOCODE_HOME } from "@main/lib/appHome.js";
 import {
   IPC,
   SKILL_NAME_RE,
@@ -91,17 +92,17 @@ function findKnownProject(projectPath: string) {
 }
 
 /** Resolve the skills root directory for a given source. Global skills live
- *  under ~/.mcode/skills (Mcode's own CLAUDE_CONFIG_DIR); project skills under
+ *  under ~/.mariocode/skills (MarioCode's own CLAUDE_CONFIG_DIR); project skills under
  *  <project>/.claude/skills. Returns the absolute root path.
  *
- *  The global root moved from ~/.claude/skills to ~/.mcode/skills because
- *  CLAUDE_CONFIG_DIR is now always set to ~/.mcode - the SDK's bundled binary
+ *  The global root moved from ~/.claude/skills to ~/.mariocode/skills because
+ *  CLAUDE_CONFIG_DIR is now always set to ~/.mariocode - the SDK's bundled binary
  *  scans $CLAUDE_CONFIG_DIR/skills for user-level skills, so this is where
  *  imported skills must live to be discoverable (especially under custom
  *  endpoints, where ~/.claude/skills is no longer read). */
 function resolveSkillRoot(source: SkillSource, projectPath: string): string {
   if (source === "global") {
-    return path.join(homedir(), ".mcode", "skills");
+    return path.join(MARIOCODE_HOME, "skills");
   }
   return path.join(projectPath, ".claude", "skills");
 }
@@ -209,7 +210,7 @@ async function scanLocalSkillDir(
 
 /** Scan a user-picked single FILE as a one-file skill (the import dialog's
  *  "select file" flow). The file's markdown body IS the SKILL.md content;
- *  importing materializes it as <name>/SKILL.md under ~/.mcode/skills.
+ *  importing materializes it as <name>/SKILL.md under ~/.mariocode/skills.
  *  - Only .md/.markdown files qualify (case-insensitive); anything else is
  *    skipped (the renderer pre-filters, this is the defensive backstop).
  *  - Name: frontmatter `name` → file stem; a file literally named SKILL.md
@@ -572,10 +573,10 @@ export function registerSkillsHandlers(ipcMain: IpcMain): void {
     return { sources };
   });
 
-  // ── Import (copy) selected skills into ~/.mcode/skills ──
+  // ── Import (copy) selected skills into ~/.mariocode/skills ──
   // Copies each selected skill (a source directory tree, or a single markdown
   // file from the "select file" flow) from its external source into the global
-  // Mcode skills root. Directory sources copy wholesale (fs.cp recursive);
+  // MarioCode skills root. Directory sources copy wholesale (fs.cp recursive);
   // file sources become <name>/SKILL.md. Names are validated per-item — one
   // un-importable skill errors just that item instead of rejecting the batch.
   // Skills that already exist at the destination are skipped (not overwritten)

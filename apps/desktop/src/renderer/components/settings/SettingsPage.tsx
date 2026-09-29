@@ -13,7 +13,6 @@ import {
   IconBrandGit,
   IconTerminal2,
   IconWorld,
-  IconCode,
   IconInfoCircle,
   IconChartBar,
   IconMicrophone,
@@ -26,7 +25,7 @@ import {
   McpIcon,
   type TablerIconProps,
 } from "@renderer/lib/icons.js";
-import { CustomModelsPanel } from "./CustomModelsPanel.js";
+import { SharedProvidersPanel } from "./SharedProvidersPanel.js";
 import { RuntimesPanel } from "./RuntimesPanel.js";
 import { NetworkPanel } from "./NetworkPanel.js";
 import { SkillsPanel } from "./SkillsPanel.js";
@@ -119,7 +118,12 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "git", labelKey: "settings.nav.git", icon: IconBrandGit },
       { id: "terminal", labelKey: "settings.nav.terminal", icon: IconTerminal2 },
       { id: "browser", labelKey: "settings.nav.browser", icon: IconWorld },
-      { id: "lsp-languages", labelKey: "settings.nav.lsp", icon: IconCode },
+      // LSP (语言服务器) nav entry hidden for now (2026-09-28): the user drives
+      // code changes through the agent and only reviews diffs, so editor
+      // language features aren't needed. The panel and deep-link
+      // (setSettingsOpen(true, "lsp-languages")) still work — re-add this
+      // line to bring it back.
+      // { id: "lsp-languages", labelKey: "settings.nav.lsp", icon: IconCode }, (re-import IconCode)
     ],
   },
   {
@@ -226,7 +230,9 @@ export function SettingsPage() {
         >
           {active === "general" && <GeneralPanel />}
           {active === "appearance" && <AppearancePanel />}
-          {active === "custom-models" && <CustomModelsPanel />}
+          {/* 模型配置 = the shared provider hub only; the legacy per-engine
+              editor (CustomModelsPanel) was removed 2026-09-28. */}
+          {active === "custom-models" && <SharedProvidersPanel />}
           {active === "system-prompt" && <SystemPromptPanel />}
           {active === "shortcuts" && <ShortcutsPanel />}
           {active === "gestures" && <GesturesPanel />}

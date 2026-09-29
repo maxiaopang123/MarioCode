@@ -32,6 +32,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { isElectron } from "@renderer/lib/platform.js";
+import { IconChevronDown } from "@renderer/lib/icons.js";
 import type { SubagentSnapshot } from "@contracts/runtime";
 import type { SessionBookmark } from "@contracts/session";
 import type { TodoItem } from "@renderer/stores/sessionStore.js";
@@ -124,7 +125,10 @@ export function ActivityCluster({
   // reason the bar exists at all. A failed agent while others still run keeps
   // the running copy (per the design doc's rule) — the console lists it.
   const attn = !!waiting || (running.length === 0 && failed.length > 0);
-  const expanded = running.length > 0 || attn;
+  // 界面焕新 v3: the cluster is the session's floating pill (Codex-style) —
+  // it always shows its summary while there is anything to summarize; the
+  // console below it is the expanded card.
+  const expanded = true;
   const attnText = waiting
     ? t("chatStream.activity.cluster.waiting")
     : t("chatStream.activity.cluster.failed", { n: failed.length });
@@ -138,10 +142,11 @@ export function ActivityCluster({
     <div
       ref={bookmarkNodeRef}
       className={cn(
-        "pointer-events-auto relative inline-flex h-[30px] items-center overflow-hidden rounded-full",
-        "border backdrop-blur-[14px] transition-[border-color,background-color,box-shadow] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
-        "shadow-[0_1px_2px_rgb(9_9_11/0.05),0_8px_22px_-12px_rgb(9_9_11/0.28)]",
-        attn ? "border-warning/60 bg-warning/10" : "border-edge/85 bg-surface/75",
+        "pointer-events-auto relative inline-flex h-8 items-center overflow-hidden rounded-full pr-1",
+        // Solid surface, no backdrop blur: a blurred layer re-rasterizes on
+        // every scroll frame of the stream beneath it (v3 decision).
+        "border bg-surface shadow-md transition-[border-color,box-shadow] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+        attn ? "border-warning/60 shadow-[inset_0_0_0_999px_rgb(var(--warning)/0.08)]" : "border-edge",
       )}
     >
       {/* The button stays the head of the bar: the ring reports task progress
@@ -214,6 +219,17 @@ export function ActivityCluster({
             : t("chatStream.activity.cluster.noPlans")}
         </button>
       </div>
+      <button
+        type="button"
+        onClick={() => openConsole(primary)}
+        aria-label={t("chatStream.activity.cluster.aria")}
+        className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-content-subtle transition-colors hover:bg-surface-hover hover:text-content"
+      >
+        <IconChevronDown
+          size={13}
+          className={cn("transition-transform duration-200", (openKind || sheetNode) && "rotate-180")}
+        />
+      </button>
     </div>
   );
 

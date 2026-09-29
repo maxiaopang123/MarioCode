@@ -6,19 +6,49 @@ import type {
   SharedProviderPublic,
   SharedProviderSaveInput,
 } from "@contracts/sharedProvider";
-import { resolveSharedModelInterfaces } from "@contracts/sharedProvider";
+import { resolveSharedModelInterfaces, sharedProviderAddsOrigin } from "@contracts/sharedProvider";
 import { api } from "@renderer/lib/api.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { useSessionStore, validateComposerSelection } from "@renderer/stores/sessionStore.js";
 import { useToastStore } from "@renderer/stores/toastStore.js";
 import { Button, Input, ConfirmDialog, Dialog } from "@renderer/components/ui/index.js";
-import { IconPlus, IconTrash, IconLoader2, IconKey, IconRefresh } from "@renderer/lib/icons.js";
+import {
+  IconPlus,
+  IconTrash,
+  IconLoader2,
+  IconKey,
+  IconRefresh,
+  IconCheck,
+  IconChevronRight,
+  IconPhoto,
+  IconBrain,
+  IconShieldLock,
+  IconSparkles,
+  IconAlertTriangle,
+} from "@renderer/lib/icons.js";
 import { cn } from "@renderer/lib/cn.js";
+import { getProviderIcon } from "@renderer/lib/providerIcon.js";
+import { projectAvatarColor } from "@renderer/lib/projectAvatar.js";
+import { ProjectAvatar } from "@renderer/components/layout/ProjectAvatar.js";
 import { PanelHeader } from "./PanelHeader.js";
+
+/**
+ * 公用模型提供商 — one provider config shared by Claude / Codex / Pi.
+ *
+ * Layout (界面焕新 v3, 2026-09-28): left provider list (avatar + name + host +
+ * engine badges + key state) | right form in three titled sections —
+ * 连接 (name / base URL / key), 协议与引擎 (toggle chips), 模型 (compact rows
+ * with icon toggles; the batch bar only appears once rows are selected) —
+ * plus a collapsible 高级 section and a sticky save bar. The data logic
+ * (draft / dirty / discovery / validation) is unchanged from the original
+ * form; only the presentation moved.
+ */
 
 const PROTOCOLS: SharedProviderProtocol[] = ["anthropic", "chat-completions", "responses"];
 const AGENTS: SharedProviderAgent[] = ["claude", "codex", "pi"];
 const LABELS = { anthropic: "Anthropic Messages", "chat-completions": "OpenAI Chat Completions", responses: "OpenAI Responses", claude: "Claude", codex: "Codex", pi: "Pi" };
+/** Short protocol names for the compact per-model interface chips. */
+const SHORT: Record<SharedProviderProtocol, string> = { anthropic: "Messages", "chat-completions": "Chat", responses: "Responses" };
 function supports(agent: SharedProviderAgent, protocols: SharedProviderProtocol[], models: SharedProviderSaveInput["models"] = [{ id: "" }]): boolean {
   return models.some((model) => {
     const interfaces = resolveSharedModelInterfaces(protocols, model.interfaces);
@@ -31,8 +61,120 @@ function fresh(): SharedProviderSaveInput {
 function draftOf(p: SharedProviderPublic): SharedProviderSaveInput {
   return { id: p.id, name: p.name, baseUrl: p.baseUrl, modelsEndpoint: p.modelsEndpoint, protocols: [...p.protocols], models: p.models.map((m) => ({ ...m })), enabledAgents: [...p.enabledAgents], endpointOverrides: { ...p.endpointOverrides }, apiKey: "" };
 }
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="block space-y-1.5 text-xs text-content-muted"><span>{label}</span>{children}</label>;
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+const agentIcon = (agent: SharedProviderAgent) => getProviderIcon(`${agent}-sdk`);
+
+/* ── presentational helpers ── */
+
+function Field({ label, hint, children, className }: { label: string; hint?: string; children: ReactNode; className?: string }) {
+  return (
+    <label className={cn("block min-w-0", className)}>
+      <span className="mb-1.5 block text-[12px] font-medium text-content-muted">{label}</span>
+      {children}
+      {hint && <span className="mt-1 block text-[11.5px] leading-relaxed text-content-subtle">{hint}</span>}
+    </label>
+  );
+}
+
+function Section({ title, aside, hint, children }: { title: string; aside?: ReactNode; hint?: string; children: ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <div className="flex min-h-7 items-center gap-2">
+        <h3 className="text-[13px] font-semibold text-content">{title}</h3>
+        {aside && <div className="ml-auto flex items-center gap-1">{aside}</div>}
+      </div>
+      {children}
+      {hint && <p className="text-[11.5px] leading-relaxed text-content-subtle">{hint}</p>}
+    </section>
+  );
+}
+
+/** Toggle chip (protocols / engines): check mark replaces the icon when on. */
+function Chip({ on, disabled, onClick, icon, children, title }: {
+  on: boolean; disabled?: boolean; onClick: () => void; icon?: ReactNode; children: ReactNode; title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      disabled={disabled}
+      title={title}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] transition-colors",
+        on
+          ? "border-accent/45 bg-accent/10 font-medium text-content"
+          : "border-edge bg-surface text-content-muted hover:bg-surface-hover hover:text-content",
+        disabled && "cursor-not-allowed opacity-45 hover:bg-surface",
+      )}
+    >
+      {on ? <IconCheck size={13} className="shrink-0 text-accent-strong" /> : icon}
+      {children}
+    </button>
+  );
+}
+
+/** Small icon toggle for per-model capabilities (vision / reasoning). */
+function CapToggle({ on, disabled, onClick, icon, label }: {
+  on: boolean; disabled?: boolean; onClick: () => void; icon: ReactNode; label: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "grid h-8 w-8 shrink-0 place-items-center rounded-lg border transition-colors",
+        on ? "border-accent/45 bg-accent/10 text-accent-strong" : "border-transparent text-content-subtle hover:bg-surface-hover hover:text-content",
+        disabled && "cursor-not-allowed opacity-45",
+      )}
+    >
+      {icon}
+    </button>
+  );
+}
+
+const CHECKBOX = "h-3.5 w-3.5 shrink-0 cursor-pointer accent-[rgb(var(--accent))]";
+
+/** Per-model picks in the "加载模型" dialog. */
+interface DiscoveryOption {
+  interfaces: SharedProviderProtocol[];
+  image: boolean;
+}
+/** Order of the dialog's interface chips (Chat first — the most common). */
+const DISCOVERY_INTERFACES: SharedProviderProtocol[] = ["chat-completions", "anthropic", "responses"];
+/** Defaults: Chat + Messages on; Responses and 生图 off. */
+const defaultDiscoveryOption = (): DiscoveryOption => ({ interfaces: ["chat-completions", "anthropic"], image: false });
+
+/** Small toggle used in the discovery rows. */
+function MiniToggle({ on, disabled, onClick, children, title }: {
+  on: boolean; disabled?: boolean; onClick: () => void; children: ReactNode; title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      title={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-6 shrink-0 items-center gap-1 rounded-md border px-2 text-[11.5px] transition-colors",
+        on ? "border-accent/45 bg-accent/10 text-content" : "border-edge text-content-subtle hover:text-content",
+        disabled && "cursor-not-allowed opacity-40",
+      )}
+    >
+      {children}
+    </button>
+  );
 }
 
 export function SharedProvidersPanel() {
@@ -51,6 +193,8 @@ export function SharedProvidersPanel() {
   const [discovered, setDiscovered] = useState<{
     models: SharedProviderDiscoveredModel[];
     selectedIds: string[];
+    /** Per-model picks in the dialog: interfaces + image generation. */
+    options: Record<string, DiscoveryOption>;
     truncated: boolean;
     partial: boolean;
   } | null>(null);
@@ -96,12 +240,21 @@ export function SharedProvidersPanel() {
     draftRevisionRef.current++;
     setBusy(true); setError(null);
     try {
+      const knownIds = new Set(providers.map((p) => p.id));
       const result = await api.sharedProviders.save({ ...draft,
         models: draft.models.map((model) => ({ ...model, label: model.label?.trim() || undefined })),
       });
       setProviders(result.providers);
       setSelectedModelIndexes(new Set());
-      setDraft(null); setDirty(false); // Never keep the submitted key in the form.
+      // Stay on the provider just saved (a fresh draft off the stored row, so
+      // the submitted key is never kept in the form and the field shows
+      // "已保存"). Closing the form here made a second edit feel like starting
+      // over — including re-typing the key.
+      const saved = draft.id
+        ? result.providers.find((p) => p.id === draft.id)
+        : result.providers.find((p) => !knownIds.has(p.id));
+      setDraft(saved ? draftOf(saved) : null);
+      setDirty(false);
       await reloadConsumers();
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
@@ -189,6 +342,7 @@ export function SharedProvidersPanel() {
       setDiscovered({
         models: result.models,
         selectedIds: result.models.filter((model) => !existingIds.has(model.id)).map((model) => model.id),
+        options: Object.fromEntries(result.models.map((model) => [model.id, defaultDiscoveryOption()])),
         truncated: result.truncated,
         partial: result.partial,
       });
@@ -209,8 +363,20 @@ export function SharedProvidersPanel() {
     const existingIds = new Set(existing.map((model) => model.id.trim()));
     const additions = discovered.models
       .filter((model) => discovered.selectedIds.includes(model.id) && !existingIds.has(model.id))
-      .map((model) => ({ id: model.id, label: model.label }));
+      .map((model) => {
+        const opt = discovered.options[model.id] ?? defaultDiscoveryOption();
+        return {
+          id: model.id,
+          label: model.label,
+          interfaces: DISCOVERY_INTERFACES.filter((p) => opt.interfaces.includes(p)),
+          ...(opt.image ? { imageGeneration: true } : {}),
+        };
+      });
     if (additions.length > 0) {
+      // A model interface must also be enabled on the provider (save-time
+      // rule), so any interface picked in the dialog turns its protocol on.
+      const protocols = [...draft.protocols];
+      for (const a of additions) for (const p of a.interfaces) if (!protocols.includes(p)) protocols.push(p);
       const nextSelection = new Set<number>();
       let keptIndex = 0;
       draft.models.forEach((model, index) => {
@@ -220,7 +386,7 @@ export function SharedProvidersPanel() {
       });
       additions.forEach((_, index) => nextSelection.add(existing.length + index));
       setSelectedModelIndexes(nextSelection);
-      change({ models: [...existing, ...additions] });
+      change({ protocols, models: [...existing, ...additions] });
     }
     setDiscovered(null);
     useToastStore.getState().push({
@@ -230,128 +396,367 @@ export function SharedProvidersPanel() {
     });
   }
   const selected = providers.find((p) => p.id === draft?.id);
+  /** A key is on file and the user hasn't typed a replacement. */
+  const keyStored = !!selected?.hasApiKey && !(draft?.apiKey ?? "");
+  /** The edited URLs would send the stored key to an origin it never went to.
+   *  Main refuses that (sharedProviderAddsOrigin); warn here instead of
+   *  letting the user hit the error on submit. */
+  const needsKeyForNewOrigin = !!draft && keyStored && !!selected
+    && sharedProviderAddsOrigin(selected, draft);
+  const locked = busy || discovering;
+  const canSave = !!draft && !locked && !needsKeyForNewOrigin && draft.protocols.length > 0 && draft.enabledAgents.length > 0
+    && !draft.models.some((model) => model.interfaces !== undefined && model.interfaces.length === 0)
+    && !draft.enabledAgents.some((agent) => !supports(agent, draft.protocols, draft.models));
+  const allSelected = !!draft && draft.models.length > 0 && selectedModelIndexes.size === draft.models.length;
+  const updateModel = (index: number, patch: Partial<SharedProviderSaveInput["models"][number]>) => {
+    if (!draft) return;
+    change({ models: draft.models.map((m, i) => i === index ? { ...m, ...patch } : m) });
+  };
+
   return (
     <section className="mx-auto w-full max-w-5xl space-y-4">
       <PanelHeader title={t("settings.shared.title")} icon={IconKey} />
-      <p className="text-sm text-content-muted">{t("settings.shared.description")}</p>
-      {error && <p role="alert" className="break-words rounded bg-danger/10 p-3 text-sm text-danger">{error}</p>}
-      <div className="grid min-h-[360px] grid-cols-[220px_minmax(0,1fr)] overflow-hidden rounded-xl border border-edge bg-surface">
-        <aside className="space-y-2 border-r border-edge bg-surface-muted/30 p-3">
-          <Button size="sm" variant="outline" disabled={busy || discovering} onClick={() => select(fresh())}><IconPlus size={14} />{t("settings.shared.add")}</Button>
-          {loading && <IconLoader2 size={18} className="animate-spin text-content-subtle" />}
-          {!loading && providers.length === 0 && <p className="py-3 text-xs text-content-subtle">{t("settings.shared.empty")}</p>}
-          {providers.map((p) => <button key={p.id} disabled={busy || discovering} onClick={() => select(draftOf(p))}
-            className={cn("block w-full rounded-lg p-2 text-left hover:bg-surface-hover", draft?.id === p.id && "bg-accent/10")}>
-            <span className="block truncate text-sm font-medium text-content">{p.name}</span>
-            <span className="block text-xs text-content-subtle">{p.enabledAgents.map((a) => LABELS[a]).join(" · ")}</span>
-            <span className="text-xs text-content-subtle">{t(p.hasApiKey ? "settings.shared.keyStored" : "settings.shared.noKey")}</span>
-          </button>)}
+      <p className="text-[13px] leading-relaxed text-content-muted">{t("settings.shared.description")}</p>
+      {error && <p role="alert" className="break-words rounded-lg bg-danger/10 px-3 py-2.5 text-[13px] text-danger">{error}</p>}
+      <div className="grid min-h-[480px] grid-cols-[236px_minmax(0,1fr)] overflow-hidden rounded-xl border border-edge bg-surface shadow-sm">
+        {/* ── Provider list ── */}
+        <aside className="flex min-h-0 flex-col rounded-l-xl border-r border-edge bg-surface-muted/60">
+          <div className="flex items-center justify-between px-3 pb-2 pt-3">
+            <span className="text-[12px] font-semibold text-content-subtle">
+              {t("settings.shared.providerCount", { n: providers.length })}
+            </span>
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() => select(fresh())}
+              title={t("settings.shared.add")}
+              className="flex h-7 items-center gap-1 rounded-lg px-2 text-[12px] font-medium text-content-muted transition-colors hover:bg-surface-hover hover:text-content disabled:opacity-50"
+            >
+              <IconPlus size={14} />
+              {t("settings.shared.addShort")}
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3">
+            {loading && <div className="grid place-items-center py-6"><IconLoader2 size={18} className="animate-spin text-content-subtle" /></div>}
+            {!loading && providers.length === 0 && !draft && (
+              <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-content-subtle">{t("settings.shared.empty")}</p>
+            )}
+            {draft && !draft.id && (
+              <div className="flex items-center gap-2.5 rounded-[10px] border border-dashed border-accent/50 bg-accent/5 px-2.5 py-2">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent/15 text-accent-strong"><IconPlus size={14} /></span>
+                <span className="min-w-0 truncate text-[13px] font-medium text-content">{draft.name.trim() || t("settings.shared.newProvider")}</span>
+              </div>
+            )}
+            {providers.map((p) => {
+              const active = draft?.id === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={locked}
+                  onClick={() => select(draftOf(p))}
+                  className={cn(
+                    "flex w-full items-start gap-2.5 rounded-[10px] px-2.5 py-2 text-left transition-colors",
+                    active ? "srow-active" : "hover:bg-surface-hover",
+                  )}
+                >
+                  <ProjectAvatar name={p.name} color={projectAvatarColor(p.name)} size="lg" className="mt-0.5" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5">
+                      <span className="min-w-0 truncate text-[13px] font-medium text-content">{p.name}</span>
+                      <span
+                        className={cn("ml-auto h-1.5 w-1.5 shrink-0 rounded-full", p.hasApiKey ? "bg-accent" : "bg-warning")}
+                        title={t(p.hasApiKey ? "settings.shared.keyStored" : "settings.shared.noKey")}
+                        aria-label={t(p.hasApiKey ? "settings.shared.keyStored" : "settings.shared.noKey")}
+                      />
+                    </span>
+                    <span className="block truncate font-mono text-[11px] text-content-subtle">{hostOf(p.baseUrl)}</span>
+                    <span className="mt-1 flex items-center gap-1">
+                      {p.enabledAgents.map((a) => {
+                        const { Icon, color, label } = agentIcon(a);
+                        return (
+                          <span key={a} title={label} className="grid h-[18px] w-[18px] place-items-center rounded-[5px] bg-surface ring-1 ring-inset ring-edge">
+                            <Icon size={11} className={color} />
+                          </span>
+                        );
+                      })}
+                      <span className="ml-1 text-[11px] text-content-subtle">{t("settings.shared.modelCount", { n: p.models.length })}</span>
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </aside>
-        {!draft ? <div className="flex items-center justify-center p-8 text-sm text-content-subtle">{t("settings.shared.selectHint")}</div> : (
-          <form className="min-w-0 space-y-4 p-5" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-            <Field label={t("settings.shared.name")}><Input required value={draft.name} disabled={busy} onChange={(e) => change({ name: e.target.value })} /></Field>
-            <Field label={t("settings.shared.baseUrl")}><Input required type="url" spellCheck={false} value={draft.baseUrl} disabled={busy} onChange={(e) => change({ baseUrl: e.target.value })} placeholder="https://api.example.com/v1" /></Field>
-            <Field label={t("settings.shared.apiKey")}><Input type="password" autoComplete="new-password" spellCheck={false} value={draft.apiKey ?? ""} disabled={busy} onChange={(e) => change({ apiKey: e.target.value })} placeholder={t(selected?.hasApiKey ? "settings.shared.keepKey" : "settings.shared.enterKey")} /></Field>
-            <fieldset className="space-y-2"><legend className="mb-2 text-xs text-content-muted">{t("settings.shared.protocols")}</legend>
-              {PROTOCOLS.map((p) => <label key={p} className="mr-4 inline-flex items-center gap-2 text-xs text-content">
-                <input type="checkbox" checked={draft.protocols.includes(p)} disabled={busy} onChange={() => toggleProtocol(p)} />{LABELS[p]}
-              </label>)}
-              <p className="text-xs text-content-subtle">{t("settings.shared.protocolHint")}</p>
-            </fieldset>
-            <fieldset className="space-y-2"><legend className="mb-2 text-xs text-content-muted">{t("settings.shared.agents")}</legend>
-              {AGENTS.map((agent) => <label key={agent} className={cn("mr-4 inline-flex items-center gap-2 text-sm", supports(agent, draft.protocols, draft.models) ? "text-content" : "text-content-subtle opacity-60")}>
-                <input type="checkbox" checked={draft.enabledAgents.includes(agent)} disabled={busy || !supports(agent, draft.protocols, draft.models)}
-                  onChange={() => change({ enabledAgents: draft.enabledAgents.includes(agent) ? draft.enabledAgents.filter((a) => a !== agent) : [...draft.enabledAgents, agent] })} />{LABELS[agent]}
-              </label>)}
-              <p className="text-xs text-content-subtle">{t("settings.shared.compatibilityHint")}</p>
-            </fieldset>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between"><span className="text-xs text-content-muted">{t("settings.shared.models")}</span>
-                <div className="flex items-center gap-1">
-                  <Button size="sm" variant="ghost" type="button" disabled={busy || discovering || !draft.protocols.length} onClick={() => void discoverModels()}>
-                    {discovering ? <IconLoader2 size={12} className="animate-spin" /> : <IconRefresh size={12} />}
+
+        {/* ── Detail ── */}
+        {!draft ? (
+          <div className="flex flex-col items-center justify-center gap-3 p-10 text-center">
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-surface-muted text-content-subtle"><IconKey size={20} /></span>
+            <p className="max-w-[320px] text-[13px] leading-relaxed text-content-subtle">{t("settings.shared.selectHint")}</p>
+            <Button size="sm" variant="primary" disabled={locked} onClick={() => select(fresh())}>
+              <IconPlus size={14} />{t("settings.shared.add")}
+            </Button>
+          </div>
+        ) : (
+          <form className="flex min-w-0 flex-col" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+            {/* Form header: identity + actions. Kept at the top (not a sticky
+                footer) — the settings scroll area fades its bottom edge, so a
+                pinned footer floated over the model list. */}
+            <div className="flex items-center gap-3 border-b border-edge px-6 py-3.5">
+              <ProjectAvatar name={draft.name.trim() || "?"} color={projectAvatarColor(draft.name.trim() || "?")} size="lg" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14px] font-semibold text-content">
+                  {draft.name.trim() || t("settings.shared.newProvider")}
+                </span>
+                {dirty ? (
+                  <span className="flex items-center gap-1.5 text-[11.5px] text-warning">
+                    <i className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden />
+                    {t("settings.shared.unsaved")}
+                  </span>
+                ) : (
+                  <span className="block truncate font-mono text-[11.5px] text-content-subtle">{draft.baseUrl ? hostOf(draft.baseUrl) : "—"}</span>
+                )}
+              </span>
+              {selected && (
+                <Button type="button" variant="ghost" size="sm" disabled={locked} onClick={() => setPendingDelete(selected)}
+                  className="text-danger hover:bg-danger/10 hover:text-danger">
+                  <IconTrash size={14} />{t("settings.shared.delete")}
+                </Button>
+              )}
+              <Button type="submit" variant="primary" size="sm" disabled={!canSave}>
+                {busy && <IconLoader2 size={13} className="animate-spin" />}{t("settings.shared.save")}
+              </Button>
+            </div>
+            <div className="min-w-0 flex-1 space-y-7 p-6">
+              {/* 连接 */}
+              <Section title={t("settings.shared.sectionConnection")}>
+                <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
+                  <Field label={t("settings.shared.name")}>
+                    <Input required value={draft.name} disabled={busy} onChange={(e) => change({ name: e.target.value })} placeholder="OpenRouter" />
+                  </Field>
+                  <Field label={t("settings.shared.baseUrlShort")} hint={t("settings.shared.baseUrlHint")}>
+                    <Input required type="url" spellCheck={false} className="font-mono" value={draft.baseUrl} disabled={busy} onChange={(e) => change({ baseUrl: e.target.value })} placeholder="https://api.example.com/v1" />
+                  </Field>
+                </div>
+                <Field label={t("settings.shared.apiKey")}>
+                  <div className="relative">
+                    <IconShieldLock size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-content-subtle" />
+                    <Input
+                      type="password"
+                      autoComplete="new-password"
+                      spellCheck={false}
+                      className={cn("pl-8 font-mono", keyStored && "pr-[92px]")}
+                      value={draft.apiKey ?? ""}
+                      disabled={busy}
+                      onChange={(e) => change({ apiKey: e.target.value })}
+                      placeholder={t(selected?.hasApiKey ? "settings.shared.keepKey" : "settings.shared.enterKey")}
+                    />
+                    {/* A stored key is never read back, so the box stays empty.
+                        Say so inside it — an empty field otherwise reads as
+                        "you must type this again". */}
+                    {keyStored && (
+                      <span className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-md bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent-strong">
+                        <IconCheck size={11} />{t("settings.shared.keyStoredShort")}
+                      </span>
+                    )}
+                  </div>
+                  {needsKeyForNewOrigin && (
+                    <span className="mt-1.5 flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1.5 text-[11.5px] leading-relaxed text-warning">
+                      <IconAlertTriangle size={13} className="mt-[1px] shrink-0" />
+                      {t("settings.shared.keyNeededNewOrigin")}
+                    </span>
+                  )}
+                </Field>
+              </Section>
+
+              {/* 协议与引擎 */}
+              <Section title={t("settings.shared.sectionProtocols")} hint={t("settings.shared.compatibilityHint")}>
+                <div className="space-y-2">
+                  <div className="text-[12px] font-medium text-content-muted">{t("settings.shared.protocols")}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {PROTOCOLS.map((p) => (
+                      <Chip key={p} on={draft.protocols.includes(p)} disabled={busy} onClick={() => toggleProtocol(p)}>{LABELS[p]}</Chip>
+                    ))}
+                  </div>
+                  <p className="text-[11.5px] leading-relaxed text-content-subtle">{t("settings.shared.protocolHint")}</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-[12px] font-medium text-content-muted">{t("settings.shared.agents")}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {AGENTS.map((agent) => {
+                      const ok = supports(agent, draft.protocols, draft.models);
+                      const { Icon, color } = agentIcon(agent);
+                      return (
+                        <Chip
+                          key={agent}
+                          on={draft.enabledAgents.includes(agent)}
+                          disabled={busy || !ok}
+                          title={ok ? undefined : t("settings.shared.agentUnsupported")}
+                          icon={<Icon size={13} className={cn("shrink-0", color)} />}
+                          onClick={() => change({ enabledAgents: draft.enabledAgents.includes(agent) ? draft.enabledAgents.filter((a) => a !== agent) : [...draft.enabledAgents, agent] })}
+                        >
+                          {LABELS[agent]}
+                        </Chip>
+                      );
+                    })}
+                  </div>
+                </div>
+              </Section>
+
+              {/* 模型 */}
+              <Section
+                title={`${t("settings.shared.models")} · ${draft.models.length}`}
+                aside={<>
+                  <Button size="sm" variant="ghost" type="button" disabled={locked || !draft.protocols.length} onClick={() => void discoverModels()}>
+                    {discovering ? <IconLoader2 size={13} className="animate-spin" /> : <IconRefresh size={13} />}
                     {t(discovering ? "settings.shared.loadingModels" : "settings.shared.loadModels")}
                   </Button>
-                  <Button size="sm" variant="ghost" type="button" disabled={busy || discovering} onClick={() => change({ models: [...draft.models, { id: "" }] })}><IconPlus size={12} />{t("settings.shared.addModel")}</Button>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-1 rounded border border-edge bg-surface-muted/30 p-2">
-                <span className="mr-1 text-xs text-content-subtle">{t("settings.shared.selectedCount", { n: selectedModelIndexes.size })}</span>
-                <Button type="button" size="sm" variant="ghost" disabled={busy || discovering || selectedModelIndexes.size === draft.models.length}
-                  onClick={() => setSelectedModelIndexes(new Set(draft.models.map((_, index) => index)))}>{t("settings.shared.selectAll")}</Button>
-                <Button type="button" size="sm" variant="ghost" disabled={busy || discovering || selectedModelIndexes.size === 0}
-                  onClick={() => setSelectedModelIndexes(new Set())}>{t("settings.shared.clearSelection")}</Button>
-                <span className="mx-1 h-4 w-px bg-edge" aria-hidden="true" />
-                <Button type="button" size="sm" variant="ghost" disabled={busy || discovering || selectedModelIndexes.size === 0}
-                  onClick={() => updateSelectedModels("vision-on")}>{t("settings.shared.enableVisionSelected")}</Button>
-                <Button type="button" size="sm" variant="ghost" disabled={busy || discovering || selectedModelIndexes.size === 0}
-                  onClick={() => updateSelectedModels("vision-off")}>{t("settings.shared.disableVisionSelected")}</Button>
-                <Button type="button" size="sm" variant="ghost" disabled={busy || discovering || selectedModelIndexes.size === 0}
-                  onClick={() => updateSelectedModels("reasoning-on")}>{t("settings.shared.enableReasoningSelected")}</Button>
-                <Button type="button" size="sm" variant="ghost" disabled={busy || discovering || selectedModelIndexes.size === 0}
-                  onClick={() => updateSelectedModels("reasoning-off")}>{t("settings.shared.disableReasoningSelected")}</Button>
-              </div>
-              {draft.models.map((model, index) => <div key={index} className="space-y-2 rounded border border-edge p-3">
-                <div className="flex gap-2">
-                  <input type="checkbox" className="self-center" checked={selectedModelIndexes.has(index)} disabled={busy || discovering}
-                    aria-label={t("settings.shared.selectModel", { n: index + 1 })}
-                    onChange={(event) => toggleModelSelection(index, event.target.checked)} />
-                  <Input required aria-label={t("settings.shared.modelId")} placeholder={t("settings.shared.modelId")} value={model.id} disabled={busy}
-                    onChange={(e) => change({ models: draft.models.map((m, i) => i === index ? { ...m, id: e.target.value } : m) })} />
-                  <Input aria-label={t("settings.shared.modelLabel")} placeholder={t("settings.shared.modelLabel")} value={model.label ?? ""} disabled={busy}
-                    onChange={(e) => change({ models: draft.models.map((m, i) => i === index ? { ...m, label: e.target.value } : m) })} />
-                  <Button variant="ghost" size="sm" type="button" title={t("settings.shared.removeModel")} disabled={busy || draft.models.length === 1}
-                    onClick={() => removeModel(index)}><IconTrash size={14} /></Button>
-                </div>
-                <div className="flex flex-wrap gap-4 text-xs text-content-muted">
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={model.input?.includes("image") ?? false} disabled={busy}
-                    onChange={(e) => change({ models: draft.models.map((m, i) => i === index ? { ...m, input: e.target.checked ? ["text", "image"] : ["text"] } : m) })} />{t("settings.shared.vision")}</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={model.reasoning ?? false} disabled={busy}
-                    onChange={(e) => change({ models: draft.models.map((m, i) => i === index ? { ...m, reasoning: e.target.checked } : m) })} />{t("settings.shared.reasoning")}</label>
-                </div>
-                <fieldset className="space-y-1 text-xs text-content-muted">
-                  <legend>{t("settings.shared.modelInterfaces")}</legend>
-                  <div className="flex flex-wrap gap-3">
-                    {draft.protocols.map((protocol) => <label key={protocol} className="flex items-center gap-1">
-                      <input type="checkbox" checked={(model.interfaces ?? draft.protocols).includes(protocol)} disabled={busy}
-                        onChange={(e) => toggleModelInterface(index, protocol, e.target.checked)} />{LABELS[protocol]}
-                    </label>)}
+                  <Button size="sm" variant="ghost" type="button" disabled={locked} onClick={() => change({ models: [...draft.models, { id: "" }] })}>
+                    <IconPlus size={13} />{t("settings.shared.addModel")}
+                  </Button>
+                </>}
+              >
+                <div className="overflow-hidden rounded-lg border border-edge">
+                  {/* Column header / batch bar — the batch actions only show once something is selected. */}
+                  <div className="flex h-9 items-center gap-2.5 border-b border-edge bg-surface-muted/60 px-3 text-[11.5px] text-content-subtle">
+                    <input
+                      type="checkbox"
+                      className={CHECKBOX}
+                      checked={allSelected}
+                      ref={(el) => { if (el) el.indeterminate = selectedModelIndexes.size > 0 && !allSelected; }}
+                      disabled={locked}
+                      aria-label={allSelected ? t("settings.shared.clearSelection") : t("settings.shared.selectAll")}
+                      onChange={() => setSelectedModelIndexes(allSelected ? new Set() : new Set(draft.models.map((_, i) => i)))}
+                    />
+                    {selectedModelIndexes.size === 0 ? (
+                      <>
+                        <span className="flex-1">{t("settings.shared.modelId")}</span>
+                        <span className="w-[168px]">{t("settings.shared.modelLabel")}</span>
+                        <span className="w-[144px] text-center">{t("settings.shared.capabilities")}</span>
+                      </>
+                    ) : (
+                      <span className="flex flex-1 flex-wrap items-center gap-1">
+                        <span className="mr-1 font-medium text-content">{t("settings.shared.selectedCount", { n: selectedModelIndexes.size })}</span>
+                        {([
+                          ["vision-on", "settings.shared.enableVisionSelected"],
+                          ["vision-off", "settings.shared.disableVisionSelected"],
+                          ["reasoning-on", "settings.shared.enableReasoningSelected"],
+                          ["reasoning-off", "settings.shared.disableReasoningSelected"],
+                        ] as const).map(([k, label]) => (
+                          <button key={k} type="button" disabled={locked} onClick={() => updateSelectedModels(k)}
+                            className="h-6 rounded-md px-2 text-content-muted transition-colors hover:bg-surface-hover hover:text-content disabled:opacity-50">
+                            {t(label)}
+                          </button>
+                        ))}
+                      </span>
+                    )}
                   </div>
-                  {model.interfaces !== undefined && model.interfaces.length === 0 && <p className="text-danger">{t("settings.shared.modelInterfaceRequired")}</p>}
-                </fieldset>
-                {advanced && <div className="grid grid-cols-2 gap-2">
-                  <Field label={t("settings.shared.contextWindow")}><Input type="number" min={1} step={1} value={model.contextWindow ?? ""} disabled={busy}
-                    onChange={(e) => change({ models: draft.models.map((m, i) => i === index ? { ...m, contextWindow: e.target.value ? Number(e.target.value) : undefined } : m) })} /></Field>
-                  <Field label={t("settings.shared.maxTokens")}><Input type="number" min={1} step={1} value={model.maxTokens ?? ""} disabled={busy}
-                    onChange={(e) => change({ models: draft.models.map((m, i) => i === index ? { ...m, maxTokens: e.target.value ? Number(e.target.value) : undefined } : m) })} /></Field>
-                </div>}
-              </div>)}
+                  <ul className="divide-y divide-edge">
+                    {draft.models.map((model, index) => {
+                      const vision = model.input?.includes("image") ?? false;
+                      const reasoning = model.reasoning ?? false;
+                      const multiProto = draft.protocols.length > 1;
+                      const noInterface = model.interfaces !== undefined && model.interfaces.length === 0;
+                      return (
+                        <li key={index} className={cn("px-3 py-2", selectedModelIndexes.has(index) && "bg-accent/[0.04]")}>
+                          <div className="flex items-center gap-2.5">
+                            <input type="checkbox" className={CHECKBOX} checked={selectedModelIndexes.has(index)} disabled={locked}
+                              aria-label={t("settings.shared.selectModel", { n: index + 1 })}
+                              onChange={(event) => toggleModelSelection(index, event.target.checked)} />
+                            <Input required aria-label={t("settings.shared.modelId")} placeholder="gpt-5.1 / deepseek-v4-pro" value={model.id} disabled={busy}
+                              className="min-w-0 flex-1 font-mono" spellCheck={false}
+                              onChange={(e) => updateModel(index, { id: e.target.value })} />
+                            <Input aria-label={t("settings.shared.modelLabel")} placeholder={t("settings.shared.modelLabelShort")} value={model.label ?? ""} disabled={busy}
+                              className="w-[168px] shrink-0"
+                              onChange={(e) => updateModel(index, { label: e.target.value })} />
+                            <span className="flex w-[144px] shrink-0 items-center justify-center gap-1">
+                              <CapToggle on={vision} disabled={busy} icon={<IconPhoto size={15} />} label={t("settings.shared.vision")}
+                                onClick={() => updateModel(index, { input: vision ? ["text"] : ["text", "image"] })} />
+                              <CapToggle on={reasoning} disabled={busy} icon={<IconBrain size={15} />} label={t("settings.shared.reasoning")}
+                                onClick={() => updateModel(index, { reasoning: !reasoning })} />
+                              <CapToggle on={model.imageGeneration ?? false} disabled={busy} icon={<IconSparkles size={15} />} label={t("settings.shared.imageGeneration")}
+                                onClick={() => updateModel(index, { imageGeneration: model.imageGeneration ? undefined : true })} />
+                              <button type="button" title={t("settings.shared.removeModel")} aria-label={t("settings.shared.removeModel")}
+                                disabled={busy || draft.models.length === 1} onClick={() => removeModel(index)}
+                                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-content-subtle transition-colors hover:bg-danger/10 hover:text-danger disabled:pointer-events-none disabled:opacity-30">
+                                <IconTrash size={14} />
+                              </button>
+                            </span>
+                          </div>
+                          {(multiProto || advanced) && (
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 pl-6 text-[11.5px] text-content-subtle">
+                              {multiProto && (
+                                <span className="flex flex-wrap items-center gap-1.5">
+                                  <span>{t("settings.shared.modelInterfaces")}</span>
+                                  {draft.protocols.map((protocol) => {
+                                    const on = (model.interfaces ?? draft.protocols).includes(protocol);
+                                    return (
+                                      <button key={protocol} type="button" aria-pressed={on} disabled={busy}
+                                        onClick={() => toggleModelInterface(index, protocol, !on)}
+                                        className={cn("h-6 rounded-md border px-2 transition-colors",
+                                          on ? "border-accent/45 bg-accent/10 text-content" : "border-edge text-content-subtle hover:text-content")}>
+                                        {SHORT[protocol]}
+                                      </button>
+                                    );
+                                  })}
+                                  {noInterface && <span className="text-danger">{t("settings.shared.modelInterfaceRequired")}</span>}
+                                </span>
+                              )}
+                              {advanced && (
+                                <span className="flex items-center gap-2">
+                                  <span>{t("settings.shared.contextShort")}</span>
+                                  <Input type="number" min={1} step={1} value={model.contextWindow ?? ""} disabled={busy} className="h-7 w-28"
+                                    aria-label={t("settings.shared.contextWindow")} placeholder="200000"
+                                    onChange={(e) => updateModel(index, { contextWindow: e.target.value ? Number(e.target.value) : undefined })} />
+                                  <span>{t("settings.shared.maxTokensShort")}</span>
+                                  <Input type="number" min={1} step={1} value={model.maxTokens ?? ""} disabled={busy} className="h-7 w-24"
+                                    aria-label={t("settings.shared.maxTokens")} placeholder="32000"
+                                    onChange={(e) => updateModel(index, { maxTokens: e.target.value ? Number(e.target.value) : undefined })} />
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </Section>
+
+              {/* 高级 */}
+              <section className="rounded-lg border border-edge">
+                <button type="button" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}
+                  className="flex h-10 w-full items-center gap-2 px-3 text-left text-[13px] font-medium text-content-muted transition-colors hover:text-content">
+                  <IconChevronRight size={14} className={cn("shrink-0 transition-transform", advanced && "rotate-90")} />
+                  {t("settings.shared.advancedTitle")}
+                  <span className="ml-auto text-[11.5px] font-normal text-content-subtle">{t("settings.shared.advancedSummary")}</span>
+                </button>
+                {advanced && (
+                  <div className="space-y-3 border-t border-edge px-3 py-3">
+                    <p className="text-[11.5px] leading-relaxed text-content-subtle">{t("settings.shared.overrideHint")}</p>
+                    <Field label={t("settings.shared.modelsEndpoint")} hint={t("settings.shared.modelsEndpointHint")}>
+                      <Input type="url" className="font-mono" value={draft.modelsEndpoint ?? ""} disabled={locked} placeholder={t("settings.shared.modelsEndpointPlaceholder")}
+                        onChange={(e) => change({ modelsEndpoint: e.target.value || undefined })} />
+                    </Field>
+                    {draft.protocols.map((protocol) => (
+                      <Field key={protocol} label={LABELS[protocol]}>
+                        <Input type="url" className="font-mono" value={draft.endpointOverrides?.[protocol] ?? ""} disabled={busy} placeholder={draft.baseUrl}
+                          onChange={(e) => {
+                            const endpointOverrides = { ...draft.endpointOverrides };
+                            if (e.target.value) endpointOverrides[protocol] = e.target.value;
+                            else delete endpointOverrides[protocol];
+                            change({ endpointOverrides });
+                          }} />
+                      </Field>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <p className="rounded-lg bg-accent/[0.06] px-3 py-2.5 text-[11.5px] leading-relaxed text-content-muted">{t("settings.shared.isolation")}</p>
             </div>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setAdvanced(!advanced)}>{t("settings.shared.advanced")}</Button>
-            {advanced && <div className="space-y-3 rounded bg-surface-muted/30 p-3">
-              <p className="text-xs text-content-subtle">{t("settings.shared.overrideHint")}</p>
-              <Field label={t("settings.shared.modelsEndpoint")}>
-                <Input type="url" value={draft.modelsEndpoint ?? ""} disabled={busy || discovering} placeholder={t("settings.shared.modelsEndpointPlaceholder")}
-                  onChange={(e) => change({ modelsEndpoint: e.target.value || undefined })} />
-              </Field>
-              <p className="text-xs text-content-subtle">{t("settings.shared.modelsEndpointHint")}</p>
-              {draft.protocols.map((protocol) => <Field key={protocol} label={LABELS[protocol]}>
-                <Input type="url" value={draft.endpointOverrides?.[protocol] ?? ""} disabled={busy} placeholder={draft.baseUrl}
-                  onChange={(e) => {
-                    const endpointOverrides = { ...draft.endpointOverrides };
-                    if (e.target.value) endpointOverrides[protocol] = e.target.value;
-                    else delete endpointOverrides[protocol];
-                    change({ endpointOverrides });
-                  }} />
-              </Field>)}
-            </div>}
-            <p className="rounded bg-accent/5 p-3 text-xs text-content-muted">{t("settings.shared.isolation")}</p>
-            <div className="flex items-center gap-2">
-              <Button type="submit" variant="primary" size="sm" disabled={busy || discovering || !draft.protocols.length || !draft.enabledAgents.length || draft.models.some((model) => model.interfaces !== undefined && model.interfaces.length === 0) || draft.enabledAgents.some((agent) => !supports(agent, draft.protocols, draft.models))}>
-                {busy && <IconLoader2 size={12} className="animate-spin" />}{t("settings.shared.save")}
-              </Button>
-              {selected && <Button type="button" variant="danger" size="sm" disabled={busy || discovering} onClick={() => setPendingDelete(selected)}>{t("settings.shared.delete")}</Button>}
-            </div>
+
           </form>
         )}
       </div>
@@ -362,7 +767,7 @@ export function SharedProvidersPanel() {
       <Dialog.Root open={discovered !== null} onOpenChange={(open) => { if (!open) setDiscovered(null); }}>
         <Dialog.Portal>
           <Dialog.Backdrop />
-          <Dialog.Popup className="flex max-h-[80vh] w-[560px] max-w-[90vw] flex-col p-0">
+          <Dialog.Popup className="flex max-h-[80vh] w-[720px] max-w-[92vw] flex-col p-0">
             <Dialog.Title className="px-4 pt-4">{t("settings.shared.discoveryTitle")}</Dialog.Title>
             <Dialog.Description className="px-4 pt-1">
               {t("settings.shared.discoveryDescription", { n: discovered?.models.length ?? 0 })}
@@ -387,17 +792,46 @@ export function SharedProvidersPanel() {
               {discovered?.models.map((model) => {
                 const checked = discovered.selectedIds.includes(model.id);
                 const exists = draft?.models.some((entry) => entry.id.trim() === model.id) ?? false;
-                return <label key={model.id} className={cn("flex items-center gap-3 rounded px-2 py-2", exists ? "cursor-default opacity-70" : "cursor-pointer hover:bg-surface-hover")}>
-                  <input type="checkbox" checked={checked} disabled={exists} onChange={(event) => setDiscovered((value) => value ? {
-                    ...value,
-                    selectedIds: event.target.checked ? [...value.selectedIds, model.id] : value.selectedIds.filter((id) => id !== model.id),
-                  } : value)} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-content">{model.label}</span>
-                    <span className="block truncate font-mono text-xs text-content-subtle">{model.id}</span>
-                  </span>
-                  {exists && <span className="rounded bg-surface-muted px-2 py-0.5 text-[11px] text-content-subtle">{t("settings.shared.existingModel")}</span>}
-                </label>;
+                const opt = discovered.options[model.id] ?? defaultDiscoveryOption();
+                const setOpt = (next: DiscoveryOption) => setDiscovered((value) => value ? {
+                  ...value,
+                  options: { ...value.options, [model.id]: next },
+                  // Adjusting a row's options implies the user wants it.
+                  selectedIds: value.selectedIds.includes(model.id) ? value.selectedIds : [...value.selectedIds, model.id],
+                } : value);
+                return <div key={model.id} className={cn("flex items-center gap-3 rounded-lg px-2 py-2", exists ? "opacity-60" : "hover:bg-surface-hover")}>
+                  <label className={cn("flex min-w-0 flex-1 items-center gap-3", exists ? "cursor-default" : "cursor-pointer")}>
+                    <input type="checkbox" className={CHECKBOX} checked={checked} disabled={exists} onChange={(event) => setDiscovered((value) => value ? {
+                      ...value,
+                      selectedIds: event.target.checked ? [...value.selectedIds, model.id] : value.selectedIds.filter((id) => id !== model.id),
+                    } : value)} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-content">{model.label}</span>
+                      <span className="block truncate font-mono text-xs text-content-subtle">{model.id}</span>
+                    </span>
+                  </label>
+                  {exists ? (
+                    <span className="rounded bg-surface-muted px-2 py-0.5 text-[11px] text-content-subtle">{t("settings.shared.existingModel")}</span>
+                  ) : (
+                    <span className="flex shrink-0 items-center gap-1">
+                      {DISCOVERY_INTERFACES.map((p) => {
+                        const on = opt.interfaces.includes(p);
+                        // Keep at least one interface — a model with none can't be saved.
+                        const last = on && opt.interfaces.length === 1;
+                        return (
+                          <MiniToggle key={p} on={on} disabled={last} title={last ? t("settings.shared.modelInterfaceRequired") : LABELS[p]}
+                            onClick={() => setOpt({ ...opt, interfaces: on ? opt.interfaces.filter((x) => x !== p) : [...opt.interfaces, p] })}>
+                            {SHORT[p]}
+                          </MiniToggle>
+                        );
+                      })}
+                      <span className="mx-0.5 h-4 w-px bg-edge" aria-hidden />
+                      <MiniToggle on={opt.image} title={t("settings.shared.imageGeneration")} onClick={() => setOpt({ ...opt, image: !opt.image })}>
+                        <IconSparkles size={12} />{t("settings.shared.imageGenerationShort")}
+                      </MiniToggle>
+                    </span>
+                  )}
+                </div>;
               })}
             </div>
             <div className="flex justify-end gap-2 border-t border-edge p-4">

@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { cn } from "@renderer/lib/cn.js";
-// 与打包用的应用图标(build/icon.png)是同一张图,保证左栏 logo 与安装包 /
-// 任务栏图标完全一致。资源放在 src/renderer/ 下,走 vite 静态资源管线
-// (与 favicon.png 同目录、同引用方式)。
-import brandLogoUrl from "@renderer/brand-logo.png";
+// 两张图都由 build/gen_icon.py 生成,与应用图标同一套几何 M:
+// brand-logo.png = 深色底(与安装包 / 任务栏图标 build/icon.png 相同),
+// brand-logo-light.png = 浅色底(浅色主题下与界面融为一体)。
+import brandLogoDarkUrl from "@renderer/brand-logo.png";
+import brandLogoLightUrl from "@renderer/brand-logo-light.png";
 
 interface BrandLogoProps {
   /** Logo 边长(px)。默认 28。 */
@@ -10,31 +12,37 @@ interface BrandLogoProps {
   className?: string;
 }
 
-/** MarioCode 应用品牌 logo。
- *
- * 直接引用打包用的 `icon.png`(暖白圆角底、深石墨色与灰薄荷绿 M),与应用图标完全统一。
- * 外层用 `rounded-[28%]` 微圆角包裹原始方形图,边缘加一圈极淡的描边
- * (border-edge/40)使 logo 在浅色/深色面板背景上都有清晰边界。 */
+/** Tracks `<html class="dark">` (the renderer's single source of the
+ *  effective theme) without re-subscribing to theme IPC per logo instance. */
+function useIsDarkTheme(): boolean {
+  const [dark, setDark] = useState(() =>
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
+  );
+  useEffect(() => {
+    const el = document.documentElement;
+    const observer = new MutationObserver(() => setDark(el.classList.contains("dark")));
+    observer.observe(el, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  return dark;
+}
+
+/** MarioCode 品牌 logo:深色主题用深色底版本,浅色主题用浅色底版本。
+ *  图片自带圆角与透明外缘,不再额外裁切或描边。 */
 export function BrandLogo({ size = 28, className }: BrandLogoProps) {
+  const dark = useIsDarkTheme();
   return (
-    <div
-      className={cn(
-        "shrink-0 overflow-hidden rounded-[28%] border border-edge/40 shadow-sm",
-        className,
-      )}
-      style={{ width: size, height: size }}
+    <img
+      src={dark ? brandLogoDarkUrl : brandLogoLightUrl}
+      alt=""
       aria-hidden
-    >
-      <img
-        src={brandLogoUrl}
-        alt=""
-        width={size}
-        height={size}
-        // draggable={false} 避免用户意外拖拽图片;decoding="async" 不阻塞渲染。
-        draggable={false}
-        decoding="async"
-        className="h-full w-full select-none object-cover"
-      />
-    </div>
+      width={size}
+      height={size}
+      // draggable={false} 避免用户意外拖拽图片;decoding="async" 不阻塞渲染。
+      draggable={false}
+      decoding="async"
+      className={cn("shrink-0 select-none object-contain", className)}
+      style={{ width: size, height: size }}
+    />
   );
 }

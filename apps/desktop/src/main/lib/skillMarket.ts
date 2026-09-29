@@ -3,8 +3,8 @@
  *
  * A market is a git repo (`https://…`, shallow-cloned) or an absolute local
  * directory (copied) whose tree contains SKILL.md-bearing folders. Trees are
- * materialized under `~/.mcode/skill-market/<id>/` (never edited by the user);
- * installing a skill copies its folder into `~/.mcode/skills/<name>` — the
+ * materialized under `~/.mariocode/skill-market/<id>/` (never edited by the user);
+ * installing a skill copies its folder into `~/.mariocode/skills/<name>` — the
  * global root all three engines already load — so it's live on the next turn.
  *
  * Persistence: only user-added market records live in the settings table
@@ -16,8 +16,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import type { Dirent } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
+import { MARIOCODE_HOME } from "@main/lib/appHome.js";
 import {
   BUILTIN_SKILL_MARKETS,
   SKILL_MARKET_SOURCES_SETTING_KEY,
@@ -47,11 +47,11 @@ export interface SkillMarketRecord {
 /* ── Paths ── */
 
 export function marketRoot(): string {
-  return path.join(homedir(), ".mcode", "skill-market");
+  return path.join(MARIOCODE_HOME, "skill-market");
 }
 
 export function globalSkillsRoot(): string {
-  return path.join(homedir(), ".mcode", "skills");
+  return path.join(MARIOCODE_HOME, "skills");
 }
 
 function treeDirFor(id: string): string {

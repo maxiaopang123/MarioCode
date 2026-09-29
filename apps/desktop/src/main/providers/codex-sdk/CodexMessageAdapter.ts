@@ -396,7 +396,7 @@ export class CodexMessageAdapter {
         }
         break;
       case "dynamicToolCall":
-        // Mcode's host-side tools (ask_user_question / plan / browser_*).
+        // MarioCode's host-side tools (ask_user_question / plan / browser_*).
         // Rendered as a regular tool card so dynamic tool usage is visible
         // and auditable like Claude/Pi tool calls — and so the inline-image
         // path has a card to attach to (browser_screenshot's browser.image

@@ -4,7 +4,7 @@
  * Pi SDK loads custom providers/models from `~/.pi/agent/models.json`
  * (top-level shape: `{ providers: Record<name, ProviderConfig>, modelOverrides? }`).
  * The SDK has NO write API for this file — it only reads it (ModelRegistry.create
- * re-reads on every startTurn, so edits take effect without restarting). Mcode's
+ * re-reads on every startTurn, so edits take effect without restarting). MarioCode's
  * settings panel is the visual editor: it reads the file, lets the user edit
  * providers via forms, and writes back — preserving any fields the UI doesn't
  * manage (headers / compat / modelOverrides) so hand-written configs survive.
@@ -91,7 +91,7 @@ export interface PiProviderConfig {
   name?: string;
   /** API endpoint. Required for non-built-in providers that define models. */
   baseUrl?: string;
-  /** Credential reference for the model.json file. NOTE: in Mcode's flow this
+  /** Credential reference for the model.json file. NOTE: in MarioCode's flow this
    *  field is NOT written to models.json — the actual key is encrypted in
    *  the settings table and injected at turn time via AuthStorage. The type
    *  is kept for forward-compat (legacy / hand-written configs may still

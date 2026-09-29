@@ -48,7 +48,7 @@ function git(cwd: string, args: string[]): string {
   try {
     return execFileSync(
       "git",
-      ["-c", "user.email=smoke@example.com", "-c", "user.name=Mcode Smoke", ...args],
+      ["-c", "user.email=smoke@example.com", "-c", "user.name=MarioCode Smoke", ...args],
       // Capture stderr instead of inheriting it: git chats on stderr for
       // `worktree add`, which would interleave with the check output. Re-throw
       // with it so a failure is still diagnosable.
@@ -67,7 +67,7 @@ async function listNames(root: string, dirPath: string): Promise<string[]> {
 }
 
 async function main(): Promise<void> {
-  const base = mkdtempSync(join(tmpdir(), "mcode-worktree-env-smoke."));
+  const base = mkdtempSync(join(tmpdir(), "mariocode-worktree-env-smoke."));
   const projectRoot = join(base, "proj");
   // Mirrors worktreeOps' managed layout (<userData>/worktrees/<repo>/<branch>-n):
   // deliberately OUTSIDE the project root.

@@ -24,7 +24,7 @@ const localStorageMap = new Map<string, string>();
 
 const globalWindow = {
   api: deepApiStub(),
-  mcodeElectron: true,
+  mariocodeElectron: true,
 };
 
 const globalTarget = globalThis as unknown as Record<string, unknown>;
@@ -33,7 +33,7 @@ const globalTarget = globalThis as unknown as Record<string, unknown>;
 // getter-only global would throw.
 if (typeof (globalThis as unknown as { navigator?: unknown }).navigator === "undefined") {
   Object.defineProperty(globalThis, "navigator", {
-    value: { userAgent: "McodeSmoke", maxTouchPoints: 0 },
+    value: { userAgent: "MarioCodeSmoke", maxTouchPoints: 0 },
     configurable: true,
     writable: true,
   });

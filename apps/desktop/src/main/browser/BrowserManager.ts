@@ -9,7 +9,7 @@
  *
  * The DOM element picker is injected via `webContents.executeJavaScript` into
  * the page's main world. Picked elements flow back through the browserPicker
- * preload's `mcodeBridge.pickElement` -> `ipcRenderer.send` -> this manager
+ * preload's `mariocodeBridge.pickElement` -> `ipcRenderer.send` -> this manager
  * -> `sendToRenderer(BROWSER_EVENT / pickResult)`.
  *
  * Lifecycle: create() makes a view + attaches it (offscreen). show()/hide()
@@ -17,7 +17,7 @@
  * preserves browsing state). close() destroys. disposeAll() on app quit.
  *
  * Security: each view runs with contextIsolation + sandbox + a locked-down
- * preload that exposes only `mcodeBridge.pickElement`. New-window requests
+ * preload that exposes only `mariocodeBridge.pickElement`. New-window requests
  * (target=_blank) for web URLs become new in-panel tabs on the same session;
  * other protocols go to the system browser. Desktop pages see a plain Chrome
  * UA (the Electron/app tail is stripped) — sign-in flows refuse webview UAs.
@@ -287,7 +287,7 @@ export interface BrowserPdfResult {
 /** Where downloads land: a fixed subfolder of the OS downloads directory, so
  *  the agent (and the user) always knows where to look. Created lazily. */
 function browserDownloadsDir(): string {
-  return join(app.getPath("downloads"), "mcode-browser");
+  return join(app.getPath("downloads"), "mariocode-browser");
 }
 
 /** Dedupe a download filename against existing files on disk: `a.pdf` →
@@ -387,7 +387,7 @@ const BROWSER_BACKGROUND = "#ffffff";
  *  localStorage / login state is consistent across tabs (mirrors the old
  *  behavior of all views sharing session.defaultSession, but isolated from the
  *  app shell). Used when the user has NOT configured a custom data directory. */
-const BROWSER_PARTITION = "persist:mcode-browser";
+const BROWSER_PARTITION = "persist:mariocode-browser";
 
 /** The shared Session for every embedded browser view. When the user has
  *  configured a data directory (browser.dataDir setting) it is created via
@@ -593,10 +593,10 @@ class BrowserManagerImpl {
           // via the browser.dataDir setting) instead of mixing with app data.
           session: ses,
           // contextIsolation stays on so the page can't touch the preload's
-          // scope; the browserPicker preload exposes only mcodeBridge.pickElement.
+          // scope; the browserPicker preload exposes only mariocodeBridge.pickElement.
           // sandbox is OFF because the preload is built as ESM (.mjs) and
           // sandboxed preloads only support require() - ESM import would silently
-          // fail to load, leaving window.mcodeBridge undefined. This mirrors the
+          // fail to load, leaving window.mariocodeBridge undefined. This mirrors the
           // main window's preload config (which is also sandbox:false + ESM).
           // The preload still grants no Node capability to the page itself.
           preload: join(__dirname, "../preload/browserPicker.mjs"),
@@ -746,7 +746,7 @@ class BrowserManagerImpl {
   private installPickerListener(): void {
     if (this.pickerListenerInstalled) return;
     this.pickerListenerInstalled = true;
-    ipcMain.on("__mcode_pick_result__", (evt: IpcMainEvent, data: unknown) => {
+    ipcMain.on("__mariocode_pick_result__", (evt: IpcMainEvent, data: unknown) => {
       const browserId = this.wcToBrowser.get(evt.sender.id);
       if (!browserId) return;
       // Best-effort shape check; the picker always sends this structure.

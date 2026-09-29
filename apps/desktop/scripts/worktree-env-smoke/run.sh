@@ -14,7 +14,7 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
-OUT=$(mktemp -d /tmp/mcode-worktree-env-smoke.XXXXXX)
+OUT=$(mktemp -d /tmp/mariocode-worktree-env-smoke.XXXXXX)
 trap 'rm -rf "$OUT"' EXIT
 
 # esbuild rides along as vite's transitive dep (not a direct dependency); fall

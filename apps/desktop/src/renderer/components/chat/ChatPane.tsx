@@ -47,6 +47,16 @@ import { MessageBlocks, TurnPanel, BatchToolGroup, isFoldableBlock, TURN_FOLD_MS
 import { CurrentOpTicker } from "./CurrentOpTicker.js";
 import { ModelBadge } from "./ModelAvatar.js";
 import { turnTokenUsage, CUMULATIVE_USAGE_PROVIDER_IDS } from "@renderer/lib/turnTokens.js";
+import {
+  genMsForTurn,
+  turnCacheRateAt,
+  turnOutputTokens,
+  turnSpeed,
+  type TurnGenRecord,
+} from "@renderer/lib/sessionMetrics.js";
+
+/** Stable empty array for the per-turn generation-time selector. */
+const EMPTY_TURN_GENS: TurnGenRecord[] = [];
 import type { TurnUsageRecord } from "@contracts/runtime";
 import { RenderErrorBoundary } from "./RenderErrorBoundary.js";
 import { MicButton } from "./MicButton.js";
@@ -64,7 +74,8 @@ import { TagPopover } from "./TagPopover.js";
 import { FileMentionPicker, type FileMentionPickerMode } from "./FileMentionPicker.js";
 import { EmptyThreadWelcome } from "./EmptyThreadWelcome.js";
 import { SlashCommandPicker } from "./SlashCommandPicker.js";
-import { ActivityCluster } from "./ActivityCluster.js";
+import { SessionFloat } from "./SessionFloat.js";
+import { SessionMetrics } from "./SessionMetrics.js";
 import { MessageTimeline, type UserItemIndexMap } from "./MessageTimeline.js";
 import { SelectionToolbar, type SelectionToolbarState } from "./SelectionToolbar.js";
 import { BookmarkFly } from "./BookmarkFly.js";
@@ -1339,6 +1350,9 @@ function ChatPaneForSession({
   // running-ledger receipt. Hydrated from the session row; a turn's record only
   // lands at turn END (the turn-end snapshot), so the receipt renders without
   // the token figure until then.
+  // Per-turn generation time, measured in the renderer (lib/genTimer.ts) and
+  // paired with usageHistory by position — feeds the byline's tok/s chip.
+  const turnGens = useSessionStore((s) => s.turnGenBySession[sessionId] ?? EMPTY_TURN_GENS);
   const usageHistory = useSessionStore(
     (s) => s.usageHistoryBySession[sessionId] ?? EMPTY_USAGE,
   );
@@ -1371,9 +1385,28 @@ function ChatPaneForSession({
       }
     }
     if (!pid) pid = s.pinnedSessions.find((x) => x.id === sessionId)?.projectId;
+    // Second-page sessions only live in the stream aggregate (AGENTS.md: every
+    // by-id session lookup must fall back to streamSessions).
+    if (!pid) pid = s.streamSessions.find((x) => x.id === sessionId)?.projectId;
     if (!pid) return null;
     return s.projects.find((p) => p.id === pid)?.path ?? null;
   });
+  // Worktree checkout this session runs in (null for local sessions). The
+  // agent's cwd IS this checkout, so relative paths it writes in replies
+  // (`![](outputs/x.png)`, `src/a.ts:12`) resolve against it, not the repo
+  // root. Same by-id lookup chain as projectPath.
+  const sessionWorktreePath = useSessionStore((s) => {
+    for (const list of Object.values(s.sessionsByProject)) {
+      const found = list?.find((x) => x.id === sessionId);
+      if (found) return found.worktreePath ?? null;
+    }
+    const other =
+      s.pinnedSessions.find((x) => x.id === sessionId) ?? s.streamSessions.find((x) => x.id === sessionId);
+    return other?.worktreePath ?? null;
+  });
+  /** Root that transcript paths (file chips, reply images, tool-card links)
+   *  resolve against. File pickers keep using the project root. */
+  const renderRoot = sessionWorktreePath ?? projectPath;
   // Project display name (same resolution as projectPath, but returns the
   // name). Shown in the empty-thread project/branch indicator above the
   // composer. Falls back to the path basename when the project has no name.
@@ -1445,11 +1478,9 @@ function ChatPaneForSession({
   const bookmarks: SessionBookmark[] = useSessionStore((s) =>
     s.bookmarksBySession[sessionId] ?? EMPTY_BOOKMARKS,
   );
-  // Whether this session has anything for the activity cluster to show. The
-  // cluster owns the per-kind empty checks; ChatPane needs only this aggregate
-  // so it can skip mounting it at all in a session with no activity.
-  const hasActivity =
-    todos.length > 0 || subagents.length > 0 || planBlocks.length > 0 || bookmarks.length > 0;
+  // The float owns its own per-section empty checks (it also reports usage and
+  // cache/speed, which exist without any todo or subagent), so ChatPane just
+  // mounts it for any non-empty session.
   const addBookmark = useSessionStore((s) => s.addBookmark);
   const removeBookmark = useSessionStore((s) => s.removeBookmark);
   const renameBookmark = useSessionStore((s) => s.renameBookmark);
@@ -2966,7 +2997,7 @@ function ChatPaneForSession({
                     blocks={it.leading}
                     beforeMap={beforeMap}
                     onOpenPlan={(p) => openPlanDrawer(sessionId, p)}
-                    projectPath={projectPath}
+                    projectPath={renderRoot}
                   />
                 </RenderErrorBoundary>
               )}
@@ -2975,7 +3006,7 @@ function ChatPaneForSession({
                   blocks={it.blocks}
                   turnActive
                   showTicker={false}
-                  projectPath={projectPath}
+                  projectPath={renderRoot}
                 />
               </RenderErrorBoundary>
             </div>
@@ -2998,7 +3029,7 @@ function ChatPaneForSession({
               tightTop
               beforeMap={beforeMap}
               hideTurnStat
-              projectPath={projectPath}
+              projectPath={renderRoot}
             />
           ),
         });
@@ -3080,7 +3111,7 @@ function ChatPaneForSession({
                   onSubmitEdit={handleEditSubmit}
                   onCancelEdit={() => setEditingMessageId(null)}
                   onOpenPlan={(p) => openPlanDrawer(sessionId, p)}
-                  projectPath={projectPath}
+                  projectPath={renderRoot}
                 />
               </RenderErrorBoundary>
             </div>
@@ -3109,7 +3140,7 @@ function ChatPaneForSession({
                       blocks={item.leading}
                       beforeMap={beforeMap}
                       onOpenPlan={(p) => openPlanDrawer(sessionId, p)}
-                      projectPath={projectPath}
+                      projectPath={renderRoot}
                     />
                   </RenderErrorBoundary>
                 )}
@@ -3118,7 +3149,7 @@ function ChatPaneForSession({
                     (the group whose tool is executing shows it rolling; the
                     rest show their last op dimmed). */}
                 <RenderErrorBoundary>
-                  <BatchToolGroup blocks={item.blocks} turnActive projectPath={projectPath} />
+                  <BatchToolGroup blocks={item.blocks} turnActive projectPath={renderRoot} />
                 </RenderErrorBoundary>
               </div>
               {item.isStreamingTail && (
@@ -3189,6 +3220,15 @@ function ChatPaneForSession({
         item.turnMeta?.endedAt,
         sessionProviderId != null && CUMULATIVE_USAGE_PROVIDER_IDS.has(sessionProviderId),
       );
+      // Cache hit rate + output speed of THIS turn (TODO-023). Same
+      // cumulative-provider rule as the token figure; the speed's generation
+      // time is the renderer's own measurement (see lib/genTimer.ts).
+      const cumulativeUsage =
+        sessionProviderId != null && CUMULATIVE_USAGE_PROVIDER_IDS.has(sessionProviderId);
+      const turnCache = turnCacheRateAt(usageHistory, item.turnMeta?.endedAt, cumulativeUsage);
+      const turnGenMs = genMsForTurn(usageHistory, turnGens, item.turnMeta?.endedAt);
+      const turnOut = turnOutputTokens(usageHistory, item.turnMeta?.endedAt, cumulativeUsage);
+      const turnTokPerSec = turnSpeed(turnOut ?? undefined, turnGenMs ?? undefined);
       const turnStats =
         stepCount > 0 || turnTokens != null
           ? {
@@ -3197,6 +3237,16 @@ function ChatPaneForSession({
               adds: statAdds,
               dels: statDels,
               tokens: turnTokens ?? undefined,
+              cacheRate: turnCache,
+              speed: turnTokPerSec,
+              cacheHint: t("chatStream.byline.cacheHint"),
+              speedHint:
+                turnOut != null && turnGenMs != null
+                  ? t("chatStream.byline.speedHint", {
+                      tokens: turnOut.toLocaleString(),
+                      secs: (turnGenMs / 1000).toFixed(1),
+                    })
+                  : undefined,
             }
           : undefined;
       const body = (
@@ -3214,7 +3264,7 @@ function ChatPaneForSession({
               stats={turnStats}
               onOpenPlan={onOpenPlan}
               onToggleCollapse={pauseBottomAnchor}
-              projectPath={projectPath}
+              projectPath={renderRoot}
             />
           </RenderErrorBoundary>
           {/* Text replies (and plan / turn-files / error blocks) stay visible
@@ -3257,7 +3307,7 @@ function ChatPaneForSession({
                 hideTurnStat
                 tightTop={idx === 0}
                 onOpenPlan={onOpenPlan}
-                projectPath={projectPath}
+                projectPath={renderRoot}
               />
             ));
           })()}
@@ -3291,7 +3341,7 @@ function ChatPaneForSession({
         </div>
       );
     },
-    [beforeMap, sessionBusy, editingMessageId, lastUserMessageId, handleEditSubmit, sessionId, projectPath, upstreamIssue, pauseBottomAnchor, usageHistory, sessionProviderId],
+    [beforeMap, sessionBusy, editingMessageId, lastUserMessageId, handleEditSubmit, sessionId, renderRoot, upstreamIssue, pauseBottomAnchor, usageHistory, turnGens, sessionProviderId, t],
   );
 
   // Footer rendered after all message items. The plan card and per-turn
@@ -3464,20 +3514,20 @@ function ChatPaneForSession({
         </div>
       )}
 
-      {/* Activity cluster (方案 B「收放」) — a 30px progress button in the
-          stream's top-right corner that grows a text bar only when there is
-          something to say. It is an overlay (the list reserves no width for
-          it), so the bar can cover the tail of the first row while it is open;
-          that is the deliberate trade for being almost invisible when idle.
-          The console it opens drops down from it (see ActivityCluster). */}
-      {!empty && hasActivity && (
-        <ActivityCluster
+      {/* 「本会话」 float — the session overview pinned to the stream's
+          top-right corner, folded into a summary pill by default and expanding
+          into one card (tasks / subagents / plans / bookmarks / outline /
+          cache+speed / usage). It renders nothing until the session has
+          something to report; see SessionFloat. */}
+      {!empty && (
+        <SessionFloat
+          sessionId={sessionId}
           subagents={subagents}
           todos={todos}
           planBlocks={planBlocks}
           bookmarks={bookmarks}
           // The session's pending AskUserQuestion (declared above) is the
-          // strongest "this needs you" signal the cluster can report.
+          // strongest "this needs you" signal the pill can report.
           waiting={!!pendingQuestion}
           isBookmarkStale={(b) => !msgToRenderIndex.has(b.messageId)}
           onPickBookmark={(b) => jumpToMessage(b.messageId, b.excerpt)}
@@ -3485,6 +3535,7 @@ function ChatPaneForSession({
           onRemoveBookmark={(b) => void removeBookmark(sessionId, b.id)}
           onRenameBookmark={(b, title) => void renameBookmark(sessionId, b.id, title)}
           onPickPlan={(p) => openPlanDrawer(sessionId, p)}
+          onJumpToMessage={(id) => jumpToMessage(id)}
           bookmarkNodeRef={bookmarkNodeRef}
         />
       )}
@@ -3951,6 +4002,11 @@ function ChatPaneForSession({
               {/* Right cluster: mic + provider picker + send, always visible
                   (the chip row/pill collapse in narrow mode; these don't). */}
               <div className="flex shrink-0 items-center gap-1">
+                {/* This session's numbers (context / cache / speed) — ahead of
+                    the mic so they read as part of the composer's status, not
+                    of the send controls. Clicking the chips expands the
+                    「本会话」 float. */}
+                {sessionId && <SessionMetrics sessionId={sessionId} />}
                 {/* Voice input: mic button with continuous / hold-to-talk modes
                     (mode switchable via the caret menu). `sessionId` wires the
                     voice.dictation keyboard shortcut to THIS pane's mic.

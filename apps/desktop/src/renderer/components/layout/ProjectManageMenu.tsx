@@ -14,10 +14,13 @@
 import { Menu } from "@base-ui/react/menu";
 import { cn } from "@renderer/lib/cn.js";
 import {
+  IconArchive,
   IconCheck,
   IconFolder,
   IconFolderMinus,
+  IconFolderOpen,
   IconPencil,
+  IconTrash,
 } from "@renderer/lib/icons.js";
 import { PROJECT_COLOR_SWATCHES } from "@renderer/lib/projectAvatar.js";
 import { useCursorAnchor } from "@renderer/hooks/useCursorAnchor.js";
@@ -41,12 +44,18 @@ interface ProjectManageMenuPopupProps {
   onJoinGroup: (p: Project, group: string) => void;
   onNewGroup: (p: Project) => void;
   onSetColor: (p: Project, hex: string | null) => void;
+  /** Optional lifecycle entries (project rail): open folder / archive /
+   *  delete. Omitted callbacks don't render. */
+  onOpenFolder?: (p: Project) => void;
+  onArchive?: (p: Project) => void;
+  onDelete?: (p: Project) => void;
   menuItemClass: string;
 }
 
 export function ProjectManageMenuPopup({
   manageMenu, anchor, knownGroups, projectColors,
   onClose, onRename, onLeaveGroup, onJoinGroup, onNewGroup, onSetColor,
+  onOpenFolder, onArchive, onDelete,
   menuItemClass,
 }: ProjectManageMenuPopupProps) {
   const { t } = useI18n();
@@ -157,6 +166,30 @@ export function ProjectManageMenuPopup({
             >
               {t("layout.resetColor")}
             </Menu.Item>
+            {(onOpenFolder || onArchive || onDelete) && (
+              <Menu.Separator className="my-1 h-px bg-edge" />
+            )}
+            {onOpenFolder && (
+              <Menu.Item className={menuItemClass} onClick={() => project && onOpenFolder(project)}>
+                <IconFolderOpen size={13} className="shrink-0" />
+                {t("layout.openInFileManager")}
+              </Menu.Item>
+            )}
+            {onArchive && (
+              <Menu.Item className={menuItemClass} onClick={() => project && onArchive(project)}>
+                <IconArchive size={13} className="shrink-0" />
+                {t("layout.archiveProject")}
+              </Menu.Item>
+            )}
+            {onDelete && (
+              <Menu.Item
+                className={cn(menuItemClass, "text-danger")}
+                onClick={() => project && onDelete(project)}
+              >
+                <IconTrash size={13} className="shrink-0" />
+                {t("layout.deleteProject")}
+              </Menu.Item>
+            )}
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>

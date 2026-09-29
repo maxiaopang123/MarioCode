@@ -15,13 +15,12 @@
  *      (dep-free tarball, binary at package root: claude[.exe])
  *  - codex:  @openai/codex@<expected>-<platform>-<arch>
  *      (dep-free tarball, binary under vendor/<triple>/bin/codex[.exe])
- *  - pi:     @mcode/runtime-pi@<expected>
- *      (Mcode's own preassembled meta-package — the pnpm-resolved pi
- *      dependency closure in a flat node_modules layout, packed by
- *      build/pack-pi-runtime.cjs; the version tracks the pinned
- *      @earendil-works/pi-coding-agent in package.json). Until that package
- *      is published, a registry miss falls back to assembling the SAME
- *      closure locally with npm (assemblePiClosureWithNpm).
+ *  - pi:     the official @earendil-works/pi-coding-agent@<expected> (pinned
+ *      in package.json), installed with MarioCode's private managed npm into
+ *      a flat node_modules closure (assemblePiClosureWithNpm; npm verifies
+ *      each package's integrity). There is no prepacked registry package;
+ *      build/pack-pi-runtime.cjs produces the same layout for offline
+ *      install-from-file.
  *
  * Every install is atomic: download to a temp file (sha512-verified against
  * the registry's dist.integrity), extract into a staging dir, verify the
@@ -51,6 +50,7 @@ import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { app } from "electron";
 import {
   IPC,
+  RUNTIME_MIN_LOCAL_VERSIONS,
   type RuntimeAgentId,
   type RuntimeAgentState,
   type RuntimeProgressPayload,
@@ -68,6 +68,7 @@ import {
 import {
   discoverExternalRuntimes,
   getRuntimeSelection,
+  newestTooOld,
   validateStoredExternalSelection,
   resolvePiRuntimeLaunch,
 } from "./runtimeSelection.js";
@@ -137,7 +138,9 @@ function npmPackageFor(agent: RuntimeAgentId, version: string): { name: string; 
       // alias these). See codexBinaryResolve.ts for the layout.
       return { name: "@openai/codex", version: `${version}-${plat}` };
     case "pi":
-      return { name: "@mcode/runtime-pi", version };
+      // Not a single tarball: the official package's dependency closure is
+      // assembled locally with the managed npm (assemblePiClosureWithNpm).
+      return { name: "@earendil-works/pi-coding-agent", version };
   }
 }
 
@@ -151,7 +154,7 @@ function latestCheckPackageFor(agent: RuntimeAgentId): string {
     case "codex":
       return "@openai/codex";
     case "pi":
-      return "@mcode/runtime-pi";
+      return "@earendil-works/pi-coding-agent";
   }
 }
 
@@ -249,7 +252,7 @@ async function downloadVerifiedTarball(
   }
   const total = Number(res.headers.get("content-length") ?? 0);
   const hash = createHash("sha512");
-  const tmpFile = join(tmpdir(), `mcode-runtime-${agent}-${Date.now()}.tgz`);
+  const tmpFile = join(tmpdir(), `mariocode-runtime-${agent}-${Date.now()}.tgz`);
   let received = 0;
   let lastEmit = 0;
   try {
@@ -285,9 +288,9 @@ async function downloadVerifiedTarball(
 
 /* ── disk helpers ── */
 
-/** Assemble the pi dependency closure LOCALLY with npm — the fallback for
- *  when `@mcode/runtime-pi` isn't on the registry yet (pre-publish window /
- *  mirror lag). Identical recipe to build/pack-pi-runtime.cjs: a real npm
+/** Assemble the pi dependency closure LOCALLY with npm — the one and only
+ *  online install path for pi (the official package, no prepacked
+ *  meta-package). Identical recipe to build/pack-pi-runtime.cjs: a real npm
  *  install hoists the closure into `<stagingDir>/node_modules` (npm verifies
  *  each package's integrity itself; --ignore-scripts keeps it hermetic — no
  *  postinstall of any transitive dep runs). Produces exactly the layout
@@ -295,7 +298,7 @@ async function downloadVerifiedTarball(
 async function assemblePiClosureWithNpm(stagingDir: string, version: string, runtimeRoot: string): Promise<void> {
   writeFileSync(
     join(stagingDir, "package.json"),
-    JSON.stringify({ name: "@mcode/runtime-pi", version, private: true }, null, 2) + "\n",
+    JSON.stringify({ name: "mariocode-pi-runtime", version, private: true }, null, 2) + "\n",
   );
   // Use the private managed toolchain only. Calling npm through Node avoids
   // .cmd/shell semantics on Windows and never depends on or mutates a user's
@@ -400,13 +403,20 @@ export async function listRuntimes(): Promise<RuntimeAgentState[]> {
   );
   return await Promise.all(agents.map(async (agent) => {
     const selection = getRuntimeSelection(agent);
+    const auto = selection.mode === "auto";
     const managed = installedManagedPayload(agent);
     const installedVersion = managed?.version ?? null;
-    // Effective source: managed first, else the fallback the resolvers would
-    // use (dev node_modules / legacy bundled). The panel displays THIS — a
-    // dev checkout must not read "not installed" while every agent works.
-    const fallback = managed ? null : probeRuntimeAvailability(agent);
     const candidates = await discoverExternalRuntimes(agent);
+    // AUTO: with no managed copy, a detected local install is what the
+    // resolvers use next (same pick as autoLocalRuntimeSync / Pi's launch).
+    const autoLocal = auto && !managed
+      ? candidates.find((candidate) => candidate.available && existsSync(candidate.path)) ?? null
+      : null;
+    // Effective source: managed first, (auto) local next, else the fallback
+    // the resolvers would use (dev node_modules / legacy bundled). The panel
+    // displays THIS — a dev checkout must not read "not installed" while
+    // every agent works.
+    const fallback = managed || autoLocal ? null : probeRuntimeAvailability(agent);
     let external = selection.mode === "external" && selection.path
       ? await validateStoredExternalSelection(agent)
       : null;
@@ -418,19 +428,30 @@ export async function listRuntimes(): Promise<RuntimeAgentState[]> {
         external = { ...external, available: false, compatibility: "incompatible", diagnostic: piLaunchDiagnostic };
       }
     }
+    // Update reminder: external mode → the stored selection itself is too
+    // old; auto/managed → newest too-old detected install, but only when no
+    // usable local candidate exists (a newer one being used makes it moot).
+    const localTooOld = selection.mode === "external"
+      ? (external?.tooOld
+        ? { path: external.path, version: external.version, minVersion: external.minVersion ?? RUNTIME_MIN_LOCAL_VERSIONS[agent] }
+        : null)
+      : candidates.some((candidate) => candidate.available) ? null : newestTooOld(candidates);
     const activeVersion = selection.mode === "external"
       ? external?.version ?? null
-      : managed?.version ?? fallback?.version ?? null;
-    const source: RuntimeSource | "external" | null = selection.mode === "external"
+      : managed?.version ?? autoLocal?.version ?? fallback?.version ?? null;
+    const source: RuntimeSource | "external" | "local" | null = selection.mode === "external"
       ? (external?.available ? "external" : null)
-      : managed ? "managed" : fallback?.source ?? null;
+      : managed ? "managed" : autoLocal ? "local" : fallback?.source ?? null;
     let available = selection.mode === "external"
       ? external?.available === true
       : source !== null;
     if (agent === "pi" && piLaunchDiagnostic) available = false;
     const diagnostic = agent === "pi" && piLaunchDiagnostic ? piLaunchDiagnostic : selection.mode === "external"
       ? external?.diagnostic ?? "External mode is selected but no runtime path is configured."
-      : available ? "Managed runtime selection is available." : "No managed, development, or bundled runtime is available.";
+      : autoLocal ? autoLocal.diagnostic
+        : available ? "Managed runtime selection is available."
+          : auto ? "No managed, local, development, or bundled runtime is available."
+            : "No managed, development, or bundled runtime is available.";
     return {
       agent,
       selectedMode: selection.mode,
@@ -440,14 +461,20 @@ export async function listRuntimes(): Promise<RuntimeAgentState[]> {
       installedVersion,
       source,
       activeVersion,
-      activePath: selection.mode === "external" ? (external?.available ? external.path : null) : managed?.entry ?? fallback?.path ?? null,
+      activePath: selection.mode === "external"
+        ? (external?.available ? external.path : null)
+        : managed?.entry ?? autoLocal?.path ?? fallback?.path ?? null,
       available,
       compatibility: selection.mode === "external" ? external?.compatibility ?? "incompatible" : available ? "unknown" : "incompatible",
       diagnostic,
       candidates,
+      localTooOld,
       latestVersion: latestCache.get(agent)?.version ?? null,
       installed: managed !== null,
-      updateAvailable: selection.mode === "managed" && activeVersion !== null && activeVersion !== expected[agent],
+      // Auto mode never nags about a user-owned local copy's version — only
+      // the managed (or dev/bundled) copy is ours to update.
+      updateAvailable: (selection.mode === "managed" || (auto && !autoLocal))
+        && activeVersion !== null && activeVersion !== expected[agent],
       installing: installing.get(agent) ?? false,
       lastError: lastErrors.get(agent) ?? "",
       diskBytes: managed ? dirSizeCached(managed.dir) : 0,
@@ -562,7 +589,9 @@ export async function installRuntime(agent: RuntimeAgentId): Promise<{ ok: boole
   try {
     const expected = loadExpectedVersions()[agent];
     const pkg = npmPackageFor(agent, expected);
-    const meta = await fetchPackageMeta(pkg.name, pkg.version);
+    // pi has no prepacked tarball: skip the registry lookup and always
+    // assemble the official package's closure locally with the managed npm.
+    const meta = agent === "pi" ? null : await fetchPackageMeta(pkg.name, pkg.version);
     if (!meta && agent !== "pi") {
       throw new Error(
         `registry has no ${pkg.name}@${pkg.version} — check the network/mirror, or the version hasn't been published yet`,
@@ -583,21 +612,19 @@ export async function installRuntime(agent: RuntimeAgentId): Promise<{ ok: boole
         rmSync(tmpTarball, { force: true });
       }
     } else {
-      // pi registry miss (@mcode/runtime-pi not published / mirror lag yet):
-      // assemble the closure locally with npm instead of a prepacked tarball.
+      // pi: install @earendil-works/pi-coding-agent@<expected> with the
+      // managed npm into the staging dir (flat node_modules closure).
       emitProgress(agent, "downloading", -1);
       const root = getManagedRuntimeRoot() ?? join(app.getPath("userData"), "runtimes");
       stagingDir = join(root, agent, `.${expected}.staging-${Date.now()}`);
       mkdirSync(stagingDir, { recursive: true });
-      log.warn(
-        `runtime install: registry has no ${pkg.name}@${expected} — assembling pi closure locally with npm`,
-      );
+      log.info(`runtime install: pi assembling ${pkg.name}@${expected} with managed npm`);
       try {
         await assemblePiClosureWithNpm(stagingDir, expected, root);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         throw new Error(
-          `registry has no ${pkg.name}@${pkg.version} and local npm assembly failed (${reason}) — ` +
+          `installing ${pkg.name}@${pkg.version} with npm failed (${reason}) — ` +
             `check the network/managed tools, or pack locally with \`pnpm pack:pi-runtime\` and use install-from-file`,
         );
       }
@@ -628,8 +655,8 @@ export async function installRuntime(agent: RuntimeAgentId): Promise<{ ok: boole
 }
 
 /** Install a runtime from a user-picked LOCAL PATH — the escape hatch when
- *  the registry path fails (@mcode/runtime-pi unpublished, stale mirror,
- *  offline). Accepted, per agent:
+ *  the online path fails (npm/mirror unreachable, stale mirror, offline).
+ *  Accepted, per agent:
  *   - claude: a directory containing claude[.exe] at its root (the platform
  *     package layout), or the binary file itself;
  *   - codex:  a directory with the vendored layout (vendor/<triple>/bin or

@@ -989,12 +989,12 @@ export async function browserUploadFile(
 }
 
 /** `browser_downloads` — list recent downloads of the embedded browser (they
- *  auto-save to `<系统下载>/mcode-browser/`, no save dialog). Read-only; after
+ *  auto-save to `<系统下载>/mariocode-browser/`, no save dialog). Read-only; after
  *  a completed download the model uses the normal file tools on the path. */
 export function browserDownloads(): ToolResult {
   const entries = BrowserManager.listDownloads();
   if (entries.length === 0) {
-    return text("暂无下载记录。点击下载链接或导航到文件地址会触发下载,自动保存到 <系统下载>/mcode-browser/。");
+    return text("暂无下载记录。点击下载链接或导航到文件地址会触发下载,自动保存到 <系统下载>/mariocode-browser/。");
   }
   const stateLabel: Record<BrowserDownloadEntry["state"], string> = {
     progressing: "下载中",
@@ -1141,7 +1141,7 @@ export const BROWSER_TOOL_SPECS: Record<string, BrowserToolSpec> = {
   browser_downloads: {
     name: "browser_downloads",
     description:
-      "列出最近的浏览器下载(自动保存到 <系统下载>/mcode-browser/,无保存对话框)。点击下载链接或导航到文件地址触发下载后,调用本工具查看状态;" +
+      "列出最近的浏览器下载(自动保存到 <系统下载>/mariocode-browser/,无保存对话框)。点击下载链接或导航到文件地址触发下载后,调用本工具查看状态;" +
       "状态为已完成时,用 Read/Grep 等文件工具读取下载文件。只读。",
     promptSnippet: "browser_downloads(): 列出最近的下载(只读)",
   },

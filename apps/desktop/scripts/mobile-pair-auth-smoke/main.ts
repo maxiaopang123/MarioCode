@@ -20,7 +20,7 @@
  */
 import { readFileSync } from "node:fs";
 
-const TOKEN_KEY = "mcode-web-token";
+const TOKEN_KEY = "mariocode-web-token";
 
 /** Transpiled copy of pair.ts, put here by run.sh (cache-bustable by query). */
 const PAIR_MODULE_URL = process.env["PAIR_MODULE_URL"] ?? "";
@@ -145,7 +145,7 @@ function resetGlobals(cfg: CaseConfig): void {
   g["location"] = location;
   g["window"] = { location, setTimeout, clearTimeout };
   Object.defineProperty(globalThis, "navigator", {
-    value: { language: "zh-CN", userAgent: "McodeSmoke" },
+    value: { language: "zh-CN", userAgent: "MarioCodeSmoke" },
     configurable: true,
     writable: true,
   });

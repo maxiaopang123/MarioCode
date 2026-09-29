@@ -1,5 +1,5 @@
 /**
- * Skill bridge: make Mcode's skill directories and `/name` trigger syntax work
+ * Skill bridge: make MarioCode's skill directories and `/name` trigger syntax work
  * with the Pi SDK.
  *
  * Pi's skill mechanism is structurally different from Claude's, and the project
@@ -9,7 +9,7 @@
  *
  *   1. **Path mismatch.** Pi's `DefaultResourceLoader` scans `<agentDir>/skills`
  *      (`~/.pi/agent/skills`) and `<cwd>/.pi/skills` (`CONFIG_DIR_NAME=".pi"`),
- *      but Mcode stores user skills in `~/.mcode/skills` and project skills in
+ *      but MarioCode stores user skills in `~/.mariocode/skills` and project skills in
  *      `<cwd>/.claude/skills` (see `ipc/skills.ts:resolveSkillRoot`). Pi scans
  *      none of them, so `getSkills()` returns an empty set.
  *
@@ -25,7 +25,7 @@
  *
  * The bridge:
  *   - {@link buildPiSkillLoader} constructs a `DefaultResourceLoader` whose
- *     `additionalSkillPaths` pulls in the two Mcode roots (Pi's own defaults are
+ *     `additionalSkillPaths` pulls in the two MarioCode roots (Pi's own defaults are
  *     kept so existing `~/.pi` users aren't disrupted), and whose
  *     `skillsOverride` narrows the discovered set to the user-selected names
  *     when `req.skills` is non-empty. External sync mirrors (TODO-004) reach
@@ -41,8 +41,8 @@
  * persisted on the message text block at send time, independent of the
  * provider).
  */
-import { homedir } from "node:os";
 import path from "node:path";
+import { MARIOCODE_HOME } from "@main/lib/appHome.js";
 import { bashPathHintFor, detectBashEnv } from "@main/lib/bashEnv.js";
 import { msysToWindowsPath } from "@main/lib/msysPath.js";
 
@@ -54,19 +54,19 @@ type PiSdk = typeof import("@earendil-works/pi-coding-agent");
  *  prompt rewrite. */
 export type PiResourceLoader = import("@earendil-works/pi-coding-agent").DefaultResourceLoader;
 
-/** The two Mcode skill roots, mirroring `ipc/skills.ts:resolveSkillRoot`. Kept
+/** The two MarioCode skill roots, mirroring `ipc/skills.ts:resolveSkillRoot`. Kept
  *  here (rather than importing from the IPC module) so the provider layer stays
  *  decoupled from IPC handler internals — and because these are plain path
  *  computations with no IPC dependency. */
-function mcodeSkillRoots(cwd: string): string[] {
-  return [path.join(homedir(), ".mcode", "skills"), path.join(cwd, ".claude", "skills")];
+function mariocodeSkillRoots(cwd: string): string[] {
+  return [path.join(MARIOCODE_HOME, "skills"), path.join(cwd, ".claude", "skills")];
 }
 
 export interface BuildPiSkillLoaderOptions {
   sdk: PiSdk;
   /** Project working directory (the session's `cwd`). */
   cwd: string;
-  /** Mcode-owned Pi config root. The user's Pi directory is never used for
+  /** MarioCode-owned Pi config root. The user's Pi directory is never used for
    * settings/auth; its skills subdirectory is added read-only below. */
   agentDir: string;
   /** Skill names the user picked in the composer (no leading `/`). When
@@ -74,7 +74,7 @@ export interface BuildPiSkillLoaderOptions {
    *  Claude's `Options.skills` allowlist). Empty/undefined → all discovered
    *  skills (mirrors Claude's `"all"` sentinel). */
   allowNames?: string[];
-  /** Additional skill roots beyond Mcode's two defaults — the skills
+  /** Additional skill roots beyond MarioCode's two defaults — the skills
    *  mirror directories of external skill sync sources (TODO-004), supplied
    *  by the provider from skillSync.skillSyncMirrorRoots(). Absent/empty
    *  keeps the historical pair. */
@@ -82,13 +82,13 @@ export interface BuildPiSkillLoaderOptions {
   /** Inline extensions to inject via the loader's `extensionFactories` option.
    *  The loader runs each factory during `getExtensions()` (before
    *  `_refreshToolRegistry`), so `pi.registerTool` / `pi.on` are wired before
-   *  the first turn. Mcode passes its host-bridging extension (approval,
+   *  the first turn. MarioCode passes its host-bridging extension (approval,
    *  AskUserQuestion, system-prompt injection) here. */
   extensionFactories?: import("@earendil-works/pi-coding-agent").InlineExtension[];
 }
 
 /**
- * Construct and reload a `DefaultResourceLoader` configured to discover Mcode's
+ * Construct and reload a `DefaultResourceLoader` configured to discover MarioCode's
  * skill directories in addition to Pi's own defaults, optionally filtered to an
  * allowlist of names.
  *
@@ -113,14 +113,14 @@ export async function buildPiSkillLoader(
     agentDir,
     // Inline extensions — the loader calls each factory during
     // `getExtensions()`, before `_refreshToolRegistry`, so `pi.registerTool`
-    // / `pi.on` are live before the first agent turn. Mcode's extension
+    // / `pi.on` are live before the first agent turn. MarioCode's extension
     // bridges host approval, AskUserQuestion, and system-prompt injection.
     extensionFactories: extensionFactories ?? [],
-    // Pull in Mcode's two roots (plus synced skill mirror roots) alongside
+    // Pull in MarioCode's two roots (plus synced skill mirror roots) alongside
     // Pi's defaults. We deliberately leave `noSkills` unset so Pi's own
     // `~/.pi/agent/skills` + `<cwd>/.pi/skills` keep working — existing Pi
     // users aren't disrupted.
-    additionalSkillPaths: [path.join(sdk.getAgentDir(), "skills"), ...mcodeSkillRoots(cwd), ...(extraSkillPaths ?? [])],
+    additionalSkillPaths: [path.join(sdk.getAgentDir(), "skills"), ...mariocodeSkillRoots(cwd), ...(extraSkillPaths ?? [])],
     // On Windows, append a path-style hint that matches the bash the SDK will
     // actually spawn — native (Git Bash: `/mnt/...` doesn't exist) or WSL
     // (`/mnt/...` is the only absolute form that resolves; `detectBashEnv`
@@ -169,7 +169,7 @@ export async function buildPiSkillLoader(
  * otherwise fall through to the LLM as a literal).
  *
  * The character class is deliberately wider than Pi's `^[a-z0-9-]+$` name
- * validation: Mcode skills may carry uppercase/underscores, and validation
+ * validation: MarioCode skills may carry uppercase/underscores, and validation
  * failure only produces a *warning* (the skill still loads with its original
  * name), so we must match the raw name. The trailing negative lookahead
  * `(?![A-Za-z0-9_-])` stops the match at the token boundary so `/pdf-docs more`
@@ -200,7 +200,7 @@ export function rewriteSkillPrefix(text: string, knownNames: Set<string>): strin
  * This is the read-side counterpart of `normalizeToolFilePath` in
  * `fileSnapshot.ts`, but stripped to JUST the dialect→Windows translation:
  * read is a non-mutating operation that legitimately reaches outside the
- * project (skills live under `~/.mcode/skills`, docs under `~/Documents`, …),
+ * project (skills live under `~/.mariocode/skills`, docs under `~/Documents`, …),
  * so the strict in-project guard that file-write tools enforce must NOT apply
  * here. Shared implementation lives in `@main/lib/msysPath.ts` so the read
  * tool, the file-write guards, and the bash-command normalizer all agree on

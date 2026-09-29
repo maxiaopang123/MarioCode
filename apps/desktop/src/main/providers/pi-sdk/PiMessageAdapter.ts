@@ -310,7 +310,7 @@ export class PiMessageAdapter {
     if (!sub) return;
     if (sub.type === "text_delta") {
       // AskUserQuestion is now handled by the inline extension's native tool
-      // (registered via pi.registerTool in mcodeExtension.ts) — the tool's
+      // (registered via pi.registerTool in mariocodeExtension.ts) — the tool's
       // execute bridges to ctx.requestUserInput, so the question panel opens
       // deterministically. The model may still occasionally emit the
       // sentinel <<<ASK_USER_QUESTION>>> JSON form (the system prompt teaches

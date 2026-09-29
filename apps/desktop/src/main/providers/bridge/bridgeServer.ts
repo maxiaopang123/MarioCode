@@ -485,7 +485,7 @@ export async function startBridge(upstream: UpstreamConfig): Promise<BridgeHandl
   // stable id per bridge it is: the gateway still sees a single, unchanging
   // conversation for this endpoint rather than a new one per request, which is
   // all its routing/prompt-cache contract asks for.
-  const bridgeSessionId = `mcode-${randomBytes(6).toString("hex")}`;
+  const bridgeSessionId = `mariocode-${randomBytes(6).toString("hex")}`;
   if (requiresSessionHeader(upstream.baseUrl)) {
     log.info(
       hasHeader(upstream.customHeaders ?? {}, SESSION_HEADER)

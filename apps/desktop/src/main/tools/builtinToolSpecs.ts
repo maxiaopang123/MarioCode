@@ -2,7 +2,7 @@
  * MarioCode's built-in agent tools (MarioTool) — `mario_web_search`,
  * `mario_web_fetch`, `mario_image_generate`, `mario_schedule_*` and
  * `mario_wechat_notify` — shared by Claude (in-process MCP servers
- * `mcode-web` / `mcode-image` / `mcode-schedule` / `mcode-wechat`), Codex (dynamicTools) and Pi
+ * `mariocode-web` / `mariocode-image` / `mariocode-schedule` / `mariocode-wechat`), Codex (dynamicTools) and Pi
  * (`pi.registerTool` in the host, executed main-side over the reverse
  * channel). They don't depend on the model endpoint's own search / image
  * abilities.
@@ -99,8 +99,9 @@ export const BUILTIN_TOOL_SPECS = {
     description:
       "根据文字描述生成一张图片,调用用户在设置里配置的图片模型——会产生费用,每次调用都要用户审批。" +
       "prompt 写清主体、风格、构图、光线和色调等细节;size 可选,如 1024x1024 / 1536x1024 / 1024x1536(以所配模型支持的尺寸为准)。" +
-      "生成的图片会直接显示给用户并保存到本地,结果里带保存路径。",
-    promptSnippet: `${IMAGE}({prompt, size?}): 生成图片(会产生费用,需用户审批)`,
+      "生成的图片会直接显示给用户并保存到本地,结果里带保存路径。" +
+      "回复里要把图片放在说明文字旁边(比如逐张点评、对比多张)时,用 Markdown `![简短名称](结果里的保存路径)` 引用,路径原样照抄;几张连着写会排成一组。只是提到文件时直接写路径即可。",
+    promptSnippet: `${IMAGE}({prompt, size?}): 生成图片(会产生费用,需用户审批);回复里用 ![名称](保存路径) 把图放进正文`,
   },
   mario_schedule_list: {
     name: SCHEDULE_LIST,
@@ -217,7 +218,7 @@ export const WEB_TOOLS_FLOW =
   `使用 MarioTool 时:先 ${SEARCH} 看摘要,只对真正需要的一两条结果调用 ${FETCH},不要一次抓很多网页;长文按结果末尾给出的 offset 续读,不要调大 maxChars 一次读完。` +
   `回答里用到网上的信息时附上来源链接。不要用浏览器工具打开搜索引擎代替 ${SEARCH}。`;
 
-/** Scheduled-task flow guidance (prompt section + mcode-schedule instructions). */
+/** Scheduled-task flow guidance (prompt section + mariocode-schedule instructions). */
 export const SCHEDULE_FLOW =
   `定时任务:用户要求"定期 / 每天 / 每周 / 某个时间"做某事时用 ${SCHEDULE_CREATE};` +
   "任务会在无人值守下以普通权限运行,遇到需要审批的操作会自动停止,所以任务提示词应写成只读 / 检查 / 汇总类的具体指令;" +
@@ -225,7 +226,7 @@ export const SCHEDULE_FLOW =
   `runAt 用带时区偏移的 ISO 时间(先调 ${SCHEDULE_LIST} 看当前时间);修改 / 删除前先 ${SCHEDULE_LIST} 拿到 id。` +
   "无人值守运行中不能创建、修改或删除定时任务。";
 
-/** WeChat-notify guidance (prompt section + mcode-wechat instructions). */
+/** WeChat-notify guidance (prompt section + mariocode-wechat instructions). */
 export const WECHAT_FLOW =
   `微信通知:仅在用户要求或定时任务需要汇报时调用 ${WECHAT_NOTIFY},内容简洁,不要刷屏。`;
 

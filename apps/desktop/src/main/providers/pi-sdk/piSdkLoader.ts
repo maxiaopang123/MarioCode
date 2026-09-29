@@ -25,7 +25,7 @@ let sdkModule: typeof import("@earendil-works/pi-coding-agent") | null = null;
  * only exists on Node >= 22.14, but Electron 33 ships Node 20 — so the
  * import resolves to `undefined` and crashes at load time. Polyfilling
  * with a no-op (the real API only matters when the object is sent across a
- * MessageChannel, which Mcode never does with CacheStorage) lets the SDK
+ * MessageChannel, which MarioCode never does with CacheStorage) lets the SDK
  * boot. Must run BEFORE the first `import("@earendil-works/pi-coding-agent")`.
  */
 let polyfillApplied = false;

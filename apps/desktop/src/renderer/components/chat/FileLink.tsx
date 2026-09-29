@@ -1,9 +1,11 @@
 /**
  * Inline, clickable file-path link for chat output.
  *
- * Renders as a dotted-underlined accent-colored `<span>` inside prose. On
- * click (or Enter/Space for keyboard users) it asynchronously resolves the
- * token via {@link resolveFilePathToken}:
+ * Renders as a dotted-underlined accent-colored `<span>` inside prose. The
+ * bare-path form opens on DOUBLE click (single click selects the text for
+ * copying — same rule as FileChip); the link form (`asLink`) opens on single
+ * click. Enter/Space open in both. Opening resolves the token via
+ * {@link resolveFilePathToken}:
  *  - 1 candidate  -> opens it directly in the IDE editor (`openFileInIde`).
  *  - >1 candidate -> opens a base-ui `Menu` anchored to the span listing the
  *                    matches (file-type icon + relative path); selecting one
@@ -113,7 +115,29 @@ export function FileLink({
     }
   };
 
+  /** Link form (markdown `[text](path)`): single click opens, like any link. */
   const handleClick = (e: MouseEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void resolve();
+  };
+
+  /** Bare-path form: same rule as the reply's FileChip (TODO-022, decided
+   *  2026-09-28) — single click SELECTS the path text so Ctrl/⌘+C copies it,
+   *  double click opens. Stops propagation either way so a click never
+   *  toggles the tool card the path sits in. */
+  const handleSelectClick = (e: MouseEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = elRef.current;
+    const sel = window.getSelection();
+    if (!el || !sel) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
+  const handleDoubleClick = (e: MouseEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     void resolve();
@@ -161,8 +185,9 @@ export function FileLink({
           }}
           role="button"
           tabIndex={0}
-          title={t("chatStream.fileLink.clickToOpen")}
-          onClick={handleClick}
+          title={t("chatStream.fileChip.hint")}
+          onClick={handleSelectClick}
+          onDoubleClick={handleDoubleClick}
           onKeyDown={handleKeyDown}
           className={cn(
             "cursor-pointer rounded-[2px] underline decoration-dotted decoration-accent/60 underline-offset-2",

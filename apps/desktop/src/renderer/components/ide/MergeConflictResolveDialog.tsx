@@ -5,7 +5,7 @@
  *  - `GitRepoCard` (pull / branch-merge results),
  *  - `WorktreeMergeBack` (merge-back of an isolated worktree).
  *
- * "用 AI 解决" opens a NEW Mcode session (bound to the project that owns the
+ * "用 AI 解决" opens a NEW MarioCode session (bound to the project that owns the
  * repo) whose kickoff prompt asks the agent to resolve the conflicted files
  * and stage them — the work happens visibly in that conversation instead of
  * a hidden background query. The merge commit stays with the user. Two

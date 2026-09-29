@@ -297,11 +297,15 @@ async function imageChecks(): Promise<void> {
   const port = (server.address() as AddressInfo).port;
   const shots = join(userData, "shots");
   SettingRepo.set(BROWSER_SCREENSHOT_DIR_SETTING_KEY, shots);
+  // Two models on purpose (TODO-024 ①): "cogview-4" carries the 生图 marker
+  // the settings picker lists, while the config below points at the UNMARKED
+  // "gpt-image-1" — the shape of every setup made before the marker existed.
+  // Resolving must not care about the marker, only that a model id is set.
   const provider = SharedProviderStore.save({
     name: "Smoke image provider",
     baseUrl: `http://127.0.0.1:${port}/v1/`,
     protocols: ["chat-completions"],
-    models: [{ id: "gpt-image-1" }],
+    models: [{ id: "gpt-image-1" }, { id: "cogview-4", imageGeneration: true }],
     enabledAgents: ["pi"],
     apiKey: "sk-image-smoke",
   }).find((p) => p.name === "Smoke image provider")!;
@@ -311,6 +315,13 @@ async function imageChecks(): Promise<void> {
   );
   const endpoint = resolveImageEndpoint();
   check("image source resolves to the shared provider's endpoint and key", endpoint.ok && endpoint.label === "Smoke image provider", JSON.stringify(endpoint.ok ? { ...endpoint, apiKey: "***" } : endpoint));
+  check(
+    "the 生图 marker round-trips, and an UNMARKED configured model still resolves",
+    provider.models.find((m) => m.id === "cogview-4")?.imageGeneration === true
+      && provider.models.find((m) => m.id === "gpt-image-1")?.imageGeneration === undefined
+      && endpoint.ok && endpoint.model === "gpt-image-1",
+    JSON.stringify(provider.models),
+  );
   try {
     const images: string[] = [];
     const ctx = { toolCallId: "call_smoke_1", sessionId: "session-smoke", turnNumber: 3, onImage: (i: { data: string; mimeType: string }) => images.push(i.mimeType) };

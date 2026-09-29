@@ -29,6 +29,8 @@ import {
   IconStack2,
   IconClock,
   IconMessage,
+  IconBolt,
+  IconGauge,
 } from "@renderer/lib/icons.js";
 import { useNow } from "@renderer/hooks/useNow.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
@@ -40,6 +42,7 @@ import { TurnFilesCard } from "./TurnFilesCard.js";
 import { CurrentOpTicker } from "./CurrentOpTicker.js";
 import { ModelBadge } from "./ModelAvatar.js";
 import { fmtTokens } from "@renderer/lib/contextWindow.js";
+import { fmtPct, fmtSpeed } from "@renderer/lib/sessionMetrics.js";
 import { RenderErrorBoundary } from "./RenderErrorBoundary.js";
 import { lineDiff, diffSummary } from "@renderer/lib/lineDiff.js";
 import { FileLink } from "./FileLink.js";
@@ -677,6 +680,15 @@ export function TurnPanel({
      *  usage history — it only exists once the turn-end snapshot lands, so the
      *  receipt shows no token figure until then). */
     tokens?: number;
+    /** Prompt-cache hit rate of this turn as a fraction [0,1], null when the
+     *  provider reported no cache figures (TODO-023). */
+    cacheRate?: number | null;
+    /** Output tokens per second for this turn, null when it can't be measured
+     *  (a reply that arrived in a single chunk). */
+    speed?: number | null;
+    /** Tooltip detail for the two chips (token counts behind the ratios). */
+    cacheHint?: string;
+    speedHint?: string;
   };
   /** Forwarded to BlockView for plan blocks (opens the PlanDrawer). */
   onOpenPlan?: (plan: string) => void;
@@ -891,6 +903,22 @@ export function TurnPanel({
                   {t("chatStream.tokensUsed", { n: fmtTokens(stats.tokens) })}
                 </span>
               </>
+            )}
+            {/* Cache hit rate + output speed for this turn (TODO-023). Pills
+                rather than more "·"-separated text: they are ratios, not part
+                of the timing sentence, and the tooltip carries the raw counts.
+                Omitted entirely when unmeasurable — never rendered as 0. */}
+            {stats?.cacheRate != null && (
+              <span className="chat-perf-chip" title={stats.cacheHint}>
+                <IconBolt size={11} className="shrink-0 text-accent-strong" />
+                {t("chatStream.byline.cache", { pct: fmtPct(stats.cacheRate) })}
+              </span>
+            )}
+            {stats?.speed != null && (
+              <span className="chat-perf-chip" title={stats.speedHint}>
+                <IconGauge size={11} className="shrink-0 text-accent-strong" />
+                {t("chatStream.byline.speed", { n: fmtSpeed(stats.speed) })}
+              </span>
             )}
           </span>
         )}
@@ -1727,21 +1755,21 @@ const TOOL_ICON_MAP: Record<string, ComponentType<{ size?: number; className?: s
   WebFetch: IconWorldWww,
   // MarioTool built-ins: bare ids (Codex / Pi) and Claude's MCP-qualified ids.
   mario_web_search: IconWorldSearch,
-  "mcp__mcode-web__mario_web_search": IconWorldSearch,
+  "mcp__mariocode-web__mario_web_search": IconWorldSearch,
   mario_web_fetch: IconWorldWww,
-  "mcp__mcode-web__mario_web_fetch": IconWorldWww,
+  "mcp__mariocode-web__mario_web_fetch": IconWorldWww,
   mario_image_generate: IconPhoto,
-  "mcp__mcode-image__mario_image_generate": IconPhoto,
+  "mcp__mariocode-image__mario_image_generate": IconPhoto,
   mario_schedule_list: IconClock,
-  "mcp__mcode-schedule__mario_schedule_list": IconClock,
+  "mcp__mariocode-schedule__mario_schedule_list": IconClock,
   mario_schedule_create: IconClock,
-  "mcp__mcode-schedule__mario_schedule_create": IconClock,
+  "mcp__mariocode-schedule__mario_schedule_create": IconClock,
   mario_schedule_update: IconClock,
-  "mcp__mcode-schedule__mario_schedule_update": IconClock,
+  "mcp__mariocode-schedule__mario_schedule_update": IconClock,
   mario_schedule_delete: IconClock,
-  "mcp__mcode-schedule__mario_schedule_delete": IconClock,
+  "mcp__mariocode-schedule__mario_schedule_delete": IconClock,
   mario_wechat_notify: IconMessage,
-  "mcp__mcode-wechat__mario_wechat_notify": IconMessage,
+  "mcp__mariocode-wechat__mario_wechat_notify": IconMessage,
   AskUserQuestion: IconHelpCircle,
   EnterPlanMode: IconClipboard,
   ExitPlanMode: IconClipboard,

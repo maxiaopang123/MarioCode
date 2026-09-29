@@ -2,7 +2,7 @@
 # Run via `pnpm package` (electron-vite build && electron-builder).
 # Output goes to `apps/desktop/release/` (gitignored).
 
-appId: com.huangbh.mcode
+appId: com.mariocode.desktop
 productName: MarioCode
 copyright: MIT
 # Version is read from apps/desktop/package.json. In CI, the release workflow
@@ -45,7 +45,7 @@ files:
   # not needed in node_modules at runtime. Excluding it also avoids asar errors:
   # the workspace symlink resolves outside the app dir, which the packager
   # rejects ("path must be under appDir").
-  - "!**/node_modules/@mcode/**"
+  - "!**/node_modules/@mariocode/**"
   # The claude JS SDK (in dependencies, needed in-process) lists its platform
   # binary packages (@anthropic-ai/claude-agent-sdk-<platform>-<arch>, 209MB
   # of claude.exe on win32) as optionalDependencies — electron-builder's
@@ -99,7 +99,7 @@ extraMetadata:
 # Building both archs from one runner produced x64 DMGs containing arm64
 # claude/node-pty binaries -> Rosetta prompt on Intel Macs.
 # Single-arch builds also keep filenames distinct: arm64 artifacts get an
-# `-arm64` suffix (Mcode-x.y.z-arm64.dmg), x64 artifacts don't.
+# `-arm64` suffix (MarioCode-x.y.z-arm64.dmg), x64 artifacts don't.
 mac:
   target:
     - target: dmg
@@ -115,15 +115,15 @@ mac:
 # NSIS installer with a directory-pick step (non-one-click).
 #
 # Explicit artifactName (no spaces): without it electron-builder defaults to
-# "${productName} Setup ${version}.${ext}" (e.g. "Mcode Setup 0.1.19.exe"). It
+# "${productName} Setup ${version}.${ext}" (e.g. "MarioCode Setup 0.1.19.exe"). It
 # then derives a GitHub-"safe" name by replacing spaces with "-" -> the url
-# written into latest.yml becomes "Mcode-Setup-0.1.19.exe". But the actual exe
+# written into latest.yml becomes "MarioCode-Setup-0.1.19.exe". But the actual exe
 # written to disk keeps the spaces, and the GitHub Release upload step ends up
-# publishing it as "Mcode.Setup.0.1.19.exe" (spaces -> "."). The latest.yml url
+# publishing it as "MarioCode.Setup.0.1.19.exe" (spaces -> "."). The latest.yml url
 # and the real asset name therefore DIVERGE, so electron-updater's download
 # 404s. Pinning a space-free artifactName makes the disk filename, the
 # latest.yml url, and the GitHub asset name all identical, so the update
-# download resolves. Mirrors the mac artifact naming (Mcode-<ver>-<arch>.dmg).
+# download resolves. Mirrors the mac artifact naming (MarioCode-<ver>-<arch>.dmg).
 win:
   target:
     - target: nsis
@@ -142,5 +142,5 @@ nsis:
 # the installers (see .github/workflows/release.yml).
 publish:
   provider: github
-  owner: huangbh2020
-  repo: mcode
+  owner: maxiaopang123
+  repo: MarioCode

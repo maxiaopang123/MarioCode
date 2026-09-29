@@ -142,7 +142,7 @@ async function main(): Promise<void> {
     const refreshed = (await listMarkets()).find((m) => m.id === local.id);
     check("refresh picks up new skill", refreshed?.skills.some((s) => s.name === "delta") === true);
     await installFromMarket(local.id, "delta", "delta");
-    check("installFromMarket copies into ~/.mcode/skills", await exists(path.join(skillsRoot, "delta", "SKILL.md")));
+    check("installFromMarket copies into ~/.mariocode/skills", await exists(path.join(skillsRoot, "delta", "SKILL.md")));
     await rejects("installFromMarket unknown market", () => installFromMarket("nope-123456", "delta", "delta2"), /未知/);
     await rejects("installFromMarket traversal", () => installFromMarket(local.id, "../../../src/market-a/alpha", "alpha2"), /无效的技能路径/);
     // Refresh failure records error (source deleted).

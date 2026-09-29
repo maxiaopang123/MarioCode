@@ -13,7 +13,7 @@
 import { BrowserWindow, session, type Session, type WebContents } from "electron";
 import { applyEngineRouteToSession } from "@main/network/engineProxy.js";
 
-const PARTITION = "mcode-webtools";
+const PARTITION = "mariocode-webtools";
 const MAX_PAGES = 3;
 
 let toolsSession: Session | null = null;

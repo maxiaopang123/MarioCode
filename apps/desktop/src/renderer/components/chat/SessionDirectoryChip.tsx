@@ -2,7 +2,8 @@ import { useRef, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { cn } from "@renderer/lib/cn.js";
 import { IconCheck, IconChevronDown, IconDots } from "@renderer/lib/icons.js";
-import { projectDisplayColor, projectInitial } from "@renderer/lib/projectAvatar.js";
+import { projectDisplayColor } from "@renderer/lib/projectAvatar.js";
+import { ProjectAvatar } from "@renderer/components/layout/ProjectAvatar.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { useSuppressBrowserView } from "@renderer/hooks/useSuppressBrowserView.js";
 import { useCursorAnchor } from "@renderer/hooks/useCursorAnchor.js";
@@ -138,13 +139,7 @@ export function SessionDirectoryChip({ sessionId }: { sessionId: string | null }
             )}
             title={t("chat.directory.chipTitle")}
           >
-            <span
-              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[11px] font-bold text-white"
-              style={{ backgroundColor: projectDisplayColor(current, projectColors) }}
-              aria-hidden
-            >
-              {projectInitial(current.name)}
-            </span>
+            <ProjectAvatar name={current.name} color={projectDisplayColor(current, projectColors)} />
             <span className="truncate font-medium">{current.name}</span>
             <IconChevronDown size={12} className="shrink-0 opacity-60" />
           </Menu.Trigger>
@@ -174,13 +169,7 @@ export function SessionDirectoryChip({ sessionId }: { sessionId: string | null }
                       )}
                       title={t("chat.directory.rowHint")}
                     >
-                      <span
-                        className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[11px] font-bold text-white"
-                        style={{ backgroundColor: projectDisplayColor(p, projectColors) }}
-                        aria-hidden
-                      >
-                        {projectInitial(p.name)}
-                      </span>
+                      <ProjectAvatar name={p.name} color={projectDisplayColor(p, projectColors)} />
                       <span className="min-w-0 flex-1 truncate">{p.name}</span>
                       {p.group && !active && (
                         <span className="shrink-0 text-[11px] text-content-subtle/70">{p.group}</span>

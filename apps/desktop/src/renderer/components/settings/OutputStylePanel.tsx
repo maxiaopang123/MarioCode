@@ -44,7 +44,7 @@ function styleLabel(entry: OutputStyleEntry, t: (key: MessageId) => string): str
  *
  * One control: a Select over built-in styles (availability gated by the
  * bundled CLI version, server-side) plus user styles scanned from
- * ~/.mcode/output-styles/*.md. The selection persists under
+ * ~/.mariocode/output-styles/*.md. The selection persists under
  * AGENT_OUTPUT_STYLE_SETTING_KEY via the store action and is injected into
  * options.settings by the Claude provider on every NEW turn — the SDK has no
  * runtime switch API, so a change cannot reshape an already-running turn.

@@ -106,11 +106,14 @@ try {
     name: "Smoke image provider",
     baseUrl: "https://example.invalid/v1",
     protocols: ["chat-completions"],
-    models: [{ id: "gpt-image-1" }],
+    models: [{ id: "gpt-image-1", imageGeneration: true }],
     enabledAgents: ["pi"],
     apiKey: "sk-smoke-not-a-real-key",
   })`);
-  const providerId = shared.providers.find((p) => p.name === "Smoke image provider")?.id;
+  const smokeProvider = shared.providers.find((p) => p.name === "Smoke image provider");
+  const providerId = smokeProvider?.id;
+  // The 生图 marker is what the MarioTool page's image-model picker lists.
+  assert.equal(smokeProvider?.models[0]?.imageGeneration, true, JSON.stringify(smokeProvider?.models));
   assert.ok(providerId, JSON.stringify(shared));
   const saved = await evaluate(`window.api.builtinTools.save({
     config: { ...${JSON.stringify(initial.config)}, image: { source: ${JSON.stringify(providerId)}, model: "gpt-image-1", size: "1024x1024" } },
@@ -127,24 +130,24 @@ try {
 
   const mcp = await evaluate("window.api.mcp.list({})");
   const builtins = mcp.servers.filter((s) => s.scope === "builtin").map((s) => `${s.name}:${s.enabled}`);
-  assert.deepEqual(builtins, ["mcode-browser:true", "mcode-image:true", "mcode-web:true"]);
+  assert.deepEqual(builtins, ["mariocode-browser:true", "mariocode-image:true", "mariocode-web:true"]);
   ok(`MCP built-in rows: ${builtins.join(", ")}`);
 
-  await evaluate("window.api.mcp.toggle({ name: 'mcode-web', scope: 'builtin', enabled: false })");
+  await evaluate("window.api.mcp.toggle({ name: 'mariocode-web', scope: 'builtin', enabled: false })");
   assert.equal((await evaluate("window.api.builtinTools.get()")).webToolsEnabled, false);
-  await evaluate("window.api.mcp.toggle({ name: 'mcode-web', scope: 'builtin', enabled: true })");
+  await evaluate("window.api.mcp.toggle({ name: 'mariocode-web', scope: 'builtin', enabled: true })");
   ok("MCP panel switch and the built-in tools page share one flag");
 
-  // Browser tools: the MarioTool switch flips the MCP row mcode-browser (and back).
+  // Browser tools: the MarioTool switch flips the MCP row mariocode-browser (and back).
   const browserRow = async () =>
-    (await evaluate("window.api.mcp.list({})")).servers.find((s) => s.scope === "builtin" && s.name === "mcode-browser");
+    (await evaluate("window.api.mcp.list({})")).servers.find((s) => s.scope === "builtin" && s.name === "mariocode-browser");
   const browserOff = await evaluate("window.api.builtinTools.save({ browserToolsEnabled: false })");
   assert.ok(browserOff.ok && browserOff.state.browserToolsEnabled === false, JSON.stringify(browserOff));
   assert.equal((await browserRow())?.enabled, false);
   const browserOn = await evaluate("window.api.builtinTools.save({ browserToolsEnabled: true })");
   assert.ok(browserOn.ok && browserOn.state.browserToolsEnabled === true, JSON.stringify(browserOn));
   assert.equal((await browserRow())?.enabled, true);
-  ok("MarioTool browser-tools switch and the MCP row mcode-browser share one flag");
+  ok("MarioTool browser-tools switch and the MCP row mariocode-browser share one flag");
 
   const preview = await evaluate("window.api.systemPrompt.preview({ providerId: 'pi-sdk', projectPath: null })");
   const layer = preview.sections.find((s) => s.id === "builtin.usage.on");
@@ -162,8 +165,8 @@ try {
   ok("Settings → MarioTool renders, shows image ready, the test button searches");
   await screenshot("builtin-tools-page");
   await clickButton("MCP");
-  await waitForText("mcode-web");
-  await evaluate("[...document.querySelectorAll('*')].find(e=>e.textContent?.trim()==='mcode-web')?.scrollIntoView({block:'center'})");
+  await waitForText("mariocode-web");
+  await evaluate("[...document.querySelectorAll('*')].find(e=>e.textContent?.trim()==='mariocode-web')?.scrollIntoView({block:'center'})");
   await delay(400);
   await screenshot("mcp-builtin-rows");
   console.log(`\nall checks passed — artifacts in ${data}`);

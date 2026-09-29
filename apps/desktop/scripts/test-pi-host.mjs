@@ -44,7 +44,7 @@ async function directoryContains(dir, needle) {
 }
 
 async function testRuntime(runtime) {
-  const isolated = await mkdtemp(join(tmpdir(), `mcode-pi-host-${runtime.version}-`));
+  const isolated = await mkdtemp(join(tmpdir(), `mariocode-pi-host-${runtime.version}-`));
   const cwd = join(isolated, "cwd");
   await mkdir(cwd);
   const userPiDir = join(isolated, ".pi", "agent");

@@ -3,14 +3,16 @@ import { cn } from "@renderer/lib/cn.js";
 import { ThreePaneLayout } from "./components/layout/ThreePaneLayout.js";
 import { Divider } from "./components/layout/Divider.js";
 import { Titlebar } from "./components/layout/Titlebar.js";
-import { LeftBar } from "./components/layout/LeftBar.js";
 import { StreamSidebar } from "./components/layout/StreamSidebar.js";
 import { ChatPane } from "./components/chat/ChatPane.js";
 import { SessionTabs } from "./components/layout/SessionTabs.js";
 import { UnifiedTabsBar } from "./components/layout/UnifiedTabsBar.js";
 import { RightPanel } from "./components/layout/RightPanel.js";
+import { ProjectRail } from "./components/layout/ProjectRail.js";
+import { ToolStrip } from "./components/layout/ToolStrip.js";
+import { StatusBar } from "./components/layout/StatusBar.js";
 import { BottomTerminalBar } from "./components/layout/BottomTerminalBar.js";
-import { SettingsPage } from "./components/settings/SettingsPage.js";
+import { SettingsDialog } from "./components/settings/SettingsDialog.js";
 import { CommandPalette } from "./components/layout/CommandPalette.js";
 import { SearchDialog } from "./components/ide/SearchDialog.js";
 import { ModelConfigPrompt } from "./components/chat/ModelConfigPrompt.js";
@@ -129,12 +131,13 @@ export function App() {
    *  can toggle them. Workspace-only — the settings view pins leftOpen=true /
    *  rightOpen=false. NOT persisted (matches original behavior). */
   const leftOpen = useSessionStore((s) => s.leftOpen);
-  const leftBarMode = useSessionStore((s) => s.leftBarMode);
+  // The project tree view was removed (2026-09-28): the rail + session
+  // column is the only left bar.
+  const railVisible = true;
   const setLeftOpen = useSessionStore((s) => s.setLeftOpen);
   const rightOpen = useSessionStore((s) => s.rightOpen);
   const setRightOpen = useSessionStore((s) => s.setRightOpen);
   const bottomTerminalOpen = useSessionStore((s) => s.bottomTerminalOpen);
-  const setBottomTerminalOpen = useSessionStore((s) => s.setBottomTerminalOpen);
   const widePanelOpen = useSessionStore((s) => s.widePanelOpen);
   // Wide-panel (3:7) split share + its resize/reset actions. The wide mode
   // reuses the layout's right aside (percentage width) instead of mounting a
@@ -201,7 +204,8 @@ export function App() {
     // bg-surface-base (matching the sidebar/toolbar/track) so the left
     // divider's transparent 1px layout slot blends in — a bg-surface root
     // showed through it as a stray light/dark hairline cutting the frame.
-    <div ref={rootRef} className="flex h-full w-full bg-surface-base text-content">
+    <div className="flex h-full w-full flex-col bg-surface-base text-content">
+    <div ref={rootRef} className="flex min-h-0 w-full flex-1">
       {/* Command palette + file search dialog overlay both workspace and
           settings views. The browser panel overlay mounts here too - it
           covers the workspace with a fixed inset overlay (z-40, below the
@@ -218,6 +222,11 @@ export function App() {
           beside the browser overlay so it covers both the chat and right
           columns. Renders null when not applicable. */}
       <WidePlanDialog />
+      {/* 界面焕新 v3 ① — the project rail (stream left-bar mode only; the
+          classic tree keeps its own header/footer as the fallback view).
+          Always visible, including while the session column is collapsed
+          and while settings is open (its ⚙ cell toggles settings). */}
+      {railVisible && <ProjectRail />}
       {/*
         Left sidebar — spans the FULL window height. Its share of the width
         is a persisted percentage (default 12 ≈ a compact ~259px sidebar on a
@@ -242,8 +251,9 @@ export function App() {
           // session title, which contributes its full text width to
           // min-content) propped the aside open no matter how small
           // leftWidthPct got.
-          "flex h-full min-w-0 shrink-0 flex-col rounded-tl-3xl bg-surface-base",
-          (!leftOpen || settingsOpen) && "hidden",
+          "flex h-full min-w-0 shrink-0 flex-col bg-surface-base",
+          railVisible ? "border-r border-edge" : "rounded-tl-3xl",
+          !leftOpen && "hidden",
         )}
         style={{ flexGrow: 0, flexBasis: `${leftWidthPct}%` }}
       >
@@ -251,10 +261,10 @@ export function App() {
           {/* Left-bar view preference: classic project tree or the
               session-first stream. Both are pure renderers over the same
               store; switching keeps running turns untouched. */}
-          {leftBarMode === "stream" ? <StreamSidebar /> : <LeftBar />}
+          <StreamSidebar />
         </div>
       </aside>
-      {leftOpen && !settingsOpen && (
+      {leftOpen && (
         <Divider
           orientation="vertical"
           hideLine
@@ -288,21 +298,18 @@ export function App() {
           left sidebar stays visible alongside it).
         */}
         <Titlebar
-          mode={settingsOpen ? "settings" : "workspace"}
+          mode="workspace"
           leftOpen={leftOpen}
-          rightOpen={settingsOpen ? false : rightOpen}
-          bottomTerminalOpen={settingsOpen ? false : bottomTerminalOpen}
+          railVisible={railVisible}
           onBack={() => setSettingsOpen(false)}
           onToggleLeft={() => setLeftOpen(!leftOpen)}
-          onToggleRight={() => setRightOpen(!rightOpen)}
-          onToggleBottomTerminal={() => setBottomTerminalOpen(!bottomTerminalOpen)}
         />
         {/* Main panel row — the bg-surface-base track the center and right
             cards (ThreePaneLayout) float on. Padded 8px on three sides so
             the cards clear the window edge and the sidebar; the left pad is
             also where the sidebar Divider's grab area lands, so resizing
             never starts on top of the card. */}
-        <div className="relative flex min-h-0 flex-1 bg-surface-base px-2 pb-2">
+        <div className="relative flex min-h-0 flex-1 bg-surface-base pb-2 pl-2">
           {/*
             Center is ONE stable tree across wide mode (CenterPane takes the
             wide flag as a render variation) — the old ternary swap
@@ -330,6 +337,10 @@ export function App() {
             onResetRight={widePanelOpen ? resetWidePanelPct : resetRightWidth}
             onResetBottomTerminal={resetBottomTerminalHeight}
           />
+          {/* 界面焕新 v3 — vertical tool strip: pane switcher + terminal +
+              panel toggle (replaces the right panel's top tabs and the
+              titlebar's terminal / right-panel toggles). */}
+          <ToolStrip />
           {/* Git diff dialog (the "dialog" open-mode). Portaled to <body>;
               renders nothing when closed or empty. Mounted at the workspace
               level so it overlays the editor while staying app-scoped.
@@ -353,13 +364,15 @@ export function App() {
             <main> collapses to height 0 and the settings content never
             renders.
           */}
-          {settingsOpen && (
-            <div className="settings-root absolute inset-0 z-30 flex bg-surface-base pb-2 pr-2">
-              <SettingsPage />
-            </div>
-          )}
+
         </div>
       </div>
+    </div>
+      {/* 界面焕新 v3 — global status bar (global facts only). */}
+      <StatusBar />
+      {/* Settings — a floating window over the (still mounted) workspace,
+          so terminals / PTYs stay alive while it is open. */}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {/* Global bottom-right corner: update notification card + toast stack
           share one fixed column so they stack vertically and never overlap.
           Both render null when they have nothing to show. */}

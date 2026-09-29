@@ -24,7 +24,12 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { getManagedRuntimeRoot, listManagedVersions } from "@main/runtimes/managedRuntimeRoots.js";
-import { getRuntimeSelection, resolveExternalRuntimeSync } from "@main/runtimes/runtimeSelection.js";
+import {
+  autoLocalRuntimeSync,
+  getRuntimeSelection,
+  noteAutoPick,
+  resolveExternalRuntimeSync,
+} from "@main/runtimes/runtimeSelection.js";
 
 /** The platform subpackage suffix the SDK looks for, e.g. "win32-x64".
  *  Mirrors the SDK's own resolution (see its `getDefaultExecutable`/`FU`). */
@@ -44,7 +49,9 @@ function toUnpackedPath(p: string): string {
 }
 
 /**
- * Resolve the SDK binary path. Lookup order:
+ * Resolve the SDK binary path. Explicit "external" mode uses only the
+ * selected binary. "auto" (default) and "managed" share this order, with the
+ * auto-only local step between 0) and 1):
  *   0) managed runtime downloaded via the settings panel
  *      (`<userData>/runtimes/claude/<version>/claude[.exe]`) — highest
  *      priority, works in dev and packaged apps (this is the only source in
@@ -52,6 +59,7 @@ function toUnpackedPath(p: string): string {
  *   1) bundled platform package under node_modules / app.asar.unpacked
  *      (dev only — in dev the SDK could also self-resolve, but returning the
  *      explicit path keeps dev/packaged behavior identical).
+ *   (auto) a locally installed Claude found by discovery sits between 0 and 1.
  * Returns null when nothing exists (caller surfaces a friendly "runtime not
  * installed" error pointing at the download panel).
  */
@@ -64,16 +72,31 @@ export function resolveSdkBinaryPath(): string | null {
       ? `Configured external Claude runtime is unavailable: ${selection.path}. Choose a valid native Claude executable in Settings.`
       : "Claude external runtime is selected but no executable is configured. Choose a detected installation in Settings.");
   }
+  const auto = selection.mode === "auto";
   const managedRoot = getManagedRuntimeRoot();
   if (managedRoot) {
     for (const version of listManagedVersions("claude")) {
       for (const name of binaryNames()) {
         const candidate = join(managedRoot, "claude", version, name);
-        if (existsSync(candidate)) return candidate;
+        if (existsSync(candidate)) {
+          if (auto) noteAutoPick("claude", "managed", candidate);
+          return candidate;
+        }
       }
     }
   }
-  return resolveBundledSdkBinaryPath();
+  // AUTO only: a locally installed Claude beats the dev/bundled fallback, so
+  // an existing install is used instead of prompting a download.
+  if (auto) {
+    const local = autoLocalRuntimeSync("claude");
+    if (local) {
+      noteAutoPick("claude", "local", local.path);
+      return local.path;
+    }
+  }
+  const bundled = resolveBundledSdkBinaryPath();
+  if (auto) noteAutoPick("claude", "bundled/dev", bundled);
+  return bundled;
 }
 
 /**

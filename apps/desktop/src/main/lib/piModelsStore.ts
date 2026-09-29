@@ -8,11 +8,11 @@
  * three ways to source an apiKey for a custom provider:
  *   1. `models.json` `providers.<name>.apiKey` field (literal / `$ENV` /
  *      `!command`) — visible on disk, awkward to encrypt.
- *   2. `~/.pi/agent/auth.json` — written by the Pi CLI, but Mcode should
+ *   2. `~/.pi/agent/auth.json` — written by the Pi CLI, but MarioCode should
  *      not clobber it.
  *   3. `AuthStorage.setRuntimeApiKey(provider, key)` — in-process only.
  *
- * Mcode uses (3) at turn time. The cleartext key lives **only in the
+ * MarioCode uses (3) at turn time. The cleartext key lives **only in the
  * encrypted settings map** (safeStorage-backed, same pattern as
  * customModelKeys). models.json is kept as a credential-free metadata file
  * (baseUrl / api / models / unknown-fields-preserved). The store strips any

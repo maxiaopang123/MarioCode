@@ -1,5 +1,5 @@
 /**
- * Inline Pi extension — bridges Mcode's host-side approval, AskUserQuestion,
+ * Inline Pi extension — bridges MarioCode's host-side approval, AskUserQuestion,
  * and system-prompt capabilities into the Pi agent via the SDK's extension API.
  *
  * ## Why an extension (not customTools wrapping)
@@ -119,14 +119,14 @@ export function guardToolPath(
 /** Pi's read-only built-in tools — auto-approved in every mode (including plan). */
 const PI_READONLY_TOOLS = new Set(["read", "grep", "find", "ls"]);
 
-/** Mcode browser tools that are purely read-only (they can't mutate the page,
+/** MarioCode browser tools that are purely read-only (they can't mutate the page,
  *  navigate, or submit) — auto-approved in every mode, never routed through the
  *  approval prompt. scroll/wait/find are pure reading aids; save_pdf writes
  *  only into the managed artifacts dir with sanitized names. `browser_navigate`
  *  / `browser_click` / `browser_keys` / `browser_upload_file` etc. have side
  *  effects and DO go through approval (the user can still "always allow" them
  *  per session). */
-const MCODE_BROWSER_READONLY = new Set([
+const MARIOCODE_BROWSER_READONLY = new Set([
   "browser_list",
   "browser_snapshot",
   "browser_screenshot",
@@ -158,7 +158,7 @@ function shouldAutoApproveForPi(mode: PermissionMode | undefined, toolName: stri
   return false;
 }
 
-export interface CreateMcodeExtensionOptions {
+export interface CreateMarioCodeExtensionOptions {
   /** The host provider context — carries the IPC bridges for approval /
    *  user-input / permission-mode / always-allow checks. */
   ctx: ProviderContext;
@@ -167,7 +167,7 @@ export interface CreateMcodeExtensionOptions {
   /** Strict in-project policy: deny writes outside cwd. False in
    *  bypassPermissions/dontAsk (user opted out of all checks). */
   strict: boolean;
-  /** The Mcode session id — needed for all emit() calls (plan.update /
+  /** The MarioCode session id — needed for all emit() calls (plan.update /
    * mode.change / plan.approval_request events carry it). */
   sessionId: string;
   /** Project root path — bound to auto-created browser views (for consistency
@@ -196,16 +196,16 @@ export interface CreateMcodeExtensionOptions {
 }
 
 /**
- * Build the inline Mcode extension. Returned as an `InlineExtension` (named
- * form) so it shows up as `<inline:mcode>` in Pi's startup Extensions list —
+ * Build the inline MarioCode extension. Returned as an `InlineExtension` (named
+ * form) so it shows up as `<inline:mariocode>` in Pi's startup Extensions list —
  * useful for debugging whether the extension loaded.
  */
 /**
- * Build the inline Mcode extension. Returned as an `InlineExtension` (named
- * form) so it shows up as `<inline:mcode>` in Pi's startup Extensions list —
+ * Build the inline MarioCode extension. Returned as an `InlineExtension` (named
+ * form) so it shows up as `<inline:mariocode>` in Pi's startup Extensions list —
  * useful for debugging whether the extension loaded.
  */
-export function createMcodeExtension(opts: CreateMcodeExtensionOptions): InlineExtension {
+export function createMarioCodeExtension(opts: CreateMarioCodeExtensionOptions): InlineExtension {
   const { ctx, cwd, strict, sessionId, projectPath, turnNumber, browserToolsEnabled, userSystemPrompt, browserBridge, snapshot, permissionState } = opts;
   const builtinTools: BuiltinToolFlags = opts.builtinBridge ? opts.builtinTools ?? NO_BUILTIN_TOOLS : NO_BUILTIN_TOOLS;
   const unattended = opts.unattended === true;
@@ -217,13 +217,13 @@ export function createMcodeExtension(opts: CreateMcodeExtensionOptions): InlineE
   // tool_call handler runs. This boolean is synchronous: EnterPlanMode's
   // execute sets it before returning, so the next tool_call handler sees it.
   //
-  // The extension is recreated every turn (createMcodeExtension is called in
+  // The extension is recreated every turn (createMarioCodeExtension is called in
   // each startTurn), so this doesn't persist across turns — which matches
   // Claude's semantics (plan mode is a turn-internal state).
   const planMode = { active: false };
 
   return {
-    name: "mcode",
+    name: "mariocode",
     factory: (pi: ExtensionAPI) => {
       registerToolCallGuard(pi, { ctx, cwd, strict, sessionId, planMode, snapshot, permissionState, unattended });
       registerAskUserQuestionTool(pi, ctx);
@@ -271,7 +271,7 @@ function registerToolCallGuard(
     sessionId: string;
     planMode: { active: boolean };
     snapshot: FileSnapshot;
-    permissionState?: CreateMcodeExtensionOptions["permissionState"];
+    permissionState?: CreateMarioCodeExtensionOptions["permissionState"];
     unattended: boolean;
   },
 ): void {
@@ -339,7 +339,7 @@ function registerToolCallGuard(
     //    page or navigate, so they're safe to auto-approve in every mode.
     //    `browser_navigate` / `browser_click` DO have side effects and fall
     //    through to the normal approval flow below.
-    if (MCODE_BROWSER_READONLY.has(toolName)) {
+    if (MARIOCODE_BROWSER_READONLY.has(toolName)) {
       return;
     }
     //    Built-in MarioTool tools follow the shared policy: read-only ones
@@ -471,7 +471,7 @@ function registerAskUserQuestionTool(pi: ExtensionAPI, ctx: ProviderContext): vo
  * `ctx.emit` so the renderer can render them inline.
  *
  * Read-only tools (list/snapshot/screenshot) are auto-approved by the
- * `tool_call` guard (see `MCODE_BROWSER_READONLY`); `navigate`/`click` have
+ * `tool_call` guard (see `MARIOCODE_BROWSER_READONLY`); `navigate`/`click` have
  * side effects and go through the normal approval prompt.
  */
 function registerBrowserTools(
@@ -1225,7 +1225,7 @@ const PLAN_MODE_PROMPT = [
 ].join("\n");
 
 /**
- * `before_agent_start` handler — injects the Mcode identity prompt, the
+ * `before_agent_start` handler — injects the MarioCode identity prompt, the
  * AskUserQuestion usage hint and the plan-mode tool usage guide into the
  * system prompt. The event fires each turn before the agent loop starts;
  * returning `systemPrompt` overrides `agent.state.systemPrompt` for the turn.

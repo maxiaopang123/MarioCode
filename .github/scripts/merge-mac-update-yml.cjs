@@ -98,7 +98,7 @@ function stripValue(v) {
 }
 
 function isArm64Entry(file) {
-  // arm64 artifacts carry -arm64 in the url (e.g. Mcode-1.2.3-arm64-mac.zip);
+  // arm64 artifacts carry -arm64 in the url (e.g. MarioCode-1.2.3-arm64-mac.zip);
   // x64 artifacts have no arch suffix.
   return /-arm64/i.test(file.url);
 }

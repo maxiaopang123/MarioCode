@@ -274,7 +274,7 @@ function migrate(database: Database.Database): void {
   addColumnIfMissing(database, "sessions", "env_mode", "TEXT NOT NULL DEFAULT 'local'");
   addColumnIfMissing(database, "sessions", "worktree_path", "TEXT");
   // Worktree FORM intent (only read while env_mode='worktree' and the path is
-  // still NULL): 'branch' materializes on a generated mcode/* branch, NULL or
+  // still NULL): 'branch' materializes on a generated mariocode/* branch, NULL or
   // 'detached' keeps the classic detached checkout. Stops mattering once the
   // worktree exists — the form is self-evident from the checkout.
   addColumnIfMissing(database, "sessions", "wt_style", "TEXT");

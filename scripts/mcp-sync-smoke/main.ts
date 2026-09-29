@@ -12,8 +12,8 @@ import { initDb, awaitDb } from "@main/store/db.js";
 import { registerMcpHandlers } from "@main/ipc/mcp.js";
 
 async function main() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), "mcode-mcp-smoke-"));
-  // Keep the smoke run completely isolated from the user's real ~/.mcode and
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), "mariocode-mcp-smoke-"));
+  // Keep the smoke run completely isolated from the user's real ~/.mariocode and
   // from a concurrently running MarioCode instance. Both os.homedir() and
   // the provider config helpers resolve these environment variables lazily.
   process.env.USERPROFILE = userData;
@@ -38,7 +38,7 @@ async function main() {
   win.webContents.on("console-message", (_e, _l, msg) =>
     process.stdout.write("[renderer] " + msg + "\n"));
 
-  const target = path.join(os.homedir(), ".mcode", ".claude.json");
+  const target = path.join(os.homedir(), ".mariocode", ".claude.json");
   const codexFile = path.join(os.homedir(), ".codex", "config.toml");
   const cursorFile = path.join(os.homedir(), ".cursor", "mcp.json");
   fs.mkdirSync(path.dirname(codexFile), { recursive: true });

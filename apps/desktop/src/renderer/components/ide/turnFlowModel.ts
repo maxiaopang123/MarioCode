@@ -213,7 +213,7 @@ const TOOL_CATEGORY: Record<string, ToolCategory> = {
   WebSearch: "web",
   WebFetch: "web",
   // MarioTool built-ins under their bare ids (Codex / Pi; Claude's
-  // mcp__mcode-* ids fall under the mcp__ rule below).
+  // mcp__mariocode-* ids fall under the mcp__ rule below).
   mario_web_search: "web",
   mario_web_fetch: "web",
   mario_image_generate: "other",

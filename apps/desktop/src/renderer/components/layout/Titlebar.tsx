@@ -5,8 +5,6 @@ import {
   IconArrowLeft,
   IconChevronRight,
   IconLayoutSidebarLeftExpand,
-  IconLayoutSidebarRightExpand,
-  IconTerminal2,
   IconCode,
   IconFolder,
   IconGitFork,
@@ -28,13 +26,10 @@ interface Props {
   /** Left sidebar visibility (workspace mode only - drives the left-strip
    *  width so the toggle button doesn't jump when the panel opens/closes). */
   leftOpen: boolean;
-  /** Right sidebar visibility (workspace mode only). */
-  rightOpen: boolean;
-  /** Bottom terminal bar visibility (workspace mode only). */
-  bottomTerminalOpen: boolean;
+  /** 界面焕新 v3: the project rail is mounted at the window's left edge (it
+   *  carries the brand mark and, on macOS, sits under the traffic lights). */
+  railVisible?: boolean;
   onToggleLeft?: () => void;
-  onToggleRight?: () => void;
-  onToggleBottomTerminal?: () => void;
   /** Settings mode: returns to the workspace view. */
   onBack?: () => void;
 }
@@ -82,11 +77,8 @@ const BACK_BUTTON =
 export function Titlebar({
   mode,
   leftOpen,
-  rightOpen,
-  bottomTerminalOpen,
+  railVisible = false,
   onToggleLeft,
-  onToggleRight,
-  onToggleBottomTerminal,
   onBack,
 }: Props) {
   const { t } = useI18n();
@@ -137,7 +129,8 @@ export function Titlebar({
           // lead repeats SidebarTopStrip's offset (sidebar px-2 + strip
           // pl-0.5) — or, on macOS, clears the traffic lights, which now sit
           // over this bar instead of the sidebar.
-          sidebarVisible ? "pl-2" : isMac ? "pl-[78px]" : "pl-2.5",
+          // v3 rail: the traffic lights sit over the rail, so no reservation.
+          sidebarVisible || railVisible ? "pl-2" : isMac ? "pl-[78px]" : "pl-2.5",
         )}
       >
         {isSettings ? (
@@ -185,6 +178,7 @@ export function Titlebar({
                 <CollapsedSidebarLead
                   label={t("layout.showLeftPanel") + hintFor("layout.toggle-left")}
                   onExpand={onToggleLeft}
+                  showBrand={!railVisible}
                 />
               )
             )}
@@ -209,44 +203,8 @@ export function Titlebar({
               {/* Editor column toggle - shows/hides the center-pane editor
                   column without closing the open file. */}
               {!isBrowserMode && <EditorColumnToggle />}
-              {/* Bottom terminal toggle - hidden while the browser overlay is
-                  open, same as the side-panel toggles (kept during wide mode). */}
-              {!isBrowserOverlay && (
-                <Hint
-                  label={(bottomTerminalOpen ? t("layout.hideTerminal") : t("layout.showTerminal")) + hintFor("layout.toggle-bottom-terminal")}
-                >
-                  <button
-                    onClick={onToggleBottomTerminal}
-                    className={cn(ICON_BUTTON, bottomTerminalOpen ? ICON_BUTTON_ON : ICON_BUTTON_IDLE)}
-                    style={NO_DRAG}
-                  >
-                    <IconTerminal2 size={16} className="shrink-0" />
-                  </button>
-                </Hint>
-              )}
-              {/* Right-panel toggle - hidden while the browser overlay is open
-                  (the browser forces the right panel closed and manages its own
-                  restore on exit). During wide mode it stays: it hides/shows the
-                  wide mode's right column (chat goes full width when hidden). */}
-              {!isBrowserOverlay && (
-                <Hint
-                  label={(rightOpen ? t("layout.hideRightPanel") : t("layout.showRightPanel")) + hintFor("layout.toggle-right")}
-                >
-                  <button
-                    onClick={onToggleRight}
-                    className={cn(ICON_BUTTON, rightOpen ? ICON_BUTTON_ON : ICON_BUTTON_IDLE)}
-                    style={NO_DRAG}
-                  >
-                    <IconLayoutSidebarRightExpand
-                      size={16}
-                      className={cn(
-                        "shrink-0 transition-transform",
-                        !rightOpen && "scale-x-[-1]",
-                      )}
-                    />
-                  </button>
-                </Hint>
-              )}
+              {/* v3: the bottom-terminal and right-panel toggles moved to
+                  the vertical ToolStrip at the window's right edge. */}
             </div>
           </>
         )}
@@ -259,7 +217,16 @@ export function Titlebar({
  *  is closed: the expand toggle lands exactly where the collapse toggle sat,
  *  and win/linux keep the brand mark beside it, so neither moves when the
  *  sidebar opens or closes. */
-function CollapsedSidebarLead({ label, onExpand }: { label: string; onExpand?: () => void }) {
+function CollapsedSidebarLead({
+  label,
+  onExpand,
+  showBrand = true,
+}: {
+  label: string;
+  onExpand?: () => void;
+  /** False when the project rail already shows the brand mark. */
+  showBrand?: boolean;
+}) {
   return (
     <div className="mr-3 flex shrink-0 items-center gap-2">
       <Hint label={label}>
@@ -272,9 +239,9 @@ function CollapsedSidebarLead({ label, onExpand }: { label: string; onExpand?: (
           <IconLayoutSidebarLeftExpand size={18} className="shrink-0 scale-x-[-1]" />
         </button>
       </Hint>
-      {!isMac && (
+      {!isMac && showBrand && (
         <>
-          <BrandLogo size={20} />
+          <BrandLogo size={28} />
           <span className="truncate text-[13px] font-semibold text-content">MarioCode</span>
         </>
       )}

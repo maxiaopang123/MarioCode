@@ -1,7 +1,7 @@
 /**
  * IPC handlers for the settings panel's unified system prompt (TODO-006).
  * Three operations: read / write the project-scope file
- * (`<project>/.mcode/prompt.md`) and compose the layered preview for one
+ * (`<project>/.mariocode/prompt.md`) and compose the layered preview for one
  * provider. The global scope needs no handler of its own — it rides the
  * generic setting.get/set channels under AGENT_SYSTEM_PROMPT_GLOBAL_SETTING_KEY
  * and is read per turn by every provider through `loadUserSystemPrompt`.

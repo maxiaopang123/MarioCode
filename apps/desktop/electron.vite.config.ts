@@ -27,7 +27,7 @@ function precompressAssets(): Plugin {
   let outDir = "";
   let writeCompleted = false;
   return {
-    name: "mcode:precompress",
+    name: "mariocode:precompress",
     apply: "build",
     configResolved(config) {
       // Only the renderer build is served over HTTP (mobile server). The main
@@ -61,7 +61,7 @@ function precompressAssets(): Plugin {
         count++;
       }
       if (count > 0) {
-        console.log(`[mcode:precompress] ${count} files → .gz/.br in ${Date.now() - started}ms`);
+        console.log(`[mariocode:precompress] ${count} files → .gz/.br in ${Date.now() - started}ms`);
       }
     },
   };
@@ -122,7 +122,7 @@ export default defineConfig({
       // Two preload bundles:
       //  - index: the main window's preload (contextBridge API).
       //  - browserPicker: a minimal preload for the embedded browser
-      //    WebContentsView, exposing only `window.mcodeBridge.pickElement`
+      //    WebContentsView, exposing only `window.mariocodeBridge.pickElement`
       //    so the picker script (injected into the page's main world) can
       //    forward clicked elements to main without leaking any Node API.
       lib: { entry: { index: "src/preload/index.ts", browserPicker: "src/preload/browserPicker.ts" } },

@@ -22,7 +22,7 @@
  *  - `file:copy`      — copy a file into a dir, auto-rename on clash (file-tree 复制/粘贴)
  */
 import type { IpcMain } from "electron";
-import { app, clipboard, nativeImage, shell } from "electron";
+import { app, clipboard, nativeImage, net, shell } from "electron";
 import { readFile, writeFile, readdir, mkdir, rename, copyFile, access, stat } from "node:fs/promises";
 import { TextDecoder } from "node:util";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
@@ -38,6 +38,8 @@ import {
   FileRenameSchema,
   FileCopySchema,
   FileGrepSchema,
+  NetFetchImageSchema,
+  BROWSER_SCREENSHOT_DIR_SETTING_KEY,
   ClipboardSaveFileSchema,
   ClipboardWriteImageSchema,
 } from "@contracts/ipc";
@@ -51,6 +53,7 @@ import type {
   FileGrepResult,
 } from "@contracts/ipc";
 import { log } from "@main/lib/logger.js";
+import { SettingRepo } from "@main/store/repositories.js";
 import { resolveRg, rgListFiles, rgGrep } from "@main/lib/rgSearch.js";
 import {
   isKnownWorkspaceRoot,
@@ -86,8 +89,27 @@ function pathWithin(root: string, abs: string): boolean {
  *  even though the dir sits outside every project root — the IDE editor needs
  *  it to open/preview pasted files. Writes stay guarded as before. */
 function isPasteTempPath(abs: string): boolean {
-  const dir = join(app.getPath("temp"), "mcode-pastes");
+  const dir = join(app.getPath("temp"), "mariocode-pastes");
   return resolve(abs).startsWith(resolve(dir) + sep);
+}
+
+/** True if `abs` is an IMAGE inside the tool output directory (设置 →
+ *  MarioTool → 工具输出目录, `browser.screenshotDir`, default = the OS
+ *  Pictures folder) — where browser_screenshot and mario_image_generate save
+ *  their files. A reply that shows a generated picture (`![](that path)`,
+ *  TODO-022) must be able to read it, but that folder is outside every
+ *  project root. Scoped to binary IMAGE reads only (`BINARY_MIME` holds image
+ *  types exclusively): text reads, listing and writes keep the project-root
+ *  boundary, and a Pictures default doesn't turn into a general read hole. */
+function isToolOutputImagePath(abs: string): boolean {
+  if (!BINARY_MIME[extOf(basename(abs))]) return false;
+  let base: string;
+  try {
+    base = SettingRepo.get(BROWSER_SCREENSHOT_DIR_SETTING_KEY)?.trim() || app.getPath("pictures");
+  } catch {
+    return false; // DB not ready
+  }
+  return pathWithin(base, abs) && resolve(abs) !== resolve(base);
 }
 
 /** Directory/file names hidden from the file tree. These are build artifacts
@@ -298,7 +320,7 @@ export async function readFileGuarded(filePath: string): Promise<{ content: stri
  * {@link readFileGuarded}. */
 export async function readBinaryGuarded(filePath: string): Promise<{ dataUrl: string }> {
   const root = findContainingWorkspaceRoot(filePath);
-  if (!root && !isPasteTempPath(filePath)) {
+  if (!root && !isPasteTempPath(filePath) && !isToolOutputImagePath(filePath)) {
     log.warn(`file.readBinary refused - path outside any project root: ${filePath}`);
     return { dataUrl: "" };
   }
@@ -647,6 +669,65 @@ export async function grepFilesGuarded(input: FileGrepInput): Promise<FileGrepRe
   return { matches, truncated: matches.length >= limit, incompleteScan };
 }
 
+/* ── remote image fetch (reply 「加载图片」) ──────────────────────────────
+ *
+ * The renderer's CSP is `img-src 'self' data:` and stays that way, so a remote
+ * picture referenced by the model can only be shown if MAIN fetches the bytes
+ * and hands back a data URL. This runs only on an explicit user click, never
+ * while a reply renders.
+ *
+ * Electron's `net.fetch` is used rather than Node's global fetch so the request
+ * goes through the default session — i.e. it follows the OS proxy, like the
+ * embedded browser does. (The 设置 → 网络 routing deliberately governs ENGINE
+ * traffic only; a user-initiated picture load is in the same bucket as the
+ * built-in browser.)
+ *
+ * Guards: http(s) only, 15s timeout, `image/*` content type, and a hard size
+ * cap. Every refusal comes back as `{ dataUrl: "", error }` — the renderer
+ * turns that into a 「加载失败」 card, so nothing throws across the boundary.
+ */
+const REMOTE_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
+const REMOTE_IMAGE_TIMEOUT_MS = 15_000;
+
+async function fetchRemoteImage(url: string): Promise<{ dataUrl: string; error?: string }> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { dataUrl: "", error: "invalid-url" };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { dataUrl: "", error: `unsupported-scheme:${parsed.protocol.replace(":", "")}` };
+  }
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), REMOTE_IMAGE_TIMEOUT_MS);
+  try {
+    const res = await net.fetch(parsed.toString(), {
+      signal: ctl.signal,
+      // No credentials and no referrer: this is a bystander fetch of a URL the
+      // model happened to emit, not a request on the user's behalf.
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+    });
+    if (!res.ok) return { dataUrl: "", error: `HTTP ${res.status}` };
+    const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (!type.startsWith("image/")) {
+      return { dataUrl: "", error: `not-an-image:${type || "unknown"}` };
+    }
+    const declared = Number(res.headers.get("content-length") ?? "0");
+    if (declared > REMOTE_IMAGE_MAX_BYTES) return { dataUrl: "", error: "too-large" };
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength > REMOTE_IMAGE_MAX_BYTES) return { dataUrl: "", error: "too-large" };
+    if (buf.byteLength === 0) return { dataUrl: "", error: "empty" };
+    return { dataUrl: `data:${type};base64,${buf.toString("base64")}` };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { dataUrl: "", error: ctl.signal.aborted ? "timeout" : msg.slice(0, 120) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function registerFileHandlers(ipcMain: IpcMain): void {
   /* ── file:readFile — single file read, scoped to any project root ── */
   ipcMain.handle(IPC.FILE_READ, async (_evt, raw) => {
@@ -658,6 +739,12 @@ export function registerFileHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(IPC.FILE_READ_BINARY, async (_evt, raw) => {
     const input = FileReadBinarySchema.parse(raw);
     return readBinaryGuarded(input.filePath);
+  });
+
+  /* ── net:fetchImage — remote image → data URL (reply 「加载图片」) ── */
+  ipcMain.handle(IPC.NET_FETCH_IMAGE, async (_evt, raw) => {
+    const input = NetFetchImageSchema.parse(raw);
+    return fetchRemoteImage(input.url);
   });
 
   /* ── file:listDir — one-level directory listing for the file tree ── */
@@ -892,7 +979,7 @@ export function registerFileHandlers(ipcMain: IpcMain): void {
       // the temp path stays a single flat file; keep the extension.
       const cleanName =
         basename(input.name).replace(/[\\/:*?"<>|\x00-\x1f]/g, "_") || "paste.bin";
-      const dir = join(app.getPath("temp"), "mcode-pastes");
+      const dir = join(app.getPath("temp"), "mariocode-pastes");
       await mkdir(dir, { recursive: true });
       const target = join(
         dir,

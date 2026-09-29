@@ -80,7 +80,7 @@ let resolver: Promise<Session> | null = null;
 
 function systemResolver(): Promise<Session> {
   resolver ??= (async () => {
-    const ses = session.fromPartition("mcode-network-resolver");
+    const ses = session.fromPartition("mariocode-network-resolver");
     await ses.setProxy({ mode: "system" });
     return ses;
   })().catch((err: unknown) => {
@@ -163,7 +163,7 @@ let proxied: { proxyUrl: string; ready: Promise<Session> } | null = null;
 
 function proxiedSession(proxyUrl: string): Promise<Session> {
   if (proxied?.proxyUrl !== proxyUrl) {
-    const ses = session.fromPartition("mcode-network-proxied");
+    const ses = session.fromPartition("mariocode-network-proxied");
     const ready = ses
       .setProxy({ proxyRules: proxyUrl, proxyBypassRules: "<local>" })
       .then(() => ses)

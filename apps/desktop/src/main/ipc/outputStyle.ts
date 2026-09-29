@@ -1,7 +1,7 @@
 /**
  * IPC handler for the settings panel's output-style section: one operation,
  * list (built-ins gated by the bundled CLI version + user styles scanned from
- * ~/.mcode/output-styles). The selection itself goes through the generic
+ * ~/.mariocode/output-styles). The selection itself goes through the generic
  * setting.get/set channels under AGENT_OUTPUT_STYLE_SETTING_KEY and is
  * injected per-turn by ClaudeAgentSdkProvider — no mutation RPCs needed.
  */

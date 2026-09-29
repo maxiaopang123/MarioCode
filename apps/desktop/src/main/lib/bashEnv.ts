@@ -23,7 +23,7 @@
  * The two detectors below mirror each SDK's own resolution, so the hint
  * always matches the shell the tool will actually spawn.
  *
- * Mcode also *steers* the shell: `PiAgentSdkProvider` overrides the Bash
+ * MarioCode also *steers* the shell: `PiAgentSdkProvider` overrides the Bash
  * tool's shellPath and `ClaudeAgentSdkProvider` sets
  * `CLAUDE_CODE_GIT_BASH_PATH` — both to `resolveGitBash()` (binaryResolve.ts)
  * when a real Git Bash exists. That bypasses each SDK's own resolution, so
@@ -89,7 +89,7 @@ function programFilesGitBash(): string | null {
 
 /** Pi mirror of the SDK's `getShellConfig()` — the shell its Bash tool spawns. */
 function detectPiBashEnv(): BashEnvKind {
-  // 0. Mcode shell steering (see module doc): PiAgentSdkProvider overrides the
+  // 0. MarioCode shell steering (see module doc): PiAgentSdkProvider overrides the
   //    Bash tool's shellPath with resolveGitBash() when one is found, so the
   //    SDK's own getShellConfig resolution below is bypassed entirely.
   if (resolveGitBash()) return "native";
@@ -127,7 +127,7 @@ function detectPiBashEnv(): BashEnvKind {
  *  `D:/...` paths resolving fine). So the git-derived check below runs before
  *  the PATH lookup. */
 function detectClaudeBashEnv(): BashEnvKind {
-  // 0. Mcode shell steering: ClaudeAgentSdkProvider sets
+  // 0. MarioCode shell steering: ClaudeAgentSdkProvider sets
   //    CLAUDE_CODE_GIT_BASH_PATH to resolveGitBash() when one is found, so
   //    the Bash tool always runs Git Bash — bypassing the resolution below.
   if (resolveGitBash()) return "native";

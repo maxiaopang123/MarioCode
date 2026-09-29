@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mcode relay forwarder — a minimal TCP port forwarder for the VPS.
+"""MarioCode relay forwarder — a minimal TCP port forwarder for the VPS.
 
 Bridges a public port (where the phone connects) to the SSH reverse-tunnel's
 localhost binding. This script is uploaded to the VPS via SFTP and started

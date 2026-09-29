@@ -72,6 +72,14 @@ export default {
           DEFAULT: "rgb(var(--accent) / <alpha-value>)",
           strong: "rgb(var(--accent-strong) / <alpha-value>)",
         },
+        // Primary action surface (send / 新建 / primary buttons) — graphite
+        // in light, mint in dark; `on` is the text/icon color on top.
+        primary: {
+          DEFAULT: "rgb(var(--primary) / <alpha-value>)",
+          hover: "rgb(var(--primary-hover) / <alpha-value>)",
+          on: "rgb(var(--on-primary) / <alpha-value>)",
+        },
+        rail: "rgb(var(--rail) / <alpha-value>)",
         danger: "rgb(var(--danger) / <alpha-value>)",
         warning: "rgb(var(--warning) / <alpha-value>)",
         info: "rgb(var(--info) / <alpha-value>)",

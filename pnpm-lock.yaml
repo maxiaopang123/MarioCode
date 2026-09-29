@@ -47,7 +47,7 @@ importers:
       '@legendapp/list':
         specifier: 3.0.0-beta.44
         version: 3.0.0-beta.44(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@mcode/contracts':
+      '@mariocode/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@monaco-editor/react':

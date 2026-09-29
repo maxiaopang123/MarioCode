@@ -14,7 +14,7 @@ const { mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 
-const dir = mkdtempSync(join(tmpdir(), "mcode-electron-abi-"));
+const dir = mkdtempSync(join(tmpdir(), "mariocode-electron-abi-"));
 app.setPath("userData", dir);
 
 app.whenReady().then(() => {

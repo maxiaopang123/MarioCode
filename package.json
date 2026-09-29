@@ -1,5 +1,5 @@
 {
-  "name": "mcode",
+  "name": "mariocode",
   "private": true,
   "version": "0.0.0",
   "description": "MarioCode - free, open-source desktop GUI for coding agents. A three-pane AI IDE built on the Claude Agent SDK and Pi Coding Agent: real-time streaming chat, tool approval, plan mode, Monaco editor, git, terminal, embedded browser, LSP and mobile remote control. MIT licensed.",

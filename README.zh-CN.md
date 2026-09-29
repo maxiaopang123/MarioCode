@@ -1,4 +1,4 @@
-# Mcode
+# MarioCode
 
 ![GitHub release](https://img.shields.io/github/v/release/maxiaopang123/MarioCode?style=flat-square)
 ![GitHub stars](https://img.shields.io/github/stars/maxiaopang123/MarioCode?style=flat-square)
@@ -7,19 +7,19 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square)
 
-**Mcode** — *my* Code. 免费开源的 **Claude Code / Codex / 编程 Agent 桌面客户端**。
+**MarioCode** — *my* Code. 免费开源的 **Claude Code / Codex / 编程 Agent 桌面客户端**。
 
 [English](README.md) | **简体中文**
 
 ---
 
-### Mcode 是什么？
+### MarioCode 是什么？
 
-**Mcode** 是一款免费开源的 **AI 编程助手桌面客户端**——一个基于 Agent SDK 构建的**三栏 IDE**，把 **Claude Code**、**OpenAI Codex** 与 **Pi** 等 agent 平台放进一个完整的桌面应用。Mcode 依托官方的 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk)、OpenAI Codex SDK 与 [Pi Coding Agent](https://pi.dev/)，**不重新实现 agent**，只提供完整的交互界面：会话管理、**实时流式渲染**、可视化**工具审批**、**计划模式**，以及文件树、Monaco 编辑器（30+ 语言）、**Git**、**终端**、**内置浏览器**、**语言服务器（LSP）**等全套 IDE 能力，并支持**手机端远程控制**。
+**MarioCode** 是一款免费开源的 **AI 编程助手桌面客户端**——一个基于 Agent SDK 构建的**三栏 IDE**，把 **Claude Code**、**OpenAI Codex** 与 **Pi** 等 agent 平台放进一个完整的桌面应用。MarioCode 依托官方的 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk)、OpenAI Codex SDK 与 [Pi Coding Agent](https://pi.dev/)，**不重新实现 agent**，只提供完整的交互界面：会话管理、**实时流式渲染**、可视化**工具审批**、**计划模式**，以及文件树、Monaco 编辑器（30+ 语言）、**Git**、**终端**、**内置浏览器**、**语言服务器（LSP）**等全套 IDE 能力，并支持**手机端远程控制**。
 
 > **搜索关键词：** Claude Code 桌面版 · Codex 桌面客户端 · Claude 客户端 · 开源 AI IDE · AI 编程助手 · Agent SDK 桌面应用 · 工具审批 UI
 
-![Mcode 首页 - AI 编程助手桌面客户端主界面](docs/images/首页.png)
+![MarioCode 首页 - AI 编程助手桌面客户端主界面](docs/images/首页.png)
 
 ### 核心亮点
 
@@ -46,7 +46,7 @@
 - Codex provider 支持**第三方模型供应商**（OpenAI 协议 / Responses API 端点），可按模型覆盖上下文窗口（如 1M token 模型），并支持**图像生成**（对话内内联渲染）。
 - 按角色分配模型：普通对话、提交信息生成、合并冲突解决可分别使用不同的模型。
 
-![Mcode 会话前自由选择 agent provider](docs/images/支持claude和pi.png)
+![MarioCode 会话前自由选择 agent provider](docs/images/支持claude和pi.png)
 
 #### 💬 实时对话与多会话
 
@@ -59,7 +59,7 @@
 - Markdown 回复中的本地文件链接与图片可直接点击打开。
 - 会话持久化到 SQLite（better-sqlite3），支持后续续传（`--resume` 语义）；自动归档保持会话列表整洁。
 
-![Mcode 主面板 - AI 对话实时流式数据渲染](docs/images/主面板数据流显示.png)
+![MarioCode 主面板 - AI 对话实时流式数据渲染](docs/images/主面板数据流显示.png)
 
 #### 🗂 左侧边栏：项目与会话管理
 
@@ -67,7 +67,7 @@
 - 多项目管理：分组、置顶、排序、归档；每个项目独立维护会话历史，支持搜索。
 - 🌿 **工作树会话**：在同一仓库的隔离 worktree 中开并行会话，互不干扰；一键合并回主检出（合并前自动提交未提交改动）。
 
-![Mcode 左侧边栏 - 项目与会话管理](docs/images/左侧边栏功能.png)
+![MarioCode 左侧边栏 - 项目与会话管理](docs/images/左侧边栏功能.png)
 
 #### 📁 右侧边栏：文件树与编辑器
 
@@ -79,8 +79,8 @@
 
 <table>
   <tr>
-    <td><img src="docs/images/右侧边栏-文件树.png" alt="Mcode 右侧边栏-文件树"/></td>
-    <td><img src="docs/images/文件预览和编辑.png" alt="Mcode 文件预览和编辑"/></td>
+    <td><img src="docs/images/右侧边栏-文件树.png" alt="MarioCode 右侧边栏-文件树"/></td>
+    <td><img src="docs/images/文件预览和编辑.png" alt="MarioCode 文件预览和编辑"/></td>
   </tr>
 </table>
 
@@ -90,14 +90,14 @@
 - 暂存 / 取消暂存 / 丢弃、Monaco 行级 diff、分支切换器、本地分支删除、提交历史、每仓操作日志。
 - ✨ **AI 生成提交信息**：读取 diff 起草符合 conventional commit 风格的 message；**AI 解决合并冲突**：pull 冲突后提供会话式的"用 AI 解决"引导流程。
 
-![Mcode 右侧边栏 - 多仓库 Git 管理界面](docs/images/右侧边栏-git管理.png)
+![MarioCode 右侧边栏 - 多仓库 Git 管理界面](docs/images/右侧边栏-git管理.png)
 
 #### 🖥 底部内置终端
 
 - 多 tab 终端（xterm.js + node-pty），带状态指示灯；切换项目不杀后台终端（keep-alive）。
 - 项目级自定义命令：把常用命令存成书签，一键执行。
 
-![Mcode 底部内置多标签终端](docs/images/底部终端.png)
+![MarioCode 底部内置多标签终端](docs/images/底部终端.png)
 
 #### 🌐 右侧边栏：内置浏览器
 
@@ -107,12 +107,12 @@
 - 🎯 元素拾取：悬停高亮、点击选中，把元素的 HTML + 稳定选择器直接送入对话交给 agent。
 - agent 自己也能驱动浏览器（导航 / 快照 / 点击 / 输入 / 截图，真实输入事件）完成网页端调试。
 
-![Mcode 右侧边栏 - 内置浏览器面板](docs/images/右侧边栏-浏览器.png)
+![MarioCode 右侧边栏 - 内置浏览器面板](docs/images/右侧边栏-浏览器.png)
 
 #### 🧩 插件与 MCP
 
 - 从插件市场安装 agent 插件（git 仓库 / 本地目录 / zip 压缩包），也可添加自己的市场源；安装后默认**停用**，并弹出组件审查，确认后才可启用。
-- 一个插件可携带 skills、斜杠命令、子代理、MCP server 与 hooks，Mcode 会把它们投递给**三个引擎**，并在面板中展示每个组件对各 provider 的支持矩阵（hooks 在 v1 仅解析、不执行）。
+- 一个插件可携带 skills、斜杠命令、子代理、MCP server 与 hooks，MarioCode 会把它们投递给**三个引擎**，并在面板中展示每个组件对各 provider 的支持矩阵（hooks 在 v1 仅解析、不执行）。
 - **设置 → MCP** 可管理 MCP server：stdio / HTTP 服务器、按服务器启停，远程服务器支持 OAuth 登录。
 
 #### 🌍 语言服务器（LSP）
@@ -122,14 +122,14 @@
 
 #### 📱 手机端伴侣
 
-- **局域网连接**：Mcode 在本地网络起一个伴侣 Web 服务，桌面端扫码（或手机扫码）完成配对（设备令牌认证）。
+- **局域网连接**：MarioCode 在本地网络起一个伴侣 Web 服务，桌面端扫码（或手机扫码）完成配对（设备令牌认证）。
 - **远程访问**：通过你自己的 VPS 建立 SSH 反向隧道，在任何网络下都能连回桌面端，无需第三方穿透服务。
 - 手机是完整的遥控器：实时观看会话流式输出、发送消息、中断或撤销本轮、审批工具调用、浏览文件与 diff、执行 Git 操作（含 AI 生成提交信息）。
 
 <table>
   <tr>
-    <td><img src="docs/images/手机端-局域网连接.png" alt="Mcode 手机端 - 局域网扫码连接"/></td>
-    <td><img src="docs/images/手机端-远程访问.png" alt="Mcode 手机端 - VPS 远程访问"/></td>
+    <td><img src="docs/images/手机端-局域网连接.png" alt="MarioCode 手机端 - 局域网扫码连接"/></td>
+    <td><img src="docs/images/手机端-远程访问.png" alt="MarioCode 手机端 - VPS 远程访问"/></td>
   </tr>
 </table>
 
@@ -137,67 +137,67 @@
 
 **常规** —— 会话标题生成配置。
 
-![Mcode 设置面板 - 常规设置](docs/images/设置面板-常规.png)
+![MarioCode 设置面板 - 常规设置](docs/images/设置面板-常规.png)
 
 **外观** —— 主题、手绘风格（纸面浅色 / 牛皮纸深色）、界面字体、对话字号与密度。
 
-![Mcode 设置面板 - 外观主题](docs/images/设置面板-外观.png)
+![MarioCode 设置面板 - 外观主题](docs/images/设置面板-外观.png)
 
 **快捷键** —— 查看与录制键盘快捷键。
 
-![Mcode 设置面板 - 快捷键设置](docs/images/设置面板-快捷键.png)
+![MarioCode 设置面板 - 快捷键设置](docs/images/设置面板-快捷键.png)
 
 **模型配置** —— provider 与自定义模型配置（支持 OpenAI 协议端点）。
 
-![Mcode 设置 - 模型配置](docs/images/设置-模型配置.png)
+![MarioCode 设置 - 模型配置](docs/images/设置-模型配置.png)
 
 **技能** —— 管理 agent 技能，内置 SKILL.md 编辑器。
 
-![Mcode 设置 - 技能管理](docs/images/设置-技能.png)
+![MarioCode 设置 - 技能管理](docs/images/设置-技能.png)
 
 **消息通知** —— 按类别开关消息通知。
 
-![Mcode 设置 - 消息通知](docs/images/设置-消息.png)
+![MarioCode 设置 - 消息通知](docs/images/设置-消息.png)
 
 **Git** —— 作者身份、diff 选项、AI 生成提交信息所用模型。
 
-![Mcode 设置 - Git 配置](docs/images/设置-git.png)
+![MarioCode 设置 - Git 配置](docs/images/设置-git.png)
 
 **终端** —— Shell 覆盖与项目级自定义命令。
 
-![Mcode 设置 - 终端配置](docs/images/设置-终端.png)
+![MarioCode 设置 - 终端配置](docs/images/设置-终端.png)
 
 **浏览器** —— 内置浏览器偏好设置。
 
-![Mcode 设置 - 浏览器配置](docs/images/设置-浏览器.png)
+![MarioCode 设置 - 浏览器配置](docs/images/设置-浏览器.png)
 
 **语言服务器** —— 按语言安装、启用、停用 LSP 服务器。
 
-![Mcode 设置 - 语言服务器 LSP 配置](docs/images/设置-语言服务器.png)
+![MarioCode 设置 - 语言服务器 LSP 配置](docs/images/设置-语言服务器.png)
 
-此外还有：**鼠标手势**（录制绑定到应用命令的拖拽手势）、**语音输入**、**MCP 服务器**、**插件**、**运行时**（管理 Mcode 按需下载的 agent 运行时）、**用量统计**、**关于**。
+此外还有：**鼠标手势**（录制绑定到应用命令的拖拽手势）、**语音输入**、**MCP 服务器**、**插件**、**运行时**（管理 MarioCode 按需下载的 agent 运行时）、**用量统计**、**关于**。
 
 #### 🔄 其他
 
-- **运行时按需下载** —— agent 运行时不再随安装包捆绑，Mcode 在首次使用时自动下载，安装包瘦身约 600MB/平台；可在**设置 → 运行时**管理。
+- **运行时按需下载** —— agent 运行时不再随安装包捆绑，MarioCode 在首次使用时自动下载，安装包瘦身约 600MB/平台；可在**设置 → 运行时**管理。
 - 自动更新：通过 `electron-updater` 从 GitHub Releases 拉 `latest*.yml`；也可在**设置 → 关于**手动检查。
 - Provider 抽象层（`AgentProvider`）——目前内置 Claude、Codex 与 Pi，易于扩展其他 agent 平台。
 
 ### 常见问题
 
-**Q：Mcode 免费吗？**
-A：免费。Mcode 采用 **MIT 开源协议**，可自由使用和修改。
+**Q：MarioCode 免费吗？**
+A：免费。MarioCode 采用 **MIT 开源协议**，可自由使用和修改。
 
 **Q：支持 macOS 和 Windows 吗？**
 A：支持。已发布 macOS（Apple Silicon + Intel）与 Windows（x64）安装包，见下方[下载](#下载)。
 
 **Q：需要单独安装 Claude Code CLI 吗？**
-A：不需要。Mcode 自行管理所有 agent 运行时——所选 provider（claude / codex / pi）的运行时会在首次使用时自动下载，可在**设置 → 运行时**中管理。
+A：不需要。MarioCode 自行管理所有 agent 运行时——所选 provider（claude / codex / pi）的运行时会在首次使用时自动下载，可在**设置 → 运行时**中管理。
 
 **Q：可以用哪些模型？**
 A：Claude provider 使用你的 **Anthropic API key**。Pi 与 Codex provider 支持**自定义模型供应商**——在**设置 → 模型配置**中填写 OpenAI 协议 / Responses API 端点，可接入自有模型，包括第三方网关。
 
-**Q：手机能控制 Mcode 吗？**
+**Q：手机能控制 MarioCode 吗？**
 A：可以。局域网内扫码即可连接；也可以用自己的 VPS 建立 **SSH 反向隧道**，实现任何网络下的远程访问。
 
 ### 环境要求
@@ -208,7 +208,7 @@ A：可以。局域网内扫码即可连接；也可以用自己的 VPS 建立 *
 - **Codex provider**：在**设置 → 模型配置**中至少配置一个模型供应商（OpenAI 官方或任意 OpenAI 协议 / Responses API 端点）。在 GUI 中填写的 API key 使用 Electron `safeStorage` 加密存储。
 - **Pi provider**：通过**设置 → 模型配置**至少配置一个 provider/模型（等价于编辑 `~/.pi/agent/models.json`）。在 GUI 中填写的 API key 使用 Electron `safeStorage` 加密存储，无需设置环境变量。
 
-> **注意**：无需手动安装任何 CLI——Mcode 会在首次使用时自动下载所需 agent 运行时（claude / codex / pi），因此 provider 首次使用需要联网。
+> **注意**：无需手动安装任何 CLI——MarioCode 会在首次使用时自动下载所需 agent 运行时（claude / codex / pi），因此 provider 首次使用需要联网。
 
 ### 快速开始
 
@@ -237,19 +237,19 @@ pnpm package
 - **macOS**：`.dmg`（arm64 + x64）
 - **Windows**：`.exe` NSIS 安装包（x64）
 
-> ⚠️ **未代码签名。** Mcode 是免费的 MIT 开源项目，没有付费的 Apple Developer ID 证书，也没有 Windows 代码签名证书，因此安装包仅做了 ad-hoc 签名（macOS）/ 未签名（Windows）。首次启动时系统会弹出安全提示，属正常现象，可放心使用。下面是首次启动的处理方法。
+> ⚠️ **未代码签名。** MarioCode 是免费的 MIT 开源项目，没有付费的 Apple Developer ID 证书，也没有 Windows 代码签名证书，因此安装包仅做了 ad-hoc 签名（macOS）/ 未签名（Windows）。首次启动时系统会弹出安全提示，属正常现象，可放心使用。下面是首次启动的处理方法。
 
 #### 首次启动注意事项
 
-**macOS** —— Gatekeeper 会拦截并提示 *"无法打开 Mcode，因为无法验证开发者"* / *"Apple 无法检查其是否包含恶意软件"*：
+**macOS** —— Gatekeeper 会拦截并提示 *"无法打开 MarioCode，因为无法验证开发者"* / *"Apple 无法检查其是否包含恶意软件"*：
 
 - **macOS 15（Sequoia）及更早版本**：右键点击应用 → **打开** → 在弹窗中确认。
 - **macOS 26 及以上**：右键 → 打开已失效。请打开 **系统设置 → 隐私与安全性**，滚动到底部，点击 **仍要打开**。
 - **终端命令（所有版本通用）**：
   ```bash
-  xattr -dr com.apple.quarantine /Applications/Mcode.app
+  xattr -dr com.apple.quarantine /Applications/MarioCode.app
   ```
-- **Homebrew（完全不提示）**：`brew install --cask mcode` —— cask 在安装时会自动去除 quarantine 属性。
+- **Homebrew（完全不提示）**：`brew install --cask mariocode` —— cask 在安装时会自动去除 quarantine 属性。
 
 **Windows** —— SmartScreen 会提示 *"Windows 已保护你的电脑"* / *"未知发布者"*：
 
@@ -274,12 +274,12 @@ MIT。本项目不重新分发或内嵌任何 agent 二进制——各 SDK 自�
 
 ### 交流群
 
-欢迎加入 Mcode 微信交流群——使用疑问、问题反馈、功能讨论都可以在群里聊，微信扫码即可加入：
+欢迎加入 MarioCode 微信交流群——使用疑问、问题反馈、功能讨论都可以在群里聊，微信扫码即可加入：
 
-![Mcode 微信交流群二维码](docs/images/沟通群二维码.png)
+![MarioCode 微信交流群二维码](docs/images/沟通群二维码.png)
 
 > 群二维码有时效，如提示已过期或已满员，请提 [issue](https://github.com/maxiaopang123/MarioCode/issues) 联系我们。
 
 ---
 
-如果 Mcode 帮到了你，欢迎 ⭐ Star 这个项目，并把链接分享给需要的人——你的每一次分享都是在帮开源项目被更多人发现。
+如果 MarioCode 帮到了你，欢迎 ⭐ Star 这个项目，并把链接分享给需要的人——你的每一次分享都是在帮开源项目被更多人发现。

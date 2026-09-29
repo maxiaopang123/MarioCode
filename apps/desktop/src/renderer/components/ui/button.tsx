@@ -20,7 +20,9 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          "bg-accent text-surface hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed",
+          // 界面焕新 v3: primary actions use --primary (graphite in light,
+          // mint in dark) — white on the mint accent was only ~3:1.
+          "bg-primary text-primary-on hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed",
         secondary:
           "bg-surface-muted text-content-muted hover:bg-surface-hover hover:text-content disabled:opacity-50 disabled:cursor-not-allowed",
         ghost:

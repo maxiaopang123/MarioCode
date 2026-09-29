@@ -6,7 +6,7 @@
  *   - `anthropic` protocol — the claude binary talks to the gateway directly,
  *     so the headers ride the `ANTHROPIC_CUSTOM_HEADERS` env var (see
  *     `claude-sdk/customEnv.ts`).
- *   - `openai` protocol — Mcode's in-process bridge talks to the gateway, so
+ *   - `openai` protocol — MarioCode's in-process bridge talks to the gateway, so
  *     they are merged into the bridge's upstream request (see
  *     `bridge/bridgeServer.ts`).
  *
@@ -74,7 +74,7 @@ export function sanitizeCustomHeaders(
  *  conversation id across clients on purpose).
  *
  *  `sessionId` semantics differ per path and that is deliberate: the direct
- *  path knows the Mcode session id (one conversation = one id), while the
+ *  path knows the MarioCode session id (one conversation = one id), while the
  *  bridge is shared per config across sessions, so it hands out one stable id
  *  for its own lifetime (`RuntimeManager` rewrites the config's baseUrl to the
  *  local bridge before the env builder sees it, so the bridge is the only

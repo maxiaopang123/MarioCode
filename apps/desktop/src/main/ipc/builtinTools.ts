@@ -1,7 +1,7 @@
 /**
  * IPC for Settings → MarioTool (mario_web_search / mario_web_fetch / mario_image_generate,
  * mario_schedule_* / mario_wechat_notify switches,
- * plus the browser_* tools' on/off switch — shared with the MCP row mcode-browser):
+ * plus the browser_* tools' on/off switch — shared with the MCP row mariocode-browser):
  * read the page state, save config / switches / search keys, and run one
  * real search with the saved settings. Search-API keys only ever travel
  * renderer → main; image generation holds no key of its own.
@@ -51,7 +51,7 @@ export function registerBuiltinToolsHandlers(ipcMain: IpcMain): void {
         if (input.imageToolEnabled !== undefined) state.imageToolDisabled = !input.imageToolEnabled;
         if (input.scheduleToolsEnabled !== undefined) state.scheduleToolsDisabled = !input.scheduleToolsEnabled;
         if (input.wechatToolEnabled !== undefined) state.wechatToolDisabled = !input.wechatToolEnabled;
-        // Same flag the MCP page's mcode-browser row flips.
+        // Same flag the MCP page's mariocode-browser row flips.
         if (input.browserToolsEnabled !== undefined) state.browserDisabled = !input.browserToolsEnabled;
         saveMcpManagement(state);
       }

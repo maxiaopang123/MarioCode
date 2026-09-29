@@ -4,13 +4,16 @@ import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "n
 import { dirname, extname, isAbsolute, join, normalize, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import type {
-  RuntimeAgentId,
-  RuntimeCandidate,
-  RuntimeMode,
+import {
+  RUNTIME_MIN_LOCAL_VERSIONS,
+  type RuntimeAgentId,
+  type RuntimeCandidate,
+  type RuntimeLocalTooOld,
+  type RuntimeMode,
 } from "@contracts/ipc";
 import { SettingRepo } from "@main/store/repositories.js";
 import { which } from "@main/lib/binaryResolve.js";
+import { log } from "@main/lib/logger.js";
 import { compareVersions, getManagedRuntimeRoot, listManagedVersions } from "./managedRuntimeRoots.js";
 
 const execFileAsync = promisify(execFile);
@@ -28,18 +31,26 @@ export interface RuntimeSelection {
 }
 
 export interface ResolvedRuntime {
-  source: "managed" | "dev" | "bundled" | "external";
+  /** "local" = picked automatically (auto mode) from a detected local
+   *  installation; "external" = the user's explicit external selection. */
+  source: "managed" | "dev" | "bundled" | "external" | "local";
   path: string;
   version: string | null;
 }
 
+function parseMode(value: unknown): RuntimeMode {
+  return value === "external" || value === "managed" ? value : "auto";
+}
+
+/** A missing row means the user never chose → AUTO. A stored row keeps its
+ *  mode; an unknown mode string also reads as AUTO. */
 function readSelection(agent: RuntimeAgentId): RuntimeSelection {
   try {
     const raw = SettingRepo.get(selectionKey(agent));
-    if (!raw) return emptyManagedSelection();
+    if (!raw) return emptySelection("auto");
     const value = JSON.parse(raw) as Partial<RuntimeSelection>;
     return {
-      mode: value.mode === "external" ? "external" : "managed",
+      mode: parseMode(value.mode),
       path: typeof value.path === "string" && value.path.trim() ? value.path : null,
       nodePath: typeof value.nodePath === "string" && value.nodePath.trim() ? value.nodePath : null,
       verifiedVersion: typeof value.verifiedVersion === "string" ? value.verifiedVersion : null,
@@ -47,12 +58,12 @@ function readSelection(agent: RuntimeAgentId): RuntimeSelection {
       nodeFingerprint: typeof value.nodeFingerprint === "string" ? value.nodeFingerprint : null,
     };
   } catch {
-    return emptyManagedSelection();
+    return emptySelection("auto");
   }
 }
 
-function emptyManagedSelection(): RuntimeSelection {
-  return { mode: "managed", path: null, nodePath: null, verifiedVersion: null, payloadFingerprint: null, nodeFingerprint: null };
+function emptySelection(mode: "auto" | "managed"): RuntimeSelection {
+  return { mode, path: null, nodePath: null, verifiedVersion: null, payloadFingerprint: null, nodeFingerprint: null };
 }
 
 function fileFingerprint(path: string): string | null {
@@ -170,8 +181,9 @@ async function probeBinary(agent: "claude" | "codex", path: string): Promise<{ v
   const output = `${stdout}\n${stderr}`.trim();
   const identity = agent === "claude" ? /claude/i : /codex/i;
   if (!identity.test(output)) throw new Error(`--version output does not identify ${agent}: ${output.slice(0, 160)}`);
+  // A binary that identifies itself but prints no semver returns version
+  // null; applyMinVersion then marks it too old (compatibility unprovable).
   const version = versionFromOutput(output);
-  if (!version) throw new Error(`--version succeeded but returned no semantic version: ${output.slice(0, 160)}`);
   return { version, diagnostic: "Executable answered --version; full SDK/protocol compatibility is not asserted." };
 }
 
@@ -199,32 +211,132 @@ function probePiPackage(pkgJson: string): { version: string; entry: string; pack
   return { version: data.version, entry, packageDir };
 }
 
+/** Numeric major.minor.patch compare; any prerelease/build suffix is
+ *  ignored ("2.1.238-beta" == "2.1.238"). Missing / non-numeric segments
+ *  count as 0. Returns <0 / 0 / >0 like a comparator. */
+export function compareCoreVersions(a: string, b: string): number {
+  const parts = (v: string): number[] => {
+    const core = v.trim().replace(/^v/, "").split(/[-+]/)[0] ?? "";
+    return core.split(".").slice(0, 3).map((s) => {
+      const n = Number.parseInt(s, 10);
+      return Number.isFinite(n) ? n : 0;
+    });
+  };
+  const pa = parts(a);
+  const pb = parts(b);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+/** Apply the RUNTIME_MIN_LOCAL_VERSIONS gate to a successfully probed
+ *  candidate. Unknown versions can't prove compatibility → too old. */
+function applyMinVersion(agent: RuntimeAgentId, candidate: RuntimeCandidate): RuntimeCandidate {
+  if (!candidate.available) return candidate;
+  const minVersion = RUNTIME_MIN_LOCAL_VERSIONS[agent];
+  if (candidate.version === null) {
+    return {
+      ...candidate, available: false, compatibility: "incompatible", tooOld: true, minVersion,
+      diagnostic: `Could not determine the ${agent} version; MarioCode requires at least ${minVersion} for local runtimes.`,
+    };
+  }
+  if (compareCoreVersions(candidate.version, minVersion) < 0) {
+    return {
+      ...candidate, available: false, compatibility: "incompatible", tooOld: true, minVersion,
+      diagnostic: `Version ${candidate.version} is below the minimum required ${minVersion}. Update the local ${agent} installation.`,
+    };
+  }
+  return candidate;
+}
+
 async function probeCandidate(agent: RuntimeAgentId, path: string): Promise<RuntimeCandidate> {
   try {
     if (agent === "pi") {
       const result = probePiPackage(path);
-      return {
+      return applyMinVersion(agent, {
         path, version: result.version, available: true, compatibility: "unknown",
         diagnostic: "Pi package metadata and entry are valid; full provider compatibility is not asserted.",
-      };
+      });
     }
     const result = await probeBinary(agent, path);
-    return {
+    return applyMinVersion(agent, {
       path, version: result.version, available: true, compatibility: "unknown",
       diagnostic: result.diagnostic,
-    };
+    });
   } catch (error) {
     return { path, version: null, available: false, compatibility: "incompatible", diagnostic: error instanceof Error ? error.message : String(error) };
   }
 }
 
+/** Newest too-old candidate (unknown versions rank last), for the panel's
+ *  update reminder. */
+export function newestTooOld(candidates: readonly RuntimeCandidate[]): RuntimeLocalTooOld | null {
+  let best: RuntimeCandidate | null = null;
+  for (const c of candidates) {
+    if (!c.tooOld) continue;
+    if (!best) { best = c; continue; }
+    if (c.version !== null && (best.version === null || compareCoreVersions(c.version, best.version) > 0)) best = c;
+  }
+  return best ? { path: best.path, version: best.version, minVersion: best.minVersion ?? "" } : null;
+}
+
 const probeCache = new Map<RuntimeAgentId, { at: number; values: RuntimeCandidate[] }>();
+/** Last discovery result per agent, kept past the TTL (and past selection
+ *  changes) so the sync AUTO resolvers never have to probe on the turn path. */
+const lastKnown = new Map<RuntimeAgentId, RuntimeCandidate[]>();
 export async function discoverExternalRuntimes(agent: RuntimeAgentId): Promise<RuntimeCandidate[]> {
   const cached = probeCache.get(agent);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.values;
   const values = await Promise.all(externalPaths(agent).map((path) => probeCandidate(agent, path)));
   probeCache.set(agent, { at: Date.now(), values });
+  lastKnown.set(agent, values);
   return values;
+}
+
+/** Fire-and-forget discovery for all agents at startup, so AUTO mode has a
+ *  warm local-install cache before the first turn. */
+export function warmRuntimeDiscovery(): void {
+  for (const agent of ["claude", "codex", "pi"] as const) {
+    discoverExternalRuntimes(agent).catch((error: unknown) => {
+      log.warn(`runtime discovery failed (${agent}): ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+}
+
+const autoPickLogged = new Map<RuntimeAgentId, string>();
+/** Log which source AUTO picked — once per agent (again only if it changes). */
+export function noteAutoPick(agent: RuntimeAgentId, source: string, path: string | null): void {
+  const key = `${source}\u0000${path ?? ""}`;
+  if (autoPickLogged.get(agent) === key) return;
+  autoPickLogged.set(agent, key);
+  log.info(`runtime auto: ${agent} -> ${source} ${path ?? "(sdk self-resolve)"}`);
+}
+
+/** AUTO step 2 for the sync resolvers: the first locally installed runtime
+ *  from the last known discovery (TTL ignored) whose path still exists and
+ *  that passed the probe + minimum-version gate (too-old candidates carry
+ *  available=false, so they're skipped here naturally).
+ *  With no discovery yet we return null and kick discovery instead of
+ *  guessing an unprobed path: an unverified binary may be below
+ *  RUNTIME_MIN_LOCAL_VERSIONS. That first turn falls through to dev /
+ *  not-installed; in practice warmRuntimeDiscovery() at startup fills the
+ *  cache long before the first turn. */
+export function autoLocalRuntimeSync(agent: Exclude<RuntimeAgentId, "pi">): ResolvedRuntime | null {
+  const known = lastKnown.get(agent);
+  if (known) {
+    const hit = known.find((candidate) => candidate.available && existsSync(candidate.path));
+    return hit ? { source: "local", path: hit.path, version: hit.version } : null;
+  }
+  void discoverExternalRuntimes(agent).catch(() => undefined);
+  return null;
+}
+
+/** AUTO step 2 for Pi (async): first available detected Pi package. */
+async function autoLocalPiPackage(): Promise<string | null> {
+  const candidates = await discoverExternalRuntimes("pi");
+  return candidates.find((candidate) => candidate.available && existsSync(candidate.path))?.path ?? null;
 }
 
 /** Resolve only an explicitly selected external runtime. */
@@ -233,6 +345,9 @@ export function resolveExternalRuntimeSync(agent: Exclude<RuntimeAgentId, "pi">)
   if (selection.mode !== "external" || !selection.path) return null;
   const path = normalizeExternalPath(agent, selection.path);
   if (!path || !existsSync(path) || !selection.payloadFingerprint || fileFingerprint(path) !== selection.payloadFingerprint) return null;
+  // Selections stored before the minimum-version gate existed may point at
+  // an old runtime whose fingerprint still matches — refuse those too.
+  if (!selection.verifiedVersion || compareCoreVersions(selection.verifiedVersion, RUNTIME_MIN_LOCAL_VERSIONS[agent]) < 0) return null;
   return { source: "external", path, version: selection.verifiedVersion };
 }
 
@@ -271,6 +386,10 @@ export async function resolvePiRuntimeLaunch(): Promise<{ nodePath: string; sdkE
     pkgJson = normalizeExternalPath("pi", selection.path);
     if (!pkgJson || !existsSync(pkgJson)) throw new Error(`Configured external Pi package is unavailable: ${selection.path}`);
     const sdkForFingerprint = probePiPackage(pkgJson);
+    const piMin = RUNTIME_MIN_LOCAL_VERSIONS.pi;
+    if (compareCoreVersions(sdkForFingerprint.version, piMin) < 0) {
+      throw new Error(`Configured external Pi package version ${sdkForFingerprint.version} is below the minimum required ${piMin}. Update it or switch to the MarioCode-managed runtime in Settings.`);
+    }
     if (!selection.payloadFingerprint || fileFingerprint(sdkForFingerprint.entry) !== selection.payloadFingerprint) {
       throw new Error("Configured external Pi SDK changed since it was verified. Validate and select it again in Settings.");
     }
@@ -278,6 +397,9 @@ export async function resolvePiRuntimeLaunch(): Promise<{ nodePath: string; sdkE
       throw new Error("Configured external Pi Node changed or disappeared since it was verified. Validate and select it again in Settings.");
     }
   } else {
+    // managed & auto: (1) managed install → (2, auto only) detected local Pi
+    // package → (3) dev node_modules fallback → (4) not-installed error.
+    let source = "managed";
     const root = getManagedRuntimeRoot();
     if (root) {
       for (const version of listManagedVersions("pi")) {
@@ -285,13 +407,19 @@ export async function resolvePiRuntimeLaunch(): Promise<{ nodePath: string; sdkE
         if (existsSync(candidate)) { pkgJson = candidate; break; }
       }
     }
+    if (!pkgJson && selection.mode === "auto") {
+      pkgJson = await autoLocalPiPackage();
+      source = "local";
+    }
     if (!pkgJson) {
       try {
         const entry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
         pkgJson = join(dirname(dirname(entry)), "package.json");
+        source = "dev";
       } catch { /* no fallback */ }
     }
-    if (!pkgJson) throw new Error("Managed Pi SDK is not installed and no project/bundled fallback is available.");
+    if (!pkgJson) throw new Error("Pi SDK is not installed (no managed copy, local installation, or project/bundled fallback). Install it in Settings → Agent.");
+    if (selection.mode === "auto") noteAutoPick("pi", source, pkgJson);
   }
   const sdk = probePiPackage(pkgJson);
   const nodeCandidates = selection.mode === "external"
@@ -364,8 +492,8 @@ export async function selectRuntime(
   path?: string,
   nodePath?: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  if (mode === "managed") {
-    saveRuntimeSelection(agent, emptyManagedSelection());
+  if (mode === "managed" || mode === "auto") {
+    saveRuntimeSelection(agent, emptySelection(mode));
     return { ok: true };
   }
   if (!path?.trim()) return { ok: false, error: "Choose an external runtime path before enabling external mode." };
@@ -374,6 +502,12 @@ export async function selectRuntime(
   const payloadPath = agent === "pi" ? probePiPackage(normalized).entry : normalized;
   const before = fileFingerprint(payloadPath);
   const candidate = await probeCandidate(agent, normalized);
+  if (candidate.tooOld) {
+    return {
+      ok: false,
+      error: `${agent} ${candidate.version ?? "(unknown version)"} is too old; MarioCode requires at least ${candidate.minVersion ?? RUNTIME_MIN_LOCAL_VERSIONS[agent]}. Update the local installation or use the MarioCode-managed runtime.`,
+    };
+  }
   if (!candidate.available) return { ok: false, error: candidate.diagnostic };
   const after = fileFingerprint(payloadPath);
   if (!before || after !== before) return { ok: false, error: "Runtime payload changed while it was being verified. Try again." };

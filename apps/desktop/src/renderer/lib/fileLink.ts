@@ -209,7 +209,7 @@ function decodePercentLenient(s: string): string {
  *    slash of drive URIs (`file:///D:/x` -> `D:/x`).
  *  - Percent-encoding: the markdown pipeline encodes non-ASCII in URLs at the
  *    hast layer (mdast-util-to-hast -> normalizeUri), so a Chinese filename
- *    arrives as `Mcode-%E5%B0%8F….md` and no filesystem lookup would match.
+ *    arrives as `MarioCode-%E5%B0%8F….md` and no filesystem lookup would match.
  *    Decode before resolving; stray `%` runs that aren't valid encoding keep
  *    the raw form.
  */
@@ -403,6 +403,155 @@ function isLikelyPathToken(token: string): boolean {
   }
   // Bare filename with extension.
   return isBareFilenameWithExt(token);
+}
+
+/** What an inline-code span holding a path turned out to be. */
+export interface InlinePathToken {
+  /** The path itself, with any `:line[:col]` suffix removed. */
+  path: string;
+  line?: number;
+  column?: number;
+  /** "folder" only for absolute paths ending in a separator. */
+  kind: "file" | "folder";
+}
+
+/**
+ * Decide whether the WHOLE text of an inline-code span is a file path, for the
+ * reply's file chips (TODO-022). Stricter than the prose linkifier on purpose:
+ * backticks are also used for identifiers, and `console.log` / `res.ok` /
+ * `window.api` must stay code.
+ *
+ *  - absolute paths (POSIX with ≥2 segments, or drive-letter) → yes;
+ *    a trailing separator marks a folder;
+ *  - relative paths with a slash → need a plausible extension on the last
+ *    segment (`src/a.ts`, `docs/x.md`);
+ *  - bare filenames → only a KNOWN extension (`FileEditor.tsx`, `hero.png`),
+ *    never an arbitrary dotted identifier.
+ *  A `:142` or `:142:7` suffix is peeled off as the line/column.
+ */
+export function classifyInlinePath(raw: string): InlinePathToken | null {
+  const text = raw.trim();
+  if (!text || text.length > 400 || /\s/.test(text)) return null;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) return null; // URL
+  let path = text;
+  let line: number | undefined;
+  let column: number | undefined;
+  const lc = /:(\d+)(?::(\d+))?$/.exec(path);
+  // Don't mistake a drive letter ("C:") for a line suffix.
+  if (lc && lc.index > 1) {
+    line = Number(lc[1]);
+    column = lc[2] ? Number(lc[2]) : undefined;
+    path = path.slice(0, lc.index);
+  }
+  const absolute = isAbsolutePath(path);
+  if (absolute && /[\\/]$/.test(path)) {
+    const segs = path.split(/[\\/]/).filter(Boolean);
+    return segs.length >= 2 ? { path, kind: "folder" } : null;
+  }
+  const name = basename(path.replace(/\\/g, "/"));
+  const dot = name.lastIndexOf(".");
+  const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+  if (absolute) {
+    const segs = path.split(/[\\/]/).filter(Boolean);
+    if (segs.length < 2) return null;
+    return { path, line, column, kind: "file" };
+  }
+  if (/[\\/]/.test(path)) {
+    if (!/^[A-Za-z0-9._\-@~\\/]+$/.test(path)) return null;
+    if (!looksLikeExtension(ext)) return null;
+    return { path, line, column, kind: "file" };
+  }
+  if (!/^[A-Za-z0-9._\-@]+$/.test(path)) return null;
+  if (!COMMON_EXTENSIONS.has(ext) && !IMAGE_EXTENSIONS.has(ext)) return null;
+  return { path, line, column, kind: "file" };
+}
+
+const CJK_CHAR = /[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/;
+
+/**
+ * Chinese prose often runs straight into a path with no space, and the token
+ * regex (which must allow CJK inside names like `跟踪.md`) swallows it:
+ * `D:\x\y里` / `src/main.ts里`. If the LAST segment has no clean extension,
+ * cut it at the first ASCII→CJK transition. Segments that are entirely CJK
+ * (`D:\work\实验报告`) or end in an extension (`MarioCode-版本迭代跟踪.md`)
+ * are kept — there's no way to tell where such a name ends.
+ */
+function trimCjkTail(raw: string): string {
+  const sep = Math.max(raw.lastIndexOf("/"), raw.lastIndexOf("\\"));
+  const seg = raw.slice(sep + 1);
+  if (!seg || /\.[A-Za-z0-9]{1,8}$/.test(seg)) return raw;
+  for (let i = 1; i < seg.length; i++) {
+    if (CJK_CHAR.test(seg[i]) && /[\x21-\x7e]/.test(seg[i - 1])) return raw.slice(0, sep + 1 + i);
+  }
+  return raw;
+}
+
+/** A piece of prose: plain text, or a path to render as a chip. */
+export type ProseSegment = { kind: "text"; text: string } | { kind: "path"; raw: string; token: InlinePathToken };
+
+/**
+ * Find file paths in PLAIN prose (not inside backticks) for the reply's file
+ * chips (TODO-022). The rule is deliberately stricter than for inline code —
+ * prose is full of slashes and dots that aren't paths:
+ *  - absolute paths (drive-letter or POSIX) are accepted;
+ *  - relative paths must contain a separator AND end in a plausible extension
+ *    (`src/app.ts`), optionally followed by `:line[:col]`; folders are only
+ *    recognised as absolute paths ending in a separator;
+ *  - bare filenames (`README.md`) are NOT accepted here — only in backticks;
+ *  - URLs, emails, `1/2`, `0.3.238` never match.
+ * Returns null when nothing matched, so callers can keep the node untouched.
+ */
+export function splitProsePaths(text: string): ProseSegment[] | null {
+  if (!text || !/[\\/]/.test(text)) return null; // cheap reject: no separator at all
+  const out: ProseSegment[] = [];
+  let last = 0;
+  let hit = false;
+  PATH_TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = PATH_TOKEN_RE.exec(text)) !== null) {
+    const start = m.index;
+    // Inside a URL: the whole whitespace-delimited word carries "://". Skip
+    // the rest of that word so its later segments don't match either.
+    let wordStart = start;
+    while (wordStart > 0 && !/\s/.test(text[wordStart - 1])) wordStart--;
+    let wordEnd = start + m[0].length;
+    while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
+    if (text.slice(wordStart, wordEnd).includes("://")) {
+      PATH_TOKEN_RE.lastIndex = wordEnd;
+      continue;
+    }
+    // Trailing sentence punctuation the character class let through, then any
+    // CJK prose glued onto the end ("在D:\x\y里" → "D:\x\y").
+    let raw = trimCjkTail(m[0].replace(/[.,;:!?]+$/, ""));
+    if (!raw || !/[\\/]/.test(raw)) continue; // bare filename: backticks only
+    if (raw.length < m[0].length) PATH_TOKEN_RE.lastIndex = start + raw.length;
+    if (/[@\w]$/.test(text.slice(Math.max(0, start - 1), start))) continue; // mid-word (a/b/c → "/b/c")
+    // `:line[:col]` right after the path (the token regex stops at ":").
+    const lc = /^:\d+(?::\d+)?/.exec(text.slice(start + raw.length));
+    if (lc && raw === m[0]) {
+      raw += lc[0];
+      PATH_TOKEN_RE.lastIndex = start + raw.length;
+    }
+    const token = classifyInlinePath(raw);
+    if (!token) continue;
+    if (start > last) out.push({ kind: "text", text: text.slice(last, start) });
+    out.push({ kind: "path", raw, token });
+    last = start + raw.length;
+    hit = true;
+  }
+  if (!hit) return null;
+  if (last < text.length) out.push({ kind: "text", text: text.slice(last) });
+  return out;
+}
+
+/** Raster/vector formats a chip previews with a thumbnail. */
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "ico", "svg"]);
+
+/** True when the path's extension is a previewable image. */
+export function isImagePath(p: string): boolean {
+  const name = basename(p.replace(/\\/g, "/"));
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && IMAGE_EXTENSIONS.has(name.slice(dot + 1).toLowerCase());
 }
 
 /** Build the absolute path a relative token would have under a project root.

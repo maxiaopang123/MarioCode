@@ -25,6 +25,7 @@ export const en = {
   "lib.commands.focusComposer": "Focus chat input",
   "lib.commands.voiceDictation": "Voice input (hold to talk / tap to toggle)",
   "lib.commands.toggleLeft": "Toggle left sidebar",
+  "lib.commands.nextAttention": "Jump to the next session waiting on you",
   "lib.commands.toggleRight": "Toggle right sidebar",
   "lib.commands.toggleTerminal": "Toggle bottom terminal",
   "lib.commands.toggleBrowser": "Toggle browser panel",

@@ -24,7 +24,7 @@
  * respawn on the next turn.
  *
  * ## Env
- * The caller supplies the env (CODEX_HOME, MCODE_CODEX_KEY_* provider keys).
+ * The caller supplies the env (CODEX_HOME, MARIOCODE_CODEX_KEY_* provider keys).
  * PATH/HOME etc. must be included by the caller — the child needs them to
  * resolve sandbox helpers.
  */
@@ -141,7 +141,7 @@ export class CodexAppServerClient {
     // (server rejects thread/start.dynamicTools without it — verified live
     // against 0.153.4). Unknown fields are ignored by the server.
     await this.request("initialize", {
-      clientInfo: { name: "Mcode", title: "Mcode", version: "0.1.0" },
+      clientInfo: { name: "MarioCode", title: "MarioCode", version: "0.1.0" },
       capabilities: { experimentalApi: true },
     });
   }
@@ -270,7 +270,7 @@ export class CodexAppServerClient {
     const handler = this.requestHandler;
     if (!handler) {
       // No handler — respond with a JSON-RPC error so the server unblocks.
-      this.writeFrame({ id: frame.id, error: { code: -32601, message: `Mcode: no handler for ${frame.method}` } });
+      this.writeFrame({ id: frame.id, error: { code: -32601, message: `MarioCode: no handler for ${frame.method}` } });
       return;
     }
     try {

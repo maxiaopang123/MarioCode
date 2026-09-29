@@ -4,7 +4,7 @@
  * Six operations over the three server sources (see lib/mcpConfig.ts for the
  * storage design): list (aggregate user file + stash + project .mcp.json +
  * builtin), toggle, add, remove, scanImport (read ~/.claude.json) and import.
- * All mutations are read-modify-write over ~/.mcode/.claude.json so the CLI's
+ * All mutations are read-modify-write over ~/.mariocode/.claude.json so the CLI's
  * own keys in that file always survive; project .mcp.json is never written.
  */
 import type { IpcMain } from "electron";
@@ -54,7 +54,7 @@ import {
 import { ProjectRepo } from "@main/store/repositories.js";
 import { samePath } from "@main/lib/pathGuard.js";
 import { log } from "@main/lib/logger.js";
-import { MCODE_CONFIG_DIR } from "@main/providers/claude-sdk/customEnv.js";
+import { MARIOCODE_CONFIG_DIR } from "@main/providers/claude-sdk/customEnv.js";
 import { resolveSdkBinaryPath } from "@main/providers/claude-sdk/sdkBinaryPath.js";
 import {
   readUserClaudeJson,
@@ -90,7 +90,7 @@ const WECHAT_TOOL_DETAIL = "mario_wechat_notify 微信通知(在「MarioTool」�
  * the browser login, the server's tools never reach the model — surfaced in
  * the panel as a badge + an authorize action. */
 
-const NEEDS_AUTH_CACHE_FILE = path.join(MCODE_CONFIG_DIR, "mcp-needs-auth-cache.json");
+const NEEDS_AUTH_CACHE_FILE = path.join(MARIOCODE_CONFIG_DIR, "mcp-needs-auth-cache.json");
 
 function readNeedsAuthNames(): Set<string> {
   try {
@@ -136,8 +136,8 @@ function markNeedsAuth(name: string): void {
  * The CLI keeps `{ mcpOAuth: { "<name>|<hash>": { serverName, accessToken, … } } }`
  * either in `<CLAUDE_CONFIG_DIR>/.credentials.json` (win/linux) or in the macOS
  * Keychain (darwin), and reads the Keychain by shelling out to `security` with
- * a service name derived from the config dir. Mcode reads it the same way — the
- * secret never leaves the Keychain and is never copied into Mcode's own state.
+ * a service name derived from the config dir. MarioCode reads it the same way — the
+ * secret never leaves the Keychain and is never copied into MarioCode's own state.
  *
  * The entry key is `sha256(stringify({ type, url, headers }))[:16]`, i.e. the
  * credential identity is the server NAME plus url AND headers. That is why
@@ -147,10 +147,10 @@ function markNeedsAuth(name: string): void {
 
 /** Darwin Keychain service holding the CLI's credentials:
  *  `Claude Code-credentials-<sha256(configDir)[:8]>` (no hash suffix when the
- *  CLI runs without CLAUDE_CONFIG_DIR, which never applies here — Mcode always
+ *  CLI runs without CLAUDE_CONFIG_DIR, which never applies here — MarioCode always
  *  passes its own dir). Verified against the CLI's own derivation. */
 function darwinCredentialsService(): string {
-  const suffix = createHash("sha256").update(MCODE_CONFIG_DIR.normalize("NFC")).digest("hex").slice(0, 8);
+  const suffix = createHash("sha256").update(MARIOCODE_CONFIG_DIR.normalize("NFC")).digest("hex").slice(0, 8);
   return `Claude Code-credentials-${suffix}`;
 }
 
@@ -164,7 +164,7 @@ const KEYCHAIN_READ_TIMEOUT_MS = 2500;
  *  reported as a failure. */
 function readCredentialsBlob(): { readable: boolean; text: string | null } {
   if (process.platform !== "darwin") {
-    const file = path.join(MCODE_CONFIG_DIR, ".credentials.json");
+    const file = path.join(MARIOCODE_CONFIG_DIR, ".credentials.json");
     // Known location with nothing in it yet — readable, no tokens.
     if (!existsSync(file)) return { readable: true, text: null };
     try {
@@ -317,7 +317,7 @@ async function probeRequiresAuth(config: {
         params: {
           protocolVersion: "2025-06-18",
           capabilities: {},
-          clientInfo: { name: "mcode", version: "1.0" },
+          clientInfo: { name: "mariocode", version: "1.0" },
         },
       }),
       signal: AbortSignal.timeout(AUTH_PROBE_TIMEOUT_MS),
@@ -390,7 +390,7 @@ function runCaptured(
         name: "xterm-256color",
         cols: 100,
         rows: 30,
-        cwd: MCODE_CONFIG_DIR,
+        cwd: MARIOCODE_CONFIG_DIR,
         // node-pty's env type wants strings; drop undefined values.
         env: Object.fromEntries(
           Object.entries(opts.env ?? process.env).filter(([, v]) => v !== undefined),
@@ -671,7 +671,7 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
       cfg.mcpServers = fileServers;
       await writeUserClaudeJson(cfg);
 
-      const env = { ...process.env, CLAUDE_CONFIG_DIR: MCODE_CONFIG_DIR };
+      const env = { ...process.env, CLAUDE_CONFIG_DIR: MARIOCODE_CONFIG_DIR };
       const res = await runCaptured(claudeBin, ["mcp", "login", input.name], { env, timeoutMs: 300_000 });
       if (!res.ok) {
         return { ok: false, error: res.message || "claude mcp login 失败" };
@@ -735,7 +735,7 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
       cfg.mcpServers = fileServers;
       await writeUserClaudeJson(cfg);
 
-      const env = { ...process.env, CLAUDE_CONFIG_DIR: MCODE_CONFIG_DIR };
+      const env = { ...process.env, CLAUDE_CONFIG_DIR: MARIOCODE_CONFIG_DIR };
       const res = await runCaptured(claudeBin, ["mcp", "logout", input.name], { env, timeoutMs: 60_000 });
       if (!res.ok) return { ok: false, error: res.message || "claude mcp logout 失败" };
       // A token still filed under this name is reported, not fatal: it can be a
@@ -863,7 +863,7 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
 
   // ── External MCP config sync (TODO-004): list / scan / add / toggle /
   //    remove / rescan. The engine (lib/mcpSync.ts) owns the merge into
-  //    ~/.mcode/.claude.json; these handlers are thin pass-throughs. ──
+  //    ~/.mariocode/.claude.json; these handlers are thin pass-throughs. ──
   ipcMain.handle(IPC.MCP_SYNC_LIST, async (_evt, raw) => {
     McpSyncListSchema.parse(raw);
     return { sources: await listMcpSync() };

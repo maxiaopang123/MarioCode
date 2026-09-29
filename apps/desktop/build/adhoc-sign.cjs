@@ -1,6 +1,6 @@
-// Ad-hoc signing for Mcode (macOS only).
+// Ad-hoc signing for MarioCode (macOS only).
 //
-// Mcode has no paid Apple Developer ID certificate, so electron-builder skips
+// MarioCode has no paid Apple Developer ID certificate, so electron-builder skips
 // macOS signing entirely — its macPackager only signs when it finds a
 // "Developer ID Application" cert in the keychain, and osx-sign throws rather
 // than falling back to ad-hoc. On macOS 15+ (Sequoia) Gatekeeper then refuses
@@ -10,11 +10,11 @@
 // verify. With a signature, the quarantine attribute (set on browser-downloaded
 // apps) is what blocks launch — removing it lets the app open normally:
 //
-//   xattr -dr com.apple.quarantine /Applications/Mcode.app
+//   xattr -dr com.apple.quarantine /Applications/MarioCode.app
 //
 // Or use System Settings > Privacy & Security > Open Anyway (the only GUI
 // bypass on macOS 26+; right-click > Open no longer works there). Homebrew
-// casks strip quarantine at install time, so `brew install --cask mcode` opens
+// casks strip quarantine at install time, so `brew install --cask mariocode` opens
 // without any of this.
 //
 // Wired up through electron-builder's `mac.sign` option (electron-builder.yml);

@@ -164,6 +164,7 @@ export function ShortcutsPanel() {
 function labelForId(id: string): MessageId {
   const map: Record<string, MessageId> = {
     "session.new": "settings.shortcuts.cmdNewSession",
+    "session.next-attention": "settings.shortcuts.cmdNextAttention",
     "tab.close": "settings.shortcuts.cmdCloseTab",
     "command.palette": "settings.shortcuts.cmdPalette",
     "view.display-mode.toggle": "settings.shortcuts.cmdToggleDisplayMode",

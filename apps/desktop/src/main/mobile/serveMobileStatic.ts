@@ -22,7 +22,7 @@
  * Accept-Encoding allows — the cold-start payload drops from ~5.5MB to ~1.3MB.
  *
  * Resolution order for the bundle root:
- *   1. `MCODE_WEB_DIST` env var (dev override, e.g. a live `vite build --watch`).
+ *   1. `MARIOCODE_WEB_DIST` env var (dev override, e.g. a live `vite build --watch`).
  *   2. `<app dev root>/out/renderer` — dev build (`pnpm dev` / `pnpm build`).
  *   3. packaged location next to the main bundle (production, inside asar —
  *      node's fs transparently reads asar paths).
@@ -57,7 +57,7 @@ const MIME: Record<string, string> = {
 /** Candidate bundle roots, in priority order. */
 function candidateRoots(): string[] {
   const out: string[] = [];
-  if (process.env["MCODE_WEB_DIST"]) out.push(process.env["MCODE_WEB_DIST"]);
+  if (process.env["MARIOCODE_WEB_DIST"]) out.push(process.env["MARIOCODE_WEB_DIST"]);
   // dev: apps/desktop/out/renderer (cwd is apps/desktop under `pnpm dev`)
   out.push(join(process.cwd(), "out", "renderer"));
   // production: the main bundle ships in out/main/, so ../renderer = out/renderer
@@ -98,7 +98,7 @@ function sendPlaceholder(res: ServerResponse): void {
 <body style="font:14px/1.6 system-ui;margin:2rem;color:#333">
 <h2>MarioCode (web bundle not built)</h2>
 <p>Run <code>pnpm dev</code> (or <code>pnpm build</code>) in apps/desktop, then reload this page.</p>
-<p>If you set <code>MCODE_WEB_DIST</code>, make sure it points at a folder containing <code>index.html</code>.</p>
+<p>If you set <code>MARIOCODE_WEB_DIST</code>, make sure it points at a folder containing <code>index.html</code>.</p>
 </body>`;
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   res.end(html);

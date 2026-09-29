@@ -12,7 +12,7 @@
 # loads, point it at a snapshot of the real one (never the live file itself —
 # a running app owns it):
 #
-#   LIVE_DB="$APPDATA/@mcode/desktop/claude-gui.db" scripts/sqlite-migration-smoke/run.sh
+#   LIVE_DB="$APPDATA/@mariocode/desktop/claude-gui.db" scripts/sqlite-migration-smoke/run.sh
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 

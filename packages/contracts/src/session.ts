@@ -133,7 +133,7 @@ export interface Session {
    *  pre-existing rows. */
   envMode?: "local" | "worktree";
   /** Worktree FORM, only read while envMode="worktree" and un-materialized:
-   *  "branch" materializes the worktree on a generated `mcode/*` branch
+   *  "branch" materializes the worktree on a generated `mariocode/*` branch
    *  (commits are named and durable — real feature work), "detached" (the
    *  default, also NULL/absent) materializes the classic detached checkout
    *  (experimental verification; merge-back then discard). Pure intent — once

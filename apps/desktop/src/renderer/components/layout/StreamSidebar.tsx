@@ -4,8 +4,8 @@
  *
  *   [快捷入口: 新建会话 / 搜索 / 定时任务 / 插件与技能 / 连接手机]
  *      (SidebarQuickActions;新建会话在 scope 指向项目/工作树时改道到该处)
- *   [全部会话 | 按项目]        [全部项目 ▾]    (view switch + scope filter,
- *                                              filter menu ends in 添加项目)
+ *   [全部会话 | 按项目]        [全部项目 ▾]    (view switch + scope filter;
+ *                                              the filter menu also adds projects)
  *   ── pinned cards ── hairline ── live cards ── (flat, each card carries
  *      its project identity + an inline status label; running rows recede)
  *   ── 已归档 shelf (collapsed) ──
@@ -31,40 +31,41 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Menu } from "@base-ui/react/menu";
 import {
   IconArchive,
+  IconBell,
   IconCheck,
+  IconChevronDown,
   IconChevronRight,
   IconDots,
+  IconEdit,
   IconFolder,
   IconFolderPlus,
   IconGitBranch,
   IconGitFork,
+  IconLayoutSidebarLeftCollapse,
   IconLoader2,
-  IconPin,
-  IconPinnedFilled,
-  IconPlus,
-  IconTrash,
-  IconX,
+  IconMessages,
+  IconSearch,
 } from "@renderer/lib/icons.js";
 import { cn } from "@renderer/lib/cn.js";
+import { isMac } from "@renderer/lib/platform.js";
 import { getProviderIcon } from "@renderer/lib/providerIcon.js";
-import { projectDisplayColor, projectInitial } from "@renderer/lib/projectAvatar.js";
+import { projectDisplayColor } from "@renderer/lib/projectAvatar.js";
 import { formatRelativeTime, formatFullTime } from "@renderer/lib/time.js";
 import { normWorktreeKey, worktreeDisplayName } from "@renderer/lib/worktree.js";
-import { Button, ConfirmDialog } from "@renderer/components/ui/index.js";
+import { resolveShortcut, acceleratorToDisplayString, acceleratorToDisplayTokens } from "@renderer/lib/shortcuts.js";
+import { jumpToNextAttention, useAttention } from "@renderer/lib/attention.js";
+import { ConfirmDialog, Hint, Kbd } from "@renderer/components/ui/index.js";
 import { api } from "@renderer/lib/api.js";
 import { useCursorAnchor } from "@renderer/hooks/useCursorAnchor.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { WorktreeMergeBackDialog, WorktreeRemoveDialog } from "@renderer/components/chat/WorktreeMergeBack.js";
 import { ProjectManageMenuPopup, type ManageMenuState } from "./ProjectManageMenu.js";
-import { SidebarQuickActions } from "./SidebarQuickActions.js";
+import { ProjectAvatar } from "./ProjectAvatar.js";
+import { findSession } from "./SessionTabs.js";
 import {
   ArchivedRow,
-  HoverIconButton,
-  LeftBarModeSwitch,
   RenameDialog,
   SessionContextMenu,
-  SidebarFooter,
-  SidebarTopStrip,
 } from "./SidebarShared.js";
 import type { Project, Session } from "@contracts/session";
 import type { GitWorktreeInfo } from "@contracts/ipc";
@@ -85,7 +86,8 @@ function formatRunningDuration(ms: number): string {
 
 type StreamStatus =
   | { kind: "working"; startedAt: number }
-  | { kind: "input" }
+  | { kind: "approval" }
+  | { kind: "question" }
   | { kind: "failed" }
   | { kind: "done" }
   | { kind: "time" };
@@ -93,20 +95,35 @@ type StreamStatus =
 interface StreamStatusSignals {
   runningBySession: Record<string, boolean>;
   runningTurnStartedAt: Record<string, number>;
+  /** Sessions with a pending tool OR plan approval. */
+  approvalSessions: Set<string>;
   pendingQuestionBySession: Record<string, unknown>;
   turnErrorBySession: Record<string, boolean>;
   unreadBySession: Record<string, number>;
 }
 
+/** Row status. "Needs you" states outrank running: a turn paused on an
+ *  approval / question is technically running but waits on the user, and
+ *  that is what the row must say (界面焕新 v3). */
 function statusOf(s: Session, sig: StreamStatusSignals): StreamStatus {
+  if (sig.approvalSessions.has(s.id)) return { kind: "approval" };
+  if (sig.pendingQuestionBySession[s.id] != null) return { kind: "question" };
   if (sig.runningBySession[s.id]) {
     return { kind: "working", startedAt: sig.runningTurnStartedAt[s.id] ?? Date.now() };
   }
-  if (sig.pendingQuestionBySession[s.id] != null) return { kind: "input" };
   if (sig.turnErrorBySession[s.id]) return { kind: "failed" };
   if ((sig.unreadBySession[s.id] ?? 0) > 0) return { kind: "done" };
   return { kind: "time" };
 }
+
+/** Last two path segments ("…/Desktop/MarioCode") for the header subline. */
+function shortPath(p: string): string {
+  const parts = p.split(/[\\/]+/).filter(Boolean);
+  return parts.length <= 2 ? p : `…/${parts.slice(-2).join("/")}`;
+}
+
+const DRAG = { WebkitAppRegion: "drag" } as React.CSSProperties;
+const NO_DRAG = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 /* ── The sidebar ── */
 
@@ -125,6 +142,14 @@ function StreamSidebarBase() {
   const pendingQuestionBySession = useSessionStore((s) => s.pendingQuestionBySession);
   const turnErrorBySession = useSessionStore((s) => s.turnErrorBySession);
   const unreadBySession = useSessionStore((s) => s.unreadBySession);
+  const pendingApprovals = useSessionStore((s) => s.pendingApprovals);
+  const pendingPlanApprovalBySession = useSessionStore((s) => s.pendingPlanApprovalBySession);
+  const sessionsByProject = useSessionStore((s) => s.sessionsByProject);
+  const activeProjectId = useSessionStore((s) => s.activeProjectId);
+  const setLeftOpen = useSessionStore((s) => s.setLeftOpen);
+  const setCommandPaletteOpen = useSessionStore((s) => s.setCommandPaletteOpen);
+  const overrides = useSessionStore((s) => s.shortcutOverrides);
+  const attention = useAttention();
   const worktreeInfoByRepo = useSessionStore((s) => s.worktreeInfoByRepo);
   const worktreeNames = useSessionStore((s) => s.worktreeNames);
   const projectColors = useSessionStore((s) => s.projectColors);
@@ -317,9 +342,17 @@ function StreamSidebarBase() {
     return () => clearInterval(id);
   }, [anyRunning]);
 
+  const approvalSessions = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of pendingApprovals) set.add(a.sessionId);
+    for (const id of Object.keys(pendingPlanApprovalBySession)) set.add(id);
+    return set;
+  }, [pendingApprovals, pendingPlanApprovalBySession]);
+
   const statusSignals: StreamStatusSignals = {
     runningBySession,
     runningTurnStartedAt,
+    approvalSessions,
     pendingQuestionBySession,
     turnErrorBySession,
     unreadBySession,
@@ -430,11 +463,14 @@ function StreamSidebarBase() {
       const wt = worktreeOf(s);
       const unmerged = wt != null && (wt.dirty || !wt.merged);
       return (
-        <StreamCard
+        <StreamRow
           key={s.id}
           session={s}
           projectName={proj?.name ?? "?"}
-          projectColor={proj ? projectDisplayColor(proj, projectColors) : "#71717a"}
+          projectColor={proj ? projectDisplayColor(proj, projectColors) : "#6f7a76"}
+          // A single-project scope already names the project in the header;
+          // every other scope (all / group / worktree) tags each row.
+          showProject={scopedProjectId == null}
           status={status}
           now={nowTick}
           active={s.id === activeSessionId}
@@ -443,19 +479,7 @@ function StreamSidebarBase() {
           worktreeUnmerged={unmerged}
           localBranch={localBranchOf(s)}
           onSelect={() => void openTab(s.id)}
-          onNewSession={() => {
-            // Worktree-bound card spawns a sibling thread on the SAME
-            // checkout (fork button + worktree wording); a local card
-            // starts a plain session under the project.
-            if (s.worktreePath) void startSession(s.projectId, { worktreePath: s.worktreePath ?? undefined });
-            else void startSession(s.projectId);
-          }}
-          onTogglePin={() => void setSessionPinned(s.id, s.pinnedAt == null)}
           onArchive={() => void archiveSession(s.id, true)}
-          // Same two-step as the tree's SessionRow: the inline √ IS the
-          // confirmation — no extra dialog (the ConfirmDialog below is only
-          // for the archived shelf, mirroring the tree's bin).
-          onDelete={() => void deleteSession(s.id)}
           onContext={(x, y) => setCtxMenu({ session: s, x, y })}
           registerNode={registerNode}
         />
@@ -465,8 +489,8 @@ function StreamSidebarBase() {
     // component subscribes to already, so the callback refreshes with them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [projectById, projectColors, nowTick, activeSessionId, runningBySession, runningTurnStartedAt,
-      pendingQuestionBySession, turnErrorBySession, unreadBySession, worktreeOf, localBranchOf,
-      openTab, startSession, setSessionPinned, archiveSession, deleteSession, registerNode],
+      approvalSessions, pendingQuestionBySession, turnErrorBySession, unreadBySession, worktreeOf,
+      localBranchOf, scopedProjectId, openTab, archiveSession, registerNode],
   );
 
   const liveSessions = useMemo(
@@ -477,6 +501,52 @@ function StreamSidebarBase() {
     () => pinnedSessions.filter(scopeMatches),
     [pinnedSessions, scopeMatches],
   );
+
+  // Pure time order, split at local midnight: 今天 / 更早. Status never
+  // reorders rows (a row doesn't jump when it starts waiting) — it only
+  // shows inline; the reminder bar above is what pulls attention.
+  const { todayList, earlierList } = useMemo(() => {
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const cut = midnight.getTime();
+    const today: Session[] = [];
+    const earlier: Session[] = [];
+    for (const s of liveSessions) (s.updatedAt >= cut ? today : earlier).push(s);
+    return { todayList: today, earlierList: earlier };
+  }, [liveSessions]);
+
+  // Reminder bar: everything that waits on the user, across all projects
+  // (the rail's badges break it down per project). Titles resolve through
+  // every cached bucket; an unresolved id still counts.
+  const attentionTitles = useMemo(
+    () =>
+      attention
+        .map((a) => findSession(sessionsByProject, pinnedSessions, streamSessions, a.sessionId)?.title)
+        .filter((x): x is string => !!x),
+    [attention, sessionsByProject, pinnedSessions, streamSessions],
+  );
+  const attentionAccel = resolveShortcut("session.next-attention", overrides);
+  const paletteAccel = resolveShortcut("command.palette", overrides);
+  const collapseAccel = resolveShortcut("layout.toggle-left", overrides);
+
+  // 新建: scoped to a managed worktree → that checkout; to a plain project →
+  // that project; otherwise the active project.
+  const canNew = scopedWorktree != null || scopedProjectId != null || activeProjectId != null;
+  const handleNew = () => {
+    if (scopedWorktree) void startSession(scopedWorktree.projectId, { worktreePath: scopedWorktree.path });
+    else if (scopedProjectId) void startSession(scopedProjectId);
+    else if (activeProjectId) void startSession();
+  };
+  const newAccel = resolveShortcut("session.new", overrides);
+
+  // Header identity for the current scope.
+  const scopedProject = scopedProjectId ? projectById.get(scopedProjectId) ?? null : null;
+  const scopeCount = streamTotal + pinnedList.length;
+  const scopeSub = scopedProject
+    ? `${t("layout.stream.sessionCount", { n: scopeCount })} · ${shortPath(scopedProject.path)}`
+    : scope == null
+      ? `${t("layout.stream.projectCount", { n: projects.filter((p) => !p.archived).length })} · ${t("layout.stream.sessionCount", { n: scopeCount })}`
+      : t("layout.stream.sessionCount", { n: scopeCount });
 
   const menuItemClass = cn(
     "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs outline-none select-none",
@@ -505,43 +575,50 @@ function StreamSidebarBase() {
   };
 
   return (
-    <div className="flex h-full flex-col px-2 py-2 [font-size:var(--right-panel-font-size)]">
-      <SidebarTopStrip />
+    <div className="flex h-full flex-col [font-size:var(--right-panel-font-size)]">
+      {/* mac: keep the traffic-light band clear (and draggable). */}
+      {isMac && <div className="h-7 shrink-0" style={DRAG} aria-hidden />}
 
-      {/* 快捷入口 — shared with the tree view. Scoped to a managed worktree, the
-          新建会话 entry spawns the session in THAT checkout; scoped to a
-          plain project, it spawns under THAT project — both instead of the
-          active project, since the user has explicitly narrowed where they
-          are working. */}
-      <SidebarQuickActions
-        newSessionOverride={
-          scopedWorktree
-            ? () => void startSession(scopedWorktree.projectId, { worktreePath: scopedWorktree.path })
-            : scopedProjectId
-              ? () => void startSession(scopedProjectId)
-              : undefined
-        }
-        newSessionOverrideTitle={scopedWorktree ? undefined : scopedProjectId ? t("layout.newSessionHere") : undefined}
-      />
-
-      {/* View switch + scope filter: 全部项目 / per-project (+ its
-          worktrees) / group, ending in 添加项目. The trigger is a compact
-          label at the row's right end; its menu opens end-aligned under it. */}
-      <div className="mb-0.5 mt-3 flex items-center justify-between gap-2">
-        <LeftBarModeSwitch />
+      {/* Header: scope identity (opens the scope menu) + 新建. The band is a
+          window drag handle; the controls opt out. */}
+      <div className="flex h-[52px] shrink-0 items-center gap-1.5 px-2.5" style={DRAG}>
         <Menu.Root open={scopeOpen} onOpenChange={setScopeOpen}>
           <Menu.Trigger
             className={cn(
-              "flex h-6 min-w-0 items-center gap-0.5 rounded px-1.5 transition-colors [font-size:var(--rp-fs-sm)]",
-              "text-content-subtle hover:bg-surface-hover hover:text-content",
-              scopeOpen && "bg-surface-hover text-content",
+              "flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg pl-1.5 pr-2 text-left transition-colors",
+              "hover:bg-surface-hover",
+              scopeOpen && "bg-surface-hover",
             )}
+            style={NO_DRAG}
+            title={t("layout.stream.switchScope")}
           >
-            <span className="min-w-0 truncate">{scopeLabel}</span>
-            <IconChevronRight size={12} className="shrink-0 rotate-90" />
+            {scopedProject ? (
+              <ProjectAvatar
+                name={scopedProject.name}
+                color={projectDisplayColor(scopedProject, projectColors)}
+                size="md"
+              />
+            ) : (
+              <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md text-content-muted">
+                {scope?.startsWith("wt:") ? (
+                  <IconGitFork size={16} />
+                ) : scope?.startsWith("g:") ? (
+                  <IconFolder size={16} />
+                ) : (
+                  <IconMessages size={17} />
+                )}
+              </span>
+            )}
+            <span className="flex min-w-0 flex-1 flex-col leading-[1.3]">
+              <span className="truncate text-[14px] font-semibold tracking-[-0.01em] text-content">
+                {scopeLabel}
+              </span>
+              <span className="truncate text-[11.5px] text-content-subtle">{scopeSub}</span>
+            </span>
+            <IconChevronDown size={12} className="shrink-0 text-content-subtle" />
           </Menu.Trigger>
           <Menu.Portal>
-            <Menu.Positioner align="end">
+            <Menu.Positioner align="start" sideOffset={4}>
               <Menu.Popup
                 className={cn(
                   "z-50 min-w-[200px] origin-top-right rounded-md border border-edge bg-surface py-1 shadow-2xl",
@@ -563,13 +640,7 @@ function StreamSidebarBase() {
                         className={cn(menuItemClass, "group")}
                         onClick={() => setScope(p.id)}
                       >
-                        <span
-                          className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[11px] font-bold text-white"
-                          style={{ backgroundColor: projectDisplayColor(p, projectColors) }}
-                          aria-hidden
-                        >
-                          {projectInitial(p.name)}
-                        </span>
+                        <ProjectAvatar name={p.name} color={projectDisplayColor(p, projectColors)} />
                         <span className="flex-1 truncate">{p.name}</span>
                         {scope === p.id && <IconCheck size={13} className="shrink-0 text-accent" />}
                         {manageButton(p)}
@@ -604,13 +675,7 @@ function StreamSidebarBase() {
                                 className={cn(menuItemClass, "group", "pl-7")}
                                 onClick={() => setScope(p.id)}
                               >
-                                <span
-                                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[11px] font-bold text-white"
-                                  style={{ backgroundColor: projectDisplayColor(p, projectColors) }}
-                                  aria-hidden
-                                >
-                                  {projectInitial(p.name)}
-                                </span>
+                                <ProjectAvatar name={p.name} color={projectDisplayColor(p, projectColors)} />
                                 <span className="flex-1 truncate">{p.name}</span>
                                 {scope === p.id && <IconCheck size={13} className="shrink-0 text-accent" />}
                                 {manageButton(p)}
@@ -632,28 +697,101 @@ function StreamSidebarBase() {
             </Menu.Positioner>
           </Menu.Portal>
         </Menu.Root>
+
+        <Hint label={t("layout.hideLeftPanel") + (collapseAccel ? ` (${acceleratorToDisplayString(collapseAccel)})` : "")}>
+          <button
+            type="button"
+            onClick={() => setLeftOpen(false)}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-content-subtle transition-colors hover:bg-surface-hover hover:text-content"
+            style={NO_DRAG}
+          >
+            <IconLayoutSidebarLeftCollapse size={17} />
+          </button>
+        </Hint>
+        <Hint label={(scopedProjectId || scopedWorktree ? t("layout.newSessionHere") : t("layout.newSessionInProject")) + (newAccel ? ` (${acceleratorToDisplayString(newAccel)})` : "")}>
+          <button
+            type="button"
+            onClick={handleNew}
+            disabled={!canNew}
+            className={cn(
+              "flex h-[30px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg pl-2.5 pr-3 text-[12.5px] font-semibold transition-colors",
+              "bg-primary text-primary-on shadow-sm hover:bg-primary-hover",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+            )}
+            style={NO_DRAG}
+          >
+            {scopedWorktree ? <IconGitFork size={14} /> : <IconEdit size={14} />}
+            {t("layout.stream.new")}
+          </button>
+        </Hint>
       </div>
 
-      {/* Flat list: pinned cards ─ hairline ─ live cards ─ show more. */}
-      <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+      {/* Tools: search (opens the Ctrl+K palette) + the 等你处理 reminder. */}
+      <div className="flex shrink-0 flex-col gap-2.5 border-b border-edge px-3 pb-2.5 pt-0.5">
+        <button
+          type="button"
+          onClick={() => setCommandPaletteOpen(true)}
+          className={cn(
+            "flex h-8 items-center gap-2 rounded-lg border border-edge bg-surface pl-2.5 pr-1.5 text-left text-[12.5px] text-content-subtle transition-colors",
+            "hover:border-edge-input hover:text-content-muted",
+          )}
+        >
+          <IconSearch size={14} className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{t("layout.stream.searchPlaceholder")}</span>
+          {paletteAccel && <Kbd keys={acceleratorToDisplayTokens(paletteAccel)} size="xs" />}
+        </button>
+        {attention.length > 0 && (
+          <button
+            type="button"
+            onClick={jumpToNextAttention}
+            title={t("lib.commands.nextAttention")}
+            className={cn(
+              "flex items-center gap-2.5 rounded-[10px] py-2 pl-[9px] pr-2 text-left transition-colors",
+              "bg-warning/[0.08] shadow-[inset_0_0_0_1px_rgb(var(--warning)/0.2)] hover:bg-warning/[0.13]",
+            )}
+          >
+            <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-lg bg-warning/15 text-warning">
+              <IconBell size={14} />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col leading-[1.35]">
+              <span className="text-[12.5px] font-semibold text-content">
+                {t("layout.stream.attentionTitle", { n: attention.length })}
+              </span>
+              {attentionTitles.length > 0 && (
+                <span className="truncate text-[11.5px] text-content-subtle">
+                  {attentionTitles.slice(0, 3).join("、")}
+                </span>
+              )}
+            </span>
+            {attentionAccel && <Kbd keys={acceleratorToDisplayTokens(attentionAccel)} size="xs" className="shrink-0" />}
+          </button>
+        )}
+      </div>
+
+      {/* List: 置顶 / 今天 / 更早 — pure time order within each. */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {liveSessions.length === 0 && pinnedList.length === 0 ? (
           <div className="px-2 py-8 text-center text-content-subtle [font-size:var(--rp-fs-sm)]">
             {t("layout.stream.empty")}
           </div>
         ) : (
-          <ul className="space-y-0.5">
+          <ul className="flex flex-col gap-px">
+            {pinnedList.length > 0 && <GroupLabel label={t("layout.pinned")} />}
             {pinnedList.map((s) => renderCard(s, { pinned: true }))}
-            {pinnedList.length > 0 && <div className="mx-2.5 my-1.5 h-px bg-edge/60" aria-hidden />}
-            {liveSessions.map((s) => renderCard(s, { pinned: false }))}
+            {todayList.length > 0 && <GroupLabel label={t("layout.stream.groupToday")} />}
+            {todayList.map((s) => renderCard(s, { pinned: false }))}
+            {earlierList.length > 0 && <GroupLabel label={t("layout.stream.groupEarlier")} />}
+            {earlierList.map((s) => renderCard(s, { pinned: false }))}
             {streamHasMore && (
               <li>
                 <button
                   onClick={() => void loadMoreStreamSessions()}
                   className={cn(
-                    "w-full rounded px-2.5 py-1.5 text-left text-content-subtle transition-colors [font-size:var(--rp-fs-sm)]",
-                    "hover:bg-surface-hover/60 hover:text-accent",
+                    "flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-content-subtle transition-colors [font-size:var(--rp-fs-sm)]",
+                    "hover:bg-surface-hover hover:text-content",
                   )}
                 >
+                  <IconChevronDown size={12} className="shrink-0" />
                   {t("layout.stream.showMore", {
                     // streamTotal counts the CURRENT scope's unpinned rows
                     // (the server filters by scope; pinned never counted) —
@@ -714,8 +852,6 @@ function StreamSidebarBase() {
         )}
       </div>
 
-      {/* Locate scrolls the stream list to the active session. */}
-      <SidebarFooter onLocate={() => locateActiveSession(true)} />
 
       {/* Session context menu — with the worktree action group wired to the
           same dialogs the tree uses. */}
@@ -815,16 +951,34 @@ function StreamSidebarBase() {
 
 export const StreamSidebar = memo(StreamSidebarBase);
 
-/* ── One rich card (3 lines: project identity+status / title / branch+provider) ── */
+/** 今天 / 更早 / 置顶 section label. */
+function GroupLabel({ label }: { label: string }) {
+  return (
+    <li className="px-2.5 pb-1.5 pt-3.5 text-[11.5px] font-semibold text-content-subtle first:pt-2" aria-hidden>
+      {label}
+    </li>
+  );
+}
 
-function StreamCard({
-  session, projectName, projectColor, status, now, active, pinned,
-  worktreeBranch, worktreeUnmerged, localBranch, onSelect, onNewSession, onTogglePin, onArchive, onDelete,
-  onContext, registerNode,
+/* ── One session row (界面焕新 v3 ②):
+ *
+ *   [provider] title ……………………… status / time   (hover: archive)
+ *              [project] · branch / worktree
+ *
+ * Status is inline and never reorders rows: 运行中 + live duration (accent),
+ * 待审批 / 在提问 (amber tag), 出错 (red tag), unread dot + time, else time.
+ * Hover swaps the time for an archive button (running rows keep theirs —
+ * archiving a live turn is never a one-click thing). Pin / rename / worktree
+ * actions stay on the right-click menu. */
+function StreamRow({
+  session, projectName, projectColor, showProject, status, now, active, pinned,
+  worktreeBranch, worktreeUnmerged, localBranch, onSelect, onArchive, onContext, registerNode,
 }: {
   session: Session;
   projectName: string;
   projectColor: string;
+  /** Tag the row with its project (every scope except a single project). */
+  showProject: boolean;
   status: StreamStatus;
   /** Ticker snapshot for the running duration; only advances while running. */
   now: number;
@@ -834,223 +988,147 @@ function StreamCard({
   worktreeBranch: string | null;
   /** dirty || !merged — the amber "work waiting to land" dot. */
   worktreeUnmerged: boolean;
-  /** Project root's checked-out branch for LOCAL sessions (null = probe
-   *  not landed / not a git repo / worktree session). */
+  /** Project root's checked-out branch for LOCAL sessions. */
   localBranch: string | null;
   onSelect: () => void;
-  /** Spawn a new session: worktree-bound card → sibling on the same
-   *  checkout; local card → plain session under the project. */
-  onNewSession: () => void;
-  onTogglePin: () => void;
   onArchive: () => void;
-  onDelete: () => void;
   onContext: (x: number, y: number) => void;
   registerNode: (id: string, el: HTMLLIElement | null) => void;
 }) {
   const { t } = useI18n();
-  const [pendingConfirm, setPendingConfirm] = useState<null | "archive" | "delete">(null);
-  const [hovered, setHovered] = useState(false);
-  const idle = pendingConfirm === null && status.kind !== "working";
-  const showActions = idle && hovered;
   const { Icon: ProviderIcon, color: providerColor, label: providerLabel } =
     getProviderIcon(session.providerId);
-
-  // In-flight recede: a running row that ISN'T the active one dims — the
-  // prominence budget stays with rows that need a human (T3 semantics).
-  const recede = status.kind === "working" && !active;
-
-  // The meta line (L3) only ever carries content for a worktree-bound
-  // session (fork + branch) or a local session whose project root is a git
-  // repo (checked-out branch). A local session in a NON-git project has
-  // neither — the card degrades to two lines and the provider icon moves up
-  // next to the title instead of orphaning an empty row.
-  const hasMetaLine = session.worktreePath != null || localBranch != null;
+  const canArchive = status.kind !== "working";
+  const unread = status.kind === "done";
 
   const statusLabel = (() => {
-    if (status.kind === "working") {
-      return (
-        <span className="flex items-center gap-1 font-semibold text-[#0369a1] dark:text-[#38bdf8]">
-          <IconLoader2 size={11} className="animate-spin" />
-          {t("layout.stream.statusWorking", { dur: formatRunningDuration(now - status.startedAt) })}
-        </span>
-      );
+    switch (status.kind) {
+      case "working":
+        return (
+          <span className="flex items-center gap-1 font-semibold tabular-nums text-accent-strong">
+            <IconLoader2 size={11} className="animate-spin" />
+            {formatRunningDuration(now - status.startedAt)}
+          </span>
+        );
+      case "approval":
+        return (
+          <span className="rounded-[5px] bg-warning/[0.13] px-1.5 text-[11px] font-semibold leading-[18px] text-warning">
+            {t("layout.stream.statusApproval")}
+          </span>
+        );
+      case "question":
+        return (
+          <span className="rounded-[5px] bg-warning/[0.13] px-1.5 text-[11px] font-semibold leading-[18px] text-warning">
+            {t("layout.stream.statusQuestion")}
+          </span>
+        );
+      case "failed":
+        return (
+          <span className="rounded-[5px] bg-danger/[0.11] px-1.5 text-[11px] font-semibold leading-[18px] text-danger">
+            {t("layout.stream.statusFailed")}
+          </span>
+        );
+      case "done":
+        return (
+          <span className="flex items-center gap-1.5 tabular-nums text-content-subtle" title={t("layout.stream.statusDone")}>
+            <i className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+            {formatRelativeTime(session.updatedAt)}
+          </span>
+        );
+      default:
+        return <span className="tabular-nums text-content-subtle">{formatRelativeTime(session.updatedAt)}</span>;
     }
-    if (status.kind === "input") {
-      return (
-        <span className="font-semibold text-[#b45309] dark:text-[#fbbf24]">
-          {t("layout.stream.statusInput")}
-        </span>
-      );
-    }
-    if (status.kind === "failed") {
-      return <span className="font-semibold text-danger">{t("layout.stream.statusFailed")}</span>;
-    }
-    if (status.kind === "done") {
-      return (
-        <span className="flex items-center gap-1 font-semibold text-accent-strong">
-          <IconCheck size={12} />
-          {t("layout.stream.statusDone")}
-        </span>
-      );
-    }
-    return (
-      <span className="text-content-subtle/80">
-        {formatRelativeTime(session.updatedAt)}
-      </span>
-    );
   })();
+
+  // Sub line: project tag (multi-project scopes) + branch / worktree.
+  const branchNode = session.worktreePath ? (
+    <span className="flex min-w-0 items-center gap-1" title={session.worktreePath}>
+      <IconGitFork size={11} className="shrink-0 text-content-subtle" aria-label={t("layout.stream.worktree")} />
+      <span className="min-w-0 truncate font-mono text-[11px]">
+        {worktreeBranch || session.worktreePath.split(/[/\\]/).pop()}
+      </span>
+      {worktreeUnmerged && (
+        <span className="h-[5px] w-[5px] shrink-0 rounded-full bg-warning" title={t("layout.stream.unmerged")} aria-hidden />
+      )}
+    </span>
+  ) : localBranch ? (
+    <span className="flex min-w-0 items-center gap-1" title={localBranch}>
+      <IconGitBranch size={11} className="shrink-0 text-content-subtle/80" />
+      <span className="min-w-0 truncate font-mono text-[11px]">{localBranch}</span>
+    </span>
+  ) : null;
+  const hasSub = showProject || branchNode != null;
 
   return (
     <li
       ref={(el) => registerNode(session.id, el)}
-      onClick={() => { setPendingConfirm(null); onSelect(); }}
-      onMouseEnter={() => {
-        setHovered(true);
-        void useSessionStore.getState().prefetchSessionMessages(session.id);
-      }}
-      onMouseLeave={() => setHovered(false)}
+      onClick={onSelect}
+      onMouseEnter={() => void useSessionStore.getState().prefetchSessionMessages(session.id)}
       onContextMenu={(e) => {
-        if (pendingConfirm) return;
         e.preventDefault();
         onContext(e.clientX, e.clientY);
       }}
       title={`${session.title}\n${formatFullTime(session.updatedAt)}`}
       className={cn(
-        "group relative flex cursor-pointer flex-col gap-[3px] rounded-lg px-2.5 py-2",
-        active
-          ? "bg-surface-hover text-content"
-          : "text-content-muted hover:bg-surface-hover/60",
-        recede && "opacity-75 transition-opacity hover:opacity-100",
+        "group relative grid cursor-pointer grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-[3px] rounded-[10px] px-2.5 py-[9px] transition-colors",
+        active ? "srow-active" : "hover:bg-surface-hover",
       )}
     >
-      {active && (
-        <span className="absolute bottom-1.5 left-0 top-1.5 w-[2px] rounded-full bg-accent" />
+      <span
+        className={cn("grid h-[22px] w-[22px] place-items-center self-start", hasSub && "row-span-2")}
+        title={providerLabel || undefined}
+      >
+        <ProviderIcon size={14} className={cn("shrink-0", providerColor)} />
+      </span>
+
+      <span
+        className={cn(
+          "min-w-0 truncate",
+          active || unread ? "font-medium text-content" : "text-content-muted",
+        )}
+      >
+        {session.title}
+      </span>
+
+      <span
+        className={cn(
+          "flex h-[18px] shrink-0 items-center text-[11.5px]",
+          canArchive && "group-hover:invisible",
+        )}
+      >
+        {statusLabel}
+      </span>
+
+      {hasSub && (
+        <span className="col-span-2 flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12px] text-content-subtle">
+          {showProject && (
+            <>
+              <ProjectAvatar name={projectName} color={projectColor} />
+              <span className="min-w-0 max-w-[45%] shrink-0 truncate">{projectName}</span>
+              {branchNode && <span className="shrink-0 text-content-subtle/60">·</span>}
+            </>
+          )}
+          {branchNode}
+          {pinned && <span className="sr-only">{t("layout.pinned")}</span>}
+        </span>
       )}
 
-      {/* L1 — project identity + status (status yields to hover actions). */}
-      <div className="flex h-4 min-w-0 items-center gap-1.5">
-        <span
-          className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[11px] font-bold text-white"
-          style={{ backgroundColor: projectColor }}
-          aria-hidden
+      {canArchive && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onArchive();
+          }}
+          title={t("layout.archive")}
+          aria-label={t("layout.archive")}
+          className={cn(
+            "absolute right-[7px] top-[7px] hidden h-6 w-6 place-items-center rounded-md text-content-subtle group-hover:grid",
+            "bg-surface shadow-sm ring-1 ring-inset ring-edge hover:text-content",
+          )}
         >
-          {projectInitial(projectName)}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-content-subtle">
-          {projectName}
-        </span>
-        {pinned && <IconPinnedFilled size={10} className="shrink-0 text-accent/70" aria-label={t("layout.pinned")} />}
-        <span className="ml-auto flex h-4 min-w-8 shrink-0 items-center justify-end text-[11px]">
-          {!showActions && statusLabel}
-          {showActions && (
-            <span className="flex items-center gap-0.5">
-              {/* Worktree-bound rows fork a sibling on the same checkout
-                  (fork icon + worktree wording, same as the tree view's
-                  SessionRow); local rows start a plain project session. */}
-              <HoverIconButton
-                onClick={onNewSession}
-                title={session.worktreePath ? t("layout.newSessionInWorktree") : t("layout.newSessionHere")}
-                className="opacity-100"
-              >
-                {session.worktreePath ? <IconGitFork size={12} /> : <IconPlus size={12} />}
-              </HoverIconButton>
-              <HoverIconButton onClick={onTogglePin} title={pinned ? t("layout.unpin") : t("layout.pin")} className="opacity-100">
-                {pinned ? <IconPinnedFilled size={12} className="text-accent" /> : <IconPin size={12} />}
-              </HoverIconButton>
-              <HoverIconButton onClick={() => setPendingConfirm("archive")} title={t("layout.archive")} className="opacity-100">
-                <IconArchive size={12} />
-              </HoverIconButton>
-              <HoverIconButton onClick={() => setPendingConfirm("delete")} title={t("common.delete")} danger className="opacity-100">
-                <IconTrash size={12} />
-              </HoverIconButton>
-            </span>
-          )}
-          {pendingConfirm === "archive" && (
-            <span className="flex items-center gap-0.5">
-              <button
-                onClick={(e) => { e.stopPropagation(); setPendingConfirm(null); onArchive(); }}
-                className="flex items-center rounded px-1 text-accent hover:bg-surface-hover"
-                title={t("layout.confirmArchive")}
-              >
-                <IconCheck size={12} />
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setPendingConfirm(null); }}
-                className="flex items-center rounded px-1 text-content-subtle hover:bg-surface-hover hover:text-content"
-                title={t("common.cancel")}
-              >
-                <IconX size={12} />
-              </button>
-            </span>
-          )}
-          {pendingConfirm === "delete" && (
-            <span className="flex items-center gap-0.5">
-              <button
-                onClick={(e) => { e.stopPropagation(); setPendingConfirm(null); onDelete(); }}
-                className="flex items-center rounded px-1 text-danger hover:bg-surface-hover"
-                title={t("layout.confirmDelete")}
-              >
-                <IconCheck size={12} />
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setPendingConfirm(null); }}
-                className="flex items-center rounded px-1 text-content-subtle hover:bg-surface-hover hover:text-content"
-                title={t("common.cancel")}
-              >
-                <IconX size={12} />
-              </button>
-            </span>
-          )}
-        </span>
-      </div>
-
-      {/* L2 — title. Sized/colored exactly like the tree view's SessionRow
-          title (rp font-size var, the row's own color — muted at rest,
-          content when active — and regular weight): a fixed 12.5px medium
-          text-content diverged visibly from the old panel, most of all in
-          the light theme where --content is near-black. When the meta line
-          has nothing to say (local session, project not a git repo), the
-          card degrades to TWO lines and the provider icon — otherwise an
-          orphan at the right edge of an empty L3 — moves up here, trailing
-          the title. */}
-      <div className="flex min-w-0 items-center gap-1.5 [font-size:var(--right-panel-font-size)]">
-        <span className="min-w-0 flex-1 truncate">{session.title}</span>
-        {!hasMetaLine && (
-          <span className="flex shrink-0 items-center" title={providerLabel || undefined}>
-            <ProviderIcon size={12} className={cn("shrink-0", providerColor)} />
-          </span>
-        )}
-      </div>
-
-      {/* L3 — worktree identity + provider dot ("always the branch"). Only
-          rendered when it HAS content: a local session in a non-git project
-          (or before the probe lands) skips the line entirely — an empty
-          flex-1 spacer + a lone provider icon read as a blank row. */}
-      {hasMetaLine && (
-        <div className="flex h-3.5 min-w-0 items-center gap-1.5 text-[11px] text-content-subtle">
-          {session.worktreePath ? (
-            <span className="flex min-w-0 items-center gap-1">
-              <IconGitFork size={10} className="shrink-0 text-accent/80" />
-              <span className="min-w-0 truncate font-mono text-[11px]" title={session.worktreePath}>
-                {worktreeBranch || session.worktreePath.split(/[/\\/]/).pop()}
-              </span>
-              {worktreeUnmerged && (
-                <span className="flex shrink-0 items-center gap-1 text-[11px] text-[#b45309] dark:text-[#fbbf24]" title={t("layout.stream.unmerged")}>
-                  <span className="h-[5px] w-[5px] rounded-full bg-[#d97706] dark:bg-[#f59e0b]" aria-hidden />
-                  {t("layout.stream.unmerged")}
-                </span>
-              )}
-            </span>
-          ) : (
-            <span className="flex min-w-0 items-center gap-1" title={localBranch ?? undefined}>
-              <IconGitBranch size={10} className="shrink-0 text-content-subtle/80" />
-              <span className="min-w-0 truncate font-mono text-[11px]">{localBranch}</span>
-            </span>
-          )}
-          <span className="ml-auto flex shrink-0 items-center" title={providerLabel || undefined}>
-            <ProviderIcon size={12} className={cn("shrink-0", providerColor)} />
-          </span>
-        </div>
+          <IconArchive size={14} />
+        </button>
       )}
     </li>
   );

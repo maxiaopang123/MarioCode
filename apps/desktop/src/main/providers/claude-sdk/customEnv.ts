@@ -79,30 +79,29 @@
 import type { ApiConfig, CustomModelEntry } from "@contracts/customModel";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { randomBytes } from "node:crypto";
-import { homedir } from "node:os";
-import path from "node:path";
+import { MARIOCODE_HOME } from "@main/lib/appHome.js";
 import {
   formatCustomHeaderLines,
   parseCustomHeaderLines,
   resolveUpstreamHeaders,
 } from "@main/providers/upstreamHeaders.js";
 
-/** Mcode's own Claude config directory. We always set CLAUDE_CONFIG_DIR to
+/** MarioCode's own Claude config directory. We always set CLAUDE_CONFIG_DIR to
  *  this path so the bundled claude binary reads its user-level config
  *  (settings.json, skills/, commands/) from here instead of ~/.claude.
- *  This decouples Mcode from the user's Claude Code CLI installation: tools
+ *  This decouples MarioCode from the user's Claude Code CLI installation: tools
  *  like "cc switch" that overwrite ~/.claude/settings.json no longer affect
- *  Mcode's turns, and user-level skills live under ~/.mcode/skills where
- *  Mcode's import feature places them. */
-export const MCODE_CONFIG_DIR = path.join(homedir(), ".mcode");
+ *  MarioCode's turns, and user-level skills live under ~/.mariocode/skills where
+ *  MarioCode's import feature places them. */
+export const MARIOCODE_CONFIG_DIR = MARIOCODE_HOME;
 
 /** Session id handed to a gateway that requires one when the caller has no
- *  Mcode session to name — the connection probe, title generation, the
+ *  MarioCode session to name — the connection probe, title generation, the
  *  commit-message helper. Stable for the process lifetime so such traffic
  *  still looks like ONE conversation to the gateway instead of a fresh id per
  *  request. Live turns pass their real session id instead (see
  *  {@link buildCustomEnv}). */
-const PROCESS_SESSION_ID = `mcode-${randomBytes(6).toString("hex")}`;
+const PROCESS_SESSION_ID = `mariocode-${randomBytes(6).toString("hex")}`;
 
 /** The config entry driving this turn: the session's selected model when it's
  *  still configured, else the first entry. Callers guarantee at least one
@@ -144,7 +143,7 @@ export function resolveActiveModel(cfg: ApiConfig): string | undefined {
 }
 
 /**
- * @param opts.sessionId Mcode session driving this turn. Only used to name the
+ * @param opts.sessionId MarioCode session driving this turn. Only used to name the
  *   gateway's required session header — see the `ANTHROPIC_CUSTOM_HEADERS`
  *   block below. Callers without a session (probe / title / commit-message
  *   helpers) may omit it and get a stable per-process id instead.
@@ -232,7 +231,7 @@ export function buildCustomEnv(
   //     ids, a home-grown auth scheme);
   //   - an auto session id for gateways that refuse to route without one
   //     (OpenCode Zen's "Go" plan answers `400 MissingSessionID` otherwise).
-  //     Named after the Mcode session so one conversation keeps one id, which
+  //     Named after the MarioCode session so one conversation keeps one id, which
   //     is what the gateway wants it for (routing + prompt caching).
   //
   // Merged OVER any inherited OS-level value: ANTHROPIC_CUSTOM_HEADERS is a
@@ -252,21 +251,21 @@ export function buildCustomEnv(
         ...cfg.customHeaders,
       },
       cfg.baseUrl,
-      opts?.sessionId ? `mcode-${opts.sessionId}` : PROCESS_SESSION_ID,
+      opts?.sessionId ? `mariocode-${opts.sessionId}` : PROCESS_SESSION_ID,
     );
     if (Object.keys(upstreamHeaders).length > 0) {
       env.ANTHROPIC_CUSTOM_HEADERS = formatCustomHeaderLines(upstreamHeaders);
     }
   }
 
-  // Always redirect the claude binary's user-level config root to Mcode's
-  // own directory (~/.mcode). This is the key mechanism that makes user-level
+  // Always redirect the claude binary's user-level config root to MarioCode's
+  // own directory (~/.mariocode). This is the key mechanism that makes user-level
   // skills load on custom endpoints: with the config root moved here, the
-  // binary's user skill auto-load scans ~/.mcode/skills/ (where Mcode's import
+  // binary's user skill auto-load scans ~/.mariocode/skills/ (where MarioCode's import
   // feature places skills) instead of ~/.claude/skills/. It also means the
   // cc-switch-controlled ~/.claude/settings.json is never read, so we no
   // longer need to drop "user" from settingSources to protect the env.
-  env.CLAUDE_CONFIG_DIR = MCODE_CONFIG_DIR;
+  env.CLAUDE_CONFIG_DIR = MARIOCODE_CONFIG_DIR;
 
   return env;
 }

@@ -8,7 +8,7 @@
  *
  * Security: the injected code is read-only w.r.t. the page - it only attaches
  * non-capturing listeners + a highlight overlay, reads element data on click,
- * and forwards it through `window.mcodeBridge.pickElement` (exposed by the
+ * and forwards it through `window.mariocodeBridge.pickElement` (exposed by the
  * browserPicker preload). It never modifies page DOM beyond its own overlay,
  * and it never touches Node/Electron APIs.
  */
@@ -19,19 +19,19 @@ const PICKER_HTML_CAP = 2000;
 /**
  * Inject the picker: hover to highlight, click to pick (multi-select - stays
  * active until removed), Esc to exit. Each click forwards the element's
- * selector + outerHTML + url to main via `window.mcodeBridge.pickElement`.
+ * selector + outerHTML + url to main via `window.mariocodeBridge.pickElement`.
  */
 export const PICKER_INJECT_SCRIPT = `
 (function () {
-  if (window.__mcodePickerActive) return;
-  window.__mcodePickerActive = true;
+  if (window.__mariocodePickerActive) return;
+  window.__mariocodePickerActive = true;
 
   var cap = ${PICKER_HTML_CAP};
 
   // Highlight overlay - a fixed, pointer-events:none box that follows the
   // hovered element. Appended to <body> (or <html> if body isn't ready).
   var overlay = document.createElement('div');
-  overlay.id = '__mcode-picker-overlay';
+  overlay.id = '__mariocode-picker-overlay';
   overlay.style.cssText =
     'position:fixed;pointer-events:none;z-index:2147483647;' +
     'border:2px solid #4f8cff;background:rgba(79,140,255,0.12);' +
@@ -94,7 +94,7 @@ export const PICKER_INJECT_SCRIPT = `
 
   function onOver(e) {
     var el = e.target;
-    if (!el || el === overlay || el.id === '__mcode-picker-overlay') return;
+    if (!el || el === overlay || el.id === '__mariocode-picker-overlay') return;
     if (el === document.documentElement || el === document.body) { hideOverlay(); return; }
     showOverlay(el);
   }
@@ -116,13 +116,13 @@ export const PICKER_INJECT_SCRIPT = `
       preview: previewFor(el, selector),
     };
     try {
-      if (!window.mcodeBridge || typeof window.mcodeBridge.pickElement !== 'function') {
-        console.error('[mcode-picker] bridge unavailable: window.mcodeBridge is not defined (preload did not load)');
+      if (!window.mariocodeBridge || typeof window.mariocodeBridge.pickElement !== 'function') {
+        console.error('[mariocode-picker] bridge unavailable: window.mariocodeBridge is not defined (preload did not load)');
         return;
       }
-      window.mcodeBridge.pickElement(data);
+      window.mariocodeBridge.pickElement(data);
     } catch (err) {
-      console.error('[mcode-picker] pickElement failed:', err);
+      console.error('[mariocode-picker] pickElement failed:', err);
     }
     // Brief flash to confirm the pick, then keep the overlay for the next pick.
     overlay.style.borderColor = '#22c55e';
@@ -132,7 +132,7 @@ export const PICKER_INJECT_SCRIPT = `
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      window.__mcodePickerRemove && window.__mcodePickerRemove();
+      window.__mariocodePickerRemove && window.__mariocodePickerRemove();
     }
   }
   // capture:true so we intercept before the page's own handlers run.
@@ -141,28 +141,28 @@ export const PICKER_INJECT_SCRIPT = `
   document.addEventListener('click', onClick, true);
   document.addEventListener('keydown', onKey, true);
 
-  window.__mcodePickerRemove = function () {
+  window.__mariocodePickerRemove = function () {
     document.removeEventListener('mouseover', onOver, true);
     document.removeEventListener('mousemove', onMove, true);
     document.removeEventListener('click', onClick, true);
     document.removeEventListener('keydown', onKey, true);
     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-    window.__mcodePickerActive = false;
-    delete window.__mcodePickerRemove;
+    window.__mariocodePickerActive = false;
+    delete window.__mariocodePickerRemove;
   };
 
   // Signal that injection succeeded (used by the manager to confirm state).
-  'mcode-picker-injected';
+  'mariocode-picker-injected';
 })();
 `;
 
 /**
  * Remove the picker: tears down all listeners and the overlay. Safe to run even
- * if the picker was never injected (the guard checks `__mcodePickerRemove`).
+ * if the picker was never injected (the guard checks `__mariocodePickerRemove`).
  */
 export const PICKER_REMOVE_SCRIPT = `
 (function () {
-  if (window.__mcodePickerRemove) { window.__mcodePickerRemove(); }
-  'mcode-picker-removed';
+  if (window.__mariocodePickerRemove) { window.__mariocodePickerRemove(); }
+  'mariocode-picker-removed';
 })();
 `;

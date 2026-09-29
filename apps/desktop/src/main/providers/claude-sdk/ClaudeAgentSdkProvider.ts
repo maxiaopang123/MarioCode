@@ -19,7 +19,7 @@ import type {
 } from "@contracts/provider";
 import type { AskUserQuestionItem, PermissionMode } from "@contracts/runtime";
 import { SdkMessageAdapter, parseQuestions } from "./SdkMessageAdapter.js";
-import { buildCustomEnv, MCODE_CONFIG_DIR, resolveActiveModel } from "./customEnv.js";
+import { buildCustomEnv, MARIOCODE_CONFIG_DIR, resolveActiveModel } from "./customEnv.js";
 import { withEngineNetworkEnv } from "@main/network/engineProxy.js";
 import type { ClaudeContextWindowTag } from "./claudeTokenUsage.js";
 import { ASK_SYSTEM_PROMPT } from "@main/lib/askQuestion.js";
@@ -64,6 +64,7 @@ import {
 } from "@main/browser/agentBrowserTools.js";
 import {
   MCP_IMAGE_SERVER_NAME,
+  MCP_RESERVED_NAME,
   MCP_SCHEDULE_SERVER_NAME,
   MCP_WEB_SERVER_NAME,
   MCP_WECHAT_SERVER_NAME,
@@ -209,7 +210,7 @@ const SDK_PRELOAD_DELAY_MS = 3_000;
  * delegates to the shared `agentBrowserTools` implementation so both
  * providers drive the browser identically.
  *
- * Claude surfaces each tool to canUseTool as `mcp__mcode-browser__<name>`;
+ * Claude surfaces each tool to canUseTool as `mcp__mariocode-browser__<name>`;
  * the read-only ones (list/snapshot/screenshot) are auto-approved by
  * `shouldAutoApprove`, while navigate/click go through the normal approval
  * prompt. Screenshots return an image content block that the store parses
@@ -227,7 +228,7 @@ async function buildBrowserMcpServer(
     name: BROWSER_MCP_SERVER,
     version: "1.0.0",
     instructions:
-      "Mcode 应用内浏览器控制工具。" + BROWSER_TOOLS_FLOW,
+      "MarioCode 应用内浏览器控制工具。" + BROWSER_TOOLS_FLOW,
     alwaysLoad: true,
     tools: [
       {
@@ -542,10 +543,10 @@ async function buildBrowserMcpServer(
 }
 
 /**
- * In-process MCP servers for the built-in tools: `mcode-web` (mario_web_search /
+ * In-process MCP servers for the built-in tools: `mariocode-web` (mario_web_search /
  * mario_web_fetch — read-only, auto-approved like the read-only browser tools) and
- * `mcode-image` (mario_image_generate — spends money, normal approval),
- * `mcode-schedule` (mario_schedule_*) and `mcode-wechat` (mario_wechat_notify)
+ * `mariocode-image` (mario_image_generate — spends money, normal approval),
+ * `mariocode-schedule` (mario_schedule_*) and `mariocode-wechat` (mario_wechat_notify)
  * — approval per builtinToolNeedsApproval (see canUseTool). Only the
  * servers whose switch is on this turn are built; descriptions come from
  * builtinToolSpecs.ts, implementations from main/tools. The generated image
@@ -683,7 +684,7 @@ async function buildBuiltinToolServers(flags: BuiltinToolFlags, sessionId: strin
 }
 
 /** canUseTool name → built-in tool id, for every server/tool pair we
- *  register (`mcp__mcode-web__mario_web_search` → `mario_web_search` …). Only
+ *  register (`mcp__mariocode-web__mario_web_search` → `mario_web_search` …). Only
  *  the exact pairs count: a tool name under the wrong server is not ours. */
 const BUILTIN_MCP_TOOL_IDS: ReadonlyMap<string, string> = new Map(
   (
@@ -718,12 +719,12 @@ const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 
 /** The MCP server name under which the browser tools are registered (via
  *  `createSdkMcpServer` below). The SDK surfaces each tool to canUseTool as
- *  `mcp__<server>__<tool>`, so the composed prefix is `mcp__mcode-browser__`. */
-const BROWSER_MCP_SERVER = "mcode-browser";
+ *  `mcp__<server>__<tool>`, so the composed prefix is `mcp__mariocode-browser__`. */
+const BROWSER_MCP_SERVER = MCP_RESERVED_NAME;
 const BROWSER_MCP_PREFIX = `mcp__${BROWSER_MCP_SERVER}__`;
 
 /** Read-only browser tools (can't mutate the page, navigate, or submit) —
- *  auto-approved in every mode, like the Pi provider's MCODE_BROWSER_READONLY
+ *  auto-approved in every mode, like the Pi provider's MARIOCODE_BROWSER_READONLY
  *  set. scroll/wait/find are pure reading aids; save_pdf writes only into the
  *  managed artifacts dir with sanitized names (same class as screenshot's
  *  best-effort save). The side-effecting navigate/click/type/keys/select/
@@ -741,7 +742,7 @@ const BROWSER_READONLY_SUFFIXES = new Set([
 ]);
 
 /** True for a canUseTool toolName that names one of our read-only browser MCP
- *  tools (i.e. `mcp__mcode-browser__browser_snapshot` etc). */
+ *  tools (i.e. `mcp__mariocode-browser__browser_snapshot` etc). */
 function isReadOnlyBrowserTool(toolName: string): boolean {
   if (!toolName.startsWith(BROWSER_MCP_PREFIX)) return false;
   return BROWSER_READONLY_SUFFIXES.has(toolName.slice(BROWSER_MCP_PREFIX.length));
@@ -958,11 +959,11 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     // version control.
     options.settings = { plansDirectory: ".claude/plans" };
 
-    // Always redirect the claude binary's user-level config root to Mcode's
-    // own directory (~/.mcode) via CLAUDE_CONFIG_DIR. This decouples Mcode from
+    // Always redirect the claude binary's user-level config root to MarioCode's
+    // own directory (~/.mariocode) via CLAUDE_CONFIG_DIR. This decouples MarioCode from
     // the user's Claude Code CLI installation: tools like "cc switch" that
-    // overwrite ~/.claude/settings.json no longer affect Mcode's turns, and
-    // user-level skills are loaded from ~/.mcode/skills/ (where Mcode's import
+    // overwrite ~/.claude/settings.json no longer affect MarioCode's turns, and
+    // user-level skills are loaded from ~/.mariocode/skills/ (where MarioCode's import
     // feature places them). Applied to BOTH the standard and custom-endpoint
     // paths so behavior is consistent.
     //
@@ -976,9 +977,9 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
       // require one want a stable id per conversation, not per request).
       options.env = await withEngineNetworkEnv(buildCustomEnv(req.apiConfig, { sessionId: req.sessionId }));
     } else {
-      // Standard Anthropic endpoint: still redirect the config root so Mcode
+      // Standard Anthropic endpoint: still redirect the config root so MarioCode
       // manages its own skills/settings, but no auth/model overrides needed.
-      options.env = await withEngineNetworkEnv({ ...process.env, CLAUDE_CONFIG_DIR: MCODE_CONFIG_DIR });
+      options.env = await withEngineNetworkEnv({ ...process.env, CLAUDE_CONFIG_DIR: MARIOCODE_CONFIG_DIR });
     }
 
     // Subagent model pin (per provider config, settings panel「模型配置」):
@@ -1015,10 +1016,10 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
 
     // NOTE: we do NOT set `settingSources` here. The default
     // ["user","project","local"] is safe because CLAUDE_CONFIG_DIR points at
-    // ~/.mcode - the cc-switch-controlled ~/.claude/settings.json is never
+    // ~/.mariocode - the cc-switch-controlled ~/.claude/settings.json is never
     // read (the config root moved). The "user" source now resolves to
-    // ~/.mcode/settings.json (which Mcode controls), and user-level skills
-    // under ~/.mcode/skills/ are discovered by the binary's auto-load. The
+    // ~/.mariocode/settings.json (which MarioCode controls), and user-level skills
+    // under ~/.mariocode/skills/ are discovered by the binary's auto-load. The
     // previous settingSources:["project","local"] workaround is no longer
     // needed and was actively harmful: it disabled user-level skill discovery.
 
@@ -1331,7 +1332,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
 
     // --- systemPrompt appends ---
     // (0) Claude identity: always appended (every platform, every turn) so the
-    //     model answers "who/what are you" by introducing itself as Mcode's
+    //     model answers "who/what are you" by introducing itself as MarioCode's
     //     assistant rather than a bare Claude CLI/API.
     // (1) Windows path hint: Claude's training data is saturated with
     //     WSL-style `/mnt/<drive>/...` paths; whether those actually resolve
@@ -1365,7 +1366,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     // --- In-process MCP server: browser tools ---
     // Exposes `browser_*` tools (navigate/snapshot/click/screenshot/list) as an
     // MCP server running in this process (no subprocess). The SDK surfaces each
-    // to canUseTool as `mcp__mcode-browser__<name>`; read-only tools are
+    // to canUseTool as `mcp__mariocode-browser__<name>`; read-only tools are
     // auto-approved (see shouldAutoApprove). Claude can't register custom tools
     // directly (unlike Pi's pi.registerTool), so an in-process MCP server is the
     // supported mechanism for same-process tool handlers. See sdk.d.ts
@@ -1373,7 +1374,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     //
     // The settings panel's MCP section gates this injection: when the built-in
     // server is disabled there, the turn runs without it. User-scope servers
-    // (~/.mcode/.claude.json mcpServers) need no injection here — the binary
+    // (~/.mariocode/.claude.json mcpServers) need no injection here — the binary
     // loads them via the "user" setting source; disabled ones are simply
     // absent from the file. Project .mcp.json servers are governed per-turn by
     // the explicit approval lists below, which replace the CLI's first-use
@@ -1439,7 +1440,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     // Output style (settings panel): same Settings-not-Options trap as the
     // MCP lists above. The CLI reads the style once at session start and has
     // no runtime switch control request, so the selection only shapes NEW
-    // turns — which is exactly the per-turn granularity Mcode wants (every
+    // turns — which is exactly the per-turn granularity MarioCode wants (every
     // turn is a fresh query). Never-configured (null) keeps the CLI default
     // and injects nothing.
     if (outputStyle) {
@@ -1452,7 +1453,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     // --- Synced external skills (TODO-004) ---
     // Synced skills ride the SDK's native plugins channel: the sync engine
     // materializes one local plugin dir per enabled source under
-    // ~/.mcode/skills-sync-plugins (manifest + skills/ copies), and the CLI
+    // ~/.mariocode/skills-sync-plugins (manifest + skills/ copies), and the CLI
     // engine assembles them per turn (zero host-side copying).
     // skipMcpDiscovery: these dirs carry skills only, never MCP servers.
     const syncPluginRoots = skillSyncPluginRootsSync();

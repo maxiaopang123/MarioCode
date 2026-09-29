@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { Dialog } from "@renderer/components/ui/index.js";
+import { Dialog, Hint } from "@renderer/components/ui/index.js";
 import { Button } from "@renderer/components/ui/index.js";
 import { cn } from "@renderer/lib/cn.js";
 import { IconCopy, IconDeviceMobile, IconRefresh, IconTrash, IconWifi, IconWorld } from "@renderer/lib/icons.js";
@@ -32,7 +32,7 @@ import { useI18n } from "@renderer/lib/i18n/index.js";
  *  shape; renders its own Dialog.Root so the sidebar only needs
  *  `<MobileConnectButton />`. When remote access (relay) is connected, an
  *  enabled indicator is shown on the right. */
-export function MobileConnectButton() {
+export function MobileConnectButton({ variant = "row" }: { variant?: "row" | "rail" } = {}) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   // Live relay status, so the button can show an "enabled" indicator when
@@ -79,6 +79,42 @@ export function MobileConnectButton() {
     };
   }, []);
 
+  const dialog = (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Portal>
+        <Dialog.Backdrop />
+        <Dialog.Popup className="w-[min(420px,92vw)] p-5">
+          <MobileConnectPanel open={open} />
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+
+  // Project-rail cell (界面焕新 v3): icon only; live activity shows as the
+  // rail's accent pip instead of the row's trailing chips.
+  if (variant === "rail") {
+    const hint =
+      t("layout.connectPhone") +
+      (activeCount > 0 ? ` · ${t("layout.activeDevices", { n: activeCount })}` : "") +
+      (relayConnected ? ` · ${t("layout.relayConnected")}` : "");
+    return (
+      <>
+        <Hint label={hint} side="right">
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            data-on={open ? "true" : undefined}
+            className="rail-btn grid place-items-center"
+          >
+            <IconDeviceMobile size={19} />
+            {(activeCount > 0 || relayConnected) && <i className="rail-pip" aria-hidden />}
+          </button>
+        </Hint>
+        {dialog}
+      </>
+    );
+  }
+
   return (
     <>
       <button
@@ -105,14 +141,7 @@ export function MobileConnectButton() {
           <IconWorld size={14} className="shrink-0 text-accent" title={t("layout.relayConnected")} />
         )}
       </button>
-      <Dialog.Root open={open} onOpenChange={setOpen}>
-        <Dialog.Portal>
-          <Dialog.Backdrop />
-          <Dialog.Popup className="w-[min(420px,92vw)] p-5">
-            <MobileConnectPanel open={open} />
-          </Dialog.Popup>
-        </Dialog.Portal>
-      </Dialog.Root>
+      {dialog}
     </>
   );
 }

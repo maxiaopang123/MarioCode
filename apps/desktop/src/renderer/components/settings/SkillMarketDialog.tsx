@@ -3,7 +3,7 @@
  *
  * Lists every market (builtin anthropics/skills + user-added git / local
  * sources) with the skills found in its materialized tree. Installing copies
- * the skill folder into ~/.mcode/skills (main side), after which the parent
+ * the skill folder into ~/.mariocode/skills (main side), after which the parent
  * panel refreshes its list via `onInstalled`.
  */
 import { useCallback, useEffect, useId, useMemo, useState } from "react";

@@ -282,10 +282,10 @@ class RelayManagerImpl {
       const socatPath = await execAsync(conn, "which socat 2>/dev/null");
       if (socatPath.trim()) {
         log.info("relay: using socat forwarder");
-        await execAsync(conn, "mkdir -p ~/.mcode");
+        await execAsync(conn, "mkdir -p ~/.mariocode");
         const cmd =
           `nohup socat TCP-LISTEN:${cfg.publicPort},fork,reuseaddr ` +
-          `TCP:127.0.0.1:${this.tunnelPort} >~/.mcode/forwarder.log 2>&1 &`;
+          `TCP:127.0.0.1:${this.tunnelPort} >~/.mariocode/forwarder.log 2>&1 &`;
         await execAsync(conn, cmd);
         // Verify it is actually LISTENING. A pgrep name match can hit a
         // stale forwarder, but a listener on a confirmed-free port can only
@@ -298,7 +298,7 @@ class RelayManagerImpl {
         const detail = await this.forwarderErrorDetail(conn);
         if (choice === "socat") {
           throw new Error(
-            `socat 转发器启动失败${detail ?? "，请登录 VPS 查看 ~/.mcode/forwarder.log"}`,
+            `socat 转发器启动失败${detail ?? "，请登录 VPS 查看 ~/.mariocode/forwarder.log"}`,
           );
         }
         log.warn(`relay: socat start failed (${detail ?? "no stderr"}), falling back to python3`);
@@ -320,12 +320,12 @@ class RelayManagerImpl {
 
     log.info("relay: using python3 forwarder");
     await this.uploadForwarderScript(conn);
-    const cmd = `nohup python3 ~/.mcode/forwarder.py ${cfg.publicPort} ${this.tunnelPort} >~/.mcode/forwarder.log 2>&1 &`;
+    const cmd = `nohup python3 ~/.mariocode/forwarder.py ${cfg.publicPort} ${this.tunnelPort} >~/.mariocode/forwarder.log 2>&1 &`;
     await execAsync(conn, cmd);
     if (!(await this.waitForPortState(conn, cfg.publicPort, 2500, true))) {
       const detail = await this.forwarderErrorDetail(conn);
       throw new Error(
-        `python3 转发器启动失败${detail ?? "，请登录 VPS 查看 ~/.mcode/forwarder.log"}`,
+        `python3 转发器启动失败${detail ?? "，请登录 VPS 查看 ~/.mariocode/forwarder.log"}`,
       );
     }
     this.setState({ forwarderType: "python3" });
@@ -389,7 +389,7 @@ class RelayManagerImpl {
    *  useful) — surfaced in start-failure errors so bind failures become
    *  diagnosable instead of vanishing into /dev/null. */
   private async forwarderErrorDetail(conn: Client): Promise<string | null> {
-    const tail = await execAsync(conn, `tail -c 300 ~/.mcode/forwarder.log 2>/dev/null`);
+    const tail = await execAsync(conn, `tail -c 300 ~/.mariocode/forwarder.log 2>/dev/null`);
     const text = tail.trim().replace(/\s+/g, " ").slice(0, 160);
     return text || null;
   }
@@ -399,13 +399,13 @@ class RelayManagerImpl {
     await new Promise<void>((resolveP, rejectP) => {
       conn.sftp((err: Error | undefined, sftp: SFTPWrapper) => {
         if (err) return rejectP(err);
-        // Ensure ~/.mcode/ exists.
-        sftp.mkdir(".mcode", (mkdirErr) => {
+        // Ensure ~/.mariocode/ exists.
+        sftp.mkdir(".mariocode", (mkdirErr) => {
           // EEXIST is fine.
           if (mkdirErr && (mkdirErr as NodeJS.ErrnoException).code !== "FAILURE") {
             // ignore — directory likely exists
           }
-          const remotePath = ".mcode/forwarder.py";
+          const remotePath = ".mariocode/forwarder.py";
           const stream = sftp.createWriteStream(remotePath, { mode: 0o755 });
           stream.on("error", rejectP);
           stream.on("close", () => resolveP());

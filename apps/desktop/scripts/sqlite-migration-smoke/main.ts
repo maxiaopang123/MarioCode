@@ -36,7 +36,7 @@ function ok(cond: boolean, label: string): void {
   console.log(`ok ${passed} - ${label}`);
 }
 
-const userData = join(tmpdir(), `mcode-sqlite-smoke-${Date.now()}`);
+const userData = join(tmpdir(), `mariocode-sqlite-smoke-${Date.now()}`);
 rmSync(userData, { recursive: true, force: true });
 mkdirSync(userData, { recursive: true });
 process.env.SMOKE_USER_DATA = userData;
@@ -181,7 +181,7 @@ const now = Date.now();
 const proj: Project = {
   id: "smoke-project",
   name: "Smoke Project",
-  path: "C:/tmp/mcode-smoke",
+  path: "C:/tmp/mariocode-smoke",
   archived: false,
   group: null,
   sortOrder: 99999,

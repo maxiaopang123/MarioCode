@@ -25,8 +25,8 @@
  * deliberate key rename.
  */
 
-const TOKEN_KEY = "mcode-web-token";
-const ENDPOINT_KEY = "mcode-web-endpoint";
+const TOKEN_KEY = "mariocode-web-token";
+const ENDPOINT_KEY = "mariocode-web-endpoint";
 
 /** How long to wait for the token probe before giving up and entering anyway. */
 const AUTH_CHECK_TIMEOUT_MS = 5000;

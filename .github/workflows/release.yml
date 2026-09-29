@@ -95,15 +95,15 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # node-pty is a native addon - rebuild it for the runner's Electron ABI
-      # before packaging so the .node binary matches. MCODE_ARCH tells the
+      # before packaging so the .node binary matches. MARIOCODE_ARCH tells the
       # rebuild script which arch to target (matches the runner's native arch
       # here, so install-app-deps and fix-node-pty-conpty both resolve the
       # correct arch-specific binaries).
       - name: Rebuild native modules
         shell: bash
         env:
-          MCODE_ARCH: ${{ matrix.arch }}
-        run: pnpm --filter @mcode/desktop rebuild:native
+          MARIOCODE_ARCH: ${{ matrix.arch }}
+        run: pnpm --filter @mariocode/desktop rebuild:native
 
       # Derive the release version from the git tag (e.g. "v0.1.4" -> "0.1.4")
       # and write it into the desktop package.json. electron-builder reads the
@@ -136,7 +136,7 @@ jobs:
         # Use bash on Windows too (the runner ships Git Bash) so the env vars
         # and any shell syntax in the package script work uniformly.
         shell: bash
-        run: pnpm --filter @mcode/desktop package
+        run: pnpm --filter @mariocode/desktop package
         env:
           # The renderer build (shiki's ~100 language grammar chunks +
           # monaco workers) peaks above Node's default 2GB heap on CI.

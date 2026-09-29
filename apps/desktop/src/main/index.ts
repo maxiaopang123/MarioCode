@@ -23,6 +23,7 @@ import { schedulerService } from "@main/scheduler/SchedulerService.js";
 import { clawBotService } from "@main/clawbot/ClawBotService.js";
 import { clawBotChatGateway } from "@main/clawbot/ClawBotChatGateway.js";
 import { setManagedRuntimeRoot } from "@main/runtimes/managedRuntimeRoots.js";
+import { warmRuntimeDiscovery } from "@main/runtimes/runtimeSelection.js";
 import { startSkillSyncEngine, setSkillSyncChangeListener } from "@main/lib/skillSync.js";
 import { startMcpSyncEngine, setMcpSyncChangeListener } from "@main/lib/mcpSync.js";
 import { join } from "node:path";
@@ -33,14 +34,14 @@ let clawBotQuitRequested = false;
 // App identity for OS-level surfaces (desktop notifications, taskbar grouping,
 // Windows AUMID). setName("MarioCode") makes the system notification card title
 // read "MarioCode" instead of the raw executable name ("electron" in dev, or
-// "@mcode/desktop" from package.json).
+// "@mariocode/desktop" from package.json).
 //
-// ⚠️ setName() ALSO changes the default userData path (%APPDATA%/<name>),
-// which would orphan the existing database + logs (they live under the legacy
-// Mcode directory). Packaged builds therefore pin userData to that exact
-// directory; development keeps Electron's existing path unchanged.
+// ⚠️ setName() ALSO changes the default userData path (%APPDATA%/<name>).
+// Packaged builds pin userData to %APPDATA%/MarioCode explicitly; development
+// keeps Electron's default (derived from the package name, @mariocode/desktop)
+// so dev and packaged data never mix.
 const prevUserData = app.isPackaged
-  ? join(app.getPath("appData"), "Mcode")
+  ? join(app.getPath("appData"), "MarioCode")
   : app.getPath("userData");
 app.setName("MarioCode");
 app.setPath("userData", prevUserData);
@@ -51,8 +52,7 @@ setManagedRuntimeRoot(join(app.getPath("userData"), "runtimes"));
 // Windows: AppUserModelId drives taskbar grouping + the AUMID the toast center
 // uses to attribute notifications. Harmless on macOS/Linux (ignored).
 if (process.platform === "win32") {
-  // Keep the existing OS identity; display branding is set independently above.
-  app.setAppUserModelId("Mcode");
+  app.setAppUserModelId("MarioCode");
 }
 
 // Global exception handlers — install BEFORE anything else. Without these, an
@@ -201,6 +201,10 @@ app.whenReady().then(async () => {
   // large module out of startup AND out of the first turn's send→first-reply
   // critical path. Fire-and-forget; failures surface on real first use.
   preloadClaudeSdk();
+
+  // Warm the local-install discovery cache so AUTO runtime mode can pick an
+  // existing claude/codex/pi install on the very first turn (fire-and-forget).
+  warmRuntimeDiscovery();
 
   // Start the auto-updater (no-op in dev; only active in packaged builds).
   // Fire-and-forget: the first check is delayed 10s anyway, and the updater

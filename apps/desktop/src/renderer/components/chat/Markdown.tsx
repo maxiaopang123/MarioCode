@@ -15,20 +15,32 @@
  * code-block HTML, which is produced from known content (the code text) and
  * is thus safe by construction.
  */
-import { memo, useState, useEffect, useMemo, useRef, useLayoutEffect, createContext, useContext } from "react";
+import { memo, useState, useMemo, useRef, useLayoutEffect, createContext, useContext } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
-import { IconCheck, IconChevronDown, IconChevronUp, IconCopy, IconLoader2 } from "@renderer/lib/icons.js";
+import { IconCheck, IconChevronDown, IconChevronUp, IconCopy } from "@renderer/lib/icons.js";
 import type { Components } from "react-markdown";
 import { codeCacheKey, getCodeHtml, setCodeHtml } from "@renderer/lib/markdownCache.js";
-import { fileHrefToPath, isAbsolutePath, isLocalFileHref } from "@renderer/lib/fileLink.js";
+import {
+  classifyInlinePath,
+  fileHrefToPath,
+  isAbsolutePath,
+  isLocalFileHref,
+  splitProsePaths,
+} from "@renderer/lib/fileLink.js";
+import { FileChip } from "./FileChip.js";
 import { resolveRelativePath } from "@renderer/lib/path.js";
-import { api } from "@renderer/lib/api.js";
 import { FileLink } from "./FileLink.js";
+import {
+  MarkdownGallery,
+  MarkdownLocalImage,
+  MarkdownRemoteImage,
+  isInlineImagePath,
+} from "./MarkdownImage.js";
 
 // ── Lazy highlighter singleton ────────────────────────────────────────
 // Initialised on first encounter of a fenced code block; kept alive for the
@@ -290,87 +302,85 @@ const MarkdownProjectContext = createContext<string | null>(null);
  */
 const MarkdownBaseDirContext = createContext<string | null>(null);
 
-/** data-URL cache for local images referenced by markdown. Promise-valued so
- *  concurrent renders of the same path share one IPC read; failures are
- *  cached too (as "") so a re-render doesn't spam the backend. FIFO-capped so
- *  a long session can't grow it unboundedly. Cached data URLs may go stale if
- *  the image file is rewritten in place — acceptable for a preview pane
- *  (re-opening the file reloads the pane but reuses bytes; remount of the app
- *  clears). */
-const mdImageDataUrls = new Map<string, Promise<string>>();
-const MD_IMAGE_CACHE_CAP = 60;
-
-function loadMarkdownImageDataUrl(filePath: string): Promise<string> {
-  const cached = mdImageDataUrls.get(filePath);
-  if (cached) return cached;
-  const promise = api.file
-    .readBinary({ filePath })
-    .then(({ dataUrl }) => dataUrl)
-    .catch(() => "");
-  mdImageDataUrls.set(filePath, promise);
-  if (mdImageDataUrls.size > MD_IMAGE_CACHE_CAP) {
-    const oldest = mdImageDataUrls.keys().next().value;
-    if (oldest !== undefined) mdImageDataUrls.delete(oldest);
-  }
-  return promise;
+/**
+ * Rehype plugin: group a run of 2+ images that share one paragraph into a
+ * gallery container.
+ *
+ * `![a](1.png) ![b](2.png) ![c](3.png)` on consecutive lines is ONE markdown
+ * paragraph, so without this the three pictures would flow as inline content
+ * of a `<p>` — three differently-sized boxes wrapping like words. Replacing
+ * that paragraph with `<div class="md-gallery">` lets the `div` override below
+ * mount a {@link MarkdownGallery}, which renders an equal-width tile grid and
+ * gives the lightbox ←/→ stepping across the whole run.
+ *
+ * Paragraphs that mix images with text are left alone — the text is part of the
+ * sentence and must keep flowing with the picture.
+ */
+function rehypeImageGallery() {
+  return function transformer(tree: HastNode) {
+    const walk = (node: HastNode) => {
+      if (!node.children) return;
+      for (const child of node.children) {
+        if (child.type !== "element") continue;
+        if (child.tagName === "p") {
+          const kids = child.children ?? [];
+          const significant = kids.filter(
+            (k) => !(k.type === "text" && (k.value ?? "").trim() === ""),
+          );
+          const images = significant.filter((k) => k.type === "element" && k.tagName === "img");
+          if (images.length >= 2 && images.length === significant.length) {
+            child.tagName = "div";
+            child.properties = { ...(child.properties ?? {}), className: ["md-gallery"] };
+            child.children = images;
+            continue; // images have no element children worth walking
+          }
+        }
+        walk(child);
+      }
+    };
+    walk(tree);
+  };
 }
 
-/**
- * Inline local image for markdown contexts that HAVE a base directory (the
- * IDE's .md preview). Loads bytes via `file.readBinary` (main-side path guard
- * applies) and renders a real `<img>` from a data: URL — the webview cannot
- * fetch drive-letter/relative URLs directly. Loading shows the alt text with
- * a spinner; a failed read (missing file / outside known roots) degrades to
- * the clickable file chip.
- */
-function MarkdownLocalImage({
-  filePath,
-  projectPath,
-  alt,
-}: {
-  filePath: string;
-  projectPath: string | null;
-  alt: string;
-}) {
-  // null = loading, "" = failed, otherwise a data: URL.
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    setDataUrl(null);
-    loadMarkdownImageDataUrl(filePath).then((url) => {
-      if (!cancelled) setDataUrl(url);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [filePath]);
+/** Elements whose text must never become a file chip. */
+const NO_PATH_CHIP_TAGS = new Set(["code", "pre", "a", "kbd", "script", "style"]);
 
-  if (dataUrl === null) {
-    return (
-      <span className="my-[var(--chat-md-gap-xs)] inline-flex items-center gap-1 align-middle text-content-subtle [font-size:var(--chat-fs-xs)]">
-        <IconLoader2 size={12} className="animate-spin" />
-        {alt}
-      </span>
-    );
-  }
-  if (!dataUrl) {
-    return (
-      <span className="my-[var(--chat-md-gap-xs)] inline-flex max-w-full items-center gap-1 rounded border border-edge/60 bg-surface-muted/60 px-1.5 py-0.5 align-middle text-content-muted [font-size:var(--chat-fs-xs)]">
-        <FileLink
-          token={filePath}
-          projectPath={projectPath}
-          display={alt ? <span className={LINK_CLASS}>{alt}</span> : undefined}
-        />
-      </span>
-    );
-  }
-  return (
-    <img
-      src={dataUrl}
-      alt={alt}
-      className="my-[var(--chat-md-gap-xs)] max-h-[420px] max-w-full rounded border border-edge/60 align-middle"
-    />
-  );
+/**
+ * Rehype plugin: file paths written in PLAIN prose become chips (TODO-022).
+ *
+ * Text nodes outside code / links are split by {@link splitProsePaths}; each
+ * path turns into an EMPTY `<span data-mc-path>` element that the `span`
+ * override below renders as a {@link FileChip}. The span carries the path as a
+ * property and has no text children, so later text-walking plugins (the skill
+ * highlighter matches `/name`, which a path like `src/pdf/x.ts` contains) have
+ * nothing to rewrite inside it.
+ */
+function rehypePathChips() {
+  return function transformer(tree: HastNode) {
+    const walk = (children: HastNode[]): HastNode[] => {
+      const out: HastNode[] = [];
+      for (const child of children) {
+        if (child.type === "text" && child.value) {
+          const segs = splitProsePaths(child.value);
+          if (!segs) {
+            out.push(child);
+            continue;
+          }
+          for (const s of segs) {
+            if (s.kind === "text") out.push({ type: "text", value: s.text });
+            else out.push({ type: "element", tagName: "span", properties: { dataMcPath: s.raw }, children: [] });
+          }
+          continue;
+        }
+        if (child.type === "element" && child.children && !NO_PATH_CHIP_TAGS.has(child.tagName ?? "")) {
+          child.children = walk(child.children);
+        }
+        out.push(child);
+      }
+      return out;
+    };
+    if (tree.children) tree.children = walk(tree.children);
+  };
 }
 
 /**
@@ -407,6 +417,15 @@ function buildComponents(): Components {
   // Inline code - styled inline, no highlighting needed.
   code({ className, children }) {
     const isInline = !isFencedCode(className);
+    const projectPath = useContext(MarkdownProjectContext);
+    const baseDir = useContext(MarkdownBaseDirContext);
+    // An inline span that is exactly a path renders as a file chip (TODO-022).
+    // Only in chat: the .md preview (baseDir set) is a document, where code
+    // spans are content the author formatted on purpose.
+    const pathToken = isInline && !baseDir ? classifyInlinePath(extractText(children)) : null;
+    if (pathToken) {
+      return <FileChip token={pathToken} projectPath={projectPath} />;
+    }
     if (isInline) {
       return (
         <code className="rounded border border-edge bg-surface-muted px-[5px] py-px font-mono [font-size:var(--chat-fs-xs)] [color:var(--code-fg)]">
@@ -585,12 +604,18 @@ function buildComponents(): Components {
     const raw = (src ?? "").trim();
     if (isLocalFileHref(raw)) {
       const path = fileHrefToPath(raw);
-      const absolute =
-        baseDir && !isAbsolutePath(path) ? resolveRelativePath(baseDir, path) : path;
-      if (baseDir) {
-        return (
-          <MarkdownLocalImage filePath={absolute} projectPath={projectPath ?? null} alt={alt ?? ""} />
-        );
+      // Relative refs resolve against the preview file's directory (.md
+      // preview) or, in chat, the session's project root — the model writes
+      // `![hero](outputs/splash/hero.png)` relative to the cwd it works in.
+      // Main's readBinary guard still refuses anything outside known roots.
+      const root = baseDir ?? projectPath;
+      const absolute = root && !isAbsolutePath(path) ? resolveRelativePath(root, path) : path;
+      // Inline the picture whenever we have an absolute path to a displayable
+      // format — chat included (TODO-022). A path we can't resolve (a relative
+      // ref with no root) or a format an <img> can't show keeps the clickable
+      // chip, which at least opens in the editor.
+      if (isAbsolutePath(absolute) && isInlineImagePath(absolute)) {
+        return <MarkdownLocalImage filePath={absolute} alt={alt ?? ""} />;
       }
       return (
         <span className="my-[var(--chat-md-gap-xs)] inline-flex max-w-full items-center gap-1 rounded border border-edge/60 bg-surface-muted/60 px-1.5 py-0.5 align-middle text-content-muted [font-size:var(--chat-fs-xs)]">
@@ -602,7 +627,33 @@ function buildComponents(): Components {
         </span>
       );
     }
+    // Remote picture: rendered as a placeholder with a load button. A bare
+    // <img src="https://…"> would be blocked by the window CSP anyway (and we
+    // do not want reading a reply to ping a host the model quoted).
+    if (/^https?:\/\//i.test(raw)) {
+      return <MarkdownRemoteImage src={raw} alt={alt ?? ""} />;
+    }
     return <img src={src} alt={alt ?? ""} />;
+  },
+  // Spans come from our own rehype plugins only (raw HTML is escaped): skill
+  // pills pass through untouched, `data-mc-path` spans become file chips.
+  span({ node, children, ...rest }) {
+    const projectPath = useContext(MarkdownProjectContext);
+    const raw = node?.properties?.dataMcPath;
+    if (typeof raw === "string") {
+      const token = classifyInlinePath(raw);
+      return token ? <FileChip token={token} projectPath={projectPath} /> : <>{raw}</>;
+    }
+    return <span {...rest}>{children}</span>;
+  },
+  // `div` only ever appears here because `rehypeImageGallery` created one (the
+  // markdown pipeline escapes raw HTML), so the className check is a safe way
+  // to mount the gallery provider.
+  div({ className, children }) {
+    if (typeof className === "string" && className.includes("md-gallery")) {
+      return <MarkdownGallery>{children}</MarkdownGallery>;
+    }
+    return <div className={className}>{children}</div>;
   },
   ul({ children }) {
     return <ul className="my-[var(--chat-md-gap-sm)] list-disc space-y-[var(--chat-md-gap-xs)] pl-5 text-content-muted marker:text-content-subtle">{children}</ul>;
@@ -696,10 +747,16 @@ export const Markdown = memo(function Markdown({
   // rehype-katex is always active; the skill-inline plugin is added only when
   // we have known skill names to highlight. Recreated when `skillRe` changes
   // (i.e. when the skills list updates), so react-markdown re-parses.
-  const rehypePlugins = useMemo(
-    () => (skillRe ? [rehypeKatex, rehypeSkillInline(skillRe)] : [rehypeKatex]),
-    [skillRe],
-  );
+  // Path chips run BEFORE the skill highlighter (so a path's `/segment` is
+  // never mistaken for a skill) and only in chat — the .md preview (baseDir
+  // set) is a document whose prose should stay prose.
+  const chatChips = !baseDir;
+  const rehypePlugins = useMemo(() => {
+    const list: NonNullable<Parameters<typeof ReactMarkdown>[0]["rehypePlugins"]> = [rehypeKatex, rehypeImageGallery];
+    if (chatChips) list.push(rehypePathChips);
+    if (skillRe) list.push(rehypeSkillInline(skillRe));
+    return list;
+  }, [skillRe, chatChips]);
   // Block margins + line-height here are density-driven (--chat-md-gap-* /
   // --chat-md-leading, see the chat-density section in styles.css) so the
   // 对话紧凑度 setting shapes the reply body itself, not just the gaps

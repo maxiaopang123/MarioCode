@@ -1,6 +1,6 @@
-# Mcode:我用三周,把 Claude Code 装进了一个真正的 IDE
+# MarioCode:我用三周,把 Claude Code 装进了一个真正的 IDE
 
-> 一句话:**Mcode**(*my* Code)是一个基于 Claude Agent SDK 打造的桌面端三栏 IDE。它不重新实现 agent,只把 Claude 该有的"工作面"全部补齐——文件能看能 diff、Git 能管多仓、终端能跨项目 keep-alive、浏览器能拾元素丢进对话。
+> 一句话:**MarioCode**(*my* Code)是一个基于 Claude Agent SDK 打造的桌面端三栏 IDE。它不重新实现 agent,只把 Claude 该有的"工作面"全部补齐——文件能看能 diff、Git 能管多仓、终端能跨项目 keep-alive、浏览器能拾元素丢进对话。
 
 ---
 
@@ -8,7 +8,7 @@
 
 Claude Code 的 CLI 已经很强,但你用着用着就会发现:它输出的 diff 你要在 VS Code 里看,`git diff` 你要在终端里再敲一遍,网页上有 bug 你得 `Cmd+Tab` 切到 Chrome 复制 HTML……
 
-所以就有了 Mcode。**Mcode = 三栏布局 + Claude Agent SDK + Monaco + xterm.js + WebContentsView**,把"AI × IDE"从口号落到产品默认值:每一步都**可观察、可审查、可逆**。
+所以就有了 MarioCode。**MarioCode = 三栏布局 + Claude Agent SDK + Monaco + xterm.js + WebContentsView**,把"AI × IDE"从口号落到产品默认值:每一步都**可观察、可审查、可逆**。
 
 下面这组数字,是写这篇介绍前我跑了一遍 `find` + `wc` 拿到的真实数据——
 
@@ -42,7 +42,7 @@ Claude Code 的 CLI 已经很强,但你用着用着就会发现:它输出的 dif
 > - **FileEditor.tsx**(942 行)——Monaco + 三态视图 + Diff 数据源路由都在它身上;
 > - **FileTree.tsx**(564 行)——把"reveal 跳转 + 拖拽到对话 + 上下文菜单"三件套全做了。
 
-数字背后的故事:**Mcode 没有用 monorepo 重型脚手架**(没有 Nx,只有 Turbo;没有 effect-ts、没有 bun),但**显式做了"跨进程契约"**(一个独立的 `@mcode/contracts` 包,96 个 IPC 全部走 zod 校验)。**这是这个项目能"小而完整"的关键——下面你会看到这条主线反复出现**。
+数字背后的故事:**MarioCode 没有用 monorepo 重型脚手架**(没有 Nx,只有 Turbo;没有 effect-ts、没有 bun),但**显式做了"跨进程契约"**(一个独立的 `@mariocode/contracts` 包,96 个 IPC 全部走 zod 校验)。**这是这个项目能"小而完整"的关键——下面你会看到这条主线反复出现**。
 
 ---
 
@@ -61,11 +61,11 @@ Claude Code 的 CLI 已经很强,但你用着用着就会发现:它输出的 dif
 - **配置/数据**:`.json` `.yaml` `.toml` `.ini` `.sql` `.dockerfile`
 - **Shell / 文档**:`.sh` `.bash` `.zsh` `.md`
 
-**没匹配上?** 自动 fallback 到 `plaintext`,Monaco 不会拒绝渲染——很多 IDE 看到 `.xyz` 就甩你一脸空白,Mcode 不干这事。
+**没匹配上?** 自动 fallback 到 `plaintext`,Monaco 不会拒绝渲染——很多 IDE 看到 `.xyz` 就甩你一脸空白,MarioCode 不干这事。
 
 ### 2.2 三态视图:同一个文件,在不同场景下"该以什么形态出现"是个真问题
 
-文件编辑器最容易被忽视的设计,就是"**当前这个文件,你到底想看什么?**"Mcode 用一个三态机解决:
+文件编辑器最容易被忽视的设计,就是"**当前这个文件,你到底想看什么?**"MarioCode 用一个三态机解决:
 
 | 状态 | 触发 | 作用 |
 |---|---|---|
@@ -108,17 +108,17 @@ Claude Code 的 CLI 已经很强,但你用着用着就会发现:它输出的 dif
 
 ## 三、Git 面板:多仓 + AI 写 message + AI 解冲突
 
-`GitPanel.tsx` 只有 169 行,但它"挂"着一张 **1,568 行的 `GitRepoCard.tsx`**——这是全场最重的单文件,也是 Mcode 在 Git 模块下功夫最多的地方。
+`GitPanel.tsx` 只有 169 行,但它"挂"着一张 **1,568 行的 `GitRepoCard.tsx`**——这是全场最重的单文件,也是 MarioCode 在 Git 模块下功夫最多的地方。
 
 ### 3.1 多仓库自动发现
 
 一个项目根目录下经常是 monorepo + 子模块 + 嵌套工程,传统的 Git 工具只盯着根 `.git` 显然不够。
 
-Mcode 的做法是:
+MarioCode 的做法是:
 
 - `findGitRepos` 从项目根向下扫 3 层,自动跳过 `node_modules` / `dist` / `build` / `.next` / `.cache` / `.turbo` / `coverage` / `__pycache__` / `.venv` / `target` / `out`……
 - 每仓渲染成一张独立的 `GitRepoCard`,**多仓并存、互不干扰**;
-- 走的是 `simple-git` 包装的系统 `git` CLI,**认证完全交给用户现有配置**(SSH Key / 凭据管理器 / GCM),Mcode 自己不碰任何凭据;
+- 走的是 `simple-git` 包装的系统 `git` CLI,**认证完全交给用户现有配置**(SSH Key / 凭据管理器 / GCM),MarioCode 自己不碰任何凭据;
 - 右上角"重新扫描"按钮,clone 新仓后一键拉起。
 
 ### 3.2 单仓工作流:五层信息一目了然
@@ -182,7 +182,7 @@ Mcode 的做法是:
 
 ### 4.2 跨项目 Keep-Alive:切换项目,后台 PTY 不死
 
-这一条是 Mcode 的**关键技术决策**:
+这一条是 MarioCode 的**关键技术决策**:
 
 > Terminal 的 state 存在 `useRef` 而**不是 React state**。
 
@@ -226,13 +226,13 @@ pty.write(normalized);
 
 ## 五、写在最后:把"AI × IDE"做对到底有多难
 
-Mcode 想表达的事情其实很简单:
+MarioCode 想表达的事情其实很简单:
 
 > **AI 不应该住在终端里**,它应该住在和编辑器、文件、Git、终端、浏览器同一层 UI 里,而且每一步都**可观察、可审查、可逆**。
 
 文件改了能 diff、提交信息可以让 AI 起草但仍要你确认、冲突可以让 AI 解但文件仍由你审、终端可以让快捷命令一键复用但跑的还是你 shell、网页元素可以一键交给 Claude 但选择权在你手上。
 
-为了把这个原则做到底,Mcode 在表面下还做了不少"看起来无聊但缺它就崩"的事:
+为了把这个原则做到底,MarioCode 在表面下还做了不少"看起来无聊但缺它就崩"的事:
 
 - **IPC 全部 zod 校验**——96 个 handler 在主进程入口先 parse,所有错误以 `{ ok: false, error }` 形态返回,**绝不把异常抛进渲染进程**;
 - **Path 守卫**——`isKnownProjectPath` / `findContainingProject` 在 file / git / lsp / browser 四个域共用,被入侵的渲染层也指不动进程去读任意目录;
@@ -259,7 +259,7 @@ pnpm build                  # electron-vite
 pnpm package                # macOS dmg/zip + Windows nsis -> apps/desktop/release/
 ```
 
-预编译二进制发布在 [GitHub Releases](https://github.com/huangbh2020/mcode/releases)(macOS `.dmg` arm64+x64、Windows `.exe` x64)。因未做付费代码签名,首次启动会有 Gatekeeper / SmartScreen 拦截,README 中给了完整处理方式(macOS 右键打开、macOS 26+ 系统设置放行、`xattr -dr com.apple.quarantine` 终端命令、`brew install --cask mcode`)。
+预编译二进制发布在 [GitHub Releases](https://github.com/maxiaopang123/MarioCode/releases)(macOS `.dmg` arm64+x64、Windows `.exe` x64)。因未做付费代码签名,首次启动会有 Gatekeeper / SmartScreen 拦截,README 中给了完整处理方式(macOS 右键打开、macOS 26+ 系统设置放行、`xattr -dr com.apple.quarantine` 终端命令、`brew install --cask mariocode`)。
 
 ---
 

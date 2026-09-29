@@ -17,6 +17,8 @@ import type {
 import type { TurnFileEntry } from "@renderer/lib/turnFiles.js";
 import type { ContentTag } from "@renderer/lib/contentTag.js";
 import { isValidSnapshot } from "@renderer/lib/contextWindow.js";
+import { dropGenTimer, finishTurn, noteDelta, noteToolUse } from "@renderer/lib/genTimer.js";
+import type { TurnGenRecord } from "@renderer/lib/sessionMetrics.js";
 import { getLastCursor, type NavEntry } from "@renderer/lib/editorNav.js";
 import { disposeModel, getDisplayedPath } from "@renderer/lib/editorModelCache.js";
 import type { CustomModelPublic } from "@contracts/customModel";
@@ -568,7 +570,7 @@ export interface GitDiffDialogTab {
 /** Composer working-environment choice (the chip above the textarea). The
  *  two worktree forms differ ONLY in what materialization creates — a
  *  detached checkout ("wt-detached", experimental verification) or a
- *  generated `mcode/*` branch ("wt-branch", real feature work). Also the
+ *  generated `mariocode/*` branch ("wt-branch", real feature work). Also the
  *  persisted string format of settings key `session.worktreeDefault`. */
 export type EnvChoice = "local" | "wt-detached" | "wt-branch";
 
@@ -981,7 +983,7 @@ export interface SessionState {
   permissionMode: PermissionMode;
   /** Default working environment for NEW sessions: "local" (project root),
    *  "wt-detached" (isolated detached checkout — experimental verification)
-   *  or "wt-branch" (isolated checkout on a generated `mcode/*` branch —
+   *  or "wt-branch" (isolated checkout on a generated `mariocode/*` branch —
    *  real feature work). The worktree materializes on the first turn.
    *  Persisted (settings key `session.worktreeDefault`, same three-value
    *  strings) so the choice sticks across restarts. Flipping the chip while
@@ -1099,6 +1101,19 @@ export interface SessionState {
    *  + a session total. Ephemeral (not persisted): a restart starts empty,
    *  same as todos/subagents. */
   usageHistoryBySession: Record<string, TurnUsageRecord[]>;
+
+  /** Per-turn GENERATION time (ms the model spent streaming, tools excluded),
+   *  appended at turn.done in the same order as `usageHistoryBySession` so the
+   *  two pair up from the end. Feeds the tok/s readouts; measured in the
+   *  renderer because the providers only report whole-turn duration
+   *  (see lib/genTimer.ts + lib/sessionMetrics.ts). Ephemeral. */
+  turnGenBySession: Record<string, TurnGenRecord[]>;
+
+  /** Bumped when something outside the chat stream asks the 「本会话」 float to
+   *  expand (the composer's metrics group). A nonce rather than a boolean: the
+   *  float owns its own folded state and only needs the "open now" edge. */
+  sessionFloatOpenNonce: number;
+  openSessionFloat: () => void;
   /** Per-session pending AskUserQuestion. Keyed by sessionId so a
    *  question popping up in tab B doesn't clobber tab A's. The sessionId
    *  lives on the inner record for cross-checking at render time.
@@ -2760,6 +2775,9 @@ function dropSessionBuckets(s: SessionState, id: string) {
   delete contextSnapshotBySession[id];
   const usageHistoryBySession = { ...s.usageHistoryBySession };
   delete usageHistoryBySession[id];
+  const turnGenBySession = { ...s.turnGenBySession };
+  delete turnGenBySession[id];
+  dropGenTimer(id);
   const pendingPlanApprovalBySession = { ...s.pendingPlanApprovalBySession };
   delete pendingPlanApprovalBySession[id];
   const planDrawerPlanBySession = { ...s.planDrawerPlanBySession };
@@ -2797,6 +2815,7 @@ function dropSessionBuckets(s: SessionState, id: string) {
     chatElementQueueBySession,
     contextSnapshotBySession,
     usageHistoryBySession,
+    turnGenBySession,
     pendingPlanApprovalBySession,
     planDrawerPlanBySession,
     planTabActiveBySession,
@@ -4367,9 +4386,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // Persisted under `ui.tabBarMultiRow`; init() overwrites from the DB.
   // Default false = the classic single scrolling row.
   tabBarMultiRow: false,
-  // Left-bar view: classic project tree is the default; init() overwrites
-  // from the persisted ui.leftBarMode preference.
-  leftBarMode: "tree",
+  // Left-bar view: the v3 session stream (project rail + session column) is
+  // the default; the classic project tree stays as the fallback view.
+  // init() overwrites from the persisted ui.leftBarMode preference.
+  leftBarMode: "stream",
   // UI theme style (orthogonal to light/dark). Default "classic"; init()
   // overwrites from the persisted ui.themeStyle preference.
   themeStyle: "classic",
@@ -4502,6 +4522,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   subagentTranscriptsBySession: {},
   contextSnapshotBySession: {},
   usageHistoryBySession: {},
+  turnGenBySession: {},
+  sessionFloatOpenNonce: 0,
   pendingQuestionBySession: {},
   pendingApprovals: [],
   pendingPlanApprovalBySession: {},
@@ -5982,6 +6004,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   /** See the interface doc. Callers must NOT prune a session with a running
    *  turn (its event stream and turn.done persistence read messagesBySession)
    *  — the single-mode eviction driver in ChatColumn guards that. */
+  openSessionFloat: () => set((s) => ({ sessionFloatOpenNonce: s.sessionFloatOpenNonce + 1 })),
+
   pruneSessionHistory: (sessionId) => {
     set((s) => {
       const messagesBySession = { ...s.messagesBySession };
@@ -5998,6 +6022,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       delete turnFilesBySession[sessionId];
       const usageHistoryBySession = { ...s.usageHistoryBySession };
       delete usageHistoryBySession[sessionId];
+      const turnGenBySession = { ...s.turnGenBySession };
+      delete turnGenBySession[sessionId];
+      dropGenTimer(sessionId);
       const subagentTranscriptsBySession = { ...s.subagentTranscriptsBySession };
       delete subagentTranscriptsBySession[sessionId];
       return {
@@ -6008,6 +6035,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         historyLoadedBySession,
         turnFilesBySession,
         usageHistoryBySession,
+        turnGenBySession,
         subagentTranscriptsBySession,
       };
     });
@@ -7794,6 +7822,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           } else {
             deltaBuf.set(key, { sessionId: sid, messageId: e.messageId, segs: [{ k: "text", text: e.text }] });
           }
+          // Generation-time clock for the tok/s readouts (module-level, no
+          // store write per delta — see lib/genTimer.ts).
+          noteDelta(sid);
           scheduleDeltaFlush();
           // Don't add to `next` — flushDeltas mutates the store directly.
           break;
@@ -7806,10 +7837,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           } else {
             deltaBuf.set(key, { sessionId: sid, messageId: e.messageId, segs: [{ k: "thinking", text: e.text }] });
           }
+          noteDelta(sid);
           scheduleDeltaFlush();
           break;
         }
         case "tool.use": {
+          // The model stops emitting while a tool runs — close the generation
+          // run so tool time never counts as generation time.
+          noteToolUse(sid);
           // messageId path: the event carries the owning message (pi: the
           // PiMessageAdapter forwards the narration messageId snapshot at
           // toolcall_start; claude: the SdkMessageAdapter reuses the
@@ -8159,6 +8194,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
                 ? s.subagentsBySession
                 : { ...s.subagentsBySession, [sid]: [] },
               usageHistoryBySession: { ...s.usageHistoryBySession, [sid]: history },
+              // Generation time of the turn just closed, appended in the same
+              // order as `history` so sessionSpeed() can pair them from the
+              // end. Session-lifetime only (not persisted): speed is a "how
+              // did it feel just now" number, not an archive.
+              turnGenBySession: {
+                ...s.turnGenBySession,
+                [sid]: [...(s.turnGenBySession[sid] ?? []), { endedAt: Date.now(), genMs: finishTurn(sid) }].slice(-200),
+              },
               ...(rowsUsagePatch ?? {}),
             };
           });

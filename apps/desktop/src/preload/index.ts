@@ -291,6 +291,14 @@ const api = {
   /** Filesystem operations for the IDE right panel + diff rendering. Every
    *  path must resolve inside a known project root (main enforces this);
    *  read/list degrade to empty on refusal or failure, write returns ok:false. */
+  /** Network reads performed BY MAIN on the renderer's behalf, so the window's
+   *  CSP never has to allow a remote origin. */
+  net: {
+    /** Fetch a remote image and hand it back as a data URL (reply 加载图片). */
+    fetchImage: ((input) =>
+      ipcRenderer.invoke(IPC.NET_FETCH_IMAGE, input)) as RpcMap["net.fetchImage"],
+  },
+
   file: {
     readFile: ((input) =>
       ipcRenderer.invoke(IPC.FILE_READ, input)) as RpcMap["file.readFile"],
@@ -506,7 +514,7 @@ const api = {
   pickFiles: ((input) =>
     ipcRenderer.invoke(IPC.DIALOG_PICK_FILES, input)) as RpcMap["dialog.pickFiles"],
 
-  /** Skill discovery + management. `list` scans ~/.mcode/skills + the active
+  /** Skill discovery + management. `list` scans ~/.mariocode/skills + the active
    *  project's .claude/skills; read/save/delete operate on a single skill.
    *  scanSources/import support importing skills from external tools. */
   skills: {
@@ -846,10 +854,10 @@ contextBridge.exposeInMainWorld("api", api);
 // Explicit Electron marker — read by renderer/lib/platform.ts to pick the
 // desktop vs. web shell. Deliberately NOT derived from UA: Electron-based
 // third-party webviews (which have no preload) would otherwise be mis-classed
-// as the desktop shell. Only a real Mcode window (with this preload) carries
+// as the desktop shell. Only a real MarioCode window (with this preload) carries
 // the marker, and it's set before any page script runs, so the check is
 // immune to module-evaluation order.
-contextBridge.exposeInMainWorld("mcodeElectron", true);
+contextBridge.exposeInMainWorld("mariocodeElectron", true);
 
 // Type declaration so the renderer sees `window.api`.
 export type Api = typeof api;

@@ -37,13 +37,44 @@ import { useI18n } from "@renderer/lib/i18n/index.js";
  *  is session-only (hydrate ignores a persisted "browser" value so the browser
  *  never auto-opens at boot). The browser tab shows a badge with the open-tab
  *  count. */
-export function RightPanel() {
+/** Wide-panel (3:7) mode toggle — hide the left sidebar + center editor and
+ *  split the workspace into this right panel (7/10) + the chat column
+ *  (3/10). Maximize when entering, minimize (restore) when already wide. */
+function WideToggle() {
+  const { t } = useI18n();
+  const widePanelOpen = useSessionStore((s) => s.widePanelOpen);
+  const setWidePanelOpen = useSessionStore((s) => s.setWidePanelOpen);
+  const overrides = useSessionStore((s) => s.shortcutOverrides);
+  const a = resolveShortcut("layout.toggle-wide-panel", overrides);
+  const hint = a ? ` (${acceleratorToDisplayString(a)})` : "";
+  return (
+    <Hint label={(widePanelOpen ? t("layout.exitWideMode") : t("layout.wideMode")) + hint}>
+      <button
+        type="button"
+        aria-pressed={widePanelOpen}
+        onClick={() => setWidePanelOpen(!widePanelOpen)}
+        className={cn(
+          "ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors",
+          widePanelOpen
+            ? "bg-surface-hover text-content"
+            : "text-content-subtle hover:bg-surface-hover hover:text-content",
+        )}
+      >
+        {widePanelOpen ? (
+          <IconArrowsMinimize size={15} className="shrink-0" />
+        ) : (
+          <IconArrowsMaximize size={15} className="shrink-0" />
+        )}
+      </button>
+    </Hint>
+  );
+}
+
+export function RightPanel({ legacyTabs = false }: { legacyTabs?: boolean } = {}) {
   const { t } = useI18n();
   const tab = useSessionStore((s) => s.rightPanelTab);
   const setTab = useSessionStore((s) => s.setRightPanelTab);
   const browserTabCount = useSessionStore((s) => s.browserTabCount);
-  const widePanelOpen = useSessionStore((s) => s.widePanelOpen);
-  const setWidePanelOpen = useSessionStore((s) => s.setWidePanelOpen);
 
   // Append the effective shortcut for a command's tooltip (same pattern as the
   // Titlebar's hintFor; cheap - a handful of lookups per render).
@@ -59,11 +90,42 @@ export function RightPanel() {
     setTab(tab === "browser" ? "files" : "browser");
   };
 
+  // v3: the tab switcher lives in the vertical ToolStrip beside this card;
+  // the header only names the active pane (+ the project it shows) and keeps
+  // the wide-mode toggle. The legacy segmented header remains available via
+  // `legacyTabs` for surfaces that mount the panel without the strip.
+  const activeProjectName = useSessionStore((s) => {
+    const pid = s.activeProjectId;
+    return pid ? s.projects.find((p) => p.id === pid)?.name ?? null : null;
+  });
+  const title =
+    tab === "files"
+      ? t("layout.tabFiles")
+      : tab === "git"
+        ? "Git"
+        : tab === "browser"
+          ? t("layout.tabBrowser")
+          : tab === "turns"
+            ? t("layout.tabTurns")
+            : t("layout.tabSideChat");
+
   return (
     <div className="flex h-full flex-col">
-      {/* Tab header — always visible, docked at the panel's top edge. The
-          selected tab is the raised segment; like every selection outside
-          the prototype's accent list it stays neutral. */}
+      {!legacyTabs && (
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-edge pl-3.5 pr-2">
+          <span className="shrink-0 text-[13px] font-semibold text-content">{title}</span>
+          {activeProjectName && (tab === "files" || tab === "git") && (
+            <span className="min-w-0 truncate text-[12px] text-content-subtle">{activeProjectName}</span>
+          )}
+          {tab === "browser" && browserTabCount > 0 && (
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent/15 px-1 text-[11px] font-semibold leading-none text-accent-strong">
+              {browserTabCount}
+            </span>
+          )}
+          <WideToggle />
+        </div>
+      )}
+      {legacyTabs && (
       <div className="rp-tabs flex shrink-0 items-center gap-1 border-b border-edge p-2 [font-size:var(--rp-fs-sm)]">
         <div role="tablist" className="flex shrink-0 items-center rounded-lg bg-surface-muted p-0.5">
           <PanelTab
@@ -106,36 +168,9 @@ export function RightPanel() {
             extra
           />
         </div>
-        {/* Wide-panel (3:7) mode - hide the left sidebar + center editor and
-            split the workspace into this right panel (7/10) + the chat column
-            (3/10). Toggled here, via the command palette / shortcut, or the
-            titlebar back button. Maximize when entering, minimize (restore)
-            when already wide — the standard expand/collapse pair. */}
-        <Hint
-          label={
-            (widePanelOpen ? t("layout.exitWideMode") : t("layout.wideMode")) +
-            hintFor("layout.toggle-wide-panel")
-          }
-        >
-          <button
-            type="button"
-            aria-pressed={widePanelOpen}
-            onClick={() => setWidePanelOpen(!widePanelOpen)}
-            className={cn(
-              "ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
-              widePanelOpen
-                ? "bg-surface-hover text-content"
-                : "text-content-subtle hover:bg-surface-hover hover:text-content",
-            )}
-          >
-            {widePanelOpen ? (
-              <IconArrowsMinimize size={14} className="shrink-0" />
-            ) : (
-              <IconArrowsMaximize size={14} className="shrink-0" />
-            )}
-          </button>
-        </Hint>
+        <WideToggle />
       </div>
+      )}
 
       {/* Main panel area — must NOT scroll itself (children own height /
           overflow). Renders the panel matching the active tab. The browser

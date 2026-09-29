@@ -4,7 +4,7 @@ const path = require("path");
 const initSqlJs = require("sql.js");
 
 async function main() {
-  const dbPath = path.join(process.env.APPDATA, "@mcode", "desktop", "claude-gui.db");
+  const dbPath = path.join(process.env.APPDATA, "@mariocode", "desktop", "claude-gui.db");
   const SQL = await initSqlJs();
   const db = new SQL.Database(fs.readFileSync(dbPath));
 

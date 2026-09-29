@@ -1,95 +1,166 @@
-import { useSessionStore } from "@renderer/stores/sessionStore.js";
+/**
+ * StatusBar — the global status bar along the window's bottom edge (界面焕新
+ * v3). GLOBAL facts only; per-session numbers (context, cache, speed) live
+ * inside each session (composer / activity cluster), never here:
+ *
+ *   ● Claude 就绪 · 3 个引擎   ⊕ 跟随系统代理   ◌ 1 个运行中
+ *                                  ⚠ 3 个等你处理   今日 1.2M tokens · $3.18   ⏰ 定时 2
+ *
+ * Proxy status, today's usage and the scheduled-task count come from IPC
+ * (network.proxyStatus / usage.stats{today} / scheduler.list) and refresh on
+ * window focus, when a turn ends, and every 60s — cheap local reads.
+ */
+import { memo, useCallback, useEffect, useState } from "react";
+import { IconAlertTriangle, IconCalendar, IconCoins, IconLoader2, IconWorld } from "@renderer/lib/icons.js";
 import { cn } from "@renderer/lib/cn.js";
-import {
-  IconShield,
-  IconShieldCheck,
-  IconShieldHalfFilled,
-  IconShieldLock,
-} from "@renderer/lib/icons.js";
+import { api } from "@renderer/lib/api.js";
+import { isElectron } from "@renderer/lib/platform.js";
+import { jumpToNextAttention, useAttention } from "@renderer/lib/attention.js";
+import { useSessionStore } from "@renderer/stores/sessionStore.js";
+import { useI18n } from "@renderer/lib/i18n/index.js";
+import type { NetworkProxyStatus } from "@contracts/ipc";
 
-/** Bottom status bar: claude status, active model/effort/mode, run state.
- * Mirrors the per-session settings chosen in the composer so they're always
- * visible at a glance. */
-const MODEL_LABEL: Record<string, string> = {
-  default: "Auto",
-  fable: "Fable",
-  opus: "Opus",
-  sonnet: "Sonnet",
-};
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
 
-/** Icon name → component for the permission chip (shared with the composer
- *  dropdown's icon map; kept in sync with the claude capabilities declaration
- *  in ClaudeAgentSdkProvider). */
-const MODE_ICONS: Record<string, React.ReactNode> = {
-  shield: <IconShield size={11} />,
-  shieldCheck: <IconShieldCheck size={11} />,
-  shieldHalf: <IconShieldHalfFilled size={11} />,
-  shieldLock: <IconShieldLock size={11} />,
-};
+const ITEM = "flex h-full shrink-0 items-center gap-1.5 whitespace-nowrap px-1.5";
 
-export function StatusBar() {
-  // Per-thread running flag: the bottom bar should show "working" only when
-  // the *currently active* thread has a turn in flight. A background turn in
-  // another thread is invisible here (the user can check via LeftBar later).
-  const isRunning = useSessionStore((s) =>
-    s.activeSessionId ? !!s.runningBySession[s.activeSessionId] : false,
-  );
+function StatusBarBase() {
+  const { t } = useI18n();
   const installed = useSessionStore((s) => s.claudeInstalled);
-  const model = useSessionStore((s) => s.model);
-  const customModelId = useSessionStore((s) => s.customModelId);
-  const customModels = useSessionStore((s) => s.customModels);
-  const effort = useSessionStore((s) => s.effort);
-  const permissionMode = useSessionStore((s) => s.permissionMode);
-  const providerId = useSessionStore((s) => s.providerId);
   const providers = useSessionStore((s) => s.providers);
+  const runningBySession = useSessionStore((s) => s.runningBySession);
+  const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
+  const attention = useAttention();
+  const runningCount = Object.values(runningBySession).filter(Boolean).length;
 
-  const statusColor = installed === false ? "text-danger" : installed === true ? "text-accent" : "text-content-subtle";
-  const statusText = installed === false ? "claude not found" : installed === true ? "claude ready" : "checking claude…";
+  const [proxy, setProxy] = useState<NetworkProxyStatus | null>(null);
+  const [today, setToday] = useState<{ tokens: number; cost: number } | null>(null);
+  const [scheduled, setScheduled] = useState<number | null>(null);
 
-  // When a custom config is active, qualify the model label with the config name,
-  // so the bar doesn't misleadingly show the same "Sonnet" for both built-in and
-  // custom endpoints.
-  const activeCustom = customModelId ? customModels.find((m) => m.id === customModelId) : undefined;
-  const modelLabel = activeCustom
-    ? `${activeCustom.name} · ${MODEL_LABEL[model] ?? model}`
-    : MODEL_LABEL[model] ?? model;
+  const refresh = useCallback(() => {
+    if (!isElectron) return;
+    api.network.proxyStatus().then(setProxy, () => setProxy(null));
+    api.usage.stats({ preset: "today" }).then(
+      (r) => setToday({ tokens: r.summary.totalTokens, cost: r.summary.costUsd }),
+      () => setToday(null),
+    );
+    api.scheduler.list().then(
+      (r) => setScheduled(r.tasks.filter((x) => x.enabled).length),
+      () => setScheduled(null),
+    );
+  }, []);
 
-  // Resolve the current mode's label/color/icon from the active provider's
-  // declared permissionModes. Unknown values (e.g. pi has no permission modes,
-  // or a persisted dontAsk) fall back to the raw string + neutral shield.
-  const provider = providers.find((p) => p.id === providerId);
-  const modeMeta = provider?.capabilities.permissionModes?.find((m) => m.value === permissionMode);
-  const modeColor = modeMeta?.color ?? "";
-  const modeIcon = (modeMeta?.icon && MODE_ICONS[modeMeta.icon]) || <IconShield size={11} />;
+  // Refresh on mount, on focus, every 60s, and when the running count drops
+  // (a turn just ended → today's usage moved).
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [refresh]);
+  useEffect(() => {
+    refresh();
+  }, [runningCount, refresh]);
+
+  const engineDot =
+    installed === false ? "bg-danger" : installed === true ? "bg-accent" : "bg-content-subtle/60";
+  const engineText =
+    installed === false
+      ? t("layout.status.claudeMissing")
+      : installed === true
+        ? t("layout.status.claudeReady")
+        : t("layout.status.claudeChecking");
+
+  const proxyText = proxy
+    ? proxy.mode === "direct"
+      ? t("layout.status.proxyDirect")
+      : proxy.mode === "custom"
+        ? t("layout.status.proxyCustom")
+        : t("layout.status.proxySystem")
+    : null;
 
   return (
-    <footer className="flex h-6 shrink-0 items-center gap-3 border-t border-edge bg-surface px-3 text-[11px] text-content-subtle">
-      <span className={statusColor}>●</span>
-      <span className={installed === false ? "text-danger" : ""}>{statusText}</span>
-
-      <span className="text-content-subtle">·</span>
-      <span className="text-content-muted">{modelLabel}</span>
-      {effort !== "default" && <span className="text-info">{effort}</span>}
-      <span className="text-content-subtle">·</span>
-      <span
-        className={cn(
-          "inline-flex items-center gap-1",
-          modeColor || "text-content-muted",
-        )}
+    <footer
+      aria-label={t("layout.status.aria")}
+      className="flex h-[26px] shrink-0 items-center border-t border-edge bg-surface-base px-2 text-[11.5px] text-content-subtle"
+    >
+      <button
+        type="button"
+        onClick={() => setSettingsOpen(true, "runtimes")}
+        className={cn(ITEM, "rounded hover:text-content")}
+        title={providers.map((p) => p.displayName).join(" · ") || undefined}
       >
-        <span className="shrink-0 opacity-90">{modeIcon}</span>
-        {modeMeta?.label ?? permissionMode}
-      </span>
+        <i className={cn("h-1.5 w-1.5 rounded-full", engineDot)} aria-hidden />
+        {engineText}
+        {providers.length > 0 && (
+          <span className="text-content-subtle/80">· {t("layout.status.engines", { n: providers.length })}</span>
+        )}
+      </button>
 
-      <div className="flex-1" />
+      {proxyText && (
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true, "network")}
+          className={cn(ITEM, "rounded hover:text-content")}
+          title={proxy?.proxyUrl ? t("layout.status.proxyVia", { url: proxy.proxyUrl }) : undefined}
+        >
+          <IconWorld size={12} className="shrink-0" />
+          {proxyText}
+        </button>
+      )}
 
-      {isRunning && (
-        <span className="flex items-center gap-1 text-warning">
-          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
-          working
+      {runningCount > 0 && (
+        <span className={cn(ITEM, "text-accent-strong")}>
+          <IconLoader2 size={11} className="shrink-0 animate-spin" />
+          {t("layout.status.running", { n: runningCount })}
         </span>
       )}
-      {!isRunning && <span className="text-content-subtle">ready</span>}
+
+      <span className="flex-1" />
+
+      {attention.length > 0 && (
+        <button
+          type="button"
+          onClick={jumpToNextAttention}
+          className={cn(ITEM, "rounded font-medium text-warning hover:brightness-110")}
+          title={t("lib.commands.nextAttention")}
+        >
+          <IconAlertTriangle size={12} className="shrink-0" />
+          {t("layout.status.waiting", { n: attention.length })}
+        </button>
+      )}
+
+      {today && today.tokens > 0 && (
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true, "usage")}
+          className={cn(ITEM, "rounded tabular-nums hover:text-content")}
+          title={t("layout.status.todayTitle")}
+        >
+          <IconCoins size={12} className="shrink-0" />
+          {t("layout.status.today", { tokens: fmtTokens(today.tokens), cost: `$${today.cost.toFixed(2)}` })}
+        </button>
+      )}
+
+      {scheduled != null && scheduled > 0 && (
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true, "scheduled-tasks")}
+          className={cn(ITEM, "rounded hover:text-content")}
+        >
+          <IconCalendar size={12} className="shrink-0" />
+          {t("layout.status.scheduled", { n: scheduled })}
+        </button>
+      )}
     </footer>
   );
 }
+
+export const StatusBar = memo(StatusBarBase);

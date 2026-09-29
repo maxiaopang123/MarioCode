@@ -13,6 +13,7 @@ import {
 } from "@contracts/ipc";
 import type { SharedProviderPublic } from "@contracts/sharedProvider";
 import { api } from "@renderer/lib/api.js";
+import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { useI18n, type MessageId } from "@renderer/lib/i18n/index.js";
 import { Button, Input, Select, Switch } from "@renderer/components/ui/index.js";
 import { PanelHeader } from "./PanelHeader.js";
@@ -61,6 +62,10 @@ const WECHAT_STATUS: Record<WechatToolStatus, MessageId> = {
   error: "settings.builtinTools.wechatStatus.error",
 };
 
+/** One entry of the image-model picker: a shared provider's model marked
+ *  生图, or the synthetic "value configured before the marker existed". */
+type ImageModelOption = { id: string; label?: string; imageGeneration?: boolean };
+
 const RESULT_COUNTS = [3, 5, 8, 10];
 const FETCH_CHARS = [3000, 5000, 8000, 12000, 20000];
 const IMAGE_SIZES = ["1024x1024", "1536x1024", "1024x1536", "1792x1024", "1024x1792", "auto"];
@@ -72,7 +77,7 @@ function isKeyed(backend: WebSearchBackend): backend is WebSearchKeyedBackend {
 /**
  * Settings → MarioTool: the mario_web_search / mario_web_fetch and mario_image_generate tools
  * MarioCode registers on all three engines, plus the agent browser tools
- * (browser_*; switch = the MCP row mcode-browser) and the shared tool output
+ * (browser_*; switch = the MCP row mariocode-browser) and the shared tool output
  * folder. Search defaults to keyless Bing
  * (Baidu too); optional keyed search APIs take the user's key, which goes
  * main-side only and comes back as a presence flag. Image generation reuses a
@@ -90,6 +95,8 @@ export function BuiltinToolsPanel() {
   const [justSaved, setJustSaved] = useState(false);
   const [searchKeyDraft, setSearchKeyDraft] = useState("");
   const [modelDraft, setModelDraft] = useState("");
+  /** Escape hatch: type a model id the provider's list doesn't offer. */
+  const [manualModel, setManualModel] = useState(false);
   const [testQuery, setTestQuery] = useState("MarioCode");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<BuiltinToolsTestSearchResult | null>(null);
@@ -143,6 +150,40 @@ export function BuiltinToolsPanel() {
 
   const sourceLabel = (value: string): string =>
     providers.find((p) => p.id === value)?.name ?? t("settings.builtinTools.imageSourceNone");
+
+  /* ── Image model picker (TODO-024 ①) ──
+   * Candidates come from the shared providers' own model lists: the ones the
+   * user marked 生图 in 设置 → 模型配置 (`SharedProviderModel.imageGeneration`).
+   * The marker drives THIS LIST ONLY — main still accepts any non-empty model
+   * id, so a hand-typed value configured before the marker existed keeps
+   * working. Hence the synthetic "current value" option and the manual escape
+   * hatch: switching to a picker must never silently blank a live config. */
+  const markedModelsOf = (providerId: string): ImageModelOption[] =>
+    providers.find((p) => p.id === providerId)?.models.filter((m) => m.imageGeneration) ?? [];
+  const markedProviders = providers.filter((p) => p.models.some((m) => m.imageGeneration));
+  // Keep the configured provider selectable even if none of its models carry
+  // the marker (same reason as above).
+  const sourceOptions = providers.filter(
+    (p) => p.models.some((m) => m.imageGeneration) || p.id === config.image.source,
+  );
+  const markedModels = markedModelsOf(config.image.source);
+  const currentUnmarked = !!config.image.model && !markedModels.some((m) => m.id === config.image.model);
+  const modelOptions: ImageModelOption[] = currentUnmarked
+    ? [...markedModels, { id: config.image.model }]
+    : markedModels;
+  const modelLabel = (value: string): string => {
+    if (!value) return t("settings.builtinTools.imageModelPick");
+    const hit = modelOptions.find((m) => m.id === value);
+    return hit?.label?.trim() || value;
+  };
+  /** Switching provider must not leave a model id from the previous one. */
+  const pickSource = (next: string) => {
+    const marked = markedModelsOf(next);
+    const model = marked.some((m) => m.id === config.image.model)
+      ? config.image.model
+      : marked[0]?.id ?? "";
+    patchConfig((c) => ({ ...c, image: { ...c.image, source: next, model } }));
+  };
 
   return (
     <section className="mx-auto w-full max-w-3xl space-y-4">
@@ -293,15 +334,29 @@ export function BuiltinToolsPanel() {
           title={t("settings.builtinTools.imageSource")}
           desc={t("settings.builtinTools.imageSourceDesc")}
           descExtra={
-            providersLoaded && providers.length === 0 ? (
+            !providersLoaded ? undefined : providers.length === 0 ? (
               <p className="text-[0.7857em] text-warning">{t("settings.builtinTools.imageNoProviders")}</p>
+            ) : markedProviders.length === 0 ? (
+              // Providers exist but nothing is marked 生图 (the discovery
+              // dialog leaves that chip off by default), so point at where the
+              // marker lives instead of showing an empty picker.
+              <p className="text-[0.7857em] text-content-subtle">
+                {t("settings.builtinTools.imageNoMarkedModels")}{" "}
+                <button
+                  type="button"
+                  onClick={() => useSessionStore.getState().setSettingsOpen(true, "custom-models")}
+                  className="text-accent-strong underline-offset-2 hover:underline"
+                >
+                  {t("settings.builtinTools.imageGoModelConfig")}
+                </button>
+              </p>
             ) : undefined
           }
         >
           <Select.Root
             value={config.image.source}
-            disabled={providers.length === 0}
-            onValueChange={(v) => patchConfig((c) => ({ ...c, image: { ...c.image, source: v as string } }))}
+            disabled={sourceOptions.length === 0}
+            onValueChange={(v) => pickSource(v as string)}
           >
             <Select.Trigger className="w-full">
               <Select.Value>{(val: string) => sourceLabel(val)}</Select.Value>
@@ -310,7 +365,7 @@ export function BuiltinToolsPanel() {
               <Select.Positioner>
                 <Select.Popup>
                   <Select.List>
-                    {providers.map((p) => (
+                    {sourceOptions.map((p) => (
                       <Select.Item key={p.id} value={p.id}>
                         <Select.ItemText>{p.name}</Select.ItemText>
                       </Select.Item>
@@ -323,17 +378,63 @@ export function BuiltinToolsPanel() {
         </SettingRow>
 
         <SettingRow title={t("settings.builtinTools.imageModel")} desc={t("settings.builtinTools.imageModelDesc")}>
-          <Input
-            value={modelDraft}
-            onChange={(e) => setModelDraft((e.target as HTMLInputElement).value)}
-            onBlur={saveModel}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") saveModel();
-            }}
-            placeholder="gpt-image-1"
-            spellCheck={false}
-            className="w-full font-mono"
-          />
+          <div className="flex w-full flex-col gap-1.5">
+            {manualModel ? (
+              <Input
+                value={modelDraft}
+                onChange={(e) => setModelDraft((e.target as HTMLInputElement).value)}
+                onBlur={saveModel}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveModel();
+                }}
+                placeholder="gpt-image-1"
+                spellCheck={false}
+                className="w-full font-mono"
+              />
+            ) : (
+              <Select.Root
+                value={config.image.model}
+                disabled={modelOptions.length === 0}
+                onValueChange={(v) => patchConfig((c) => ({ ...c, image: { ...c.image, model: v as string } }))}
+              >
+                <Select.Trigger className="w-full">
+                  <Select.Value>{(val: string) => modelLabel(val)}</Select.Value>
+                </Select.Trigger>
+                <Select.Portal>
+                  <Select.Positioner>
+                    <Select.Popup>
+                      <Select.List>
+                        {modelOptions.map((m) => (
+                          <Select.Item key={m.id} value={m.id}>
+                            <Select.ItemText>
+                              {m.label?.trim() || m.id}
+                              {!m.imageGeneration && ` · ${t("settings.builtinTools.imageModelUnmarked")}`}
+                            </Select.ItemText>
+                          </Select.Item>
+                        ))}
+                      </Select.List>
+                    </Select.Popup>
+                  </Select.Positioner>
+                </Select.Portal>
+              </Select.Root>
+            )}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.7143em] text-content-subtle">
+              <button
+                type="button"
+                onClick={() => {
+                  setModelDraft(config.image.model);
+                  setManualModel(!manualModel);
+                }}
+                className="underline-offset-2 hover:text-content hover:underline"
+              >
+                {t(manualModel ? "settings.builtinTools.imageModelUsePicker" : "settings.builtinTools.imageModelManual")}
+              </button>
+              {!manualModel && modelOptions.length === 0 && config.image.source && (
+                <span>{t("settings.builtinTools.imageModelNoneForSource")}</span>
+              )}
+              {currentUnmarked && <span>{t("settings.builtinTools.imageModelUnmarkedNote")}</span>}
+            </div>
+          </div>
         </SettingRow>
 
         <SettingRow title={t("settings.builtinTools.imageSize")} desc={t("settings.builtinTools.imageSizeDesc")}>

@@ -2,12 +2,12 @@
  * MCP 服务器管理面板 — Settings 页 "MCP" 菜单。
  *
  * 列出三类 MCP server 并提供开关 / 新增 / 删除 / 导入:
- *  - 用户级:`~/.mcode/.claude.json` 的 mcpServers(所有项目可用,由 claude
+ *  - 用户级:`~/.mariocode/.claude.json` 的 mcpServers(所有项目可用,由 claude
  *    binary 自动加载)。关闭 = 配置移出文件暂存到 settings 表;开启 = 移回。
  *  - 项目级:所选项目根的 `.mcp.json`(只读,不写项目文件)。默认关闭——
  *    面板开关替代 CLI 的首次审批弹窗;每轮 startTurn 由 provider 按允许名单
  *    传 enabled/disabledMcpjsonServers。
- *  - 内置:进程内 mcode-browser server(应用内浏览器工具)。
+ *  - 内置:进程内 mariocode-browser server(应用内浏览器工具)。
  *
  * 改动自下一轮对话起生效(startTurn 每轮重建 options);仅 Claude 会话生效,
  * Pi 会话使用扩展机制,不受此面板影响。
@@ -668,7 +668,7 @@ export function McpPanel() {
             {t("settings.mcp.deleteDescPre")}
             {pendingDelete?.name}
             {t("settings.mcp.deleteDescMid")}
-            <code className="rounded bg-surface-muted px-0.5">~/.mcode/.claude.json</code>
+            <code className="rounded bg-surface-muted px-0.5">~/.mariocode/.claude.json</code>
             {t("settings.mcp.deleteDescPost")}
           </>
         }
@@ -926,7 +926,7 @@ function AddServerDialog({
           <Dialog.Title className="px-4 pt-4">{t("settings.mcp.addTitle")}</Dialog.Title>
           <Dialog.Description className="px-4 pt-1">
             {t("settings.mcp.addDescPre")}
-            <code className="rounded bg-surface-muted px-0.5">~/.mcode/.claude.json</code>
+            <code className="rounded bg-surface-muted px-0.5">~/.mariocode/.claude.json</code>
             {t("settings.mcp.addDescPost")}
           </Dialog.Description>
           <Dialog.Close />

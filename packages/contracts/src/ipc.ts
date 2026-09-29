@@ -140,11 +140,10 @@ export const UI_FONT_FAMILY_SETTING_KEY = "ui.uiFontFamily";
 export const UPDATE_STATE_SETTING_KEY = "update.state";
 
 /**
- * Master switch for auto-update. Kept off because the release feed (`publish`
- * in apps/desktop/electron-builder.yml) and the About / update-card release
- * links still point at upstream M Code (huangbh2020/mcode), whose higher
- * version numbers would "update" MarioCode into M Code. Point them at
- * MarioCode's own releases before turning this back on.
+ * Master switch for auto-update. The release feed (`publish` in
+ * apps/desktop/electron-builder.yml) and the About / update-card release links
+ * point at MarioCode's own repo (maxiaopang123/MarioCode). Kept off until that
+ * repo publishes its first Release with latest*.yml assets.
  */
 export const AUTO_UPDATE_ENABLED: boolean = false;
 
@@ -399,13 +398,13 @@ export interface BuiltinToolsState {
   config: BuiltinToolsConfig;
   webToolsEnabled: boolean;
   imageToolEnabled: boolean;
-  /** Agent browser tools (browser_*; Claude MCP server mcode-browser).
+  /** Agent browser tools (browser_*; Claude MCP server mariocode-browser).
    *  Same flag as the MCP page row — `!McpManagementState.browserDisabled`. */
   browserToolsEnabled: boolean;
-  /** mario_schedule_* (Claude MCP server mcode-schedule) —
+  /** mario_schedule_* (Claude MCP server mariocode-schedule) —
    *  `!McpManagementState.scheduleToolsDisabled`. */
   scheduleToolsEnabled: boolean;
-  /** mario_wechat_notify (Claude MCP server mcode-wechat) switch —
+  /** mario_wechat_notify (Claude MCP server mariocode-wechat) switch —
    *  `!McpManagementState.wechatToolDisabled`. It registers only once
    *  ClawBot has been bound (see wechatStatus). */
   wechatToolEnabled: boolean;
@@ -814,10 +813,10 @@ export const UI_ACCENT_COLOR_SETTING_KEY = "ui.accentColor";
  * Setting key under which the user's per-mode editor color-scheme choice is
  * persisted. Value is a JSON object `{ "dark": "<id>", "light": "<id>" }` with
  * one Monaco scheme id per app theme — the ids name themes registered by the
- * renderer's lib/editorThemes.ts (mcode-dark, mcode-one-dark, …), so the ids
+ * renderer's lib/editorThemes.ts (mariocode-dark, mariocode-one-dark, …), so the ids
  * are only meaningful renderer-side; the store validates them on hydrate and
  * falls back to the defaults on any unknown value. Missing/empty = defaults
- * (the "Mcode" pair: chrome mirroring the app tokens, stock token palettes).
+ * (the "MarioCode" pair: chrome mirroring the app tokens, stock token palettes).
  */
 export const UI_EDITOR_THEME_SETTING_KEY = "ui.editorTheme";
 
@@ -1084,7 +1083,7 @@ export const StartSessionSchema = z.object({
    *  behind. Only meaningful for kind="chat". */
   envMode: z.enum(["local", "worktree"]).optional(),
   /** Worktree FORM for envMode="worktree": "branch" materializes on a
-   *  generated `mcode/*` branch (durable named commits — feature work),
+   *  generated `mariocode/*` branch (durable named commits — feature work),
    *  "detached" (default) keeps the classic detached checkout (experimental
    *  verification). Ignored for local sessions. */
   wtStyle: z.enum(["detached", "branch"]).optional(),
@@ -2020,6 +2019,21 @@ export const FileReadBinarySchema = z.object({
 });
 export type FileReadBinaryInput = z.infer<typeof FileReadBinarySchema>;
 
+/** Fetch a REMOTE image (http/https) in the main process and return it as a
+ *  `data:` URL (TODO-022, 回复里的网络图片).
+ *
+ *  Why main and not the `<img>` itself: the renderer's CSP is
+ *  `img-src 'self' data:` and stays that way, so no third-party origin can
+ *  ever load into the app window; and the fetch only happens when the user
+ *  clicks 「加载图片」, so merely reading a reply never pings a host the model
+ *  quoted. Main enforces http(s)-only, a size cap and an `image/*`
+ *  content-type, and returns `{ dataUrl: "", error }` instead of throwing. */
+export const NetFetchImageSchema = z.object({
+  /** Absolute http(s) URL. Any other scheme is refused. */
+  url: z.string(),
+});
+export type NetFetchImageInput = z.infer<typeof NetFetchImageSchema>;
+
 /** Open the OS file dialog for image selection and return the files as base64.
  *  Main reads the files itself (the renderer can't read arbitrary paths under
  *  contextIsolation). A user-driven dialog is explicit consent, so no
@@ -2702,7 +2716,7 @@ export interface GitWorktreeInfo {
   /** Abbreviated HEAD commit hash (merge-back source; empty when missing). */
   head: string;
   /** Checked-out branch short name; "" for detached worktrees. Populated for
-   *  branch-style worktrees (generated `mcode/*` refs). */
+   *  branch-style worktrees (generated `mariocode/*` refs). */
   branch: string;
   /** True for the repository's main worktree (the original checkout). */
   main: boolean;
@@ -2787,7 +2801,7 @@ export interface GitWorktreeRemoveResult {
   /** Absolute path of the exported patch, when exportPatch was requested
    *  and succeeded. */
   patchPath?: string;
-  /** Set when the worktree ran on a generated `mcode/*` branch that could
+  /** Set when the worktree ran on a generated `mariocode/*` branch that could
    *  NOT be auto-deleted (typically a forced removal of an unmerged tree —
    *  `git branch -d` refuses, by design). The branch is RETAINED as the
    *  recovery path for the discarded commits; surface it to the user. */
@@ -2838,7 +2852,7 @@ export interface SkillInfo {
 
 /** List skills for a project root. `projectPath` must match a persisted
  * Project.path (main cross-checks, same containment guard as file ops); it is
- * optional — when omitted, only the user-global root (~/.mcode/skills) is
+ * optional — when omitted, only the user-global root (~/.mariocode/skills) is
  * scanned (the settings panel's "no projects yet" state still lists global
  * skills). */
 export const SkillsListSchema = z.object({
@@ -2904,7 +2918,7 @@ export type SkillsDeleteInput = z.infer<typeof SkillsDeleteSchema>;
  *  The settings panel's "Import" feature scans external skill directories
  *  (Claude Code ~/.claude/skills, Codex ~/.codex/skills, Zcode ~/.agents/skills
  *  + ~/.zcode/skills + plugin cache) and lets the user pick which skills to
- *  copy into Mcode's own global skills dir (~/.mcode/skills). This makes
+ *  copy into MarioCode's own global skills dir (~/.mariocode/skills). This makes
  *  user-level skills available even under custom endpoints, where the SDK
  *  normally can't load them from ~/.claude/skills. */
 
@@ -2914,7 +2928,7 @@ export type SkillsDeleteInput = z.infer<typeof SkillsDeleteSchema>;
 export type SkillTool = "claude-code" | "codex" | "zcode" | "local";
 
 /** A skill discovered in an external tool's skill directory, available for
- *  import into Mcode's own ~/.mcode/skills. Carries the source directory's
+ *  import into MarioCode's own ~/.mariocode/skills. Carries the source directory's
  *  absolute path so the import handler can copy it without re-resolving. */
 export interface ExternalSkillInfo {
   /** Skill name (from frontmatter, falling back to directory name). */
@@ -2948,17 +2962,17 @@ export type SkillsScanSourcesInput = z.infer<typeof SkillsScanSourcesSchema>;
 
 /** A single skill to import: the source directory OR single file (from a scan
  *  result) and the name to use as the destination directory under
- *  ~/.mcode/skills. The name is validated per-item by the handler (regex),
+ *  ~/.mariocode/skills. The name is validated per-item by the handler (regex),
  *  not here — one un-importable skill must not reject the whole batch. */
 export const SkillsImportItemSchema = z.object({
   /** Absolute path to the source skill directory or file (from a scanSources
    *  result). */
   sourcePath: z.string(),
-  /** Destination skill name (directory name under ~/.mcode/skills). */
+  /** Destination skill name (directory name under ~/.mariocode/skills). */
   name: z.string().min(1),
 });
 
-/** Import (copy) selected skills from external tools into ~/.mcode/skills.
+/** Import (copy) selected skills from external tools into ~/.mariocode/skills.
  *  Skills that already exist at the destination are skipped (not overwritten).
  *  Returns per-skill success/skip/error so the UI can report precisely. */
 export const SkillsImportSchema = z.object({
@@ -2971,7 +2985,7 @@ export type SkillsImportInput = z.infer<typeof SkillsImportSchema>;
  *  can attach external skill directories (Claude Code ~/.claude/skills,
  *  Codex ~/.codex/skills, Zcode ~/.agents/skills, or any picked folder) as
  *  SYNC sources. Each enabled source is mirrored by copy into
- *  ~/.mcode/skills-sync/<sourceKey>/ and followed in real time (fs.watch);
+ *  ~/.mariocode/skills-sync/<sourceKey>/ and followed in real time (fs.watch);
  *  the composer `/` menu scans that mirror as an additional root. Sync is
  *  one-way (source → mirror); the mirror directory is managed by the app
  *  and must not be hand-edited. */
@@ -3034,8 +3048,8 @@ export type SkillsSyncRescanInput = z.infer<typeof SkillsSyncRescanSchema>;
 /* ── Skill marketplace (settings panel, TODO-020) ──
  *  A "market" is a git repo (https) or a local directory whose tree contains
  *  SKILL.md-bearing folders. The tree is materialized under
- *  ~/.mcode/skill-market/<id>/; installing copies one skill folder into
- *  ~/.mcode/skills so all three engines load it on the next turn. */
+ *  ~/.mariocode/skill-market/<id>/; installing copies one skill folder into
+ *  ~/.mariocode/skills so all three engines load it on the next turn. */
 
 /** Setting key: JSON array of user-added market records `{id,name,url,addedAt}`.
  *  Builtin markets are never stored — they are always present. */
@@ -3053,7 +3067,7 @@ export interface SkillMarketEntry {
   description: string;
   /** Posix path relative to the market tree root: the dir containing SKILL.md. */
   relPath: string;
-  /** True when ~/.mcode/skills/<name> already exists. */
+  /** True when ~/.mariocode/skills/<name> already exists. */
   installed: boolean;
 }
 
@@ -3102,7 +3116,7 @@ export type SkillMarketInstallInput = z.infer<typeof SkillMarketInstallSchema>;
  *  ~/.codex/config.toml, Cursor ~/.cursor/mcp.json, Zcode ~/.zcode/mcp.json)
  *  as SYNC sources. The engine reads each source file (read-only — never
  *  written), normalizes every recognized server into McpServerConfig and
- *  mirrors the set into ~/.mcode/.claude.json's `mcpServers`, so the Claude
+ *  mirrors the set into ~/.mariocode/.claude.json's `mcpServers`, so the Claude
  *  binary loads them directly and the Codex config.toml materialization
  *  picks them up from the same place. Sync is one-way (source → mirror);
  *  removing a source retracts the entries it synced in; entries the user
@@ -3199,7 +3213,7 @@ export type McpSyncRescanInput = z.infer<typeof McpSyncRescanSchema>;
  * Setting key under which the selected output style name is persisted.
  * Value = the exact style name the CLI matches on: a built-in id
  * ("default" | "Explanatory" | "Learning" | "Proactive" | "Concise") or the
- * frontmatter `name` of a custom style in ~/.mcode/output-styles/*.md.
+ * frontmatter `name` of a custom style in ~/.mariocode/output-styles/*.md.
  * Empty/null = never configured → nothing injected (CLI default behavior).
  */
 export const AGENT_OUTPUT_STYLE_SETTING_KEY = "agent.outputStyle";
@@ -3218,7 +3232,7 @@ export interface OutputStyleEntry {
 }
 
 /** List selectable output styles (built-ins gated by the bundled CLI version
- *  + user styles scanned from ~/.mcode/output-styles). */
+ *  + user styles scanned from ~/.mariocode/output-styles). */
 export const OutputStyleListSchema = z.object({});
 export type OutputStyleListInput = z.infer<typeof OutputStyleListSchema>;
 
@@ -3228,7 +3242,7 @@ export type OutputStyleListInput = z.infer<typeof OutputStyleListSchema>;
  *  MarioCode identity section. Two scopes:
  *   - global: persisted in the settings table under
  *     AGENT_SYSTEM_PROMPT_GLOBAL_SETTING_KEY (plain text, read per turn);
- *   - project: a markdown file at `<project>/.mcode/prompt.md`, read per
+ *   - project: a markdown file at `<project>/.mariocode/prompt.md`, read per
  *     turn from the session's cwd (a worktree checkout falls back to the
  *     project root when the file is not part of the checkout).
  *  Changes apply on the NEXT turn (same contract as output style / MCP). */
@@ -3238,21 +3252,21 @@ export type OutputStyleListInput = z.infer<typeof OutputStyleListSchema>;
 export const AGENT_SYSTEM_PROMPT_GLOBAL_SETTING_KEY = "agent.systemPrompt.global";
 
 /** Project-scope prompt file, relative to the project root. */
-export const PROJECT_SYSTEM_PROMPT_RELATIVE_PATH = ".mcode/prompt.md";
+export const PROJECT_SYSTEM_PROMPT_RELATIVE_PATH = ".mariocode/prompt.md";
 
 /** Hard cap per scope (characters). The panel refuses longer text; the
  *  per-turn loader truncates externally edited files at the same bound so a
  *  runaway file can't swallow the context window. */
 export const SYSTEM_PROMPT_MAX_CHARS = 20000;
 
-/** Read `<projectPath>/.mcode/prompt.md`. Missing file → `exists: false`,
+/** Read `<projectPath>/.mariocode/prompt.md`. Missing file → `exists: false`,
  *  empty content. */
 export const SystemPromptReadProjectSchema = z.object({
   projectPath: z.string().min(1),
 });
 export type SystemPromptReadProjectInput = z.infer<typeof SystemPromptReadProjectSchema>;
 
-/** Write `<projectPath>/.mcode/prompt.md` (creating `.mcode/`). Whitespace-only
+/** Write `<projectPath>/.mariocode/prompt.md` (creating `.mariocode/`). Whitespace-only
  *  content deletes the file instead so an emptied editor leaves no stub. */
 export const SystemPromptWriteProjectSchema = z.object({
   projectPath: z.string().min(1),
@@ -3296,7 +3310,7 @@ export interface SystemPromptPreviewResult {
 /* ── MCP management (settings panel) ──
  *  The settings panel's "MCP" section lists three MCP server sources and lets
  *  the user toggle, add, remove and import them:
- *   - user scope: the `mcpServers` object of ~/.mcode/.claude.json — Mcode's
+ *   - user scope: the `mcpServers` object of ~/.mariocode/.claude.json — MarioCode's
  *     redirected Claude config root (CLAUDE_CONFIG_DIR). The claude binary
  *     loads these automatically (settingSources default includes "user"), so
  *     the file is the source of truth; disabling a server moves its config
@@ -3308,7 +3322,7 @@ export interface SystemPromptPreviewResult {
  *     replaces it: project servers default to OFF and are recorded here when
  *     explicitly enabled; the provider passes per-turn
  *     enabledMcpjsonServers / disabledMcpjsonServers accordingly.
- *   - builtin: the in-process "mcode-browser" server injected by the Claude
+ *   - builtin: the in-process "mariocode-browser" server injected by the Claude
  *     provider each turn; toggling gates that injection. */
 
 /** Setting key for the persisted MCP management state.
@@ -3347,16 +3361,16 @@ export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
 /** Persisted MCP management state (MCP_MANAGEMENT_SETTING_KEY). */
 export interface McpManagementState {
-  /** Built-in mcode-browser server disabled. Absent/false = enabled. */
+  /** Built-in mariocode-browser server disabled. Absent/false = enabled. */
   browserDisabled?: boolean;
-  /** Built-in mario_web_search / mario_web_fetch (mcode-web) disabled. Absent/false = enabled. */
+  /** Built-in mario_web_search / mario_web_fetch (mariocode-web) disabled. Absent/false = enabled. */
   webToolsDisabled?: boolean;
-  /** Built-in mario_image_generate (mcode-image) disabled. Absent/false = enabled
+  /** Built-in mario_image_generate (mariocode-image) disabled. Absent/false = enabled
    *  (it still registers only once an image model is configured). */
   imageToolDisabled?: boolean;
-  /** Built-in mario_schedule_* (mcode-schedule) disabled. Absent/false = enabled. */
+  /** Built-in mario_schedule_* (mariocode-schedule) disabled. Absent/false = enabled. */
   scheduleToolsDisabled?: boolean;
-  /** Built-in mario_wechat_notify (mcode-wechat) disabled. Absent/false = enabled
+  /** Built-in mario_wechat_notify (mariocode-wechat) disabled. Absent/false = enabled
    *  (it still registers only once ClawBot has been bound). */
   wechatToolDisabled?: boolean;
   /** User-scope servers the user turned OFF. Their full configs are stashed
@@ -3371,7 +3385,7 @@ export interface McpManagementState {
   projectEnabled?: Array<{ projectPath: string; name: string }>;
 }
 
-/** Which source a listed MCP server comes from. "builtin" = one of Mcode's
+/** Which source a listed MCP server comes from. "builtin" = one of MarioCode's
  *  in-process servers (browser / web / image / schedule / wechat). */
 export type McpScope = "user" | "project" | "builtin";
 
@@ -3460,13 +3474,13 @@ export type McpUnauthorizeInput = McpAuthorizeInput;
 const MCP_NAME_RE = /^[A-Za-z0-9_-]+$/;
 
 /** Reserved server name — collides with the built-in in-process server. */
-export const MCP_RESERVED_NAME = "mcode-browser";
+export const MCP_RESERVED_NAME = "mariocode-browser";
 /** The built-in mario_web_search / mario_web_fetch server and the mario_image_generate server. */
-export const MCP_WEB_SERVER_NAME = "mcode-web";
-export const MCP_IMAGE_SERVER_NAME = "mcode-image";
+export const MCP_WEB_SERVER_NAME = "mariocode-web";
+export const MCP_IMAGE_SERVER_NAME = "mariocode-image";
 /** The built-in mario_schedule_* server and the mario_wechat_notify server. */
-export const MCP_SCHEDULE_SERVER_NAME = "mcode-schedule";
-export const MCP_WECHAT_SERVER_NAME = "mcode-wechat";
+export const MCP_SCHEDULE_SERVER_NAME = "mariocode-schedule";
+export const MCP_WECHAT_SERVER_NAME = "mariocode-wechat";
 /** Every built-in server name; user servers may not take one. */
 export const MCP_RESERVED_NAMES: readonly string[] = [
   MCP_RESERVED_NAME,
@@ -3478,7 +3492,7 @@ export const MCP_RESERVED_NAMES: readonly string[] = [
 
 /** Add a user-scope server. Rejected when the name already exists (enabled in
  *  the config file or stashed as disabled). The config is written into
- *  ~/.mcode/.claude.json. */
+ *  ~/.mariocode/.claude.json. */
 export const McpSaveSchema = z.object({
   name: z.string().regex(MCP_NAME_RE, "invalid MCP server name"),
   config: McpServerConfigSchema,
@@ -3514,7 +3528,7 @@ export const McpImportItemSchema = z.object({
   config: McpServerConfigSchema,
 });
 
-/** Import selected servers into the user scope (Mcode's own config file).
+/** Import selected servers into the user scope (MarioCode's own config file).
  *  Already-existing names are skipped. Returns per-server lists. */
 export const McpImportSchema = z.object({
   servers: z.array(McpImportItemSchema),
@@ -3811,11 +3825,37 @@ export type RuntimeAgentId = z.infer<typeof RuntimeAgentSchema>;
  *  "dev" = node_modules of a development checkout (devDependencies / the
  *  SDK's platform optionalDependency — absent in packaged builds);
  *  "bundled" = a legacy build that still ships the payload in
- *  app.asar.unpacked. null = not available anywhere → the provider errors
- *  on use and the panel should offer the install button. */
-export type RuntimeMode = "managed" | "external";
-export type RuntimeAgentSource = "managed" | "dev" | "bundled" | "external";
+ *  app.asar.unpacked; "external" = the user's explicit local selection;
+ *  "local" = a detected local installation picked automatically by "auto"
+ *  mode. null = not available anywhere → the provider errors on use and the
+ *  panel should offer the install button.
+ *
+ *  RuntimeMode: "auto" (default when the user never chose) = managed copy →
+ *  detected local install → dev/bundled fallback; "managed" = managed copy →
+ *  dev/bundled fallback (never local); "external" = only the selected path. */
+export type RuntimeMode = "auto" | "managed" | "external";
+export type RuntimeAgentSource = "managed" | "dev" | "bundled" | "external" | "local";
 export type RuntimeCompatibility = "compatible" | "incompatible" | "unknown";
+
+/** Minimum version a LOCALLY installed runtime (auto-detected or explicitly
+ *  selected "external") must report before MarioCode will use it. Older (or,
+ *  for claude/codex, unidentifiable) local installs are skipped by auto mode,
+ *  refused for explicit selection, and surfaced in the settings panel with an
+ *  update reminder. Managed / dev copies are pinned by this build and are not
+ *  gated here.
+ *  - claude: Claude Code CLI version as reported by `claude --version`.
+ *    2.1.238 is the CLI verified against MarioCode's plan-approval /
+ *    AskUserQuestion / tool-approval paths (see AGENTS.md); the pinned SDK
+ *    bundles 2.1.258.
+ *  - codex: `codex` app-server; developerInstructions + dynamicTools were
+ *    verified on 0.153.4.
+ *  - pi: `@earendil-works/pi-coding-agent` package version; the Pi host relies
+ *    on the createAgentSession / Extension API of 0.83.0. */
+export const RUNTIME_MIN_LOCAL_VERSIONS: Readonly<Record<RuntimeAgentId, string>> = {
+  claude: "2.1.238",
+  codex: "0.153.4",
+  pi: "0.83.0",
+};
 
 export interface RuntimeCandidate {
   path: string;
@@ -3823,6 +3863,20 @@ export interface RuntimeCandidate {
   available: boolean;
   compatibility: RuntimeCompatibility;
   diagnostic: string;
+  /** True when the runtime answered but its version is below (or could not
+   *  be proven to meet) RUNTIME_MIN_LOCAL_VERSIONS. Always paired with
+   *  available=false and compatibility="incompatible". */
+  tooOld?: boolean;
+  /** The minimum version the candidate was checked against (set when tooOld). */
+  minVersion?: string;
+}
+
+/** Best local install that was skipped because it is too old. `version` is
+ *  null when the version could not be determined. */
+export interface RuntimeLocalTooOld {
+  path: string;
+  version: string | null;
+  minVersion: string;
 }
 
 /** Snapshot of one agent runtime for the settings panel. Read-only display
@@ -3836,7 +3890,7 @@ export interface RuntimeAgentState {
   configuredPath: string | null;
   /** Pi-only explicit Node executable for external mode. */
   configuredNodePath: string | null;
-  /** Version this Mcode build expects (pinned in package.json). */
+  /** Version this MarioCode build expects (pinned in package.json). */
   expectedVersion: string;
   /** Version installed under userData/runtimes, or null when absent. Note:
    *  a runtime can be USABLE without being installed here (see `source`). */
@@ -3856,13 +3910,18 @@ export interface RuntimeAgentState {
   diagnostic: string;
   /** Detected zero-copy external installations. */
   candidates: RuntimeCandidate[];
+  /** Newest detected local install that was skipped for being below
+   *  RUNTIME_MIN_LOCAL_VERSIONS, set only when no usable local candidate
+   *  exists (or the stored external selection itself is too old). The panel
+   *  shows an update reminder from it. */
+  localTooOld?: RuntimeLocalTooOld | null;
   /** Latest version advertised by the registry, or null when the check
    *  hasn't run yet / failed (offline). Populated lazily by `runtimes.list`. */
   latestVersion: string | null;
   /** Whether a managed copy exists under userData/runtimes. */
   installed: boolean;
   /** The ACTIVE copy (managed, else dev/bundled fallback) differs from the
-   *  version this Mcode build expects. Happens after the app itself
+   *  version this MarioCode build expects. Happens after the app itself
    *  updated; the panel offers an update. */
   updateAvailable: boolean;
   installing: boolean;
@@ -3897,8 +3956,8 @@ export type RuntimesListInput = z.infer<typeof RuntimesListSchema>;
 export const RuntimesInstallSchema = z.object({ agent: RuntimeAgentSchema });
 export type RuntimesInstallInput = z.infer<typeof RuntimesInstallSchema>;
 
-/** Install from a user-picked LOCAL PATH. Escape hatch when the registry path
- *  fails: @mcode/runtime-pi not published yet, stale mirror, offline.
+/** Install from a user-picked LOCAL PATH. Escape hatch when the online install
+ *  fails: npm/mirror unreachable, stale mirror, offline.
  *  Accepted: the agent's install directory (claude platform package dir /
  *  codex vendored package dir / pi meta-package dir with node_modules/), the
  *  agent binary file itself (claude/codex), or an npm-shaped .tgz. Mirrors
@@ -3915,7 +3974,7 @@ export type RuntimesRemoveInput = z.infer<typeof RuntimesRemoveSchema>;
 
 export const RuntimesSelectSchema = z.object({
   agent: RuntimeAgentSchema,
-  mode: z.enum(["managed", "external"]),
+  mode: z.enum(["auto", "managed", "external"]),
   /** Required for external mode; discovery never binds a candidate implicitly. */
   path: z.string().optional(),
   /** Pi-only Node executable override. */
@@ -4159,7 +4218,7 @@ export const BROWSER_SCREENSHOT_DIR_SETTING_KEY = "browser.screenshotDir";
 /** Setting key for the directory where the embedded browser's session data is
  *  stored (cookies, form/autofill data, localStorage, IndexedDB, etc.). The
  *  browser views run on a dedicated persistent partition
- *  ("persist:mcode-browser"); when this is set, the partition is pointed at
+ *  ("persist:mariocode-browser"); when this is set, the partition is pointed at
  *  that directory via session.fromPartition's `path` option. Empty/absent →
  *  Electron's default partition location under userData. NOTE: Electron caches
  *  Session objects by partition string, so changing this only takes effect
@@ -4722,6 +4781,9 @@ export interface RpcMap {
   "file.readFile": (input: FileReadInput) => Promise<{ content: string }>;
   /** Read a binary file as a base64 data URL (image preview). Same path guard. */
   "file.readBinary": (input: FileReadBinaryInput) => Promise<{ dataUrl: string }>;
+  /** Fetch a remote image as a data URL (reply 「加载图片」). Never throws:
+   *  a refusal comes back as `{ dataUrl: "", error }`. */
+  "net.fetchImage": (input: NetFetchImageInput) => Promise<{ dataUrl: string; error?: string }>;
   /** OS dialog image picker → base64 images (composer 图片 button). */
   "file.pickImages": (input: PickImagesInput) => Promise<{ images: PickedImage[]; skipped: string[] }>;
   /** Persist a clipboard-pasted external file to a temp path (composer paste). */
@@ -4918,11 +4980,11 @@ export interface RpcMap {
    *  remove). Returns ok:false + error on any IO failure. */
   "skills.delete": (input: SkillsDeleteInput) => Promise<{ ok: boolean; error?: string }>;
   /** Scan external tools (Claude Code / Codex / Zcode) for skills available
-   *  for import into Mcode's own ~/.mcode/skills. Returns the full list of
+   *  for import into MarioCode's own ~/.mariocode/skills. Returns the full list of
    *  discoverable skills with their source paths. */
   "skills.scanSources": (input: SkillsScanSourcesInput) => Promise<{ sources: ExternalSkillInfo[] }>;
   /** Import (copy) selected skills from external tool directories into
-   *  ~/.mcode/skills. Already-existing skills are skipped. Returns per-skill
+   *  ~/.mariocode/skills. Already-existing skills are skipped. Returns per-skill
    *  imported / skipped / error lists. */
   "skills.import": (input: SkillsImportInput) => Promise<{
     imported: string[];
@@ -4950,11 +5012,11 @@ export interface RpcMap {
   "skills.marketRemove": (input: SkillMarketRemoveInput) => Promise<{ ok: boolean; error?: string }>;
   /** Re-fetch a market's tree (also the first fetch for builtins). */
   "skills.marketRefresh": (input: SkillMarketRefreshInput) => Promise<{ ok: boolean; error?: string }>;
-  /** Copy one market skill into ~/.mcode/skills. */
+  /** Copy one market skill into ~/.mariocode/skills. */
   "skills.marketInstall": (input: SkillMarketInstallInput) => Promise<{ ok: boolean; error?: string }>;
   // MCP management (settings panel)
   /** List all MCP servers across the three sources (user config file, project
-   *  .mcp.json, built-in mcode-browser) with their enabled state. */
+   *  .mcp.json, built-in mariocode-browser) with their enabled state. */
   "mcp.list": (input: McpListInput) => Promise<{ servers: McpServerEntry[] }>;
   /** Enable/disable a server. User scope moves the config between the config
    *  file and the management stash; project/builtin update the management
@@ -4965,7 +5027,7 @@ export interface RpcMap {
   "mcp.authorize": (input: McpAuthorizeInput) => Promise<{ ok: boolean; error?: string }>;
   /** Clear a remote MCP server's stored OAuth token (claude mcp logout). */
   "mcp.unauthorize": (input: McpUnauthorizeInput) => Promise<{ ok: boolean; error?: string }>;
-  /** Add a user-scope server (writes into ~/.mcode/.claude.json). */
+  /** Add a user-scope server (writes into ~/.mariocode/.claude.json). */
   "mcp.save": (input: McpSaveInput) => Promise<{ ok: boolean; error?: string }>;
   /** Remove a user-scope server (from both the config file and the stash). */
   "mcp.remove": (input: McpRemoveInput) => Promise<{ ok: boolean; error?: string }>;
@@ -5220,6 +5282,8 @@ export const IPC = {
   FILE_READ: "file:readFile",
   // File read as base64 data URL (image preview)
   FILE_READ_BINARY: "file:readBinary",
+  // Remote image fetched by main and returned as a data URL (reply 加载图片)
+  NET_FETCH_IMAGE: "net:fetchImage",
   // OS dialog image picker → base64 images (composer 图片 button)
   FILE_PICK_IMAGES: "file:pickImages",
   // Clipboard-pasted external file → temp path (composer paste)
@@ -5325,11 +5389,11 @@ export const IPC = {
   SKILLS_READ: "skills:read",
   SKILLS_SAVE: "skills:save",
   SKILLS_DELETE: "skills:delete",
-  // Skill import (settings panel): scan external tools + copy into ~/.mcode/skills
+  // Skill import (settings panel): scan external tools + copy into ~/.mariocode/skills
   SKILLS_SCAN_SOURCES: "skills:scanSources",
   SKILLS_IMPORT: "skills:import",
   // External skill sync (settings panel): attach external skill directories as
-  // watched sources mirrored into ~/.mcode/skills-sync (TODO-004)
+  // watched sources mirrored into ~/.mariocode/skills-sync (TODO-004)
   SKILLS_SYNC_LIST: "skills:syncList",
   SKILLS_SYNC_ADD: "skills:syncAdd",
   SKILLS_SYNC_SET_ENABLED: "skills:syncSetEnabled",
@@ -5352,7 +5416,7 @@ export const IPC = {
   MCP_SCAN_IMPORT: "mcp:scanImport",
   MCP_IMPORT: "mcp:import",
   // External MCP config sync (settings panel): watch external tool config
-  // files and mirror their servers into ~/.mcode/.claude.json (TODO-004)
+  // files and mirror their servers into ~/.mariocode/.claude.json (TODO-004)
   MCP_SYNC_LIST: "mcp:syncList",
   MCP_SYNC_SCAN: "mcp:syncScan",
   MCP_SYNC_ADD: "mcp:syncAdd",

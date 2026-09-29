@@ -65,7 +65,7 @@ function lastCall(): { op: string; path: string } | null {
 }
 
 // ── Fixtures: a project checkout + a worktree outside it + an unrelated dir ──
-const base = mkdtempSync(join(tmpdir(), "mcode-shell-reveal-smoke-"));
+const base = mkdtempSync(join(tmpdir(), "mariocode-shell-reveal-smoke-"));
 const proj = join(base, "proj");
 const wt = join(base, "worktrees", "repo", "feature-n");
 const unrelated = join(base, "unrelated");

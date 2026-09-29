@@ -1655,7 +1655,7 @@ function useGitDiffPair(
 /** Tracks the effective Monaco theme by watching the `.dark` class on <html>
  *  and layering the user's editor color-scheme choice (Settings → 外观) on
  *  top: dark mode renders the user's dark scheme, light mode their light one
- *  (defaults "mcode-dark" / "mcode-light"). Monaco can't react to CSS, so we
+ *  (defaults "mariocode-dark" / "mariocode-light"). Monaco can't react to CSS, so we
  *  explicitly switch its theme when the app theme flips.
  *
  *  The switch is deferred ~150ms after the class change so it lands as the

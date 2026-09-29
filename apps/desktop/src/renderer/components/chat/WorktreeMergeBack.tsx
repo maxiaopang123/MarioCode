@@ -161,7 +161,7 @@ export function WorktreeRemoveDialog({
   const [exportPatch, setExportPatch] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Set when removal succeeded but the generated mcode/* branch was unmerged
+  // Set when removal succeeded but the generated mariocode/* branch was unmerged
   // and therefore RETAINED — the dialog stays open showing where the
   // discarded commits live instead of closing silently.
   const [retained, setRetained] = useState<string | null>(null);

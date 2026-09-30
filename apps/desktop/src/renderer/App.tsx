@@ -5,7 +5,6 @@ import { Divider } from "./components/layout/Divider.js";
 import { Titlebar } from "./components/layout/Titlebar.js";
 import { StreamSidebar } from "./components/layout/StreamSidebar.js";
 import { ChatPane } from "./components/chat/ChatPane.js";
-import { SessionTabs } from "./components/layout/SessionTabs.js";
 import { UnifiedTabsBar } from "./components/layout/UnifiedTabsBar.js";
 import { RightPanel } from "./components/layout/RightPanel.js";
 import { ProjectRail } from "./components/layout/ProjectRail.js";
@@ -448,10 +447,15 @@ function UnifiedTabbedPane({ wide }: { wide: boolean }) {
   // wide-mode surface, matching isSessionChatOnScreen's wide semantics.
   const editorMounted = showEditor && !(wide && !activeFile);
   const editorVisible = showEditor && !wide;
+  useTabsModeRetention(activeSessionId, openTabs);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {wide ? <SessionTabs /> : <UnifiedTabsBar />}
+      {/* v3: no session tabs in the strip — the session column (scoped to
+          the selected project) is the session switcher. The bar shows only
+          file / plan tabs and renders nothing when there are none. Wide
+          mode has no editor surface, so no bar at all. */}
+      {!wide && <UnifiedTabsBar />}
       <div className="relative min-h-0 flex-1">
         {openTabs.map((sid) => (
           <div
@@ -596,6 +600,93 @@ function SplitCenterPane({ wide }: { wide: boolean }) {
  *  stream, turn.done persistence, and the left-bar badge read those buckets)
  *  — they're deferred and retried on the next switch. */
 
+/** Tabs-mode session retention. With the session tab strip gone (v3: the
+ *  session column is the switcher) there's no × to close tabs, so the policy
+ *  closes them itself — otherwise `openTabs`, the hidden ChatPanes (Tiptap +
+ *  timeline DOM) and every session's history buckets would grow with each
+ *  session the user ever clicked.
+ *
+ *  Policy — time first, count as a safety cap (sweeps on every activation /
+ *  openTabs change, plus every TABS_SWEEP_MS so idle sessions expire even
+ *  while the user stays put):
+ *  - each background session's clock is its LAST TOUCH: when the user left
+ *    it, or when it stopped being busy (a background turn that just finished
+ *    starts its idle window at completion, not at dispatch);
+ *  - a background session idle longer than TABS_IDLE_TTL_MS is closed;
+ *  - within the TTL, at most TABS_MAX_KEPT most recently touched ones stay
+ *    (a burst of clicks through 30 sessions in ten minutes must not keep 30
+ *    live timelines);
+ *  - closing = `closeTab` (never cancels a turn) + `pruneSessionHistory`;
+ *    re-activating refetches the first page (selectSession/openTab gate on
+ *    historyLoadedBySession). Light state (unread, drafts, todos, capsule)
+ *    is untouched, so the session column's badges stay correct;
+ *  - the active session and BUSY sessions (running turn, pending question /
+ *    plan approval / tool approval) are never closed — their live event
+ *    stream and turn.done persistence read the buckets.
+ *  Ids with no stamp (left over from before this run) count as expired.
+ *  Module-level so the clocks survive CenterPane remounts. */
+const TABS_IDLE_TTL_MS = 2 * 60 * 60 * 1000;
+const TABS_MAX_KEPT = 5;
+const TABS_SWEEP_MS = 5 * 60 * 1000;
+const tabsLastTouch = new Map<string, number>();
+let tabsPrevActive: string | null = null;
+
+function isSessionBusy(s: ReturnType<typeof useSessionStore.getState>, id: string): boolean {
+  return (
+    !!s.runningBySession[id] ||
+    !!s.pendingQuestionBySession[id] ||
+    !!s.pendingPlanApprovalBySession[id] ||
+    s.pendingApprovals.some((a) => a.sessionId === id)
+  );
+}
+
+function sweepTabs(): void {
+  const s = useSessionStore.getState();
+  const now = Date.now();
+  const active = s.activeSessionId;
+  // Leaving a session starts its idle clock.
+  if (tabsPrevActive && tabsPrevActive !== active) tabsLastTouch.set(tabsPrevActive, now);
+  tabsPrevActive = active;
+  if (active) tabsLastTouch.set(active, now);
+  const open = new Set(s.openTabs);
+  // Forget ids that left the tab list by other paths (delete / archive).
+  for (const id of tabsLastTouch.keys()) if (!open.has(id)) tabsLastTouch.delete(id);
+
+  const candidates: { id: string; at: number }[] = [];
+  for (const id of s.openTabs) {
+    if (id === active) continue;
+    // Busy keeps it alive and pushes its clock forward, so the idle window
+    // starts when the turn / prompt actually ends.
+    if (isSessionBusy(s, id)) {
+      tabsLastTouch.set(id, now);
+      continue;
+    }
+    candidates.push({ id, at: tabsLastTouch.get(id) ?? 0 });
+  }
+  // Newest first; keep the fresh ones up to the cap, close the rest.
+  candidates.sort((a, b) => b.at - a.at);
+  let kept = 0;
+  for (const { id, at } of candidates) {
+    if (now - at <= TABS_IDLE_TTL_MS && kept < TABS_MAX_KEPT) {
+      kept++;
+      continue;
+    }
+    s.closeTab(id);
+    s.pruneSessionHistory(id);
+    tabsLastTouch.delete(id);
+  }
+}
+
+function useTabsModeRetention(activeSessionId: string | null, openTabs: string[]): void {
+  useEffect(() => {
+    sweepTabs();
+  }, [activeSessionId, openTabs]);
+  useEffect(() => {
+    const timer = window.setInterval(sweepTabs, TABS_SWEEP_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+}
+
 /** Buckets kept alive in single mode: [previous, current], most recent last.
  *  Module-level so it survives ChatColumn re-mounts (mode switches). */
 const singleModeGrace: string[] = [];
@@ -650,7 +741,6 @@ function ChatColumn() {
   if (displayMode === "tabs") {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        <SessionTabs />
         <div className="relative min-h-0 flex-1">
           {openTabs.map((sid) => (
             <div

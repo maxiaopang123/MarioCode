@@ -78,7 +78,16 @@ export function useComposerRowFit(forceCollapsed = false) {
           const prevWrap = row.style.flexWrap;
           pill.style.minWidth = "max-content";
           row.style.flexWrap = "nowrap";
-          const overflows = row.scrollWidth > row.clientWidth + 1;
+          // Two ways to not fit: the row overflows its own edge, or the pill
+          // is wider than the space its cluster gets. The second is the
+          // common one — `.composer-chips` is `flex-1 min-w-0`, so it
+          // shrinks to what the right cluster (metrics + provider + send)
+          // leaves, and the pill then spills INTO that cluster, overlapping
+          // it without ever pushing past the row's edge.
+          const chips = row.querySelector<HTMLElement>(".composer-chips");
+          const overflows =
+            row.scrollWidth > row.clientWidth + 1
+            || (chips != null && pill.offsetWidth > chips.clientWidth + 1);
           pill.style.minWidth = prevMinWidth;
           row.style.flexWrap = prevWrap;
           if (overflows) {
@@ -99,6 +108,10 @@ export function useComposerRowFit(forceCollapsed = false) {
     if (cardRef.current) ro.observe(cardRef.current);
     const pill = row.querySelector<HTMLElement>(".composer-minipill");
     if (pill) ro.observe(pill);
+    // The chips cluster shrinks when the right cluster grows (the session
+    // metrics appear after the first turn) without the row resizing.
+    const chips = row.querySelector<HTMLElement>(".composer-chips");
+    if (chips) ro.observe(chips);
     measure();
     return () => ro.disconnect();
   }, [tier, forceCollapsed]);

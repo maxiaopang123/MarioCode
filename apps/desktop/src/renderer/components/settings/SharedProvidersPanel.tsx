@@ -189,6 +189,11 @@ export function SharedProvidersPanel() {
   const [nextDraft, setNextDraft] = useState<SharedProviderSaveInput | null>(null);
   const [advanced, setAdvanced] = useState(false);
   const [discovering, setDiscovering] = useState(false);
+  /** Model-discovery failure, shown inline under the 模型 section. The
+   *  panel-level `error` sits above the provider list and is scrolled out of
+   *  view when the user clicks 「加载模型」 further down — that looked like
+   *  "the button does nothing". */
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
   const [selectedModelIndexes, setSelectedModelIndexes] = useState<Set<number>>(() => new Set());
   const [discovered, setDiscovered] = useState<{
     models: SharedProviderDiscoveredModel[];
@@ -210,7 +215,7 @@ export function SharedProvidersPanel() {
     draftRevisionRef.current++;
     if (discovering) return;
     if (dirty) { setNextDraft(value); return; }
-    setDraft(value); setError(null); setAdvanced(false); setSelectedModelIndexes(new Set());
+    setDraft(value); setError(null); setDiscoveryError(null); setAdvanced(false); setSelectedModelIndexes(new Set());
   }
   function change(patch: Partial<SharedProviderSaveInput>) {
     draftRevisionRef.current++;
@@ -325,7 +330,7 @@ export function SharedProvidersPanel() {
       : draft.protocols.includes("responses") ? "responses" : draft.protocols[0]!;
     const baseUrl = draft.endpointOverrides?.[protocol]?.trim() || draft.baseUrl;
     const revision = draftRevisionRef.current;
-    setDiscovering(true); setError(null);
+    setDiscovering(true); setError(null); setDiscoveryError(null);
     try {
       const result = await api.sharedProviders.discoverModels({
         ...(draft.id ? { id: draft.id } : {}),
@@ -351,8 +356,13 @@ export function SharedProvidersPanel() {
         useToastStore.getState().push({ kind: "warning", title: t("settings.shared.discoveryStale"), duration: 5_000 });
         return;
       }
-      const message = e instanceof Error ? e.message : String(e);
-      setError(t("settings.shared.discoveryFailed", { error: message }));
+      // IPC errors arrive as "Error invoking remote method '…': Error: <msg>";
+      // keep only the part the user can act on.
+      const raw = e instanceof Error ? e.message : String(e);
+      const message = raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, "");
+      const text = t("settings.shared.discoveryFailed", { error: message });
+      setDiscoveryError(text);
+      useToastStore.getState().push({ kind: "error", title: text, duration: 6_000 });
     } finally {
       setDiscovering(false);
     }
@@ -617,6 +627,11 @@ export function SharedProvidersPanel() {
                   </Button>
                 </>}
               >
+                {discoveryError && (
+                  <p role="alert" className="mb-2 break-words rounded-lg bg-danger/10 px-3 py-2 text-[12.5px] text-danger">
+                    {discoveryError}
+                  </p>
+                )}
                 <div className="overflow-hidden rounded-lg border border-edge">
                   {/* Column header / batch bar — the batch actions only show once something is selected. */}
                   <div className="flex h-9 items-center gap-2.5 border-b border-edge bg-surface-muted/60 px-3 text-[11.5px] text-content-subtle">

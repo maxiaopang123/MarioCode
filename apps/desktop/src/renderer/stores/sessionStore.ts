@@ -8535,26 +8535,38 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const s = get();
     if (!reset && s.streamSessions.length > 0 && !s.streamDirty) return;
     const seq = ++streamFetchSeq;
-    const mutateGen = streamMutateSeq;
-    try {
-      const res = await api.session.listAll({
-        offset: 0,
-        limit: STREAM_PAGE_SIZE,
-        ...streamScopeQuery(s.streamScope, s.projects),
-      });
-      // Superseded by a newer fetch (scope flipped / re-dirty mid-flight):
-      // the newer response owns the cache.
-      if (seq !== streamFetchSeq) return;
-      // A membership mutation raced the fetch (e.g. the user deleted a
-      // second session while this snapshot was in flight): its in-place
-      // patch already fixed the cache — discarding is the only way to keep
-      // this PRE-mutation snapshot from resurrecting the row. The dirty
-      // flag survives, so the next flip (or view re-entry) refetches.
-      if (mutateGen !== streamMutateSeq) return;
-      set({ streamSessions: res.sessions, streamHasMore: res.hasMore, streamTotal: res.total, streamDirty: false });
-    } catch (err) {
-      console.error("session.listAll failed:", err);
+    // A membership mutation racing the fetch (delete / pin / remote
+    // session.changed echo) discards the snapshot so it can't resurrect rows
+    // the in-place patch removed. Discarding used to be FINAL: the dirty flag
+    // was already true, so the view's effect never re-ran — and while any
+    // session is running, session.changed echoes arrive constantly, so after
+    // a scope switch the cache kept the PREVIOUS scope's rows forever and the
+    // new project showed "暂无会话" despite having sessions. Retry instead.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const mutateGen = streamMutateSeq;
+      try {
+        const cur = get();
+        const res = await api.session.listAll({
+          offset: 0,
+          limit: STREAM_PAGE_SIZE,
+          ...streamScopeQuery(cur.streamScope, cur.projects),
+        });
+        // Superseded by a newer fetch (scope flipped / re-dirty mid-flight):
+        // the newer response owns the cache.
+        if (seq !== streamFetchSeq) return;
+        if (mutateGen !== streamMutateSeq) continue; // raced a mutation — refetch
+        set({ streamSessions: res.sessions, streamHasMore: res.hasMore, streamTotal: res.total, streamDirty: false });
+        return;
+      } catch (err) {
+        console.error("session.listAll failed:", err);
+        return;
+      }
     }
+    // Still racing a busy stream of mutations — try again shortly rather
+    // than leave the previous scope's rows on screen.
+    setTimeout(() => {
+      if (seq === streamFetchSeq && get().streamDirty) void get().loadStreamSessions();
+    }, 1500);
   },
 
   loadMoreStreamSessions: async () => {

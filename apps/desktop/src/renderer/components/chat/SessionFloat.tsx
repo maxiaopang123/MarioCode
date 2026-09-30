@@ -23,7 +23,7 @@
  * Mobile keeps the bottom-sheet path (ActivitySheet): a 300px card pinned to a
  * corner is a pointer idiom.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { isElectron } from "@renderer/lib/platform.js";
@@ -160,6 +160,30 @@ export function SessionFloat({
   const rootRef = useRef<HTMLDivElement>(null);
   const openedBySession = useRef<string | null>(null);
 
+  // The folded pill hugs its summary: --pill-w (the clip-path's visible
+  // width) follows the summary's content width instead of the card's fixed
+  // 300px — otherwise an idle session showing only "14%" is a long empty
+  // white bar. 42 = header padding (12 + 10) + gap (8) + chevron (12).
+  // Callback ref, so the observer lives exactly as long as the summary node
+  // (the component renders null until the session has data) and isn't
+  // rebuilt on every streamed delta.
+  const sumObserver = useRef<ResizeObserver | null>(null);
+  const sumRef = useCallback((sum: HTMLSpanElement | null) => {
+    sumObserver.current?.disconnect();
+    sumObserver.current = null;
+    if (!sum) return;
+    const apply = () => {
+      const root = sum.closest<HTMLElement>(".fsess");
+      if (!root) return;
+      const w = Math.min(300, Math.max(72, Math.ceil(sum.scrollWidth) + 42));
+      root.style.setProperty("--pill-w", `${w}px`);
+    };
+    const ro = new ResizeObserver(apply);
+    ro.observe(sum);
+    sumObserver.current = ro;
+    apply();
+  }, []);
+
   const messages = useSessionStore((s) => s.messagesBySession[sessionId] ?? EMPTY_MESSAGES);
   const snapshot = useSessionStore((s) => s.contextSnapshotBySession[sessionId]);
   const usageHistory = useSessionStore((s) => s.usageHistoryBySession[sessionId]);
@@ -211,6 +235,8 @@ export function SessionFloat({
   const failedAgents = subagents.filter((a) => a.status === "failed");
   const attn = !!waiting || (runningAgents.length === 0 && failedAgents.length > 0);
   const ctxPct = snapshot?.pct ?? 0;
+  /** Anything worth a live read-out in the folded pill. */
+  const hasLive = running || attn || todos.length > 0 || runningAgents.length > 0;
 
   // ── Outline: one row per user message, with the turn's step lines under it.
   const outline = useMemo<OutlineItem[]>(() => {
@@ -383,7 +409,17 @@ export function SessionFloat({
               )}
             </span>
             {/* Folded summary: what you need while it works. */}
-            <span className="fs-sum inline-flex items-center gap-2">
+            <span ref={sumRef} className="fs-sum inline-flex items-center gap-2">
+              {/* Nothing live to summarize: lead with the title so the pill
+                  always says what it is (a bare "| 14%" read as a broken,
+                  empty bar). The context figure still follows. */}
+              {/* Always lead with icon + title: the pill has to say what it
+                  is in every state, not only when idle. */}
+              <IconListCheck size={13} className="shrink-0" />
+              <b className="font-semibold text-content">{t("chatStream.float.title")}</b>
+              {(hasLive || snapshot || turnCount > 0) && (
+                <i className="h-3 w-px shrink-0 bg-edge" aria-hidden />
+              )}
               {running && <IconLoader2 size={11} className="shrink-0 animate-spin text-accent-strong" />}
               {attn && !running && <span className="font-semibold text-warning">{t("chatStream.float.needsYou")}</span>}
               {todos.length > 0 && (
@@ -396,29 +432,24 @@ export function SessionFloat({
               )}
               {runningAgents.length > 0 && (
                 <>
-                  <i className="h-3 w-px shrink-0 bg-edge" aria-hidden />
+                  {(running || attn || todos.length > 0) && <i className="h-3 w-px shrink-0 bg-edge" aria-hidden />}
                   <span>{t("chatStream.float.agentsN", { n: runningAgents.length })}</span>
                 </>
               )}
+              {!hasLive && !snapshot && turnCount > 0 && (
+                <span className="tabular-nums text-content-subtle">
+                  {t("chatStream.float.turnN", { n: turnCount })}
+                </span>
+              )}
               {snapshot && (
                 <>
-                  <i className="h-3 w-px shrink-0 bg-edge" aria-hidden />
+                  {/* The title's rule already separates the ring when nothing
+                      live sits between; a spinner alone needs no extra rule. */}
+                  {(attn || todos.length > 0 || runningAgents.length > 0) && (
+                    <i className="h-3 w-px shrink-0 bg-edge" aria-hidden />
+                  )}
                   <Ring pct={ctxPct} />
                   <span className="tabular-nums">{Math.round(ctxPct)}%</span>
-                </>
-              )}
-              {/* Nothing live to summarize (idle session, no tasks / agents /
-                  context snapshot yet): show the title so the pill is never an
-                  empty white bar. */}
-              {!running && !attn && todos.length === 0 && runningAgents.length === 0 && !snapshot && (
-                <>
-                  <IconListCheck size={13} className="shrink-0" />
-                  <b className="font-semibold text-content">{t("chatStream.float.title")}</b>
-                  {turnCount > 0 && (
-                    <span className="tabular-nums text-content-subtle">
-                      {t("chatStream.float.turnN", { n: turnCount })}
-                    </span>
-                  )}
                 </>
               )}
             </span>

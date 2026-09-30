@@ -2,7 +2,7 @@
 
 > 只记录功能 TODO 进度和 Git 版本，保持简单。
 
-最后更新：2026-09-29
+最后更新：2026-09-30
 
 ## 功能 TODO
 
@@ -24,20 +24,25 @@
 - **数据全在用户本机**：模型配置、设置、会话与消息、每轮 token / 费用记录都在应用数据目录的 SQLite `claude-gui.db`（正式版 `%APPDATA%\MarioCode`），API Key 用 Electron `safeStorage`（Windows DPAPI）加密存同库；引擎配置在 `~/.mariocode/` 和 `~/.pi/agent/models.json`。代码里**没有任何遥测 / 统计上报**，自动更新也关着——开发者看不到用户量和用量。要做 TODO-018 的账户与计费，必须有自己的服务端记账。
 - **改名的迁移风险（待处理）**：`1a1d948` 把正式版数据目录从 `%APPDATA%\Mcode` 改成 `%APPDATA%\MarioCode`、appId 改成 `com.mariocode.desktop`、AUMID 改成 `MarioCode`。已装旧版的用户升级后会落到空目录，旧会话 / 配置不会自动带过来；发版前要加一次性迁移（首次启动发现旧目录且新目录为空时复制过来），或者明确告知。开发模式不受影响。另：`scripts/mcp-sync-smoke/main.mjs` 疑似 esbuild 打包产物被提交，待确认去留。
 
-**Git 状态（9/29）**：分支 `ui-refresh-v3`，v3 这批改动已提交为 `188b481`（原型与文档）+ `1a1d948`（功能 + mcode→mariocode 改名），工作区干净；`dbdab86` 之后共 62 个提交，都没推送（分支无远端），也还没合回 `master`。
+**Git 状态（9/29）**：分支 `ui-refresh-v3`，v3 这批改动已提交为 `188b481`（原型与文档）+ `1a1d948`（功能 + mcode→mariocode 改名），之后又有 `03c5d5b` / `983d60d` 两个文档提交；`dbdab86` 之后共 64 个提交，都没推送（分支无远端），也还没合回 `master`。**未提交**：版本号改为 0.2.1、两个打包脚本、0.2.1 的三处修复（见「Git 版本记录」v0.2.1 行）。
 
-仍需人工验收：TODO-005 在三个引擎的真实对话里调用（要模型额度）、真实图片模型出图；TODO-006 三端提示词一致性、TODO-007 / TODO-014 的运行时视觉检查、TODO-009 真实 Pi 会话、TODO-015 的真实系统代理和 Claude / Codex 端到端；TODO-019 / 020 真实调用与界面；TODO-022 / 023 / 025 真实对话里的图片、标签和缓存 / 速度数值；Pi 真实模型调用也还没验。`apps/desktop/release/` 里的 0.1.54 安装包是旧代码打的（自动更新指向上游 + 坏的 Pi host），要 `pnpm package` 重打后才能发。
+**版本（9/29）**：`v0.2.0` 已在本机打出安装包 `apps/desktop/release/MarioCode-0.2.0-x64.exe`（未发布）；`v0.2.1` 是它之后的修复，已通过 typecheck，**暂不打包、不发布**。
+
+仍需人工验收：TODO-005 在三个引擎的真实对话里调用（要模型额度）、真实图片模型出图；TODO-006 三端提示词一致性、TODO-007 / TODO-014 的运行时视觉检查、TODO-009 真实 Pi 会话、TODO-015 的真实系统代理和 Claude / Codex 端到端；TODO-019 / 020 真实调用与界面；TODO-022 / 023 / 025 真实对话里的图片、标签和缓存 / 速度数值；Pi 真实模型调用也还没验。`apps/desktop/release/` 里的 0.1.54 安装包是旧代码打的（自动更新指向上游 + 坏的 Pi host），已被 0.2.0 取代，可以删掉。本机打包用 `scripts\package-win.bat`（`--skip-build` 跳过构建），它会设好国内镜像并用 `scripts/fix-wincodesign.mjs` 绕过 winCodeSign 解压时的符号链接报错。
 
 ### 未完成清单（9/29）
 
 | 类别 | 条目 | 剩下什么 |
 |---|---|---|
+| 🔥 最高优先级 | TODO-026 内置 MCP 目录（首个：SSH）+ Pi 接入 MCP | 未动工，方案见规划详情 TODO-026；三个引擎都要支持 |
 | 🟡 已实现、待收尾 | TODO-025 界面焕新 v3 落地 | 合回 `master`；删掉已无引用的 `ActivityCluster.tsx`；真 app 人工看一遍 |
 | | TODO-022 回复里的图片 + 路径标签（92%） | 网络图片自动加载设置、纯文本识别开关、正文 / 工具卡同图去重 |
 | | TODO-023 缓存率与速度（75%） | 计时写进 `TurnUsageRecord` 持久化（现在重开会话就没了）、首字延迟、OpenAI 桥 / Codex / Pi 缓存字段核对 |
 | | TODO-024 模型配置收尾（33%） | ② 密钥规则拍板（要你定）、③ 旧版专属配置的遗留数据怎么处理（要你定） |
 | | TODO-019 定时器 + 微信通知（90%）、TODO-020 技能市场（90%） | 只差真实使用验收 |
-| ⚠️ 发版前必做 | 旧数据目录迁移 | `%APPDATA%\Mcode` → `%APPDATA%\MarioCode`，否则老用户升级后数据"丢失"；重打安装包（0.1.54 是旧代码） |
+| ⚠️ 发版前必做 | 旧数据目录迁移 | `%APPDATA%\Mcode` → `%APPDATA%\MarioCode`，否则老用户升级后数据"丢失"（0.2.0 安装包也还没做迁移） |
+| | v0.2.1 打包 / 发布 | 先提交 0.2.1 的改动；「切项目后会话列表为空」要在真 app 里复现验证；再用 `scripts\package-win.bat` 打包 |
+| ⚪ 可选 | 本地运行时探测 | 新装版找不到本机 claude / pi 是因为本机没全局安装（应用已自动下载托管运行时）；可再加探 `~\.local\bin\claude.exe` 和自定义 npm prefix |
 | ⚪ 未开始 | TODO-021 出错后自动「继续」 | 方案已写，待动工 |
 | | TODO-008 DeepSeek Harness 第四个 Provider | 先做 1–2 天可行性验证 |
 | ⏸ 等条件 | TODO-010 / 011 / 012 / 016 / 017 / 018 | 各自的解除条件见表格备注 |
@@ -46,6 +51,7 @@
 
 | ID | 功能 | 进度 | 状态 | 对应 Commit | 备注 |
 |---|---|---:|---|---|---|
+| `TODO-026` | 内置 MCP 目录（首个：SSH 远程服务器）+ Pi 接入 MCP | 0% | ⚪ 未开始（🔥 最高优先级） | - | 2026-09-30 立项。与 MarioTool 内置工具分开定位：随包附带、默认关闭、用户在 MCP 页目录里挑选启用并填配置（主机、密码 / 私钥等）。**三个引擎都要支持**——Claude / Codex 读同一份 `~/.mariocode/.claude.json`，写进去即可；Pi 现为 `supportsMcp: false`，须先补通用 MCP 客户端。密码不落盘（本机密钥代理 + secretStore）。方案与分期见规划详情 TODO-026 |
 | `TODO-001` | 定时任务 | 100% | 🟢 已完成 | `c4f35af` | 已实现一次/每天/每周、启停、立即运行、异常恢复与防重叠 |
 | `TODO-002` | 微信 ClawBot 信息推送（二维码绑定 + iLink Bot API） | 100% | 🟢 已完成 | `c4f35af` | 已实现二维码绑定、安全凭证、单一用户锁定、消息激活与定时任务结果推送；已通过构建、测试和代码复审 |
 | `TODO-003` | 微信 ClawBot 对话接入 MarioCode | 100% | 🟢 已完成 | `dbdab86` | 已实现绑定者私聊纯文本接入、专用微信助手项目、按会话隔离、Agent/模型选择、`新会话` 指令及安全恢复；已通过冷构建、启动检查、回归测试与独立代码审查 |
@@ -73,6 +79,23 @@
 | `TODO-018` | 用户账户 + Token 计费（内嵌官方模型服务） | 0% | ⏸ 暂定 | - | 2026-09-26 立项，具体做法之后再定。用户在 MarioCode 里登录，使用你提供的模型服务，按 token 扣费；计费在服务端网关算，客户端只负责登录、拿到用户 Key、自动配成「MarioCode 官方」共享提供商。**解除条件：拍板规划详情里的 5 个问题**（「新的 tool」指什么、用户在国内还是海外、卖哪些模型、收费方式、是否保留自带 Key）。初步规划见下方规划详情 TODO-018 |
 
 ## 规划详情（2026-09-20 待排期）
+
+### TODO-026 内置 MCP 目录（首个：SSH）+ Pi 接入 MCP · 🔥 最高优先级（2026-09-30 立项）
+
+- **目标**：MarioCode 随包附带一组可选 MCP server，用户在 MCP 页「内置 MCP 目录」里挑选启用、只填密钥类配置即可用，三个引擎（Claude / Codex / Pi）都能调用。首个 server 是 SSH（远程执行命令，可选 SFTP）。
+- **与 MarioTool 内置工具的区别**：技术上相近，定位不同。MarioTool 是核心能力、默认开、深度集成；内置 MCP 是可选目录、默认关、真正独立的 stdio MCP server，将来也能导出给 Claude Desktop / Cursor 等客户端。
+- **现状（2026-09-30 核对代码）**：Claude 二进制直接加载 `~/.mariocode/.claude.json` 的 `mcpServers`；Codex 每轮把同一份转成 `config.toml` 的 `[mcp_servers]`（`codexModelsStore.ts`）；`mcpSync.ts` 已有「镜像写入 + 记录归属」机制可照搬。**Pi 为 `supportsMcp: false`**，这是三端都支持的前置缺口。
+- **分期**：
+  1. **Pi 接入 MCP（前置）**：在 `mariocodeExtension` 读 `.claude.json` + 项目 `.mcp.json`（尊重 `mcp.management` 启停），连 stdio / http server，把远端工具逐个 `registerTool`，审批走现有 `tool_call` 守卫。完成后用户自加的 MCP 在 Pi 上也可用，`supportsMcp` 改为 true。
+  2. **内置 MCP 目录**：server 打包在 `resources/mcp/<name>/`，用 Electron 自带 Node 跑（`ELECTRON_RUN_AS_NODE=1`）；MCP 页新增目录分组（说明、开关、配置表单）；启用写入 `.claude.json`、停用删除；保留名 `mariocode-mcp-*` 进 `MCP_RESERVED_NAMES`。
+  3. **SSH server**：`ssh_hosts`（只读，只回别名 / host / user / port）、`ssh_exec({host, command, timeoutSec})`（stdout / stderr / 退出码，输出截断分页），可选 `ssh_upload` / `ssh_download`（SFTP）。依赖 `ssh2` 钉精确版本，注意可选原生模块 `cpu-features` 的打包。
+- **安全要点**：
+  - **密码不落盘**：不写进 `.claude.json` 的 `env`（否则 Codex 的 `config.toml` 里会再多一份明文）。MarioCode 开本机回环端点 + 随机 token 写进 server env，server 按主机别名换取密钥；密钥加密存 secretStore。代价：脱离 MarioCode 使用时需改为手填 env。
+  - **主机指纹校验**：首次连接在设置页确认指纹并记录，之后指纹变化拒绝连接（防中间人）。
+  - **审批**：`ssh_exec` 默认每次审批（等于远程 root shell），可按主机「始终允许」；无人值守运行（定时任务 / 微信）默认拒绝。
+  - 报错、日志、main.log 不得出现密码。
+- **待拍板**：第一期是否带 SFTP；`ssh_exec` 是否允许按主机「始终允许」；密钥代理方案是否接受（影响导出到外部客户端的体验）。
+- **过渡**：用户当前的临时方案是技能 `~/.mariocode/skills/ssh-yilianyun`（明文密码 + `scripts/run.mjs`）和 `~/.ssh/config` 的 `cloud` 别名；内置 SSH 上线后应迁移并删除该技能里的明文密码。
 
 ### TODO-007 聊天框界面渲染优化（含前端 UI 体检）· P0
 
@@ -414,6 +437,8 @@
 
 | 版本 | 日期 | Commit | 主要更新 | 状态 |
 |---|---|---|---|---|
+| `v0.2.1` | 2026-09-29 | 未提交 | ① 修「切到某个项目后会话列表显示暂无会话」：有会话在运行时 `session.changed` 回声会让切换后的首次拉取被当成过期结果丢掉，`loadStreamSessions` 改为代际变了就重拉（最多 5 次）、仍脏则 1.5 秒后重试，防复活守卫保留；② 共享提供商「加载模型」改走 `engineFetch`，跟随 设置 → 网络 的代理；③ 加载模型失败时在「模型」区内联显示错误并弹 toast（原来错误在面板顶部，滚出视野看不到）；④ 聊天区上方去掉会话标签栏，切换会话只走会话列（按选中项目过滤），标签栏只剩文件 / 计划标签、没有时整条不显示；后台会话改为按时间回收：离开（或后台回合跑完）超过 2 小时自动关闭并释放消息历史（再点开从库里重新加载首页），2 小时内最多保留最近 5 个（草稿 / 滚动秒回），每 5 分钟扫一次；当前会话和正在运行、等待回答 / 计划审批 / 工具审批的会话永不回收；⑤ 右上角「本会话」收起态宽度跟随内容（原来固定 300px，空闲时只剩右端「| 14%」、左边一长条空白），任何状态都以图标 +「本会话」标题开头，后面接运行状态 / 任务进度 / 子代理 / 上下文占用，分隔线不再悬空；⑥ 输入框底栏的设置药丸在右侧指标（上下文 / 缓存 / 速度）出现后会压到它们上面——宽度判定只看整行溢出，没看左侧可用宽度，现在药丸比左侧宽就切成紧凑态；未读、草稿等轻量状态保留，会话列徽章不受影响；另新增 `scripts/package-win.bat` + `scripts/fix-wincodesign.mjs` 本机打包脚本 | 已过 typecheck；未提交、未打包、未发布 |
+| `v0.2.0` | 2026-09-29 | `983d60d` + 版本号 | 界面焕新 v3 + mcode→mariocode 改名后的首个安装包，版本号 0.1.54 → 0.2.0；本机打出 `MarioCode-0.2.0-x64.exe` | 本地打包、未发布 |
 | 开发版 | 2026-09-26 | `c24b661` | 内置 `web_search` / `web_fetch` / `image_generate`，三端注册 + 设置 → 内置工具 + MCP 页两个内置 server；顺带修好 contracts 包自 `4277991` 起的 typecheck（TODO-005） | 已提交、未推送 |
 | 开发版 | 2026-09-26 | `3b794c5` | `pnpm test:sync-load`：用真实 Claude CLI / Codex app-server / Pi loader 验证同步的 skill 与 MCP server 能被加载（TODO-004） | 已提交、未推送 |
 | 开发版 | 2026-09-26 | `d36e806` | `browser_snapshot` 瘦身：元素一行一个、主内容正文、mode / maxChars / offset（TODO-013） | 已提交、未推送 |

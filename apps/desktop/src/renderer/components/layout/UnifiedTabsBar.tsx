@@ -18,7 +18,6 @@ import { cn } from "@renderer/lib/cn.js";
 import { IconClipboard, IconX } from "@renderer/lib/icons.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { TabBarChevronButton, TabBarOverflowMenu } from "./TabBarChrome.js";
-import { SortableSessionTab, findSession } from "./SessionTabs.js";
 import {
   PLAN_TAB_KEY,
   SortableFileTab,
@@ -51,17 +50,10 @@ const EMPTY_OPEN_FILES: string[] = [];
  *  dots; session tabs keep their running spinners and unread badges. */
 export function UnifiedTabsBar() {
   const { t } = useI18n();
-  // ── Session tabs ──
-  const tabs = useSessionStore((s) => s.openTabs);
+  // v3: sessions are switched from the session column (scoped to the
+  // selected project), so this strip carries only editor tabs. The active
+  // session still scopes the plan pseudo-tab.
   const activeId = useSessionStore((s) => s.activeSessionId);
-  const sessionsByProject = useSessionStore((s) => s.sessionsByProject);
-  const pinnedSessions = useSessionStore((s) => s.pinnedSessions);
-  const streamSessions = useSessionStore((s) => s.streamSessions);
-  const runningBySession = useSessionStore((s) => s.runningBySession);
-  const unreadBySession = useSessionStore((s) => s.unreadBySession);
-  const selectSession = useSessionStore((s) => s.selectSession);
-  const closeTab = useSessionStore((s) => s.closeTab);
-  const reorderTab = useSessionStore((s) => s.reorderTab);
   // Multi-row wrapping (toggled from the ⋯ overflow menu) vs the classic
   // single horizontally-scrolling row.
   const multiRow = useSessionStore((s) => s.tabBarMultiRow);
@@ -130,13 +122,13 @@ export function UnifiedTabsBar() {
     const ro = new ResizeObserver(() => recomputeScrollState());
     ro.observe(el);
     return () => ro.disconnect();
-  }, [tabs.length, openFiles.length, hasPlanTab, recomputeScrollState]);
+  }, [openFiles.length, hasPlanTab, recomputeScrollState]);
 
   // Scroll the active tab FULLY into view whenever it changes — works for
   // all three tab kinds. Double-rAF so React's commit + the browser's layout
   // both settle before measuring (the active-state classes change tab
   // widths). See OpenTabsBar for the full rationale.
-  const activeTabKey = editorFocused ? (planTabActive ? PLAN_TAB_KEY : activeFile) : activeId;
+  const activeTabKey = editorFocused ? (planTabActive ? PLAN_TAB_KEY : activeFile) : null;
   useEffect(() => {
     if (!activeTabKey) return;
     let raf1 = 0;
@@ -177,7 +169,7 @@ export function UnifiedTabsBar() {
       cancelAnimationFrame(raf2);
       if (t) clearTimeout(t);
     };
-  }, [activeTabKey, tabs.length, openFiles.length, hasPlanTab, multiRow, recomputeScrollState]);
+  }, [activeTabKey, openFiles.length, hasPlanTab, multiRow, recomputeScrollState]);
 
   const scrollByPage = useCallback((dir: 1 | -1) => {
     const el = scrollRef.current;
@@ -216,22 +208,14 @@ export function UnifiedTabsBar() {
     (e: DragEndEvent) => {
       const { active, over } = e;
       if (!over || active.id === over.id) return;
-      const activeIdStr = String(active.id);
-      const overIdStr = String(over.id);
-      const sFrom = tabs.indexOf(activeIdStr);
-      const sTo = tabs.indexOf(overIdStr);
-      if (sFrom !== -1 && sTo !== -1) {
-        reorderTab(sFrom, sTo);
-        return;
-      }
-      const fFrom = openFiles.indexOf(activeIdStr);
-      const fTo = openFiles.indexOf(overIdStr);
+      const fFrom = openFiles.indexOf(String(active.id));
+      const fTo = openFiles.indexOf(String(over.id));
       if (fFrom !== -1 && fTo !== -1) reorderIdeFile(fFrom, fTo);
     },
-    [tabs, openFiles, reorderTab, reorderIdeFile],
+    [openFiles, reorderIdeFile],
   );
 
-  if (tabs.length === 0 && openFiles.length === 0 && !hasPlanTab) return null;
+  if (openFiles.length === 0 && !hasPlanTab) return null;
   // The ⋯ overflow menu doubles as the multi-row toggle's home, so it stays
   // mounted in multi-row mode even though nothing scrolls horizontally.
   const showOverflowMenu = multiRow || canScrollLeft || canScrollRight;
@@ -271,38 +255,6 @@ export function UnifiedTabsBar() {
             collisionDetection={closestCenter}
             onDragEnd={onDragEnd}
           >
-            <SortableContext items={tabs} strategy={sortStrategy}>
-              {tabs.map((id) => {
-                const sess = findSession(sessionsByProject, pinnedSessions, streamSessions, id);
-                return (
-                  <SortableSessionTab
-                    key={id}
-                    session={sess}
-                    sessionId={id}
-                    isActive={id === activeId && !editorFocused}
-                    running={!!runningBySession[id]}
-                    unreadCount={unreadBySession[id] ?? 0}
-                    multiRow={multiRow}
-                    registerNode={(node) => {
-                      if (node) tabNodes.current.set(id, node);
-                      else tabNodes.current.delete(id);
-                    }}
-                    onActivate={() => void selectSession(id)}
-                    onClose={() => closeTab(id)}
-                  />
-                );
-              })}
-            </SortableContext>
-
-            {/* Group divider: session tabs on the left, editor tabs (files +
-                the plan pseudo-tab) on the right. Only rendered when both
-                groups have content. content-subtle (not bg-edge) so the line
-                reads clearly against the bar in both themes; self-center
-                against the strip's items-end alignment. */}
-            {tabs.length > 0 && (openFiles.length > 0 || hasPlanTab) && (
-              <div aria-hidden className="mx-1.5 h-4 w-px shrink-0 self-center bg-content-subtle/50" />
-            )}
-
             <SortableContext items={openFiles} strategy={sortStrategy}>
               {openFiles.map((path) => (
                 <SortableFileTab
@@ -416,17 +368,6 @@ export function UnifiedTabsBar() {
           multiRow={multiRow}
           onToggleMultiRow={setTabBarMultiRow}
           items={[
-            ...tabs.map((id) => {
-              const sess = findSession(sessionsByProject, pinnedSessions, streamSessions, id);
-              return {
-                key: id,
-                label: sess?.title ?? "(unknown)",
-                active: id === activeId && !editorFocused,
-                dotClass: runningBySession[id]
-                  ? "bg-accent animate-pulse"
-                  : "bg-content-subtle/50",
-              };
-            }),
             ...openFiles.map((path) => ({
               key: path,
               label: basename(path),
@@ -450,10 +391,6 @@ export function UnifiedTabsBar() {
                 clearIdeActiveFile();
                 setPlanTabActive(activeId, true);
               }
-              return;
-            }
-            if (tabs.includes(key)) {
-              void selectSession(key);
               return;
             }
             setActiveFile(key);

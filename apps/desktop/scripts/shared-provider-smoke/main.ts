@@ -1,4 +1,10 @@
 import { sharedRuntimeId, SharedProviderSaveInputSchema, resolveSharedModelProtocol } from "@contracts/sharedProvider.js";
+import { ContextPolicySchema, parseContextPolicy, resolveContextPolicy } from "@contracts/contextPolicy.js";
+import { readContextPolicy } from "@main/lib/contextPolicy.js";
+import { SettingRepo } from "./stub-db.js";
+import { buildCodexContextCatalog } from "@main/providers/codex-sdk/codexContextCatalog.js";
+import { buildCustomEnv } from "@main/providers/claude-sdk/customEnv.js";
+import type { ApiConfig } from "@contracts/customModel.js";
 import { unpackPiHostPath } from "@main/providers/pi-sdk/piHostPath.js";
 import { normalizePiRegisteredModel } from "@main/providers/pi-sdk/piRegisteredModel.js";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
@@ -28,6 +34,23 @@ const base = {
   models: [{ id: "synthetic-model", input: ["text"] as const }],
   enabledAgents: ["claude", "codex"] as const,
 };
+const claudeConfig: ApiConfig = { baseUrl: "https://example.invalid/api/v1/", protocol: "anthropic", authMode: "api_key", authToken: "test-only", selectedModel: "test-model", models: [{ id: "test-model", contextWindow: 1_000_000 }], disableNonEssentialTraffic: true };
+check("Claude Messages appends the SDK version path once", buildCustomEnv(claudeConfig).ANTHROPIC_BASE_URL === "https://example.invalid/api");
+check("Claude does not add a gateway model suffix for numeric capacity", buildCustomEnv(claudeConfig).ANTHROPIC_MODEL === "test-model");
+check("Claude preserves a hostname named v1", buildCustomEnv({ ...claudeConfig, baseUrl: "http://v1" }).ANTHROPIC_BASE_URL === "http://v1");
+check("OpenAI bridge preserves its upstream version path", buildCustomEnv({ ...claudeConfig, protocol: "openai" }).ANTHROPIC_BASE_URL === claudeConfig.baseUrl);
+check("unset policy defaults to 1M and 800K compaction", JSON.stringify(resolveContextPolicy()) === JSON.stringify({ contextWindow: 1_000_000, autoCompactTokenLimit: 800_000, reserveTokens: 200_000 }));
+check("explicit smaller capacity controls compaction", resolveContextPolicy(128_000, { autoCompactPercent: 60 }).autoCompactTokenLimit === 76_800);
+check("malformed stored policy falls back safely", parseContextPolicy("invalid").autoCompactPercent === 80 && parseContextPolicy('{"autoCompactPercent":101}').autoCompactPercent === 80);
+check("out-of-range and fractional percentages are rejected", [0, 9, 91, 100, 60.5].every((autoCompactPercent) => !ContextPolicySchema.safeParse({ autoCompactPercent }).success));
+const unknownCatalog = buildCodexContextCatalog("test-unknown", 1_000_000, 800_000).models[0]!;
+check("Codex catalog lifts unknown-model cap and reserves compaction headroom", unknownCatalog.context_window === 1_000_000 && unknownCatalog.max_context_window === 1_000_000 && unknownCatalog.auto_compact_token_limit === 800_000 && unknownCatalog.effective_context_window_percent === 100);
+const knownCatalog = buildCodexContextCatalog("custom/gpt-6-astra", 200_000, 120_000).models[0]!;
+check("Codex known models retain native instructions and capabilities", "model_messages" in knownCatalog && knownCatalog.model_messages !== null && knownCatalog.slug === "custom/gpt-6-astra" && knownCatalog.context_window === 200_000);
+SettingRepo.set("context.policy", '{"autoCompactPercent":60}');
+check("policy is reread between turns", readContextPolicy().autoCompactPercent === 60);
+SettingRepo.set("context.policy", '{"autoCompactPercent":90}');
+check("changed persisted policy applies without restart", readContextPolicy().autoCompactPercent === 90);
 check("development Pi host stays on disk", unpackPiHostPath("C:\\repo\\out\\pi-host\\piHost.mjs") === "C:\\repo\\out\\pi-host\\piHost.mjs");
 check("packaged Windows Pi host uses unpacked tree", unpackPiHostPath("C:\\App\\resources\\app.asar\\out\\pi-host\\piHost.mjs") === "C:\\App\\resources\\app.asar.unpacked\\out\\pi-host\\piHost.mjs");
 check("packaged Unix Pi host uses unpacked tree", unpackPiHostPath("/App/resources/app.asar/out/pi-host/piHost.mjs") === "/App/resources/app.asar.unpacked/out/pi-host/piHost.mjs");
@@ -103,7 +126,7 @@ const piProjection = (await PiModelsStore.listPublic())[runtimeId];
 const piModel = piProjection?.models?.[0];
 check("Pi projection supplies the extension-required model shape", piModel?.name === "synthetic-model"
   && piModel.reasoning === false && JSON.stringify(piModel.input) === JSON.stringify(["text"])
-  && piModel.contextWindow === 128_000 && piModel.maxTokens === 16_384
+  && piModel.contextWindow === 1_000_000 && piModel.maxTokens === 16_384
   && JSON.stringify(piModel.cost) === JSON.stringify({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }));
 check("shared public schema remains pricing-free", !("cost" in SharedProviderStore.listPublic()[0]!.models[0]!));
 

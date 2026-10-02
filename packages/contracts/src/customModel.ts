@@ -120,6 +120,8 @@ export interface CustomModelEntry {
    *  ANTHROPIC_MODEL carries the `[1m]` suffix (the DeepSeek-style gateway
    *  convention). */
   supports1m?: boolean;
+  /** Numeric context capacity; absent uses the application's 1M default. */
+  contextWindow?: number;
   /** Effective shared-provider interfaces for this model, when applicable. */
   interfaces?: SharedProviderProtocol[];
 }

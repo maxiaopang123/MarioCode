@@ -721,7 +721,7 @@ export function SharedProvidersPanel() {
                               <span className="flex items-center gap-2">
                                 <span>{t("settings.shared.contextShort")}</span>
                                 <Input type="number" min={1} step={1} value={model.contextWindow ?? ""} disabled={busy} className="h-7 w-28"
-                                  aria-label={t("settings.shared.contextWindow")} placeholder="200000"
+                                  aria-label={t("settings.shared.contextWindow")} placeholder="1000000"
                                   onChange={(e) => updateModel(index, { contextWindow: e.target.value ? Number(e.target.value) : undefined })} />
                                 <span>{t("settings.shared.maxTokensShort")}</span>
                                 <Input type="number" min={1} step={1} value={model.maxTokens ?? ""} disabled={busy} className="h-7 w-24"

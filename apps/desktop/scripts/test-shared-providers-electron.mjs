@@ -251,6 +251,75 @@ try {
       assert.ok(fixtureRequests.slice(requestCount).some((r) => r.path === turn.path && r.body.model === turn.id && (r.authorization === `Bearer ${fixtureKey}` || r.apiKey === fixtureKey)), `${turn.engine} request did not use its model endpoint and stored key`);
     } finally { await evaluate("globalThis.__stopWireEvents()"); }
   }
+  if (process.argv.includes("--context")) {
+    const sdkPackage = JSON.parse(await readFile(join(dirname(require.resolve("@anthropic-ai/claude-agent-sdk")), "package.json"), "utf8"));
+    const claudePlatform = `@anthropic-ai+claude-agent-sdk-${process.platform}-${process.arch}`;
+    const claudePath = join(desktop, "../../node_modules/.pnpm", `${claudePlatform}@${sdkPackage.version}`, "node_modules/@anthropic-ai", `claude-agent-sdk-${process.platform}-${process.arch}`, process.platform === "win32" ? "claude.exe" : "claude");
+    await access(claudePath);
+    const claudeSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "claude", mode: "external", path: claudePath })})`);
+    assert.equal(claudeSelection.ok, true, claudeSelection.error);
+    await evaluate("[...document.querySelectorAll('.settings-root nav button')].find(b=>b.innerText.trim()==='上下文与压缩').click()");
+    while (!await evaluate("Boolean(document.querySelector('input[aria-label=自动压缩阈值]:not(:disabled)'))")) await delay(100);
+    assert.ok((await evaluate("document.body.innerText")).includes("800,000"));
+    const changeThreshold = (value) => evaluate(`(() => {const input=document.querySelector('input[aria-label=自动压缩阈值]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await changeThreshold("0");
+    await delay(100);
+    assert.ok(await evaluate("[...document.querySelectorAll('.settings-content button')].find(b=>b.innerText==='保存').disabled"));
+    await changeThreshold("60");
+    await delay(100);
+    assert.ok((await evaluate("document.body.innerText")).includes("600,000"));
+    await evaluate("[...document.querySelectorAll('.settings-content button')].find(b=>b.innerText==='保存').click()");
+    while (JSON.parse((await evaluate("window.api.setting.get({key:'context.policy'})")).value || "{}").autoCompactPercent !== 60) await delay(100);
+    assert.ok(await evaluate("window.api.setting.set({key:'context.policy',value:'{\"autoCompactPercent\":100}'}).then(()=>false,()=>true)"), "Main validates policy writes");
+    await evaluate("[...document.querySelectorAll('.settings-root nav button')].find(b=>b.innerText.trim()==='模型配置').click()");
+    await delay(100);
+    await evaluate("[...document.querySelectorAll('.settings-root nav button')].find(b=>b.innerText.trim()==='上下文与压缩').click()");
+    await delay(200);
+    assert.equal(await evaluate("document.querySelector('input[aria-label=自动压缩阈值]').value"), "60", "Threshold survives remount");
+    const contextModels = [
+      ...models,
+      { id: "context-default", interfaces: ["anthropic", "responses"] },
+      { id: "context-small", interfaces: ["anthropic", "responses"], contextWindow: 200000 },
+      { id: "gpt-6-astra", interfaces: ["responses"] },
+    ];
+    await evaluate(`window.api.sharedProviders.save(${JSON.stringify({ ...wireConfig, models: contextModels })})`);
+    const runContextTurn = async (session, engine, model) => {
+      await evaluate("globalThis.__wireEvents=[];globalThis.__stopWireEvents=window.api.on.claudeEvent(msg=>globalThis.__wireEvents.push(msg.event))");
+      // Enough real history for Pi's keepRecentTokens rule to permit a
+      // summary; synthetic usage alone cannot make tiny history compactable.
+      await evaluate(`window.api.claude.sendTurn(${JSON.stringify({ sessionId: session.id, prompt: engine === "pi-sdk" ? "Reply briefly. " + "contextfixture ".repeat(7500) : "Reply briefly", model: engine === "claude-sdk" ? model : `${runtimeId}/${model}` })})`);
+      const deadline = Date.now() + 60000;
+      let events;
+      do {
+        events = await evaluate("globalThis.__wireEvents");
+        if (events.some((event) => event.type === "turn.done" && event.sessionId === session.id)) break;
+        if (Date.now() > deadline) throw new Error(`Context turn timed out: ${engine}: ${JSON.stringify(events)}`);
+        await delay(100);
+      } while (true);
+      await evaluate("globalThis.__stopWireEvents()");
+      assert.ok(!events.some((event) => event.type === "error"), `${engine}: ${JSON.stringify(events)}`);
+      return events;
+    };
+    const contextResults = [];
+    for (const engine of ["pi-sdk", "codex-sdk", "claude-sdk"]) {
+      const cases = [["context-default", 1000000, 500000, 650000], ["context-small", 200000, 100000, 160000], ...(engine === "codex-sdk" ? [["gpt-6-astra", 1000000, 500000, 650000]] : [])];
+      for (const [model, window, below, above] of cases) {
+        fixture.setUsagePlan(model, [below, above, 10, 10, 10, 10, 10]);
+        const { session } = await evaluate(`window.api.claude.startSession(${JSON.stringify({ projectId: project.id, title: "Offline compaction", kind: "side", providerId: engine, customModelId: engine === "claude-sdk" ? runtimeId : undefined, model: engine === "claude-sdk" ? model : `${runtimeId}/${model}`, permissionMode: "bypassPermissions" })})`);
+        const count = fixtureRequests.length;
+        const first = await runContextTurn(session, engine, model);
+        assert.ok(!first.some((event) => event.type === "compact.result"), `${engine} compacted below threshold`);
+        assert.ok(first.some((event) => event.type === "token-usage.updated" && event.snapshot.maxTokens === window), `${engine} did not apply the real context window ${window}: ${JSON.stringify(first)}`);
+        const second = await runContextTurn(session, engine, model);
+        const third = await runContextTurn(session, engine, model);
+        const events = [...first, ...second, ...third];
+        contextResults.push({ engine, model, window, requests: fixtureRequests.slice(count).map((request) => ({ path: request.path, model: request.body.model, summary: JSON.stringify(request.body).includes("summar") })), events });
+        await writeFile(join(data, "context-events.json"), JSON.stringify(contextResults, null, 2));
+        assert.equal(events.filter((event) => event.type === "compact.result").length, 1, `${engine} must show one successful compaction above ${window * 0.6}: ${JSON.stringify(contextResults.at(-1))}`);
+        console.log(`Context threshold verified: ${engine}, ${window}, 60%`);
+      }
+    }
+  }
   try {
     await command("Page.bringToFront");
     const screenshot = await command("Page.captureScreenshot", { format: "png", fromSurface: false }, 5000);
@@ -259,7 +328,7 @@ try {
   await writeFile(join(data, "verification.json"), JSON.stringify({
     result: "passed", providerId: provider.id,
     fixtureBaseUrl,
-    checks: ["real shared provider form save", "three agent projections", "Pi SDK in-memory registration", "encrypted key at rest", "no key disclosure via legacy IPC", "local Pi models unchanged", "reopened form does not reveal key", "real HTTP model discovery with draft key", "cancel discovery preserves form", "real HTTP model discovery with stored key", "discovered model selection and save", "discovery does not invent interfaces", "interface edits preserve engine choices", "Pi real Chat/Messages/Responses turns", "Codex real Responses turn and model switch on resume"],
+    checks: ["real shared provider form save", "three agent projections", "Pi SDK in-memory registration", "encrypted key at rest", "no key disclosure via legacy IPC", "local Pi models unchanged", "reopened form does not reveal key", "real HTTP model discovery with draft key", "cancel discovery preserves form", "real HTTP model discovery with stored key", "discovered model selection and save", "discovery does not invent interfaces", "interface edits preserve engine choices", "Pi real Chat/Messages/Responses turns", "Codex real Responses turn and model switch on resume", ...(process.argv.includes("--context") ? ["context settings persistence and main-process validation", "three-engine compaction thresholds at 1M and 200K", "Codex known-model catalog capacity"] : [])],
   }, null, 2));
   console.log(`Electron shared-provider verification passed. Artifacts: ${data}`);
 } finally {

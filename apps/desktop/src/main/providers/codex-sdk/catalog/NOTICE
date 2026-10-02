@@ -1,0 +1,9 @@
+Codex model catalog and fallback instructions, version 0.153.4
+Copyright OpenAI. Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Unmodified source assets:
+https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/models-manager/models.json
+https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/models-manager/prompt.md
+
+MarioCode modifies a per-turn copy of context capacity and compaction metadata.
+The vendored native instructions and tool metadata remain unchanged.

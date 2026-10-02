@@ -4,8 +4,10 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { join } from "node:path";
 import type { ProviderContext } from "@contracts/provider";
+import type { RuntimeEvent } from "@contracts/runtime";
 import type { BuiltinModelOption } from "@contracts/provider";
 import { PI_1M_CONTEXT_WINDOW } from "@contracts/piModel";
+import { resolveContextPolicy } from "@contracts/contextPolicy";
 import { PiMessageAdapter } from "./PiMessageAdapter.js";
 import { buildPiTokenSnapshot } from "./piTokenUsage.js";
 import { buildPiSkillLoader, rewriteSkillPrefix, createMntNormalizingReadTool } from "./piSkillBridge.js";
@@ -115,7 +117,7 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
   try { sessionManager = req.resumeProviderSessionId ? sdk.SessionManager.open(req.resumeProviderSessionId) : createSessionManager(); }
   catch { sessionManager = createSessionManager(); }
   const modelRuntime = await createRuntime(sdk, config, sharedMode);
-  let model;
+  let model: ReturnType<typeof modelRuntime.getModel>;
   if (selectedModel && selectedModel !== "default") {
     const i = selectedModel.indexOf("/");
     if (i > 0 && config.providers[selectedModel.slice(0, i)]) {
@@ -130,6 +132,12 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
     }
   }
   if (!model) throw new Error("Pi 未配置可用模型");
+  const selectedId = model.id;
+  const configuredModel = config.providers[model.provider]?.models?.find((entry) => entry.id === selectedId);
+  const policy = resolveContextPolicy(configuredModel?.contextWindow, config.contextPolicy);
+  model = { ...model, contextWindow: policy.contextWindow };
+  const settingsManager = sdk.SettingsManager.create(req.cwd, config.agentDir);
+  settingsManager.applyOverrides({ compaction: { enabled: true, reserveTokens: policy.reserveTokens } });
   const strict = req.permissionMode !== "bypassPermissions" && req.permissionMode !== "dontAsk";
   dropFileSnapshot(req.sessionId);
   const snapshot = getFileSnapshot(req.sessionId);
@@ -144,7 +152,7 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
     createMntNormalizingReadTool(sdk, req.cwd),
     ...(config.gitBash ? [sdk.createBashToolDefinition(req.cwd, { shellPath: config.gitBash }) as never] : []),
   ] : [];
-  const { session } = await sdk.createAgentSession({ cwd: req.cwd, agentDir: config.agentDir, thinkingLevel: req.effort !== "default" ? req.effort as never : undefined, customTools, sessionManager, modelRuntime, resourceLoader: loader, model });
+  const { session } = await sdk.createAgentSession({ cwd: req.cwd, agentDir: config.agentDir, thinkingLevel: req.effort !== "default" ? req.effort as never : undefined, customTools, sessionManager, modelRuntime, resourceLoader: loader, model, settingsManager });
   if (shuttingDown) { await session.abort(); session.dispose(); return; }
   turns.set(turnId, { session, aborted: false });
   if (abortedTurns.delete(turnId)) { turns.get(turnId)!.aborted = true; await session.abort(); }
@@ -152,13 +160,21 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
   ctx.onProviderSessionId?.(session.sessionFile ?? session.sessionId);
   // Host owns a separate registry. Replace, rather than clear, so a late
   // flush from an interrupted prior turn retains its captured instance.
-  const adapter = new PiMessageAdapter(ctx, req.sessionId, () => buildPiTokenSnapshot(session.getContextUsage(), session.getSessionStats(), session.model?.id ?? req.model), snapshot);
+  // Pi emits agent_end before its post-run auto-compaction. Keep the turn
+  // active until prompt() settles so compaction cannot race a resumed turn.
+  let pendingCompletion: Extract<RuntimeEvent, { type: "turn.done" }> | undefined;
+  const adapterContext: ProviderContext = { ...ctx, emit: (event) => {
+    if (event.type === "turn.done") pendingCompletion = event;
+    else ctx.emit(event);
+  } };
+  const adapter = new PiMessageAdapter(adapterContext, req.sessionId, () => buildPiTokenSnapshot(session.getContextUsage(), session.getSessionStats(), session.model?.id ?? req.model), snapshot);
   const unsubscribe = session.subscribe((event) => adapter.dispatch(event));
   const prompt = rewriteSkillPrefix(req.prompt, new Set(loader.getSkills().skills.map((s) => s.name)));
   try {
     if (req.images?.length) await session.sendUserMessage([...(prompt.trim() ? [{ type: "text" as const, text: prompt }] : []), ...req.images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType }))]);
     else await session.prompt(prompt);
     await adapter.flushFinal();
+    if (pendingCompletion) ctx.emit(pendingCompletion);
   } catch (err) {
     await adapter.flushFinal();
     if (turns.get(turnId)?.aborted) ctx.emit({ type: "turn.done", sessionId: req.sessionId, reason: "interrupted" });

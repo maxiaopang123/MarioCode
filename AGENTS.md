@@ -197,6 +197,12 @@ pnpm build
 - **Pi 独立 Node**:`out/pi-host/**` 必须 `asarUnpack`;`PiHostClient` 经 `unpackPiHostPath` 将 archive 路径改到 `.asar.unpacked`,真实 Node 不能读取 ASAR。Messages 的 SDK 自加 `/v1/messages`,共享模型经 `normalizePiRegisteredModel` 去掉基础地址尾部 `/v1`,避免 `/v1/v1/messages`。默认模型也先确定提供商再选择共享隔离 runtime。
 - **验证**:`pnpm test:shared-providers` 78 项;`pnpm test:pi-host` 自动使用可用的项目/全局/额外传入运行时,覆盖真实 Chat/Messages/Responses、接口切换续聊、共享默认模型。`test-shared-providers-electron.mjs` 通过隔离应用/假 Key/本地 HTTP 测 UI、Pi 三种实际请求、Codex Responses 与切换模型续聊;`MARIOCODE_TEST_ASAR` 可验证包内 Pi 启动,不可再跳过此断言。第三方服务的真实接口兼容性需用户按服务商说明选择,不凭模型名称猜测。
 
+### 上下文与自动压缩(2026-10-03,0.2.4)
+- **统一策略**:`contracts/contextPolicy.ts` 的 `DEFAULT_CONTEXT_WINDOW` = 1,000,000;模型显式 `contextWindow` 优先。settings `context.policy` 保存 `{autoCompactPercent}`(整数 10–90,缺省 80),通用 setting:set 在 main 校验,三端每轮现读,续聊同样生效。设置新增「上下文与压缩」独立页,显示默认容量、百分比及对应 tokens;实际容量仍须模型服务支持。
+- **三端落地**:Claude 传 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` / `CLAUDE_CODE_AUTO_COMPACT_WINDOW` / `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` 和 SDK `autoCompactWindow`;SDK 会为输出/摘要预留空间,实际触发点可略早于百分比换算值。共享模型的数值容量传进 ApiConfig,不再据此给网关模型 ID 添加 `[1m]` 后缀;旧 supports1m 约定仍保留。Pi 用所选模型容量及私有 SettingsManager 的内存 compaction override(`reserveTokens = window - threshold`),不写用户 Pi 配置;host 推迟 turn.done 到 prompt 及自动压缩真正结束。Codex 传进程级 window / token limit **及每轮独立模型目录**(只改容量元数据),结束后删除临时目录;0.153.4 原生未知模型的 max_context_window=272K,只传 window 参数仍被 clamp,不可删掉目录覆盖。Codex 的压缩项映射到 compact.result;Pi 中断/失败的压缩不呈现成功卡。
+- **Codex 原生目录**:`providers/codex-sdk/catalog/` 是 rust-v0.153.4 的官方 models.json 与 fallback prompt 快照,保留原生提示词/工具能力,Apache-2.0 的 LICENSE/NOTICE 随包带上。升级运行时基线时同步复核 schema 与快照。90% 上限对齐该版原生 auto_compact_token_limit 的硬上限,不能在 UI 放开后假称较高阈值有效。Claude Messages 的 BASE_URL 同样去末尾 `/v1`,避免 SDK 再拼一次;桥接的 OpenAI 地址保留版本路径。
+- **验证**:公共提供商离线 90 项、Pi host 三协议/隔离/续聊、类型检查及完整构建通过。`node apps/desktop/scripts/test-shared-providers-electron.mjs <隔离输出目录> --context` 使用本地假上游、真实 Claude/Pi/Codex 运行时:设置读写/非法值/切换页面后持久化、1M 与显式 200K 两种容量、低于/超过 60% 的实际压缩及续聊均通过;额外覆盖 Codex gpt-6-astra 原生目录。测试用模拟 token 用量与足够可摘要的历史,未调用收费模型;生产模型的长上下文能力仍取决于端点。
+
 ### 设置页布局(2026-10-02)
 - **独立双栏**:`SettingsDialog` 最大 1440×960,保留避让窗口拖动区的 88px 水平 / 56px 垂直边距;`SettingsPage` 不再复用工作台的 `ThreePaneLayout`,取消内层大卡片,216px 导航与内容独立滚动。
 - **导航**:五个分组可展开,初次只展开当前分组;搜索匹配本地化页面名称 / 分组 / section id。选中后清搜索并展开对应组;设置内的 `setSettingsOpen(true, sectionId)` 跳转仍生效。Escape 优先交给子弹窗,其次清搜索,最后关闭设置;关闭后恢复工作台焦点。

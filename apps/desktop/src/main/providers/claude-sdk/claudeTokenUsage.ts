@@ -51,7 +51,7 @@ export const CLAUDE_CONTEXT_WINDOW_MAX_TOKENS = {
   "200k": 200_000,
   "1m": 1_000_000,
 } as const;
-export type ClaudeContextWindowTag = keyof typeof CLAUDE_CONTEXT_WINDOW_MAX_TOKENS;
+export type ClaudeContextWindowTag = keyof typeof CLAUDE_CONTEXT_WINDOW_MAX_TOKENS | number;
 
 /** "Logical prompt tokens" — the count that actually occupies the context
  *  window (doc §3). Cache reads bill at a reduced rate but occupy the window
@@ -91,6 +91,7 @@ export function resolveContextWindowHeuristic(
   model?: string,
   configured?: ClaudeContextWindowTag,
 ): number {
+  if (typeof configured === "number" && configured > 0) return configured;
   if (configured === "1m") return CLAUDE_CONTEXT_WINDOW_MAX_TOKENS["1m"];
   if (configured === "200k") return CLAUDE_CONTEXT_WINDOW_MAX_TOKENS["200k"];
   const m = model?.toLowerCase() ?? "";
@@ -115,6 +116,7 @@ export function resolveEffectiveContextWindow(opts: {
   configured?: ClaudeContextWindowTag;
 }): number {
   const { model, reported, lastKnown, configured } = opts;
+  if (typeof configured === "number" && configured > 0) return configured;
   const heuristic = resolveContextWindowHeuristic(model, configured);
   return Math.max(
     positiveOrZero(reported),

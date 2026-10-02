@@ -1730,6 +1730,7 @@ export type FocusSessionInput = z.infer<typeof FocusSessionSchema>;
 const CustomModelEntrySchema = z.object({
   id: z.string().min(1),
   supports1m: z.boolean().optional(),
+  contextWindow: z.number().int().positive().optional(),
 });
 
 const AuthModeSchema = z.enum(["auth_token", "api_key"]);

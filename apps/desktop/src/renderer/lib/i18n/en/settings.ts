@@ -1,5 +1,17 @@
 /** English mirror of `zh/settings.ts`. */
 export const en = {
+  "settings.nav.context": "Context & compaction",
+  "settings.context.title": "Context & compaction",
+  "settings.context.section": "Automatic compaction",
+  "settings.context.description": "Shared by Claude, Pi and Codex. Changes apply from the next turn.",
+  "settings.context.capacity": "Default context capacity",
+  "settings.context.capacityDesc": "Models without a specified capacity default to 1M tokens. Per-model capacity overrides this default; available capacity depends on the model service.",
+  "settings.context.threshold": "Auto-compaction threshold",
+  "settings.context.thresholdDesc": "Compact at a percentage of the current model's capacity, from 10% to 90%, leaving room for replies and tool calls. Compaction summarizes earlier conversation and preserves recent content.",
+  "settings.context.preview": "With a 1M context, compact at approximately {tokens} tokens.",
+  "settings.context.invalid": "Enter a whole number between 10 and 90.",
+  "settings.context.saved": "Saved. Applies from the next turn.",
+  "settings.context.error": "Could not load or save settings: {error}",
   "settings.shell.description": "Preferences and extensions",
   "settings.shell.search": "Search settings",
   "settings.shell.clearSearch": "Clear search",

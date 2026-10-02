@@ -19,9 +19,10 @@ import type {
 } from "@contracts/provider";
 import type { AskUserQuestionItem, PermissionMode } from "@contracts/runtime";
 import { SdkMessageAdapter, parseQuestions } from "./SdkMessageAdapter.js";
-import { buildCustomEnv, MARIOCODE_CONFIG_DIR, resolveActiveModel } from "./customEnv.js";
+import { buildCustomEnv, MARIOCODE_CONFIG_DIR, resolveSelectedEntry } from "./customEnv.js";
+import { resolveContextPolicy } from "@contracts/contextPolicy";
+import { readContextPolicy } from "@main/lib/contextPolicy.js";
 import { withEngineNetworkEnv } from "@main/network/engineProxy.js";
-import type { ClaudeContextWindowTag } from "./claudeTokenUsage.js";
 import { ASK_SYSTEM_PROMPT } from "@main/lib/askQuestion.js";
 import { CLAUDE_IDENTITY_PROMPT, CLAUDE_PLAN_MODE_NUDGE, joinPromptSections } from "@main/lib/systemPrompt.js";
 import { loadUserSystemPrompt, userSystemPromptSections } from "@main/lib/userSystemPrompt.js";
@@ -957,7 +958,9 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     // user-controlled priority and applies regardless of `settingSources`.
     // Add ".claude/plans/" to .gitignore to keep these ephemeral drafts out of
     // version control.
-    options.settings = { plansDirectory: ".claude/plans" };
+    const policy = readContextPolicy();
+    const { contextWindow } = resolveContextPolicy(req.apiConfig ? resolveSelectedEntry(req.apiConfig)?.contextWindow : undefined, policy);
+    options.settings = { plansDirectory: ".claude/plans", autoCompactWindow: contextWindow };
 
     // Always redirect the claude binary's user-level config root to MarioCode's
     // own directory (~/.mariocode) via CLAUDE_CONFIG_DIR. This decouples MarioCode from
@@ -981,6 +984,15 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
       // manages its own skills/settings, but no auth/model overrides needed.
       options.env = await withEngineNetworkEnv({ ...process.env, CLAUDE_CONFIG_DIR: MARIOCODE_CONFIG_DIR });
     }
+
+    options.env = {
+      ...options.env,
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(contextWindow),
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(contextWindow),
+      CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: String(policy.autoCompactPercent),
+      DISABLE_AUTO_COMPACT: "0",
+      DISABLE_COMPACT: "0",
+    };
 
     // Subagent model pin (per provider config, settings panel「模型配置」):
     // CLAUDE_CODE_SUBAGENT_MODEL is the binary's native channel for routing
@@ -1478,19 +1490,8 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     );
     const q = (await loadQuery())({ prompt: buildPromptInput(req, gate, ac.signal), options });
 
-    // Resolve the user-declared context-window tag from the selected model's
-    // `supports1m` flag. `resolveActiveModel` appends a `[1m]` suffix exactly
-    // when the selected model declares 1M, so its presence signals a 1M
-    // window. For a custom endpoint this is authoritative (a non-1M config →
-    // "200k" overrides the model-name heuristic, so a gateway model
-    // coincidentally named "*opus*" without supports1m resolves to 200k as
-    // the user intended). `undefined` (official Anthropic endpoint) lets the
-    // heuristic decide.
-    const configured: ClaudeContextWindowTag | undefined = req.apiConfig
-      ? resolveActiveModel(req.apiConfig)?.toLowerCase().endsWith("[1m]")
-        ? "1m"
-        : "200k"
-      : undefined;
+    // The adapter displays the same numeric budget passed to the worker.
+    const configured = contextWindow;
 
     const adapter = new SdkMessageAdapter(
       ctx,

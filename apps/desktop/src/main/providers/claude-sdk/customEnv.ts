@@ -106,7 +106,7 @@ const PROCESS_SESSION_ID = `mariocode-${randomBytes(6).toString("hex")}`;
 /** The config entry driving this turn: the session's selected model when it's
  *  still configured, else the first entry. Callers guarantee at least one
  *  entry exists before invoking us (validated upstream). */
-function resolveSelectedEntry(cfg: ApiConfig): CustomModelEntry | undefined {
+export function resolveSelectedEntry(cfg: ApiConfig): CustomModelEntry | undefined {
   return cfg.models.find((m) => m.id === cfg.selectedModel) ?? cfg.models[0];
 }
 
@@ -154,7 +154,11 @@ export function buildCustomEnv(
 ): NonNullable<Options["env"]> {
   const env: NonNullable<Options["env"]> = { ...process.env };
 
-  env.ANTHROPIC_BASE_URL = cfg.baseUrl;
+  // Like Pi's Anthropic client, the bundled CLI appends /v1/messages.
+  // Remove only a version path, never a hostname literally named "v1".
+  const endpoint = /^(https?:\/\/[^/]+)(\/.*)?$/i.exec(cfg.baseUrl);
+  env.ANTHROPIC_BASE_URL = cfg.protocol === "anthropic" && endpoint
+    ? `${endpoint[1]}${(endpoint[2] ?? "").replace(/\/v1\/?$/, "")}` : cfg.baseUrl;
 
   // Auth: gateways differ in which header they read. The official API uses
   // x-api-key (ANTHROPIC_API_KEY); most third-party gateways expect

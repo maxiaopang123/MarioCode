@@ -117,7 +117,7 @@ async function testRuntime(runtime) {
     if (!smokeModel.ok || registered?.name !== "fixture-model" || registered?.reasoning !== false
       || JSON.stringify(registered?.input) !== JSON.stringify(["text"])
       || JSON.stringify(registered?.cost) !== JSON.stringify(zeroCost)
-      || registered?.contextWindow !== 128000 || registered?.maxTokens !== 16384) {
+      || registered?.contextWindow !== 1000000 || registered?.maxTokens !== 16384) {
       throw new Error(`shared model registration was not normalized: ${JSON.stringify(smokeModel)}`);
     }
     const { calculateCost } = await import(pathToFileURL(runtime.aiEntry).href);

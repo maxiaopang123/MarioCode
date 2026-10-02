@@ -37,6 +37,8 @@
  *     restored with thread/resume on subsequent turns.
  */
 import { randomUUID } from "node:crypto";
+import { resolveContextPolicy } from "@contracts/contextPolicy";
+import { readContextPolicy } from "@main/lib/contextPolicy.js";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { MARIOCODE_HOME } from "@main/lib/appHome.js";
@@ -54,6 +56,7 @@ import type { ServerRequestFrame } from "./CodexAppServerClient.js";
 import { CodexAppServerClient } from "./CodexAppServerClient.js";
 import { CodexMessageAdapter } from "./CodexMessageAdapter.js";
 import { CodexFileSnapshot } from "./CodexFileSnapshot.js";
+import { createCodexContextCatalog } from "./codexContextCatalog.js";
 import { resolveCodexBinaryPath } from "./codexBinaryResolve.js";
 import {
   CodexModelsStore,
@@ -303,10 +306,11 @@ export class CodexAgentSdkProvider implements AgentProvider {
     // concurrent sessions with different windows never race on the shared
     // config file (verified: config/read reflects the flag value).
     const selectedModel = providers.find((p) => p.id === providerId)?.models.find((m) => m.id === modelId);
-    const contextWindow = selectedModel?.contextWindow;
+    const { contextWindow, autoCompactTokenLimit } = resolveContextPolicy(selectedModel?.contextWindow, readContextPolicy());
 
     /* ── 4. Spawn app-server (env carries CODEX_HOME + provider keys) ── */
     const env = await buildCodexEnv(ctx);
+    const contextCatalog = await createCodexContextCatalog(modelId, contextWindow, autoCompactTokenLimit);
     // File snapshot: sandboxed writes reconstruct from the turn diff at
     // freeze (there is no pre-write hook; approval params carry only
     // grantRoot, so no recordPre path exists on this provider).
@@ -356,7 +360,9 @@ export class CodexAgentSdkProvider implements AgentProvider {
         `model=${modelId}`,
         "-c",
         `model_provider=${providerId}`,
-        ...(contextWindow ? ["-c", `model_context_window=${contextWindow}`] : []),
+        "-c", `model_context_window=${contextWindow}`,
+        "-c", `model_auto_compact_token_limit=${autoCompactTokenLimit}`,
+        "-c", `model_catalog_json=${JSON.stringify(contextCatalog.path)}`,
       ],
       log: ctx.log,
       onExit: (code, signal) => {
@@ -569,6 +575,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
         } catch {
           /* process already gone */
         }
+        await contextCatalog.dispose().catch((error: unknown) => ctx.log.warn(`codex context catalog cleanup: ${String(error)}`));
       }
     })();
 

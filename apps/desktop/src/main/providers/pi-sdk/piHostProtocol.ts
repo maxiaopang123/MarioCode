@@ -1,6 +1,7 @@
 import type { RuntimeEvent, PermissionMode } from "@contracts/runtime";
 import type { StartTurnRequest, ApprovalRequest, ProviderApprovalDecision, UserInputRequest, UserInputDecision, PlanApprovalRequest, PlanApprovalDecision } from "@contracts/provider";
 import type { PiProviderPublic } from "@contracts/piModel";
+import { ContextPolicySchema, type ContextPolicy } from "@contracts/contextPolicy";
 
 export const PI_HOST_PROTOCOL_VERSION = 1 as const;
 
@@ -39,6 +40,7 @@ export interface PiHostTurnConfig {
    *  process has neither. */
   userSystemPrompt: string;
   agentDir: string;
+  contextPolicy?: ContextPolicy;
 }
 
 export type PiHostReverseMethod = "requestApproval" | "requestUserInput" | "requestPlanApproval" | "permissionState" | "browser" | "builtinTool";
@@ -87,6 +89,7 @@ export function isMainToPiHost(value: unknown): value is MainToPiHost {
     && (p.scheduleToolsEnabled === undefined || typeof p.scheduleToolsEnabled === "boolean")
     && (p.wechatToolEnabled === undefined || typeof p.wechatToolEnabled === "boolean")
     && (p.unattended === undefined || typeof p.unattended === "boolean")
+    && (p.contextPolicy === undefined || ContextPolicySchema.safeParse(p.contextPolicy).success)
     && typeof p.agentDir === "string" && p.agentDir.length > 0
     && isRecord(p.browserToolSpecs) && typeof p.browserUsagePrompt === "string"
     && typeof p.userSystemPrompt === "string";

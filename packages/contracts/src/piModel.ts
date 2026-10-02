@@ -13,7 +13,7 @@
  *   - ProviderConfig: name? / baseUrl? / apiKey? / api? / headers? / compat? /
  *     authHeader? / models? / modelOverrides?
  *   - ModelDefinition: id (required) / name? / api? / baseUrl? / reasoning? /
- *     thinkingLevelMap? / input? / cost? / contextWindow? (default 128000) /
+ *     thinkingLevelMap? / input? / cost? / contextWindow? (default 1000000) /
  *     maxTokens? (default 16384) / headers? / compat?
  *   - thinkingLevelMap keys: off / minimal / low / medium / high / xhigh
  *     (NO "max" key — `"xhigh": "max"` uses "max" as a VALUE string).
@@ -75,7 +75,7 @@ export interface PiModelDefinition {
   thinkingLevelMap?: PiThinkingLevelMap;
   /** Supported input types: ["text"] or ["text","image"]. */
   input?: string[];
-  /** Context window size in tokens (default 128000). */
+  /** Context window size in tokens (default 1000000). */
   contextWindow?: number;
   /** Max output tokens (default 16384). */
   maxTokens?: number;

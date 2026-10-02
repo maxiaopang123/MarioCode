@@ -86,6 +86,8 @@ export class CodexMessageAdapter {
   /** Prevents a thread/read reconciliation from completing the same agent
    *  message twice after its live item/completed notification already landed. */
   private completedAgentItems = new Set<string>();
+  /** thread/read reconciliation replays compaction items too. */
+  private completedCompactItems = new Set<string>();
   /** Subagent threads with a pending (throttled) transcript flush. */
   private transcriptFlushPending = new Set<string>();
   private transcriptFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -432,7 +434,13 @@ export class CodexMessageAdapter {
           code: "CODEX_ITEM_ERROR",
         });
         break;
-      // userMessage (input echo), sleep, review markers, context_compaction
+      case "contextCompaction":
+        if (completed && !this.completedCompactItems.has(item.id)) {
+          this.completedCompactItems.add(item.id);
+          this.emit({ type: "compact.result", sessionId: this.sessionId, trigger: "auto", preTokens: this.lastUsage?.inputTokens ?? 0 });
+        }
+        break;
+      // userMessage (input echo), sleep, review markers
       // — ignored.
       default:
         break;
@@ -1094,6 +1102,7 @@ function resolveGeneratedImage(
 /* ── app-server payload shapes (calibrated against 0.153.4 live + schema) ── */
 
 export type ThreadItem =
+  | { type: "contextCompaction"; id: string }
   | { type: "agentMessage"; id: string; text?: string; content?: unknown }
   | { type: "reasoning"; id: string; content?: unknown[]; summary?: unknown[] }
   | { type: "commandExecution"; id: string; command?: string; aggregatedOutput?: string | null; exitCode?: number | null; status?: string; cwd?: string | null }

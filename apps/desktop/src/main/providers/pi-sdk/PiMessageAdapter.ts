@@ -190,6 +190,7 @@ export class PiMessageAdapter {
         }
         break;
       case "compaction_end": {
+        if (event.aborted || !event.result) break;
         // Pi's CompactionResult carries real token counts (tokensBefore /
         // estimatedTokensAfter) — surface them in the compact card instead of
         // the 0 placeholder. estimatedTokensAfter may be absent; the card

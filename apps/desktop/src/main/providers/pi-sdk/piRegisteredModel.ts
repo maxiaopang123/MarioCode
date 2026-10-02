@@ -1,6 +1,7 @@
 import type { PiModelDefinition } from "@contracts/piModel";
+import { DEFAULT_CONTEXT_WINDOW } from "@contracts/contextPolicy";
 
-export const PI_SDK_DEFAULT_CONTEXT_WINDOW = 128_000;
+export const PI_SDK_DEFAULT_CONTEXT_WINDOW = DEFAULT_CONTEXT_WINDOW;
 export const PI_SDK_DEFAULT_MAX_TOKENS = 16_384;
 
 export interface PiRegisteredModelCost {

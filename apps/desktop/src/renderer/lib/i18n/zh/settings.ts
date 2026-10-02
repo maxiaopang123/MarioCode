@@ -3,6 +3,18 @@
  * Keys: `settings.*`. Owned by the settings/* migration batch.
  */
 export const zh = {
+  "settings.nav.context": "上下文与压缩",
+  "settings.context.title": "上下文与压缩",
+  "settings.context.section": "自动压缩",
+  "settings.context.description": "Claude、Pi 和 Codex 共用此设置，修改后从下一轮对话生效。",
+  "settings.context.capacity": "默认上下文容量",
+  "settings.context.capacityDesc": "未指定容量的模型默认使用 1M tokens。模型配置中填写的容量优先，实际可用容量取决于模型服务。",
+  "settings.context.threshold": "自动压缩阈值",
+  "settings.context.thresholdDesc": "按当前模型上下文容量的百分比触发压缩，可设置 10%–90%，为回复和工具调用留出空间。压缩会总结较早的对话并保留近期内容。",
+  "settings.context.preview": "1M 上下文对应约 {tokens} tokens 时自动压缩。",
+  "settings.context.invalid": "请输入 10 到 90 之间的整数。",
+  "settings.context.saved": "已保存，下一轮对话生效。",
+  "settings.context.error": "读取或保存设置失败：{error}",
   "settings.shell.description": "偏好与扩展",
   "settings.shell.search": "搜索设置",
   "settings.shell.clearSearch": "清除搜索",

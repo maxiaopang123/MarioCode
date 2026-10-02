@@ -30,6 +30,8 @@ npmRebuild: false
 files:
   - out/**/*
   - package.json
+  - src/main/providers/codex-sdk/catalog/LICENSE
+  - src/main/providers/codex-sdk/catalog/NOTICE
   - "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,readme,readme.txt}"
   - "!**/node_modules/**/.bin"
   - "!**/node_modules/**/test"

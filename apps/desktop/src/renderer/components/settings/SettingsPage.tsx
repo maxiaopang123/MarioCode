@@ -29,6 +29,7 @@ import {
   type TablerIconProps,
 } from "@renderer/lib/icons.js";
 import { SharedProvidersPanel } from "./SharedProvidersPanel.js";
+import { ContextPanel } from "./ContextPanel.js";
 import { RuntimesPanel } from "./RuntimesPanel.js";
 import { NetworkPanel } from "./NetworkPanel.js";
 import { SkillsPanel } from "./SkillsPanel.js";
@@ -63,7 +64,7 @@ import { SystemPromptPanel } from "./SystemPromptPanel.js";
  * Note: the legacy “Claude CLI 路径” panel was removed - the Agent SDK bundles
  * its own claude binary, so an externally-configured path is no longer used.
  */
-type SectionId = "general" | "runtimes" | "network" | "custom-models" | "system-prompt" | "skills" | "mcp" | "builtin-tools" | "appearance" | "shortcuts" | "gestures" | "voice" | "notifications" | "scheduled-tasks" | "git" | "terminal" | "browser" | "lsp-languages" | "usage" | "about";
+type SectionId = "general" | "runtimes" | "network" | "custom-models" | "context" | "system-prompt" | "skills" | "mcp" | "builtin-tools" | "appearance" | "shortcuts" | "gestures" | "voice" | "notifications" | "scheduled-tasks" | "git" | "terminal" | "browser" | "lsp-languages" | "usage" | "about";
 
 interface NavItem {
   id: SectionId;
@@ -91,6 +92,7 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: "settings.navGroup.ai",
     items: [
       { id: "custom-models", labelKey: "settings.nav.customModels", icon: IconRobot },
+      { id: "context", labelKey: "settings.nav.context", icon: IconChartBar },
       { id: "system-prompt", labelKey: "settings.nav.systemPrompt", icon: IconMessageChatbot },
       { id: "runtimes", labelKey: "settings.nav.runtimes", icon: IconPackage },
       { id: "network", labelKey: "settings.nav.network", icon: IconPlugConnected },
@@ -285,6 +287,7 @@ export function SettingsPage() {
           {/* 模型配置 = the shared provider hub only; the legacy per-engine
               editor (CustomModelsPanel) was removed 2026-09-28. */}
           {active === "custom-models" && <SharedProvidersPanel />}
+          {active === "context" && <ContextPanel />}
           {active === "system-prompt" && <SystemPromptPanel />}
           {active === "shortcuts" && <ShortcutsPanel />}
           {active === "gestures" && <GesturesPanel />}

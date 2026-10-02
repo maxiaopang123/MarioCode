@@ -13,6 +13,7 @@ import { BROWSER_TOOL_SPECS, browserToolsUsagePrompt } from "@main/browser/agent
 import { joinPromptSections } from "@main/lib/systemPrompt.js";
 import { loadUserSystemPrompt, userSystemPromptSections } from "@main/lib/userSystemPrompt.js";
 import { piHostClient } from "./PiHostClient.js";
+import { readContextPolicy } from "@main/lib/contextPolicy.js";
 
 const PI_PERMISSION_MODES = [
   { value: "default", label: "Default", icon: "shield", hint: "标准行为,工具按规则触发审批" },
@@ -57,7 +58,7 @@ export class PiAgentSdkProvider implements AgentProvider {
   };
 
   async startTurn(req: StartTurnRequest, ctx: ProviderContext): Promise<TurnHandle> {
-    const config = await loadHostConfiguration(req.sessionId);
+    const config = { ...await loadHostConfiguration(req.sessionId), contextPolicy: readContextPolicy() };
     if (Object.keys(config.providers).length === 0) {
       ctx.emit({ type: "error", sessionId: req.sessionId, message: "Pi 未配置任何模型:请先在「设置 → 模型配置」中添加模型后再发送。", code: "PI_NO_MODEL" });
       ctx.emit({ type: "turn.done", sessionId: req.sessionId, reason: "error" });

@@ -320,7 +320,7 @@ function sharedClaudeProjection(): CustomModelPublic[] {
         models: models.map(({ model, interfaces }) => ({
           id: model.id,
           interfaces,
-          ...(model.contextWindow && model.contextWindow >= 1_000_000 ? { supports1m: true } : {}),
+          contextWindow: model.contextWindow,
         })),
         disableNonEssentialTraffic: true,
         createdAt: 0,
@@ -478,7 +478,7 @@ export const CustomModelStore = {
           id: model.id,
           interfaces: resolveSharedModelInterfaces(shared.protocols, model.interfaces)
             .filter((protocol) => protocol === "anthropic" || protocol === "chat-completions"),
-          ...(model.contextWindow && model.contextWindow >= 1_000_000 ? { supports1m: true } : {}),
+          contextWindow: model.contextWindow,
           }))
           .filter((model) => model.interfaces.length > 0),
         disableNonEssentialTraffic: true,

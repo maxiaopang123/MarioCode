@@ -1,4 +1,5 @@
 import type { IpcMain } from "electron";
+import { CONTEXT_POLICY_SETTING_KEY, ContextPolicySchema } from "@contracts/contextPolicy";
 import {
   IPC,
   StartSessionSchema,
@@ -236,6 +237,7 @@ export function registerClaudeHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle(IPC.SETTING_SET, (_evt, raw) => {
     const input = SetSettingSchema.parse(raw);
+    if (input.key === CONTEXT_POLICY_SETTING_KEY) ContextPolicySchema.parse(JSON.parse(input.value));
     SettingRepo.set(input.key, input.value);
     // The theme STYLE repaints native chrome accents (win/linux title-bar
     // overlay) that only main can reach — the renderer's .sketch class does

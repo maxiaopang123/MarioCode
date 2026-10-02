@@ -70,6 +70,8 @@ files:
 # glob misses them. Unpack node-pty's whole build/Release + prebuilds so every
 # native helper ships as a real file.
 asarUnpack:
+  # Pi runs in a standalone Node process, outside Electron's ASAR filesystem.
+  - "out/pi-host/**"
   - "**/*.{node,dll}"
   - "**/node_modules/better-sqlite3/**"
   - "**/node_modules/node-pty/build/Release/**"

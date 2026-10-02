@@ -6,7 +6,7 @@ import type {
   SharedProviderPublic,
   SharedProviderSaveInput,
 } from "@contracts/sharedProvider";
-import { resolveSharedModelInterfaces, sharedProviderAddsOrigin } from "@contracts/sharedProvider";
+import { resolveSharedModelInterfaces, resolveSharedModelProtocol, sharedProviderAddsOrigin } from "@contracts/sharedProvider";
 import { api } from "@renderer/lib/api.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { useSessionStore, validateComposerSelection } from "@renderer/stores/sessionStore.js";
@@ -39,9 +39,8 @@ import { PanelHeader } from "./PanelHeader.js";
  * engine badges + key state) | right form in three titled sections —
  * 连接 (name / base URL / key), 协议与引擎 (toggle chips), 模型 (compact rows
  * with icon toggles; the batch bar only appears once rows are selected) —
- * plus a collapsible 高级 section and a sticky save bar. The data logic
- * (draft / dirty / discovery / validation) is unchanged from the original
- * form; only the presentation moved.
+ * plus a collapsible 高级 section and a sticky save bar. Model interfaces are
+ * explicit in drafts; routing and compatibility use the contracts helpers.
  */
 
 const PROTOCOLS: SharedProviderProtocol[] = ["anthropic", "chat-completions", "responses"];
@@ -50,16 +49,13 @@ const LABELS = { anthropic: "Anthropic Messages", "chat-completions": "OpenAI Ch
 /** Short protocol names for the compact per-model interface chips. */
 const SHORT: Record<SharedProviderProtocol, string> = { anthropic: "Messages", "chat-completions": "Chat", responses: "Responses" };
 function supports(agent: SharedProviderAgent, protocols: SharedProviderProtocol[], models: SharedProviderSaveInput["models"] = [{ id: "" }]): boolean {
-  return models.some((model) => {
-    const interfaces = resolveSharedModelInterfaces(protocols, model.interfaces);
-    return agent === "pi" ? interfaces.length > 0 : agent === "codex" ? interfaces.includes("responses") : interfaces.some((p) => p === "anthropic" || p === "chat-completions");
-  });
+  return models.some((model) => resolveSharedModelProtocol(agent, protocols, model.interfaces) !== undefined);
 }
 function fresh(): SharedProviderSaveInput {
-  return { name: "", baseUrl: "", protocols: ["chat-completions"], models: [{ id: "" }], enabledAgents: ["claude", "pi"], apiKey: "", endpointOverrides: {} };
+  return { name: "", baseUrl: "", protocols: ["chat-completions"], models: [{ id: "", interfaces: ["chat-completions"] }], enabledAgents: ["claude", "pi"], apiKey: "", endpointOverrides: {} };
 }
 function draftOf(p: SharedProviderPublic): SharedProviderSaveInput {
-  return { id: p.id, name: p.name, baseUrl: p.baseUrl, modelsEndpoint: p.modelsEndpoint, protocols: [...p.protocols], models: p.models.map((m) => ({ ...m })), enabledAgents: [...p.enabledAgents], endpointOverrides: { ...p.endpointOverrides }, apiKey: "" };
+  return { id: p.id, name: p.name, baseUrl: p.baseUrl, modelsEndpoint: p.modelsEndpoint, protocols: [...p.protocols], models: p.models.map((m) => ({ ...m, interfaces: resolveSharedModelInterfaces(p.protocols, m.interfaces) })), enabledAgents: [...p.enabledAgents], endpointOverrides: { ...p.endpointOverrides }, apiKey: "" };
 }
 function hostOf(url: string): string {
   try {
@@ -152,8 +148,9 @@ interface DiscoveryOption {
 }
 /** Order of the dialog's interface chips (Chat first — the most common). */
 const DISCOVERY_INTERFACES: SharedProviderProtocol[] = ["chat-completions", "anthropic", "responses"];
-/** Defaults: Chat + Messages on; Responses and 生图 off. */
-const defaultDiscoveryOption = (): DiscoveryOption => ({ interfaces: ["chat-completions", "anthropic"], image: false });
+/** A catalog is not a capability probe. Start with only the queried protocol;
+ * additional interfaces require an explicit user choice. */
+const defaultDiscoveryOption = (protocol: SharedProviderProtocol): DiscoveryOption => ({ interfaces: [protocol], image: false });
 
 /** Small toggle used in the discovery rows. */
 function MiniToggle({ on, disabled, onClick, children, title }: {
@@ -200,6 +197,7 @@ export function SharedProvidersPanel() {
     selectedIds: string[];
     /** Per-model picks in the dialog: interfaces + image generation. */
     options: Record<string, DiscoveryOption>;
+    protocol: SharedProviderProtocol;
     truncated: boolean;
     partial: boolean;
   } | null>(null);
@@ -281,11 +279,10 @@ export function SharedProvidersPanel() {
     const endpointOverrides = { ...draft.endpointOverrides };
     if (!protocols.includes(protocol)) delete endpointOverrides[protocol];
     const models = draft.models.map((model) => {
-      if (!model.interfaces) return model;
-      const interfaces = model.interfaces.filter((value) => protocols.includes(value));
-      return { ...model, interfaces: interfaces.length > 0 ? interfaces : protocols.length > 0 ? [] : undefined };
+      const interfaces = resolveSharedModelInterfaces(draft.protocols, model.interfaces).filter((value) => protocols.includes(value));
+      return { ...model, interfaces };
     });
-    change({ protocols, models, endpointOverrides, enabledAgents: draft.enabledAgents.filter((agent) => supports(agent, protocols, models)) });
+    change({ protocols, models, endpointOverrides });
   }
   function toggleModelSelection(index: number, checked: boolean) {
     setSelectedModelIndexes((current) => {
@@ -302,7 +299,7 @@ export function SharedProvidersPanel() {
       return [selectedIndex > index ? selectedIndex - 1 : selectedIndex];
     })));
     const models = draft.models.filter((_, modelIndex) => modelIndex !== index);
-    change({ models, enabledAgents: draft.enabledAgents.filter((agent) => supports(agent, draft.protocols, models)) });
+    change({ models });
   }
   function toggleModelInterface(index: number, protocol: SharedProviderProtocol, checked: boolean) {
     if (!draft) return;
@@ -313,7 +310,7 @@ export function SharedProvidersPanel() {
       ? [...new Set([...previous, protocol])]
       : previous.filter((value) => value !== protocol);
     const models = draft.models.map((model, modelIndex) => modelIndex === index ? { ...model, interfaces } : model);
-    change({ models, enabledAgents: draft.enabledAgents.filter((agent) => supports(agent, draft.protocols, models)) });
+    change({ models });
   }
   function updateSelectedModels(update: "vision-on" | "vision-off" | "reasoning-on" | "reasoning-off") {
     if (!draft || busy || discovering || selectedModelIndexes.size === 0) return;
@@ -347,7 +344,8 @@ export function SharedProvidersPanel() {
       setDiscovered({
         models: result.models,
         selectedIds: result.models.filter((model) => !existingIds.has(model.id)).map((model) => model.id),
-        options: Object.fromEntries(result.models.map((model) => [model.id, defaultDiscoveryOption()])),
+        options: Object.fromEntries(result.models.map((model) => [model.id, defaultDiscoveryOption(protocol)])),
+        protocol,
         truncated: result.truncated,
         partial: result.partial,
       });
@@ -374,19 +372,15 @@ export function SharedProvidersPanel() {
     const additions = discovered.models
       .filter((model) => discovered.selectedIds.includes(model.id) && !existingIds.has(model.id))
       .map((model) => {
-        const opt = discovered.options[model.id] ?? defaultDiscoveryOption();
+        const opt = discovered.options[model.id] ?? defaultDiscoveryOption(discovered.protocol);
         return {
           id: model.id,
           label: model.label,
-          interfaces: DISCOVERY_INTERFACES.filter((p) => opt.interfaces.includes(p)),
+          interfaces: DISCOVERY_INTERFACES.filter((p) => draft.protocols.includes(p) && opt.interfaces.includes(p)),
           ...(opt.image ? { imageGeneration: true } : {}),
         };
       });
     if (additions.length > 0) {
-      // A model interface must also be enabled on the provider (save-time
-      // rule), so any interface picked in the dialog turns its protocol on.
-      const protocols = [...draft.protocols];
-      for (const a of additions) for (const p of a.interfaces) if (!protocols.includes(p)) protocols.push(p);
       const nextSelection = new Set<number>();
       let keptIndex = 0;
       draft.models.forEach((model, index) => {
@@ -396,7 +390,7 @@ export function SharedProvidersPanel() {
       });
       additions.forEach((_, index) => nextSelection.add(existing.length + index));
       setSelectedModelIndexes(nextSelection);
-      change({ protocols, models: [...existing, ...additions] });
+      change({ models: [...existing, ...additions] });
     }
     setDiscovered(null);
     useToastStore.getState().push({
@@ -601,7 +595,7 @@ export function SharedProvidersPanel() {
                         <Chip
                           key={agent}
                           on={draft.enabledAgents.includes(agent)}
-                          disabled={busy || !ok}
+                          disabled={busy || (!ok && !draft.enabledAgents.includes(agent))}
                           title={ok ? undefined : t("settings.shared.agentUnsupported")}
                           icon={<Icon size={13} className={cn("shrink-0", color)} />}
                           onClick={() => change({ enabledAgents: draft.enabledAgents.includes(agent) ? draft.enabledAgents.filter((a) => a !== agent) : [...draft.enabledAgents, agent] })}
@@ -611,6 +605,9 @@ export function SharedProvidersPanel() {
                       );
                     })}
                   </div>
+                  {draft.enabledAgents.some((agent) => !supports(agent, draft.protocols, draft.models)) && (
+                    <p role="alert" className="text-[11.5px] text-danger">{t("settings.shared.agentNeedsModel")}</p>
+                  )}
                 </div>
               </Section>
 
@@ -622,7 +619,7 @@ export function SharedProvidersPanel() {
                     {discovering ? <IconLoader2 size={13} className="animate-spin" /> : <IconRefresh size={13} />}
                     {t(discovering ? "settings.shared.loadingModels" : "settings.shared.loadModels")}
                   </Button>
-                  <Button size="sm" variant="ghost" type="button" disabled={locked} onClick={() => change({ models: [...draft.models, { id: "" }] })}>
+                  <Button size="sm" variant="ghost" type="button" disabled={locked || !draft.protocols.length} onClick={() => change({ models: [...draft.models, { id: "", interfaces: [resolveSharedModelProtocol("pi", draft.protocols)!] }] })}>
                     <IconPlus size={13} />{t("settings.shared.addModel")}
                   </Button>
                 </>}
@@ -671,7 +668,6 @@ export function SharedProvidersPanel() {
                     {draft.models.map((model, index) => {
                       const vision = model.input?.includes("image") ?? false;
                       const reasoning = model.reasoning ?? false;
-                      const multiProto = draft.protocols.length > 1;
                       const noInterface = model.interfaces !== undefined && model.interfaces.length === 0;
                       return (
                         <li key={index} className={cn("px-3 py-2", selectedModelIndexes.has(index) && "bg-accent/[0.04]")}>
@@ -699,39 +695,41 @@ export function SharedProvidersPanel() {
                               </button>
                             </span>
                           </div>
-                          {(multiProto || advanced) && (
-                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 pl-6 text-[11.5px] text-content-subtle">
-                              {multiProto && (
-                                <span className="flex flex-wrap items-center gap-1.5">
-                                  <span>{t("settings.shared.modelInterfaces")}</span>
-                                  {draft.protocols.map((protocol) => {
-                                    const on = (model.interfaces ?? draft.protocols).includes(protocol);
-                                    return (
-                                      <button key={protocol} type="button" aria-pressed={on} disabled={busy}
-                                        onClick={() => toggleModelInterface(index, protocol, !on)}
-                                        className={cn("h-6 rounded-md border px-2 transition-colors",
-                                          on ? "border-accent/45 bg-accent/10 text-content" : "border-edge text-content-subtle hover:text-content")}>
-                                        {SHORT[protocol]}
-                                      </button>
-                                    );
-                                  })}
-                                  {noInterface && <span className="text-danger">{t("settings.shared.modelInterfaceRequired")}</span>}
-                                </span>
-                              )}
-                              {advanced && (
-                                <span className="flex items-center gap-2">
-                                  <span>{t("settings.shared.contextShort")}</span>
-                                  <Input type="number" min={1} step={1} value={model.contextWindow ?? ""} disabled={busy} className="h-7 w-28"
-                                    aria-label={t("settings.shared.contextWindow")} placeholder="200000"
-                                    onChange={(e) => updateModel(index, { contextWindow: e.target.value ? Number(e.target.value) : undefined })} />
-                                  <span>{t("settings.shared.maxTokensShort")}</span>
-                                  <Input type="number" min={1} step={1} value={model.maxTokens ?? ""} disabled={busy} className="h-7 w-24"
-                                    aria-label={t("settings.shared.maxTokens")} placeholder="32000"
-                                    onChange={(e) => updateModel(index, { maxTokens: e.target.value ? Number(e.target.value) : undefined })} />
-                                </span>
-                              )}
-                            </div>
-                          )}
+                          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 pl-6 text-[11.5px] text-content-subtle">
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              <span>{t("settings.shared.modelInterfaces")}</span>
+                              {draft.protocols.map((protocol) => {
+                                const on = (model.interfaces ?? draft.protocols).includes(protocol);
+                                return (
+                                  <button key={protocol} type="button" aria-pressed={on} disabled={busy || (on && resolveSharedModelInterfaces(draft.protocols, model.interfaces).length === 1)}
+                                    onClick={() => toggleModelInterface(index, protocol, !on)}
+                                    className={cn("h-6 rounded-md border px-2 transition-colors",
+                                      on ? "border-accent/45 bg-accent/10 text-content" : "border-edge text-content-subtle hover:text-content")}>
+                                    {SHORT[protocol]}
+                                  </button>
+                                );
+                              })}
+                              {noInterface && <span className="text-danger">{t("settings.shared.modelInterfaceRequired")}</span>}
+                            </span>
+                            <span className="flex flex-wrap gap-2">
+                              {draft.enabledAgents.map((agent) => {
+                                const protocol = resolveSharedModelProtocol(agent, draft.protocols, model.interfaces);
+                                return <span key={agent}>{t("settings.shared.modelRoute", { agent: LABELS[agent], protocol: protocol ? SHORT[protocol] : t("settings.shared.unavailable") })}</span>;
+                              })}
+                            </span>
+                            {advanced && (
+                              <span className="flex items-center gap-2">
+                                <span>{t("settings.shared.contextShort")}</span>
+                                <Input type="number" min={1} step={1} value={model.contextWindow ?? ""} disabled={busy} className="h-7 w-28"
+                                  aria-label={t("settings.shared.contextWindow")} placeholder="200000"
+                                  onChange={(e) => updateModel(index, { contextWindow: e.target.value ? Number(e.target.value) : undefined })} />
+                                <span>{t("settings.shared.maxTokensShort")}</span>
+                                <Input type="number" min={1} step={1} value={model.maxTokens ?? ""} disabled={busy} className="h-7 w-24"
+                                  aria-label={t("settings.shared.maxTokens")} placeholder="32000"
+                                  onChange={(e) => updateModel(index, { maxTokens: e.target.value ? Number(e.target.value) : undefined })} />
+                              </span>
+                            )}
+                          </div>
                         </li>
                       );
                     })}
@@ -807,7 +805,7 @@ export function SharedProvidersPanel() {
               {discovered?.models.map((model) => {
                 const checked = discovered.selectedIds.includes(model.id);
                 const exists = draft?.models.some((entry) => entry.id.trim() === model.id) ?? false;
-                const opt = discovered.options[model.id] ?? defaultDiscoveryOption();
+                const opt = discovered.options[model.id] ?? defaultDiscoveryOption(discovered.protocol);
                 const setOpt = (next: DiscoveryOption) => setDiscovered((value) => value ? {
                   ...value,
                   options: { ...value.options, [model.id]: next },
@@ -829,7 +827,7 @@ export function SharedProvidersPanel() {
                     <span className="rounded bg-surface-muted px-2 py-0.5 text-[11px] text-content-subtle">{t("settings.shared.existingModel")}</span>
                   ) : (
                     <span className="flex shrink-0 items-center gap-1">
-                      {DISCOVERY_INTERFACES.map((p) => {
+                      {DISCOVERY_INTERFACES.filter((p) => draft?.protocols.includes(p)).map((p) => {
                         const on = opt.interfaces.includes(p);
                         // Keep at least one interface — a model with none can't be saved.
                         const last = on && opt.interfaces.length === 1;

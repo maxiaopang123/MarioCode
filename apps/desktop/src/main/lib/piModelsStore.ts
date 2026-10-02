@@ -28,7 +28,7 @@ import { SettingRepo } from "@main/store/repositories.js";
 import { encrypt, decrypt } from "@main/lib/secretStore.js";
 import { log } from "@main/lib/logger.js";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
-import { resolveSharedModelInterfaces, sharedRuntimeId, type SharedProviderProtocol } from "@contracts/sharedProvider";
+import { resolveSharedModelProtocol, sharedRuntimeId } from "@contracts/sharedProvider";
 import { normalizePiRegisteredModel } from "@main/providers/pi-sdk/piRegisteredModel.js";
 
 /** Encrypted apiKey map keyed by provider name. Stored as plain JSON in the
@@ -116,7 +116,8 @@ export const PiModelsStore = {
     for (const provider of SharedProviderStore.listPublic()) {
       if (!provider.enabledAgents.includes("pi") || provider.protocols.length === 0) continue;
       const firstModel = provider.models[0];
-      const protocol = (firstModel ? resolveSharedModelInterfaces(provider.protocols, firstModel.interfaces)[0] : provider.protocols[0]) as SharedProviderProtocol;
+      const protocol = resolveSharedModelProtocol("pi", provider.protocols, firstModel?.interfaces);
+      if (!protocol) continue;
       const runtimeId = sharedRuntimeId(provider.id);
       const api = protocol === "anthropic" ? "anthropic-messages"
         : protocol === "responses" ? "openai-responses" : "openai-completions";
@@ -126,7 +127,7 @@ export const PiModelsStore = {
         api,
         authHeader: true,
         models: provider.models.map((model) => {
-          const modelProtocol = resolveSharedModelInterfaces(provider.protocols, model.interfaces)[0] as SharedProviderProtocol | undefined;
+          const modelProtocol = resolveSharedModelProtocol("pi", provider.protocols, model.interfaces);
           if (!modelProtocol) return null;
           return normalizePiRegisteredModel({
           id: model.id,

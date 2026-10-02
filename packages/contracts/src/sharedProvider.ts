@@ -88,7 +88,24 @@ export function resolveSharedModelInterfaces(
   modelInterfaces?: readonly SharedProviderProtocol[],
 ): SharedProviderProtocol[] {
   const source = modelInterfaces ?? providerProtocols;
-  return source.filter((protocol) => providerProtocols.includes(protocol));
+  return [...new Set(source.filter((protocol) => providerProtocols.includes(protocol)))];
+}
+
+/** Stable routing order, independent of checkbox / JSON ordering. Claude's
+ * Chat route uses the existing Messages bridge; Codex only speaks Responses. */
+const AGENT_PROTOCOLS: Record<SharedProviderAgent, readonly SharedProviderProtocol[]> = {
+  claude: ["chat-completions", "anthropic"],
+  codex: ["responses"],
+  pi: ["chat-completions", "anthropic", "responses"],
+};
+
+export function resolveSharedModelProtocol(
+  agent: SharedProviderAgent,
+  providerProtocols: readonly SharedProviderProtocol[],
+  modelInterfaces?: readonly SharedProviderProtocol[],
+): SharedProviderProtocol | undefined {
+  const interfaces = resolveSharedModelInterfaces(providerProtocols, modelInterfaces);
+  return AGENT_PROTOCOLS[agent].find((protocol) => interfaces.includes(protocol));
 }
 
 const EndpointOverridesSchema = z.object({
@@ -99,12 +116,7 @@ const EndpointOverridesSchema = z.object({
 
 function compatible(value: { protocols: SharedProviderProtocol[]; enabledAgents: SharedProviderAgent[]; models: SharedProviderModel[] }): boolean {
   return value.enabledAgents.every((agent) =>
-    value.models.some((model) => {
-      const protocols = new Set(resolveSharedModelInterfaces(value.protocols, model.interfaces));
-      return agent === "claude" ? protocols.has("anthropic") || protocols.has("chat-completions")
-        : agent === "codex" ? protocols.has("responses")
-          : protocols.size > 0;
-    }),
+    value.models.some((model) => resolveSharedModelProtocol(agent, value.protocols, model.interfaces) !== undefined),
   );
 }
 
@@ -123,6 +135,9 @@ function validateCore(value: { protocols: SharedProviderProtocol[]; enabledAgent
   if (new Set(value.enabledAgents).size !== value.enabledAgents.length) ctx.addIssue({ code: "custom", message: "enabledAgents must be unique" });
   if (new Set(value.models.map((model) => model.id)).size !== value.models.length) ctx.addIssue({ code: "custom", message: "model ids must be unique" });
   for (const model of value.models) {
+    if (model.interfaces && new Set(model.interfaces).size !== model.interfaces.length) {
+      ctx.addIssue({ code: "custom", message: `model interfaces must be unique: ${model.id}` });
+    }
     if (model.interfaces?.some((protocol) => !value.protocols.includes(protocol))) {
       ctx.addIssue({ code: "custom", message: `model interfaces must be enabled by provider: ${model.id}` });
     }

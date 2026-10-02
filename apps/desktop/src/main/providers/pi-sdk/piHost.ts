@@ -99,7 +99,11 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
     ctx.emit({ type: "turn.done", sessionId: req.sessionId, reason: "interrupted" });
     return;
   }
-  const selectedProvider = req.model?.split("/", 1)[0] ?? "";
+  const defaultProvider = (!req.model || req.model === "default")
+    ? Object.entries(config.providers).find(([name, provider]) => provider.models?.length && (!name.startsWith("shared_") || config.apiKeys[name]))
+    : undefined;
+  const selectedModel = defaultProvider ? `${defaultProvider[0]}/${defaultProvider[1].models![0]!.id}` : req.model;
+  const selectedProvider = selectedModel?.split("/", 1)[0] ?? "";
   const sharedMode = selectedProvider.startsWith("shared_");
   if (sharedMode && (!config.providers[selectedProvider] || !config.apiKeys[selectedProvider])) {
     throw new Error(`统一提供商未配置或缺少 API Key: ${selectedProvider}`);
@@ -112,13 +116,13 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
   catch { sessionManager = createSessionManager(); }
   const modelRuntime = await createRuntime(sdk, config, sharedMode);
   let model;
-  if (req.model && req.model !== "default") {
-    const i = req.model.indexOf("/");
-    if (i > 0 && config.providers[req.model.slice(0, i)]) {
-      try { model = modelRuntime.getModel(req.model.slice(0, i), req.model.slice(i + 1)); } catch { /* fallback below */ }
+  if (selectedModel && selectedModel !== "default") {
+    const i = selectedModel.indexOf("/");
+    if (i > 0 && config.providers[selectedModel.slice(0, i)]) {
+      try { model = modelRuntime.getModel(selectedModel.slice(0, i), selectedModel.slice(i + 1)); } catch { /* fallback below */ }
     }
   }
-  if (sharedMode && !model) throw new Error(`统一提供商模型不可用: ${req.model ?? selectedProvider}`);
+  if (sharedMode && !model) throw new Error(`统一提供商模型不可用: ${selectedModel ?? selectedProvider}`);
   if (!model) {
     for (const [provider, pub] of Object.entries(config.providers)) {
       const first = pub.models?.find((m) => m.id?.trim());

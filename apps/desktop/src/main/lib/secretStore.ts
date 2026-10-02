@@ -46,7 +46,7 @@ import { resolveProtocol } from "@contracts/customModel";
 import { sanitizeCustomHeaders } from "@main/providers/upstreamHeaders.js";
 import { SettingRepo } from "@main/store/repositories.js";
 import { log } from "@main/lib/logger.js";
-import { resolveSharedModelInterfaces, sharedRuntimeId, type SharedProviderProtocol } from "@contracts/sharedProvider";
+import { resolveSharedModelInterfaces, resolveSharedModelProtocol, sharedRuntimeId, type SharedProviderProtocol } from "@contracts/sharedProvider";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 
 /** Settings-table key for the encrypted-token map. */
@@ -463,10 +463,7 @@ export const CustomModelStore = {
       if (!selectedEntry) {
         throw new Error(`共享提供商 "${shared.name}" 中不存在所选模型 "${selected ?? ""}"`);
       }
-      const selectedInterfaces = resolveSharedModelInterfaces(shared.protocols, selectedEntry.interfaces);
-      const upstreamProtocol = selectedInterfaces.includes("chat-completions")
-        ? "chat-completions"
-        : selectedInterfaces.includes("anthropic") ? "anthropic" : null;
+      const upstreamProtocol = resolveSharedModelProtocol("claude", shared.protocols, selectedEntry.interfaces);
       if (!upstreamProtocol) throw new Error(`共享提供商 "${shared.name}" 的模型 "${selected}" 不支持 Claude 接口`);
       const authToken = SharedProviderStore.resolveApiKey(shared.id);
       if (!authToken) throw new Error(`共享提供商 "${shared.name}" 未配置 API Key`);

@@ -4,9 +4,10 @@ import { tmpdir, homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { startSharedProviderFixture } from "./shared-provider-http-fixture.mjs";
 
 const desktop = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const host = join(desktop, "out", "pi-host", "piHost.mjs");
+const host = process.env.MARIOCODE_TEST_PI_HOST || join(desktop, "out", "pi-host", "piHost.mjs");
 const candidates = [
   join(desktop, "node_modules", "@earendil-works", "pi-coding-agent"),
   join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "npm", "node_modules", "@earendil-works", "pi-coding-agent"),
@@ -44,6 +45,7 @@ async function directoryContains(dir, needle) {
 }
 
 async function testRuntime(runtime) {
+  const upstream = await startSharedProviderFixture();
   const isolated = await mkdtemp(join(tmpdir(), `mariocode-pi-host-${runtime.version}-`));
   const cwd = join(isolated, "cwd");
   await mkdir(cwd);
@@ -128,6 +130,30 @@ async function testRuntime(runtime) {
     if (smokeA.id !== "smoke-a" || smokeB.id !== "smoke-b") throw new Error("parallel responses crossed");
     if (await readFile(join(userPiDir, "models.json"), "utf8") !== modelsSentinel || await readFile(join(userPiDir, "auth.json"), "utf8") !== authSentinel) throw new Error("host touched the user's ~/.pi configuration");
 
+    // One shared provider, three models with distinct wire APIs and endpoint
+    // overrides. Run real turns, not just listing registration metadata.
+    const sharedId = "shared_0123456789abcdef0123456789abcdef";
+    const wireModels = [
+      { id: "vendor/chat-model", api: "openai-completions", route: "chat", suffix: "/chat/completions" },
+      { id: "messages-model", api: "anthropic-messages", route: "messages", suffix: "/messages" },
+      { id: "responses-model", api: "openai-responses", route: "responses", suffix: "/responses" },
+    ];
+    const wireProviders = { [sharedId]: { ...fixtureProviders[sharedId], baseUrl: `http://127.0.0.1:${upstream.port}/chat/v1`, models: wireModels.map(({ id, api, route }) => ({ id, api, baseUrl: `http://127.0.0.1:${upstream.port}/${route}/v1` })) } };
+    let resumeProviderSessionId;
+    for (const [index, model] of [...wireModels, wireModels[0]].entries()) {
+      const turnId = `wire-${index}`;
+      const params = { turnId, request: { sessionId: "wire-session", cwd, prompt: "Reply briefly", model: index === 3 ? "default" : `${sharedId}/${model.id}`, effort: "default", permissionMode: "bypassPermissions", turnNumber: index + 1, ...(index < 3 ? { resumeProviderSessionId } : {}) }, providers: wireProviders, apiKeys: { [sharedId]: "fixture-secret-never-return" }, extraSkillPaths: [], gitBash: null, browserToolsEnabled: false, browserToolSpecs: {}, browserUsagePrompt: "", userSystemPrompt: "", agentDir: join(isolated, "agent") };
+      child.stdin.write(`${JSON.stringify({ type: "call", id: turnId, call: { method: "startTurn", params } })}\n`);
+      const result = await waitFor(turnId, 30000);
+      if (!result.ok) throw new Error(`Pi wire turn failed: ${JSON.stringify(result)}`);
+      const events = messages.filter((m) => m.type === "event" && m.turnId === turnId).map((m) => m.event);
+      if (events.some((e) => e.type === "error") || !events.some((e) => e.type === "text.delta" && e.text?.includes(`fixture-ok:${model.id}`))) throw new Error(`Pi wire output missing: ${JSON.stringify(events)}`);
+      const request = upstream.requests.at(-1);
+      if (request.path !== `/${model.route}/v1${model.suffix}` || request.body.model !== model.id) throw new Error(`Pi model route incorrect: ${request.path}, model=${request.body.model}`);
+      if (request.authorization !== "Bearer fixture-secret-never-return" && request.apiKey !== "fixture-secret-never-return") throw new Error("Pi runtime API key was not sent");
+      resumeProviderSessionId = messages.find((m) => m.type === "providerSessionId" && m.turnId === turnId)?.value;
+    }
+
     const exited = new Promise((resolvePromise, reject) => {
       const timer = setTimeout(() => { child.kill(); reject(new Error("host stayed alive after stdin EOF")); }, 5000);
       child.once("exit", (code) => { clearTimeout(timer); resolvePromise(code); });
@@ -135,14 +161,15 @@ async function testRuntime(runtime) {
     child.stdin.end();
     const code = await exited;
     if (code !== 0) throw new Error(`host exited ${code}`);
-    return `${runtime.version}: ready/health/list/smoke/normalized-cost/validation/parallel/EOF passed`;
+    return `${runtime.version}: ready/health/list/smoke/normalized-cost/validation/parallel/three-wire-APIs/EOF passed`;
   } finally {
     if (!child.killed) child.kill();
+    await upstream.close();
     if (!resolve(isolated).startsWith(resolve(tmpdir()) + sep)) throw new Error("Unsafe test cleanup target");
     await rm(isolated, { recursive: true, force: true });
   }
 }
 
 const runtimes = (await Promise.all(candidates.map(packageInfo))).filter(Boolean);
-if (runtimes.length < 2) throw new Error(`Expected project and global Pi runtimes; found ${runtimes.map((r) => r.version).join(", ")}`);
+if (runtimes.length === 0) throw new Error("No project, global, or supplied Pi runtime is available");
 for (const runtime of runtimes) console.log(await testRuntime(runtime));

@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdir, mkdtemp, readFile, writeFile, access } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { spawn } from "node:child_process";
-import { createServer } from "node:http";
+import { startSharedProviderFixture } from "./shared-provider-http-fixture.mjs";
 import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -20,22 +20,16 @@ await mkdir(localPiDir, { recursive: true });
 const localModels = JSON.stringify({ providers: {}, preservationMarker: "unchanged" });
 await writeFile(join(localPiDir, "models.json"), localModels);
 const fixtureKey = "test-only-shared-key-not-a-real-credential";
-const fixtureRequests = [];
-const fixtureServer = createServer((request, response) => {
-  fixtureRequests.push({ path: request.url, authorization: request.headers.authorization });
-  response.writeHead(200, { "Content-Type": "application/json" });
-  response.end(JSON.stringify({ data: [{ id: "http-discovered-model", name: "HTTP Discovered Model" }] }));
-});
-await new Promise((done, fail) => {
-  fixtureServer.once("error", fail);
-  fixtureServer.listen(0, "0.0.0.0", done);
-});
+const fixture = await startSharedProviderFixture();
+const fixtureRequests = fixture.requests;
 const fixtureHost = Object.values(networkInterfaces()).flat().find((address) => address?.family === "IPv4" && !address.internal)?.address ?? "127.0.0.1";
-const fixtureBaseUrl = `http://${fixtureHost}:${fixtureServer.address().port}/v1`;
+const fixtureBaseUrl = `http://${fixtureHost}:${fixture.port}/v1`;
 const db = new DatabaseSync(join(data, "claude-gui.db"));
 db.exec("CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)");
 db.prepare("INSERT INTO settings VALUES (?,?)").run("mobile.enabled", "0");
 db.prepare("INSERT INTO settings VALUES (?,?)").run("network.proxy", JSON.stringify({ mode: "direct", customUrl: "" }));
+db.prepare("INSERT INTO settings VALUES (?,?)").run("ui.titleGenEnabled", "0");
+db.prepare("INSERT INTO settings VALUES (?,?)").run("mcp.management", JSON.stringify({ browserDisabled: true, webToolsDisabled: true, imageToolDisabled: true, scheduleToolsDisabled: true, wechatToolDisabled: true }));
 db.close();
 const child = spawn(require("electron"), [process.env.MARIOCODE_TEST_ASAR || desktop, `--user-data-dir=${data}`, "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"], {
   cwd: desktop, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
@@ -88,6 +82,17 @@ try {
     await delay(150);
   }
   assert.equal(await evaluate("document.title"), "MarioCode");
+  // Packaged builds intentionally do not bundle agent SDKs/binaries. Select
+  // the checkout's real runtimes through the same verified external-runtime
+  // API used by settings, only in this isolated test profile.
+  const piSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "pi", mode: "external", path: join(desktop, "node_modules", "@earendil-works", "pi-coding-agent"), nodePath: process.execPath })})`);
+  assert.equal(piSelection.ok, true, piSelection.error);
+  const suffix = `${process.platform}-${process.arch}`;
+  const triples = { "win32-x64": "x86_64-pc-windows-msvc", "linux-x64": "x86_64-unknown-linux-musl", "linux-arm64": "aarch64-unknown-linux-musl", "darwin-arm64": "aarch64-apple-darwin", "darwin-x64": "x86_64-apple-darwin" };
+  const codexVersion = require("@openai/codex/package.json").version;
+  const codexPath = process.env.MARIOCODE_TEST_CODEX_BIN || join(desktop, "../../node_modules/.pnpm", `@openai+codex@${codexVersion}-${suffix}`, "node_modules/@openai/codex/vendor", triples[suffix], "bin", process.platform === "win32" ? "codex.exe" : "codex");
+  const codexSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "codex", mode: "external", path: codexPath })})`);
+  assert.equal(codexSelection.ok, true, codexSelection.error);
   // Visible settings navigation, not a fabricated renderer state.
   await evaluate("document.querySelector('button .tabler-icon-settings')?.closest('button').click()");
   const openUntil = Date.now() + 20000;
@@ -125,9 +130,19 @@ try {
   await fill("公用 API Key", fixtureKey);
   await check("Anthropic Messages");
   await check("OpenAI Responses");
-  await check("Codex");
   await evaluate("document.querySelector('input[aria-label=\"模型 ID（与服务商一致）\"]').focus()");
   await command("Input.insertText", { text: "fixture-model" });
+  // Provider flags must not grant interfaces to an existing model.
+  assert.equal(await evaluate("[...document.querySelectorAll('li')].find(l=>l.querySelector('input[aria-label=\"模型 ID（与服务商一致）\"]'))?.textContent.includes('Pi：Chat')"), true);
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Codex').disabled"), true, "Codex requires a Responses model, not just a provider flag");
+  await evaluate("[...[...document.querySelectorAll('li')].find(l=>l.querySelector('input[aria-label=\"模型 ID（与服务商一致）\"]')).querySelectorAll('button')].find(b=>b.textContent.trim()==='Responses').click()");
+  await check("Codex");
+  await check("OpenAI Responses");
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Codex').getAttribute('aria-pressed')"), "true", "Protocol edits must preserve engine choice");
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='保存公用配置').disabled"), true);
+  await check("OpenAI Responses");
+  assert.equal(await evaluate("[...[...document.querySelectorAll('li')].find(l=>l.querySelector('input[aria-label=\"模型 ID（与服务商一致）\"]')).querySelectorAll('button')].find(b=>b.textContent.trim()==='Responses').getAttribute('aria-pressed')"), "false", "Re-enabling a provider protocol must not silently grant model capabilities");
+  await evaluate("[...[...document.querySelectorAll('li')].find(l=>l.querySelector('input[aria-label=\"模型 ID（与服务商一致）\"]')).querySelectorAll('button')].find(b=>b.textContent.trim()==='Responses').click()");
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.innerText.trim()==='加载模型').click()");
   const draftDiscoveryUntil = Date.now() + 20000;
   while (!await evaluate("[...document.querySelectorAll('[role=dialog]')].some(d=>d.textContent.includes('http-discovered-model'))")) {
@@ -136,6 +151,8 @@ try {
   }
   assert.equal(fixtureRequests.length, 1);
   assert.equal(fixtureRequests[0].authorization, `Bearer ${fixtureKey}`);
+  assert.equal(await evaluate("[...[...document.querySelectorAll('label')].find(l=>l.textContent.includes('http-discovered-model')).parentElement.querySelectorAll('button')].find(b=>b.textContent.trim()==='Messages')?.getAttribute('aria-pressed')"), "false", "Discovery must not invent Messages support");
+  assert.equal(await evaluate("[...[...document.querySelectorAll('label')].find(l=>l.textContent.includes('http-discovered-model')).parentElement.querySelectorAll('button')].find(b=>b.textContent.trim()==='Responses')?.getAttribute('aria-pressed')"), "false", "Discovery must not invent Responses support");
   await evaluate("[...document.querySelectorAll('[role=dialog] button')].find(b=>b.innerText.trim()==='取消').click()");
   await delay(150);
   assert.ok(await evaluate("[...document.querySelectorAll('input')].some(i=>i.value==='fixture-model')"));
@@ -157,12 +174,8 @@ try {
   assert.ok(claude.models.some((m) => m.id === runtimeId && m.protocol === "openai"));
   assert.ok(codex.providers.some((p) => p.id === runtimeId));
   assert.ok(pi.providers[runtimeId]?.models.some((m) => m.id === "fixture-model"));
-  // The SDK host is outside app.asar and resolves via process.resourcesPath;
-  // dev Electron loading the archive cannot exercise that packaged host path.
-  if (!process.env.MARIOCODE_TEST_ASAR) {
-    const available = await evaluate("window.api.piModels.listAvailable()");
-    assert.ok(available.models.some((m) => m.id === `${runtimeId}/fixture-model`));
-  }
+  const available = await evaluate("window.api.piModels.listAvailable()");
+  assert.ok(available.models.some((m) => m.id === `${runtimeId}/fixture-model`), "Pi SDK registration, including packaged host");
   assert.ok(!JSON.stringify([claude, codex, pi]).includes(fixtureKey));
   const peek = await evaluate(`Promise.all([window.api.customModel.getToken({id:${JSON.stringify(runtimeId)}}),window.api.codexModels.getApiKey({id:${JSON.stringify(runtimeId)}}),window.api.piModels.getApiKey({name:${JSON.stringify(runtimeId)}})])`);
   assert.ok(!JSON.stringify(peek).includes(fixtureKey), "Legacy reveal endpoints cannot reveal shared key");
@@ -192,6 +205,52 @@ try {
     if (Date.now() > discoveryUntil) throw new Error("Discovered HTTP model was not saved");
     await delay(100);
   }
+  const afterDiscovery = (await evaluate("window.api.sharedProviders.list()")).providers[0];
+  assert.deepEqual(afterDiscovery.models.find((m) => m.id === "http-discovered-model").interfaces, ["chat-completions"]);
+  assert.deepEqual(afterDiscovery.models.find((m) => m.id === "fixture-model").interfaces, ["chat-completions", "responses"], "Existing model interfaces survive discovery");
+
+  // Actual app -> provider -> local upstream -> streamed answer. No paid
+  // model calls, user credentials, or external model catalogs are used.
+  const models = [
+    { id: "vendor/chat-model", interfaces: ["chat-completions"] },
+    { id: "messages-model", interfaces: ["anthropic"] },
+    { id: "responses-model", interfaces: ["responses"] },
+    { id: "vendor/responses-alt", interfaces: ["responses"] },
+  ];
+  const wireBaseUrl = `http://${process.env.MARIOCODE_TEST_WIRE_HOST || "127.0.0.1"}:${fixture.port}/v1`;
+  const overrides = { anthropic: wireBaseUrl.replace(/\/v1$/, "/messages/v1"), responses: wireBaseUrl.replace(/\/v1$/, "/responses/v1") };
+  const wireConfig = { id: provider.id, name: provider.name, baseUrl: wireBaseUrl, apiKey: fixtureKey, protocols: provider.protocols, enabledAgents: ["claude", "pi", "codex"], models, endpointOverrides: overrides };
+  await evaluate(`window.api.sharedProviders.save(${JSON.stringify(wireConfig)})`);
+  const cwd = join(data, "wire-project");
+  await mkdir(cwd);
+  const { project } = await evaluate(`window.api.project.create(${JSON.stringify({ name: "Offline wire test", path: cwd })})`);
+  const turns = [
+    { engine: "pi-sdk", id: "vendor/chat-model", path: "/v1/chat/completions" },
+    { engine: "pi-sdk", id: "messages-model", path: "/messages/v1/messages" },
+    { engine: "pi-sdk", id: "responses-model", path: "/responses/v1/responses" },
+    { engine: "codex-sdk", id: "responses-model", path: "/responses/v1/responses" },
+  ];
+  let codexSession;
+  for (const turn of [...turns, { engine: "codex-sdk", id: "vendor/responses-alt", path: "/responses/v1/responses", resume: true }]) {
+    const { session } = turn.resume ? { session: codexSession } : await evaluate(`window.api.claude.startSession(${JSON.stringify({ projectId: project.id, title: "Offline wire check", kind: "side", providerId: turn.engine, model: `${runtimeId}/${turn.id}`, permissionMode: "bypassPermissions" })})`);
+    if (turn.engine === "codex-sdk") codexSession = session;
+    await evaluate("globalThis.__wireEvents = []; globalThis.__stopWireEvents = window.api.on.claudeEvent(msg => globalThis.__wireEvents.push(msg.event))");
+    try {
+      const requestCount = fixtureRequests.length;
+      await evaluate(`window.api.claude.sendTurn(${JSON.stringify({ sessionId: session.id, prompt: "Reply briefly", model: `${runtimeId}/${turn.id}` })})`);
+      const deadline = Date.now() + 45000;
+      let events;
+      do {
+        events = await evaluate("globalThis.__wireEvents");
+        if (events.some((e) => e.type === "turn.done" && e.sessionId === session.id)) break;
+        if (Date.now() > deadline) throw new Error(`${turn.engine} turn timed out: ${JSON.stringify(events)}`);
+        await delay(150);
+      } while (true);
+      assert.ok(!events.some((e) => e.type === "error"), `${turn.engine} errors: ${JSON.stringify(events)}`);
+      assert.ok(events.filter((e) => e.type === "text.delta").map((e) => e.text).join("").includes(`fixture-ok:${turn.id}`), `${turn.engine} streaming answer missing: ${JSON.stringify(events)}`);
+      assert.ok(fixtureRequests.slice(requestCount).some((r) => r.path === turn.path && r.body.model === turn.id && (r.authorization === `Bearer ${fixtureKey}` || r.apiKey === fixtureKey)), `${turn.engine} request did not use its model endpoint and stored key`);
+    } finally { await evaluate("globalThis.__stopWireEvents()"); }
+  }
   try {
     await command("Page.bringToFront");
     const screenshot = await command("Page.captureScreenshot", { format: "png", fromSurface: false }, 5000);
@@ -200,10 +259,11 @@ try {
   await writeFile(join(data, "verification.json"), JSON.stringify({
     result: "passed", providerId: provider.id,
     fixtureBaseUrl,
-    checks: ["real shared provider form save", "three agent projections", ...(!process.env.MARIOCODE_TEST_ASAR ? ["Pi SDK in-memory registration"] : []), "encrypted key at rest", "no key disclosure via legacy IPC", "local Pi models unchanged", "reopened form does not reveal key", "real HTTP model discovery with draft key", "cancel discovery preserves form", "real HTTP model discovery with stored key", "discovered model selection and save"],
+    checks: ["real shared provider form save", "three agent projections", "Pi SDK in-memory registration", "encrypted key at rest", "no key disclosure via legacy IPC", "local Pi models unchanged", "reopened form does not reveal key", "real HTTP model discovery with draft key", "cancel discovery preserves form", "real HTTP model discovery with stored key", "discovered model selection and save", "discovery does not invent interfaces", "interface edits preserve engine choices", "Pi real Chat/Messages/Responses turns", "Codex real Responses turn and model switch on resume"],
   }, null, 2));
   console.log(`Electron shared-provider verification passed. Artifacts: ${data}`);
 } finally {
+  await writeFile(join(data, "wire-requests.json"), JSON.stringify(fixtureRequests.map((r) => ({ path: r.path, model: r.body.model, stream: r.body.stream })), null, 2));
   for (const waiter of pending.values()) { clearTimeout(waiter.timer); waiter.reject(new Error("Test ended")); }
   pending.clear();
   if (socket?.readyState === WebSocket.OPEN) {
@@ -215,6 +275,5 @@ try {
     if (child.exitCode === null) child.kill();
   }
   log.end();
-  fixtureServer.closeAllConnections();
-  await new Promise((done) => fixtureServer.close(done));
+  await fixture.close();
 }

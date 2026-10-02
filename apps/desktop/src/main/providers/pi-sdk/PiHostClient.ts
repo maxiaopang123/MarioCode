@@ -9,6 +9,7 @@ import * as browser from "@main/browser/agentBrowserTools.js";
 import { invokeBuiltinTool } from "@main/tools/builtinTools.js";
 import { isBuiltinToolName } from "@main/tools/builtinToolSpecs.js";
 import { PI_HOST_PROTOCOL_VERSION, type MainToPiHost, type PiHostCall, type PiHostToMain } from "./piHostProtocol.js";
+import { unpackPiHostPath } from "./piHostPath.js";
 
 const CALL_TIMEOUT_MS = 30_000;
 const REVERSE_TIMEOUT_MS = 5 * 60_000;
@@ -52,7 +53,7 @@ export class PiHostClient {
     const generation = ++this.generation;
     this.launchFingerprint = fingerprint;
     this.ready = (async () => {
-      const hostEntry = join(__dirname, "..", "pi-host", "piHost.mjs");
+      const hostEntry = unpackPiHostPath(join(__dirname, "..", "pi-host", "piHost.mjs"));
       const child = spawn(launch.nodePath, [hostEntry, launch.sdkEntry, launch.sdkPackageDir, launch.version], {
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],

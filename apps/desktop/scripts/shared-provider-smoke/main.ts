@@ -1,4 +1,6 @@
-import { sharedRuntimeId, SharedProviderSaveInputSchema } from "@contracts/sharedProvider.js";
+import { sharedRuntimeId, SharedProviderSaveInputSchema, resolveSharedModelProtocol } from "@contracts/sharedProvider.js";
+import { unpackPiHostPath } from "@main/providers/pi-sdk/piHostPath.js";
+import { normalizePiRegisteredModel } from "@main/providers/pi-sdk/piRegisteredModel.js";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 import { addSession, corruptSharedKey, rawSettings } from "./stub-db.js";
 import { setEncryptionAvailable } from "./stub-electron.js";
@@ -26,7 +28,26 @@ const base = {
   models: [{ id: "synthetic-model", input: ["text"] as const }],
   enabledAgents: ["claude", "codex"] as const,
 };
+check("development Pi host stays on disk", unpackPiHostPath("C:\\repo\\out\\pi-host\\piHost.mjs") === "C:\\repo\\out\\pi-host\\piHost.mjs");
+check("packaged Windows Pi host uses unpacked tree", unpackPiHostPath("C:\\App\\resources\\app.asar\\out\\pi-host\\piHost.mjs") === "C:\\App\\resources\\app.asar.unpacked\\out\\pi-host\\piHost.mjs");
+check("packaged Unix Pi host uses unpacked tree", unpackPiHostPath("/App/resources/app.asar/out/pi-host/piHost.mjs") === "/App/resources/app.asar.unpacked/out/pi-host/piHost.mjs");
+check("unpacked host is not unpacked twice", unpackPiHostPath("/App/resources/app.asar.unpacked/out/pi-host/piHost.mjs") === "/App/resources/app.asar.unpacked/out/pi-host/piHost.mjs");
+for (const order of [["anthropic", "responses", "chat-completions"], ["responses", "chat-completions", "anthropic"]] as const) {
+  check("Pi routing is independent of checkbox order", resolveSharedModelProtocol("pi", order, order) === "chat-completions");
+  check("Claude routing agrees with Pi", resolveSharedModelProtocol("claude", order, order) === "chat-completions");
+  check("Codex always selects Responses", resolveSharedModelProtocol("codex", order, order) === "responses");
+}
+check("Codex rejects a chat-only model on a Responses provider", resolveSharedModelProtocol("codex", base.protocols, ["chat-completions"]) === undefined);
+check("Pi can select Messages-only models", resolveSharedModelProtocol("pi", base.protocols, ["anthropic"]) === "anthropic");
+check("Claude excludes Responses-only models", resolveSharedModelProtocol("claude", base.protocols, ["responses"]) === undefined);
+check("disabled provider interface cannot be routed", resolveSharedModelProtocol("pi", ["anthropic"], ["responses"]) === undefined);
+check("Pi Messages removes duplicate version prefix", normalizePiRegisteredModel({ id: "m", api: "anthropic-messages", baseUrl: "https://example.invalid/anthropic/v1/" }).baseUrl === "https://example.invalid/anthropic");
+check("Pi Messages preserves a hostname named v1", normalizePiRegisteredModel({ id: "m", api: "anthropic-messages", baseUrl: "http://v1" }).baseUrl === "http://v1");
+check("Pi Chat preserves versioned API base", normalizePiRegisteredModel({ id: "m", api: "openai-completions", baseUrl: "https://example.invalid/v1" }).baseUrl === "https://example.invalid/v1");
+check("Pi Responses preserves versioned API base", normalizePiRegisteredModel({ id: "m", api: "openai-responses", baseUrl: "https://example.invalid/v1" }).baseUrl === "https://example.invalid/v1");
 const saved = SharedProviderStore.save({ ...base, apiKey: "TEST_SECRET_DO_NOT_PERSIST" });
+check("saving freezes inherited model interfaces", JSON.stringify(saved[0]!.models[0]!.interfaces) === JSON.stringify(base.protocols));
+check("duplicate per-model interfaces are rejected", !SharedProviderSaveInputSchema.safeParse({ ...base, models: [{ id: "duplicates", interfaces: ["responses", "responses"] }] }).success);
 check("Codex cannot enable a chat-only endpoint", !SharedProviderSaveInputSchema.safeParse({ ...base, protocols: ["chat-completions"], endpointOverrides: {}, enabledAgents: ["codex"] }).success);
 check("URL query secrets cannot enter public metadata", !SharedProviderSaveInputSchema.safeParse({ ...base, baseUrl: "https://example.invalid/v1?api_key=secret" }).success);
 check("duplicate model IDs are rejected", !SharedProviderSaveInputSchema.safeParse({ ...base, models: [{ id: "same" }, { id: "same" }] }).success);

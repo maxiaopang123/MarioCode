@@ -191,6 +191,12 @@ pnpm build
 - **Skills**:`SkillMarketDialog` 支持内嵌市场;安装仍走原有 `skillMarket.ts`。设置面板分别加载全局与项目技能,保留两个范围内的同名项;对话 `/` 菜单原有项目优先规则不变。
 - **验证**:类型检查、构建、45 项离线技能市场检查与 `pnpm --filter @mariocode/desktop test:extension-market-electron` 的 8 组隔离真应用检查(安装/导入/去重/来源筛选/关闭项编辑/技能编辑/落盘)通过。尚未验证真实第三方 OAuth 与模型调用市场 MCP / Skills。
 
+### 公共提供商与模型接口(2026-10-03,0.2.3)
+- **兼容与路由唯一来源**:`contracts/sharedProvider.ts` 的 `resolveSharedModelProtocol`。Claude = Chat → Messages;Pi = Chat → Messages → Responses;Codex = 仅 Responses。按每个模型的接口与提供商协议交集选择,与复选框的点击顺序无关。模型 ID 中的 `/` 保留,只按首个 `/` 拆运行时提供商。
+- **界面与保存**:编辑旧配置时将继承接口显式化,保存时也冻结继承值;新增提供商协议不自动赋给已有模型。模型列表不证明能力,发现弹窗仅默认选择查询协议,不自动启用其它协议;已有模型选项保留。接口变化保留用户的引擎勾选,没有兼容模型时提示并阻止保存,不要静默关闭引擎。每个模型展示实际引擎接口。
+- **Pi 独立 Node**:`out/pi-host/**` 必须 `asarUnpack`;`PiHostClient` 经 `unpackPiHostPath` 将 archive 路径改到 `.asar.unpacked`,真实 Node 不能读取 ASAR。Messages 的 SDK 自加 `/v1/messages`,共享模型经 `normalizePiRegisteredModel` 去掉基础地址尾部 `/v1`,避免 `/v1/v1/messages`。默认模型也先确定提供商再选择共享隔离 runtime。
+- **验证**:`pnpm test:shared-providers` 78 项;`pnpm test:pi-host` 自动使用可用的项目/全局/额外传入运行时,覆盖真实 Chat/Messages/Responses、接口切换续聊、共享默认模型。`test-shared-providers-electron.mjs` 通过隔离应用/假 Key/本地 HTTP 测 UI、Pi 三种实际请求、Codex Responses 与切换模型续聊;`MARIOCODE_TEST_ASAR` 可验证包内 Pi 启动,不可再跳过此断言。第三方服务的真实接口兼容性需用户按服务商说明选择,不凭模型名称猜测。
+
 ### 设置页布局(2026-10-02)
 - **独立双栏**:`SettingsDialog` 最大 1440×960,保留避让窗口拖动区的 88px 水平 / 56px 垂直边距;`SettingsPage` 不再复用工作台的 `ThreePaneLayout`,取消内层大卡片,216px 导航与内容独立滚动。
 - **导航**:五个分组可展开,初次只展开当前分组;搜索匹配本地化页面名称 / 分组 / section id。选中后清搜索并展开对应组;设置内的 `setSettingsOpen(true, sectionId)` 跳转仍生效。Escape 优先交给子弹窗,其次清搜索,最后关闭设置;关闭后恢复工作台焦点。
@@ -230,7 +236,7 @@ pnpm build
 - **加载模型的地址规则**(2026-10-02):`sharedProviderDiscovery.ts` 接受与提供商配置一致的 HTTP(S) 地址,包括局域网与用户指定的 HTTP 网关;不要再加「HTTP 仅限 loopback」限制。仍拒绝 URL 内嵌凭据 / query / fragment、链路本地与云元数据地址,跳转仅同源,未保存的地址修改不能复用旧密钥。回归:`test:shared-providers` 58 项;`test:shared-providers-electron` 用隔离配置和本地 HTTP 服务验证临时 / 已保存密钥加载、取消保留表单、合并与保存模型(优先用本机非 loopback IPv4)。
 - **五段布局**:`ProjectRail`(60px 项目栏)+ 会话列(`StreamSidebar`)+ 主区 + `ToolStrip`(右缘竖向工具条)+ `StatusBar`(底部全局状态栏)。**项目树视图已删除**(`LeftBar.tsx` / `SidebarQuickActions.tsx` / `SidebarTopStrip` / `LeftBarModeSwitch` / `SidebarFooter` 均已移除);store 的 `leftBarMode` 字段与 `ui.leftBarMode` 设置键仅为兼容保留,App 不再读取。项目管理(重命名 / 分组 / 颜色 / 打开文件夹 / 归档 / 删除)改为**项目栏头像右键**(`ProjectManageMenuPopup` 新增可选 `onOpenFolder/onArchive/onDelete`);归档项目在会话列底部归档区恢复;拖拽排序随树视图一起取消。
 - **模型配置 = 只有公用提供商**(2026-09-28):旧版专属配置页 `CustomModelsPanel.tsx` 已删,设置导航直接挂 `SharedProvidersPanel`。面板重做为 左列表(头像 + 域名 + 引擎图标 + 密钥状态点)| 右表单(顶部身份栏含删除/保存 → 连接 → 协议与引擎 → 模型表格 → 可折叠高级),保存后**保持选中该提供商**(用返回的行重建 draft,密钥框显示「已保存」角标)——旧实现保存即关表单,二次编辑像从头再来。`Button` 的 primary 变体改用 `--primary`(浅=石墨/深=薄荷),薄荷底白字只有 ~3:1。
-- **模型多了 `imageGeneration` 标记 + 「加载模型」弹窗逐模型勾选**:`SharedProviderModelSchema` 新增 `imageGeneration?: boolean`(**跨进程契约,改完必须重启 `pnpm dev`** —— 只热更新 renderer 会让主进程以 `unrecognized_keys` 拒绝保存);弹窗每行 = 三个接口 chip(Chat / Messages / Responses,默认开前两个)+ 生图 chip(默认关),合并时按勾选写 `model.interfaces`,并**自动把用到的协议补进 provider.protocols**(否则撞上「model interfaces must be enabled by provider」)。生图目前只是标记,MarioTool 生图仍从 设置 → 内置工具 取模型。
+- **模型 `imageGeneration` 标记 + 「加载模型」弹窗逐模型勾选**:`SharedProviderModelSchema` 的 `imageGeneration?: boolean` 是跨进程契约,改完必须重启 `pnpm dev`。弹窗仅展示提供商已启用的接口,默认勾选查询协议,其它接口需用户确认;合并时写 `model.interfaces`,不改变提供商协议或已有模型。生图标记不等于聊天接口支持,MarioTool 生图从 设置 → 内置工具 取模型。
 - **密钥保留规则放宽到「按 origin」**(`sharedProviderOrigins` / `sharedProviderAddsOrigin`,contracts,主进程与面板共用一份):留空密钥保存时,只有**出现新的 scheme+host+port**(换服务器、或 https→http 降级)才要求重填;**只改路径**(补 `/v1`、加尾斜杠)或**移除**某个地址都保留已存密钥。旧实现比对整串 URL 指纹,任何地址微调都逼用户重打长密钥。面板在提交前就内联警告并禁用保存,不再让用户撞主进程报错。回归:`.turbo/v3-keytest.mjs`(隔离 profile 起真 app,8 步走 create / 无改动 / 加模型 / 改路径 / 同源覆盖 / 换 host / http 降级 / 换 host+新密钥)。
 - **设置 = 悬浮窗口**(`components/settings/SettingsDialog.tsx`):居中卡片 + 暗色遮罩,✕ / 点遮罩 / Esc 关闭;工作区保持挂载(终端不断)。卡片刻意避开窗口拖拽区(上 ≥56px、左右 ≥88px)——Electron 先判定 `-webkit-app-region: drag` 再做 DOM 命中,压在拖拽区上的部分点不动。Titlebar 不再进入 settings 模式。
 - **项目栏**:所有格子 36×36 r10,内容 ~28px(logo 28 / `ProjectAvatar size="lg"` 28 / 线性图标 18px 描边 1.6;手机 19、积木 17 做视觉校正),样式在 styles.css 的 `.rail-btn` / `.rail-pip` / `.rail-cnt`;点击只写 `streamScope`(同会话列的范围菜单),**不调 selectProject**(那会重置 tab)。角标 = 「等你处理」数、运行中转圈 pip、未读点。

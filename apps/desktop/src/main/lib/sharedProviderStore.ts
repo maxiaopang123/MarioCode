@@ -4,6 +4,7 @@ import {
   SharedProviderPublicSchema,
   SharedProviderSaveInputSchema,
   sharedProviderAddsOrigin,
+  resolveSharedModelInterfaces,
   sharedRuntimeId,
   type SharedProviderProtocol,
   type SharedProviderPublic,
@@ -113,7 +114,9 @@ export function save(input: SharedProviderSaveInput): SharedProviderPublic[] {
     ...(value.modelsEndpoint ? { modelsEndpoint: value.modelsEndpoint } : {}),
     protocols: value.protocols,
     ...(value.endpointOverrides ? { endpointOverrides: value.endpointOverrides } : {}),
-    models: value.models,
+    // Freeze inherited capabilities when saving. Enabling a provider protocol
+    // later must not silently expand an existing model's supported interfaces.
+    models: value.models.map((model) => ({ ...model, interfaces: resolveSharedModelInterfaces(value.protocols, model.interfaces) })),
     hasApiKey: Boolean(keys[id]),
     enabledAgents: value.enabledAgents,
   });

@@ -136,6 +136,7 @@ function StreamSidebarBase() {
   const streamHasMore = useSessionStore((s) => s.streamHasMore);
   const streamTotal = useSessionStore((s) => s.streamTotal);
   const streamDirty = useSessionStore((s) => s.streamDirty);
+  const streamScope = useSessionStore((s) => s.streamScope);
   const archivedSessionsByProject = useSessionStore((s) => s.archivedSessionsByProject);
   const runningBySession = useSessionStore((s) => s.runningBySession);
   const runningTurnStartedAt = useSessionStore((s) => s.runningTurnStartedAt);
@@ -178,7 +179,7 @@ function StreamSidebarBase() {
   // mount and whenever any repo's git version bumps.
   useEffect(() => {
     void loadStreamSessions();
-  }, [streamDirty, loadStreamSessions]);
+  }, [streamScope, streamDirty, loadStreamSessions]);
 
   useEffect(() => {
     for (const p of projects) void ensureWorktreeInfo(p.path);
@@ -194,7 +195,6 @@ function StreamSidebarBase() {
     return map;
   }, [projects]);
 
-  const streamScope = useSessionStore((s) => s.streamScope);
   // Store action, aliased to the old local-setter name — every scope menu
   // row writes through it (persisting the choice for the next visit).
   const setScope = useSessionStore((s) => s.setStreamScope);

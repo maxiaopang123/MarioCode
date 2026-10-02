@@ -18,6 +18,7 @@ import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { IconBolt, IconGauge } from "@renderer/lib/icons.js";
 import { EMPTY_USAGE, useSessionStore } from "@renderer/stores/sessionStore.js";
+import { useSessionUsageHistory } from "@renderer/hooks/useSessionUsageHistory.js";
 import {
   fmtPct,
   fmtSpeed,
@@ -35,7 +36,8 @@ const EMPTY_GENS: TurnGenRecord[] = [];
 export function SessionMetrics({ sessionId }: { sessionId: string }) {
   const { t } = useI18n();
   const snapshot = useSessionStore((s) => s.contextSnapshotBySession[sessionId]);
-  const usageHistory = useSessionStore((s) => s.usageHistoryBySession[sessionId] ?? EMPTY_USAGE);
+  const usageHistory = useSessionUsageHistory(sessionId);
+  const rawHistory = useSessionStore((s) => s.usageHistoryBySession[sessionId] ?? EMPTY_USAGE);
   const gens = useSessionStore((s) => s.turnGenBySession[sessionId] ?? EMPTY_GENS);
   const openFloat = useSessionStore((s) => s.openSessionFloat);
 
@@ -51,7 +53,7 @@ export function SessionMetrics({ sessionId }: { sessionId: string }) {
 
   return (
     <span className="sess-metrics flex shrink-0 items-center gap-1.5">
-      {snapshot && <ContextRing snapshot={snapshot} history={usageHistory} />}
+      {snapshot && <ContextRing snapshot={snapshot} history={rawHistory} />}
       {(avgCache != null || avgSpeed != null) && (
         <button
           type="button"

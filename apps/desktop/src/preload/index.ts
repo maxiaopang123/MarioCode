@@ -567,6 +567,9 @@ const api = {
       ipcRenderer.invoke(IPC.MCP_UNAUTHORIZE, input)) as RpcMap["mcp.unauthorize"],
     save: ((input) =>
       ipcRenderer.invoke(IPC.MCP_SAVE, input)) as RpcMap["mcp.save"],
+    read: ((input) => ipcRenderer.invoke(IPC.MCP_READ, input)) as RpcMap["mcp.read"],
+    update: ((input) => ipcRenderer.invoke(IPC.MCP_UPDATE, input)) as RpcMap["mcp.update"],
+    marketInstall: ((input) => ipcRenderer.invoke(IPC.MCP_MARKET_INSTALL, input)) as RpcMap["mcp.marketInstall"],
     remove: ((input) =>
       ipcRenderer.invoke(IPC.MCP_REMOVE, input)) as RpcMap["mcp.remove"],
     scanImport: ((input) =>

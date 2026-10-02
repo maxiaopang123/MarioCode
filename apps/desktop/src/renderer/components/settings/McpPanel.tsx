@@ -27,6 +27,8 @@ import {
 import { PanelHeader } from "./PanelHeader.js";
 import { SettingsSection } from "./SettingsSection.js";
 import { SettingRow } from "./SettingRow.js";
+import { McpMarketPanel } from "./McpMarketPanel.js";
+import { ExtensionTabs, ExtensionSearch, OriginBadge, matchesOrigin, type ExtensionView, type OriginFilter } from "./ExtensionManagement.js";
 import {
   McpIcon,
   IconPlus,
@@ -184,6 +186,10 @@ export function McpPanel() {
   // Row key of an in-flight toggle (disables that row's switch only).
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [editing, setEditing] = useState<McpServerEntry | null>(null);
+  const [view, setView] = useState<ExtensionView>("mine");
+  const [query, setQuery] = useState("");
+  const [originFilter, setOriginFilter] = useState<OriginFilter>("all");
   const [importOpen, setImportOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<McpServerEntry | null>(null);
 
@@ -386,7 +392,7 @@ export function McpPanel() {
     }
   };
 
-  const userServers = servers.filter((s) => s.scope === "user");
+  const userServers = servers.filter((s) => s.scope === "user" && (!s.syncSource || originFilter === "all") && matchesOrigin(s.origin, originFilter) && `${s.name} ${s.detail} ${s.origin?.label ?? s.syncSource ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()));
   const projectServers = servers.filter((s) => s.scope === "project");
   const builtins = servers.filter((s) => s.scope === "builtin");
 
@@ -395,13 +401,17 @@ export function McpPanel() {
       <PanelHeader
         title={t("settings.mcp.title")}
         icon={McpIcon}
+        action={<div className="flex gap-2"><Button variant="ghost" size="md" onClick={() => setImportOpen(true)}><IconDownload size={14} />{t("settings.mcp.importFromCli")}</Button><Button variant="outline" size="md" onClick={() => { setEditing(null); setAddOpen(true); }}><IconPlus size={14} />{t("settings.extensions.custom")}</Button></div>}
       />
+      <ExtensionTabs view={view} onChange={setView} count={servers.filter((s) => s.scope === "user").length} />
 
       {error && (
         <div className="rounded border border-danger/40 bg-danger/5 px-3 py-2 text-[0.7857em] text-danger">
           {error}
         </div>
       )}
+      {view === "market" ? <McpMarketPanel servers={servers} onManage={() => { setOriginFilter("all"); setQuery(""); setView("mine"); }} onAdded={async (oauthName) => { setView("mine"); setOriginFilter("all"); setQuery(""); await load(); if (oauthName) await authorize({ name: oauthName, scope: "user", kind: "http", detail: "https://mcp.notion.com/mcp", enabled: true }); }} /> : <>
+      <ExtensionSearch query={query} onQuery={setQuery} filter={originFilter} onFilter={setOriginFilter} />
 
       {/* ───────── 外部配置源同步 (TODO-004) ───────── */}
       {/* Watch external tool config files (~/.claude.json, ~/.codex/config.toml,
@@ -409,6 +419,7 @@ export function McpPanel() {
           file — one mirror serves Claude (binary loads it), Codex (config.toml
           materialization reads it) and Pi. Disabling retracts the synced
           entries; removing a source retracts them too. */}
+      <details className="rounded border border-edge p-3"><summary className="text-xs text-content-muted">{t("settings.mcpSync.title")}</summary>
       <SettingsSection
         title={t("settings.mcpSync.title")}
         desc={t("settings.mcpSync.desc")}
@@ -476,10 +487,11 @@ export function McpPanel() {
           </ul>
         )}
       </SettingsSection>
+      </details>
 
       {/* ───────── 用户级 ───────── */}
       <SettingsSection
-        title={t("settings.mcp.userSection")}
+        title={t("settings.extensions.mine")}
         desc={t("settings.mcp.userSectionDesc")}
       >
         {loading ? (
@@ -489,18 +501,18 @@ export function McpPanel() {
           </div>
         ) : userServers.length === 0 ? (
           <div className="px-4 py-4 text-center text-[0.7143em] leading-relaxed text-content-subtle">
-            {t("settings.mcp.userEmpty1")}
-            <br />
-            {t("settings.mcp.userEmpty2")}
+            {t(servers.some((s) => s.scope === "user") ? "settings.skillMarket.noMatch" : "settings.mcp.userEmpty1")}
+            {!servers.some((s) => s.scope === "user") && <><br />{t("settings.mcp.userEmpty2")}</>}
           </div>
         ) : (
           userServers.map((s) => (
             <SettingRow
               key={rowKey(s)}
               title={
-                <span className="flex items-center gap-1.5">
+                <span className="flex flex-wrap items-center gap-1.5">
                   <span className="font-mono">{s.name}</span>
                   <KindBadge kind={s.kind} />
+                  {s.syncSource ? <span className="rounded bg-surface-hover px-1 text-[11px] text-content-subtle">{t("settings.extensions.synced")} · {s.syncSource}</span> : <OriginBadge origin={s.origin} />}
                 </span>
               }
               desc={<span className="font-mono">{s.detail}</span>}
@@ -517,27 +529,19 @@ export function McpPanel() {
                 disabled={busyKey === rowKey(s)}
                 label={t(s.enabled ? "settings.mcp.toggleOff" : "settings.mcp.toggleOn", { name: s.name })}
               />
+              {!s.syncSource && <Button variant="outline" size="sm" onClick={() => { setEditing(s); setAddOpen(true); }}>{t("settings.extensions.configure")}</Button>}
               <Button
                 variant="ghost"
                 size="icon"
                 title={t("settings.mcp.deleteServer")}
                 onClick={() => setPendingDelete(s)}
+                disabled={!!s.syncSource}
               >
                 <IconTrash size={13} className="text-content-subtle" />
               </Button>
             </SettingRow>
           ))
         )}
-        <div className="flex justify-end gap-2 px-4 py-2.5">
-          <Button variant="ghost" size="sm" onClick={() => setImportOpen(true)} className="gap-1">
-            <IconDownload size={12} />
-            {t("settings.mcp.importFromCli")}
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => setAddOpen(true)} className="gap-1">
-            <IconPlus size={12} />
-            {t("settings.mcp.addServer")}
-          </Button>
-        </div>
       </SettingsSection>
 
       {/* ───────── 项目级 ───────── */}
@@ -659,6 +663,7 @@ export function McpPanel() {
         ))}
       </SettingsSection>
 
+      </>}
       <ConfirmDialog
         open={pendingDelete != null}
         title={t("settings.mcp.deleteTitle")}
@@ -681,13 +686,14 @@ export function McpPanel() {
 
       <AddServerDialog
         open={addOpen}
+        editing={editing}
         onOpenChange={setAddOpen}
-        onSaved={() => void load()}
+        onSaved={() => { setView("mine"); setQuery(""); setOriginFilter("all"); void load(); }}
       />
       <ImportMcpDialog
         open={importOpen}
         onOpenChange={setImportOpen}
-        onImported={() => void load()}
+        onImported={() => { setView("mine"); setQuery(""); setOriginFilter("all"); void load(); }}
       />
       <McpSyncAddDialog
         open={syncAddOpen}
@@ -828,10 +834,12 @@ function AddServerDialog({
   open,
   onOpenChange,
   onSaved,
+  editing,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
+  editing: McpServerEntry | null;
 }) {
   const { t } = useI18n();
   const [name, setName] = useState("");
@@ -842,12 +850,14 @@ function AddServerDialog({
   const [url, setUrl] = useState("");
   const [headersJson, setHeadersJson] = useState("");
   const [saving, setSaving] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Reset the form each time the dialog opens.
   useEffect(() => {
     if (!open) return;
-    setName("");
+    setName(editing?.name ?? "");
     setType("stdio");
     setCommand("");
     setArgs("");
@@ -855,7 +865,19 @@ function AddServerDialog({
     setUrl("");
     setHeadersJson("");
     setError(null);
-  }, [open]);
+    setReadFailed(false);
+    if (!editing) { setReading(false); return; }
+    let cancelled = false;
+    setReading(true);
+    void api.mcp.read({ name: editing.name }).then(({ config }) => {
+      if (cancelled) return;
+      if (!config) { setReadFailed(true); setError(t("settings.extensions.missing")); return; }
+      setType(config.type ?? "stdio");
+      if (config.type === "http" || config.type === "sse") { setUrl(config.url); setHeadersJson(JSON.stringify(config.headers ?? {}, null, 2)); }
+      else { setCommand(config.command); setArgs(JSON.stringify(config.args ?? [])); setEnvJson(JSON.stringify(config.env ?? {}, null, 2)); }
+    }).catch((err: unknown) => { if (!cancelled) { setReadFailed(true); setError(String(err)); } }).finally(() => { if (!cancelled) setReading(false); });
+    return () => { cancelled = true; };
+  }, [open, editing, t]);
 
   const save = async () => {
     setError(null);
@@ -879,7 +901,11 @@ function AddServerDialog({
         setError(envRes.error);
         return;
       }
-      const argList = args.trim() ? args.trim().split(/\s+/) : undefined;
+      let argList: string[] | undefined;
+      if (args.trim().startsWith("[")) {
+        try { const parsed: unknown = JSON.parse(args); if (!Array.isArray(parsed) || !parsed.every((value): value is string => typeof value === "string")) throw new Error(); argList = parsed; }
+        catch { setError(t("settings.extensions.argsJson")); return; }
+      } else argList = args.trim() ? args.trim().split(/\s+/) : undefined;
       config = {
         type: "stdio",
         command: command.trim(),
@@ -904,7 +930,7 @@ function AddServerDialog({
     }
     setSaving(true);
     try {
-      const res = await api.mcp.save({ name: trimmedName, config });
+      const res = await (editing ? api.mcp.update : api.mcp.save)({ name: trimmedName, config });
       if (!res.ok) {
         setError(res.error ?? t("settings.saveFailed"));
         return;
@@ -923,7 +949,7 @@ function AddServerDialog({
       <Dialog.Portal>
         <Dialog.Backdrop />
         <Dialog.Popup className="flex max-h-[80vh] w-[520px] flex-col p-0">
-          <Dialog.Title className="px-4 pt-4">{t("settings.mcp.addTitle")}</Dialog.Title>
+          <Dialog.Title className="px-4 pt-4">{t(editing ? "settings.extensions.configure" : "settings.mcp.addTitle")}</Dialog.Title>
           <Dialog.Description className="px-4 pt-1">
             {t("settings.mcp.addDescPre")}
             <code className="rounded bg-surface-muted px-0.5">~/.mariocode/.claude.json</code>
@@ -934,6 +960,7 @@ function AddServerDialog({
             <Field label={t("settings.mcp.fName")} hint={t("settings.mcp.fNameHint")}>
               <input
                 type="text"
+                disabled={!!editing || reading}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="my-server"
@@ -1028,8 +1055,8 @@ function AddServerDialog({
             <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
               {t("common.cancel")}
             </Button>
-            <Button variant="primary" size="sm" onClick={() => void save()} disabled={saving}>
-              {saving ? t("settings.saving") : t("settings.mcp.addBtn")}
+            <Button variant="primary" size="sm" onClick={() => void save()} disabled={saving || reading || readFailed}>
+              {saving ? t("settings.saving") : t(editing ? "common.save" : "settings.mcp.addBtn")}
             </Button>
           </div>
         </Dialog.Popup>
@@ -1127,7 +1154,7 @@ function ImportMcpDialog({
     try {
       const items = sources
         .filter((s) => selected.has(sourceKey(s)))
-        .map((s) => ({ name: s.name, config: s.config }));
+        .map((s) => ({ name: s.name, config: s.config, origin: s.origin }));
       const res = await api.mcp.import({ servers: items });
       setResult(res);
       setSelected(new Set());

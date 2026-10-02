@@ -22,6 +22,36 @@
  */
 import type { TurnUsageRecord } from "@contracts/runtime";
 
+/** Convert session-cumulative counters (Pi) to per-turn values before feeding
+ *  the metrics below. Preserve input order so generation-time records retain
+ *  their positional pairing. Occupancy and subagent tokens aren't cumulative.
+ *  The first record uses a zero baseline, as in main/lib/usageStats.ts. */
+export function normalizeSessionUsageHistory(
+  history: readonly TurnUsageRecord[],
+  cumulative: boolean,
+): readonly TurnUsageRecord[] {
+  if (!cumulative || history.length === 0) return history;
+  const previousByRecord = new Map<TurnUsageRecord, TurnUsageRecord>();
+  let previous: TurnUsageRecord | undefined;
+  for (const record of [...history].sort((a, b) => a.endedAt - b.endedAt)) {
+    if (previous) previousByRecord.set(record, previous);
+    previous = record;
+  }
+  return history.map((record) => {
+    const prev = previousByRecord.get(record);
+    return {
+      ...record,
+      totalProcessedTokens: Math.max(0, record.totalProcessedTokens - (prev?.totalProcessedTokens ?? 0)),
+      outputTokens: Math.max(0, record.outputTokens - (prev?.outputTokens ?? 0)),
+      cacheReadTokens: Math.max(0, record.cacheReadTokens - (prev?.cacheReadTokens ?? 0)),
+      cacheCreationTokens: Math.max(0, record.cacheCreationTokens - (prev?.cacheCreationTokens ?? 0)),
+      costUsd: record.costUsd === undefined
+        ? undefined
+        : Math.max(0, record.costUsd - (prev?.costUsd ?? 0)),
+    };
+  });
+}
+
 /** One turn's measured generation time (renderer-side, see genTimer.ts).
  *  Appended once per turn, in the same order as the usage history. */
 export interface TurnGenRecord {

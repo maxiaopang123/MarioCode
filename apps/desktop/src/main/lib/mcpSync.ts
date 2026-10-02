@@ -510,6 +510,14 @@ export async function listMcpSync(): Promise<Array<McpSyncSource & { status: Mcp
   return sources.map((s) => ({ ...s, status: { ...stateFor(s.id).status } }));
 }
 
+/** Inventory must use ownership, not all names encountered in a source file:
+ * a local name collision is never owned by that external source. */
+export async function mcpSyncOwner(name: string): Promise<string | undefined> {
+  const sources = await getMcpSyncSources();
+  const ownership = readOwnership();
+  return sources.find((source) => ownership[source.id]?.includes(name))?.label;
+}
+
 export async function addMcpSyncSource(
   file: string,
   kind?: McpSyncKind,

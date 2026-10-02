@@ -428,9 +428,9 @@ export function SharedProvidersPanel() {
       <PanelHeader title={t("settings.shared.title")} icon={IconKey} />
       <p className="text-[13px] leading-relaxed text-content-muted">{t("settings.shared.description")}</p>
       {error && <p role="alert" className="break-words rounded-lg bg-danger/10 px-3 py-2.5 text-[13px] text-danger">{error}</p>}
-      <div className="grid min-h-[480px] grid-cols-[236px_minmax(0,1fr)] overflow-hidden rounded-xl border border-edge bg-surface shadow-sm">
+      <div className="settings-provider-layout grid min-h-[480px] grid-cols-[236px_minmax(0,1fr)] overflow-hidden rounded-xl border border-edge bg-surface shadow-sm">
         {/* ── Provider list ── */}
-        <aside className="flex min-h-0 flex-col rounded-l-xl border-r border-edge bg-surface-muted/60">
+        <aside className="settings-provider-list flex min-h-0 flex-col rounded-l-xl border-r border-edge bg-surface-muted/60">
           <div className="flex items-center justify-between px-3 pb-2 pt-3">
             <span className="text-[12px] font-semibold text-content-subtle">
               {t("settings.shared.providerCount", { n: providers.length })}
@@ -541,7 +541,7 @@ export function SharedProvidersPanel() {
             <div className="min-w-0 flex-1 space-y-7 p-6">
               {/* 连接 */}
               <Section title={t("settings.shared.sectionConnection")}>
-                <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
+                <div className="settings-provider-fields grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
                   <Field label={t("settings.shared.name")}>
                     <Input required value={draft.name} disabled={busy} onChange={(e) => change({ name: e.target.value })} placeholder="OpenRouter" />
                   </Field>

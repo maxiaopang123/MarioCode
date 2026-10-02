@@ -33,10 +33,12 @@ export function SkillMarketDialog({
   open,
   onOpenChange,
   onInstalled,
+  embedded = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onInstalled: () => void;
+  embedded?: boolean;
 }) {
   const { t } = useI18n();
   const searchId = useId();
@@ -172,13 +174,7 @@ export function SkillMarketDialog({
 
   return (
     <>
-      <Dialog.Root open={open} onOpenChange={onOpenChange}>
-        <Dialog.Portal>
-          <Dialog.Backdrop />
-          <Dialog.Popup className="flex max-h-[80vh] w-[640px] flex-col p-0">
-            <Dialog.Title className="px-4 pt-4">{t("settings.skillMarket.title")}</Dialog.Title>
-            <Dialog.Description className="px-4 pt-1">{t("settings.skillMarket.desc")}</Dialog.Description>
-            <Dialog.Close />
+      <SkillMarketSurface embedded={embedded} open={open} onOpenChange={onOpenChange}>
 
             {/* Search */}
             <div className="px-4 pt-3">
@@ -384,9 +380,7 @@ export function SkillMarketDialog({
                 </div>
               )}
             </div>
-          </Dialog.Popup>
-        </Dialog.Portal>
-      </Dialog.Root>
+      </SkillMarketSurface>
 
       <ConfirmDialog
         open={pendingRemove != null}
@@ -401,4 +395,13 @@ export function SkillMarketDialog({
       />
     </>
   );
+}
+
+function SkillMarketSurface({ embedded, open, onOpenChange, children }: { embedded: boolean; open: boolean; onOpenChange: (open: boolean) => void; children: React.ReactNode }) {
+  const { t } = useI18n();
+  if (embedded) return <div className="flex min-h-0 flex-col" data-skill-market>{children}</div>;
+  return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal><Dialog.Backdrop /><Dialog.Popup className="flex max-h-[80vh] w-[640px] flex-col p-0">
+    <Dialog.Title className="px-4 pt-4">{t("settings.skillMarket.title")}</Dialog.Title>
+    <Dialog.Description className="px-4 pt-1">{t("settings.skillMarket.desc")}</Dialog.Description><Dialog.Close />{children}
+  </Dialog.Popup></Dialog.Portal></Dialog.Root>;
 }

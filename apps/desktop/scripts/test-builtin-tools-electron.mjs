@@ -155,7 +155,9 @@ try {
   ok("Pi prompt preview carries the built-in tools section");
 
   // UI: the page itself, via the visible settings navigation.
-  await clickButton("设置");
+  await evaluate("document.querySelector('button .tabler-icon-settings')?.closest('button').click()");
+  await waitForText("AI 能力");
+  await clickButton("AI 能力");
   await waitForText("MarioTool");
   await clickButton("MarioTool");
   await waitForText("联网搜索与网页读取");

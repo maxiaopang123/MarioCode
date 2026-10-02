@@ -1,20 +1,14 @@
 import type { ReactNode } from "react";
 import { cn } from "@renderer/lib/cn.js";
 
-/** Fixed width of the control column in horizontal rows. All rows share the
- *  same slot so the controls line up as one visual column down the page —
- *  selects/inputs fill it (`w-full`), switches & steppers right-align inside
- *  it. Rows whose control doesn't fit (long button combos, color palettes)
- *  use `layout="vertical"` instead and own the full row width. */
-const CONTROL_SLOT_WIDTH = 260;
-
 /**
  * One setting = one row. Left side carries a title (+ optional description),
- * right side carries the control(s) inside a fixed-width slot so every row's
- * control starts at the same x. The parent container draws the row
+ * right side carries the control(s) inside an aligned slot capped at 280px.
+ * Observed settings-width flags stack controls below labels in narrow panels.
+ * The parent container draws the row
  * separators (`divide-y divide-edge`) so this component stays a pure layout
  * shell — no borders of its own. Rows carry their own horizontal inset
- * (`px-4`) so content never touches the edges of the containing card.
+ * (`px-5`) so content never touches the edges of the containing card.
  *
  * Control-slot conventions (horizontal layout):
  *  - Select / Input / Textarea: give them `w-full` so they fill the slot.
@@ -54,7 +48,7 @@ export function SettingRow({
 
   if (layout === "vertical") {
     return (
-      <div className={cn("flex flex-col gap-2 px-4 py-3", className)}>
+      <div className={cn("setting-row flex flex-col gap-3 px-5 py-4", className)} data-layout="vertical">
         <div>
           <TitleTag
             {...(isLabel ? { htmlFor } : {})}
@@ -77,9 +71,10 @@ export function SettingRow({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-start justify-between gap-x-6 gap-y-2 px-4 py-3",
+        "setting-row flex items-start justify-between gap-x-8 gap-y-3 px-5 py-4",
         className,
       )}
+      data-layout="horizontal"
     >
       <div className="min-w-0 flex-1">
         <TitleTag
@@ -96,9 +91,8 @@ export function SettingRow({
         {descExtra && <div className="mt-0.5">{descExtra}</div>}
       </div>
       <div
-        style={{ width: CONTROL_SLOT_WIDTH }}
         className={cn(
-          "flex shrink-0 items-center justify-end gap-2",
+          "setting-row-controls flex w-[min(280px,42%)] shrink-0 flex-wrap items-center justify-end gap-2",
           controlAlign === "start" ? "self-start" : "self-center",
         )}
       >

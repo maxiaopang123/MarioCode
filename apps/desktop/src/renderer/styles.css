@@ -317,6 +317,55 @@ div:has(> [role="menu"]) {
   --content-subtle: 160 165 175; /* #a0a5af */
 }
 
+/* Responsive flags use the settings shell's observed content width. Avoid
+ * CSS size containment here: remounting Base UI Select panels inside it can
+ * leave Chromium's whole paint/hit-test tree blank even with a valid DOM. */
+.settings-content > :first-child {
+  max-width: 880px;
+  margin-inline: auto;
+}
+.settings-content[data-wide="true"] > :first-child {
+  max-width: 1200px;
+}
+.settings-content > :first-child > .settings-section + .settings-section {
+  margin-top: 28px;
+}
+.settings-panel-actions > div {
+  flex-wrap: wrap;
+}
+.setting-row > :first-child {
+  overflow-wrap: anywhere;
+}
+.settings-content-container[data-narrow="true"] .settings-provider-layout,
+.settings-content-container[data-narrow="true"] .settings-mcp-market-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+.settings-content-container[data-narrow="true"] .settings-provider-list {
+  max-height: 240px;
+  border-right: 0;
+  border-bottom: 1px solid rgb(var(--edge));
+}
+.settings-content-container[data-narrow="true"] .settings-skills-layout[data-editing="true"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(120px, 200px) minmax(320px, 1fr);
+  min-height: 560px;
+  flex: none;
+}
+.settings-content-container[data-compact="true"] .settings-provider-fields {
+  grid-template-columns: minmax(0, 1fr);
+}
+.settings-content-container[data-compact="true"] .setting-row[data-layout="horizontal"] {
+  flex-direction: column;
+  align-items: stretch;
+}
+.settings-content-container[data-compact="true"] .setting-row-controls {
+  width: 100%;
+  align-self: stretch;
+}
+.settings-content-container[data-compact="true"] .settings-panel-header {
+  padding-block: 16px;
+}
+
 /* ───────────── Chat markdown list lift (dark only) ─────────────
  * Model replies are dominated by bullet/numbered lists, which render at
  * --content-muted — one full tier below paragraph text. Objectively that is

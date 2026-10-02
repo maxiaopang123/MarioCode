@@ -120,30 +120,34 @@ check("HTTP explicit loopback targets remain allowed", [
   "http://127.45.6.7:8080/v1",
   "http://[::1]:8080/v1",
 ].every((url) => validateSharedProviderDiscoveryUrl(url).protocol === "http:"));
-let publicHttpFetched = false;
-let publicHttpBlocked = false;
-try {
-  await discoverSharedProviderModels({
-    baseUrl: "http://192.168.1.20/v1", protocol: "responses", apiKey: "PLAINTEXT_SECRET",
-  }, { fetch: async () => { publicHttpFetched = true; return new Response("{}"); } });
-} catch (error) {
-  publicHttpBlocked = error instanceof Error && error.message.includes("only permits HTTPS") && error.message.includes("manually");
+for (const protocol of ["anthropic", "chat-completions", "responses"] as const) {
+  let httpRequestMatched = false;
+  const result = await discoverSharedProviderModels({
+    baseUrl: "http://192.168.1.20:8080/v1", protocol, apiKey: "HTTP_TEST_SECRET",
+  }, { fetch: async (url, init) => {
+    const headers = new Headers(init?.headers);
+    httpRequestMatched = String(url) === "http://192.168.1.20:8080/v1/models"
+      && (protocol === "anthropic" ? headers.get("x-api-key") === "HTTP_TEST_SECRET"
+        : headers.get("authorization") === "Bearer HTTP_TEST_SECRET");
+    return new Response(JSON.stringify({ data: [{ id: "lan-model" }] }));
+  } });
+  check(`HTTP LAN discovery loads models with ${protocol} authentication`, httpRequestMatched && result.models[0]?.id === "lan-model");
 }
-check("HTTP LAN discovery is rejected before fetch", publicHttpBlocked && !publicHttpFetched);
 let metadataBlocked = false;
 try { validateSharedProviderDiscoveryUrl("https://169.254.169.254/latest/meta-data"); }
 catch (error) { metadataBlocked = error instanceof Error && error.message.includes("metadata") && error.message.includes("manually"); }
 check("explicit cloud metadata targets are rejected even over HTTPS", metadataBlocked);
 let customHttpFetched = false;
-try {
-  await discoverSharedProviderModels({
+const customHttpModels = await discoverSharedProviderModels({
     baseUrl: "https://safe.example.invalid/v1",
     modelsEndpoint: "http://public.example.invalid/models",
     protocol: "responses",
     apiKey: "CUSTOM_SECRET",
-  }, { fetch: async () => { customHttpFetched = true; return new Response("{}"); } });
-} catch { /* expected */ }
-check("custom models endpoints use the same network boundary", !customHttpFetched);
+  }, { fetch: async (url) => {
+    customHttpFetched = String(url) === "http://public.example.invalid/models";
+    return new Response(JSON.stringify({ models: [{ id: "gateway-model" }] }));
+  } });
+check("explicit HTTP gateway models endpoints are supported", customHttpFetched && customHttpModels.models[0]?.id === "gateway-model");
 
 let storedAuth = "";
 const discoveredWithStoredKey = await discoverSharedProviderModels({
@@ -195,7 +199,7 @@ try {
     baseUrl: "https://changed.example.invalid/v1",
   });
 } catch (error) {
-  routeSaveBlocked = error instanceof Error && error.message.includes("enter the API key again");
+  routeSaveBlocked = error instanceof Error && error.message.includes("API Key");
 }
 check("saving a changed route cannot retain the old encrypted key", routeSaveBlocked
   && SharedProviderStore.getPublic(saved[0]!.id)?.baseUrl === base.baseUrl
@@ -219,20 +223,23 @@ check("saving a changed route succeeds with an explicitly re-entered key", Share
   && SharedProviderStore.resolveApiKey(saved[0]!.id) === "NEW_ROUTE_SECRET");
 SharedProviderStore.save({ ...base, id: saved[0]!.id, apiKey: "ROTATED_TEST_SECRET" });
 const protectedRouteMutations = [
-  { modelsEndpoint: "https://example.invalid/v1/models" },
+  { modelsEndpoint: "https://models.example.invalid/v1/models" },
   { endpointOverrides: { ...base.endpointOverrides, responses: "https://new-codex.example.invalid/v1" } },
-  {
-    protocols: ["anthropic", "chat-completions"] as const,
-    endpointOverrides: { anthropic: base.endpointOverrides.anthropic },
-    enabledAgents: ["claude"] as const,
-  },
+  { baseUrl: "http://example.invalid/api" },
 ];
 let protectedRouteChanges = 0;
 for (const mutation of protectedRouteMutations) {
   try { SharedProviderStore.save({ ...base, id: saved[0]!.id, ...mutation }); }
-  catch (error) { if (error instanceof Error && error.message.includes("enter the API key again")) protectedRouteChanges++; }
+  catch (error) { if (error instanceof Error && error.message.includes("API Key")) protectedRouteChanges++; }
 }
-check("models endpoint and endpoint override changes each require a new key", protectedRouteChanges === protectedRouteMutations.length);
+check("new model hosts, override hosts and HTTPS-to-HTTP downgrades require a new key", protectedRouteChanges === protectedRouteMutations.length);
+SharedProviderStore.save({
+  ...base,
+  id: saved[0]!.id,
+  modelsEndpoint: "https://example.invalid/v1/models",
+});
+check("adding a models path on the existing origin keeps the stored key", SharedProviderStore.resolveApiKey(saved[0]!.id) === "ROTATED_TEST_SECRET");
+SharedProviderStore.save({ ...base, id: saved[0]!.id });
 const interfaceFingerprintProvider = SharedProviderStore.save({
   ...base,
   name: "Interface Fingerprint Provider",

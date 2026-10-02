@@ -61,6 +61,7 @@ import {
   IconWorld,
 } from "@renderer/lib/icons.js";
 import { SkillMarketDialog } from "./SkillMarketDialog.js";
+import { ExtensionTabs, ExtensionSearch, OriginBadge, matchesOrigin, type ExtensionView, type OriginFilter } from "./ExtensionManagement.js";
 import type { SkillInfo, SkillSource, ExternalSkillInfo, SkillTool, SkillSyncSource, SkillSyncStatus } from "@contracts/ipc";
 
 /** Skill name charset — mirrored from the zod schema in the contract. The
@@ -139,9 +140,11 @@ export function SkillsPanel() {
       // Without a project (no projects exist at all), list global skills only —
       // projectPath is optional in the contract and main scans ~/.mariocode/skills
       // alone when it's absent.
-      const { skills } = await api.skills.list(
-        projectPath ? { projectPath } : {},
-      );
+      const [global, scoped] = await Promise.all([
+        api.skills.list({}),
+        projectPath ? api.skills.list({ projectPath }) : Promise.resolve({ skills: EMPTY_PANEL_SKILLS }),
+      ]);
+      const skills = [...global.skills, ...scoped.skills.filter((skill) => skill.source === "project")];
       // Show both project-scoped and global skills. Global skills live under
       // ~/.mariocode/skills (populated by the Import feature or the new-skill
       // form's global scope) and are editable/deletable here the same way
@@ -186,7 +189,10 @@ export function SkillsPanel() {
   // Import dialog open state.
   const [importOpen, setImportOpen] = useState(false);
   // Skill market dialog open state (TODO-020).
-  const [marketOpen, setMarketOpen] = useState(false);
+  const [view, setView] = useState<ExtensionView>("mine");
+  const [query, setQuery] = useState("");
+  const [originFilter, setOriginFilter] = useState<OriginFilter>("all");
+  const filteredSkills = panelSkills.filter((skill) => matchesOrigin(skill.origin, originFilter) && `${skill.name} ${skill.description} ${skill.origin?.label ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()));
   // External sync sources (TODO-004): user directories mirrored into
   // ~/.mariocode/skills-sync and injected into Claude / Pi / Codex.
   const [syncRows, setSyncRows] = useState<SyncRow[]>(EMPTY_SYNC_ROWS);
@@ -394,7 +400,17 @@ export function SkillsPanel() {
       <PanelHeader
         className="mb-3"
         title="Skills"
+        icon={IconSparkles}
+        action={
+          <div className="flex gap-2">
+            <Button variant="ghost" size="md" onClick={() => setImportOpen(true)}><IconDownload size={14} />{t("settings.skills.importSkill")}</Button>
+            <Button variant="outline" size="md" onClick={() => { setView("mine"); startAdd(); }}><IconPlus size={14} />{t("settings.skills.newSkill")}</Button>
+          </div>
+        }
       />
+      <ExtensionTabs view={view} onChange={setView} count={panelSkills.length} />
+      {view === "market" ? <SkillMarketDialog embedded open onOpenChange={() => {}} onInstalled={() => { void refreshAfterMutation(); setQuery(""); setOriginFilter("all"); setView("mine"); }} /> : <>
+      <ExtensionSearch query={query} onQuery={setQuery} filter={originFilter} onFilter={setOriginFilter} />
 
       {/* ───────── External skill source sync (TODO-004) ───────── */}
       {/* One-way mirror of user-chosen skill directories into
@@ -404,7 +420,8 @@ export function SkillsPanel() {
           in other tools (e.g. ~/.codex/skills) show up here and in the
           composer `/` menu of all three agents. Disabling a source freezes
           its mirror instead of deleting it. */}
-      <div className="mb-3 rounded-md border border-edge bg-surface/40 p-2.5">
+      <details className="mb-3 rounded-md border border-edge bg-surface/40 p-2.5"><summary className="text-xs text-content-muted">{t("settings.skillsSync.title")}</summary>
+      <div className="mt-2">
         <div className="flex items-center gap-2">
           <IconFolder size={14} className="shrink-0 text-content-subtle" />
           <span className="text-[0.7857em] font-medium text-content-muted">
@@ -481,6 +498,7 @@ export function SkillsPanel() {
           </ul>
         )}
       </div>
+      </details>
 
       {/* ───────── Project selector ───────── */}
       {/* Makes the project binding explicit: project-scoped skills always
@@ -534,13 +552,13 @@ export function SkillsPanel() {
         )}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[200px_1fr] gap-4">
+      <div className={cn("settings-skills-layout grid min-h-0 flex-1 gap-4", selected && "lg:grid-cols-[280px_minmax(0,1fr)]")} data-editing={!!selected}>
         {/* ───────── Left: skill list ───────── */}
         <aside className="flex min-h-0 flex-col rounded-md border border-edge bg-surface/40">
           <div className="flex items-center justify-between px-2.5 py-2 text-[0.7143em] font-medium uppercase tracking-wide text-content-subtle">
-            <span>Skills</span>
+            <span>{t("settings.extensions.mine")}</span>
             <span className="tabular-nums">
-              {listLoading ? "…" : panelSkills.length}
+              {listLoading ? "…" : filteredSkills.length}
             </span>
           </div>
           <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1.5 pb-1.5">
@@ -550,7 +568,7 @@ export function SkillsPanel() {
                 {t("settings.skills.newSkill")}
               </div>
             )}
-            {panelSkills.map((s) => {
+            {filteredSkills.map((s) => {
               const isActive =
                 selected?.kind === "skill" &&
                 selected.source === s.source &&
@@ -561,14 +579,15 @@ export function SkillsPanel() {
                   onClick={() => void startEdit(s)}
                   className={cn(
                     "relative block w-full rounded px-2.5 py-1.5 text-left transition-colors",
+                    !selected && "border-b border-edge/60 px-4 py-4",
                     isActive ? "bg-surface-hover" : "hover:bg-surface-hover/60",
                   )}
                 >
                   {isActive && (
                     <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent" />
                   )}
-                  <div className="flex items-center gap-1">
-                    <IconSparkles size={11} className="shrink-0 text-content-subtle" />
+                  <div className="flex items-center gap-2">
+                    <IconSparkles size={selected ? 11 : 18} className="shrink-0 text-content-subtle" />
                     <span className="truncate text-[0.7857em] font-medium text-content">
                       {s.name}
                     </span>
@@ -583,59 +602,27 @@ export function SkillsPanel() {
                       {s.source === "project" ? t("settings.skills.sourceProject") : t("settings.skills.sourceGlobal")}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="mt-1 flex items-center gap-1.5">
                     <span className="truncate text-[0.7143em] text-content-subtle">
                       {s.description || t("settings.skills.noDesc")}
                     </span>
                   </div>
+                  <div className="mt-1 truncate"><OriginBadge origin={s.origin} /></div>
                 </button>
               );
             })}
-            {panelSkills.length === 0 && !listLoading && selected?.kind !== "new" && (
+            {filteredSkills.length === 0 && !listLoading && selected?.kind !== "new" && (
               <div className="px-2 py-4 text-center text-[0.7143em] leading-relaxed text-content-subtle">
-                {t("settings.skills.listEmpty1")}
-                <br />
-                {t("settings.skills.listEmpty2")}
+                {t(panelSkills.length ? "settings.skillMarket.noMatch" : "settings.skills.listEmpty1")}
+                {!panelSkills.length && <><br />{t("settings.skills.listEmpty2")}</>}
               </div>
             )}
           </nav>
-          <div className="space-y-1.5 border-t border-edge p-1.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={startAdd}
-              disabled={selected?.kind === "new"}
-              className="w-full justify-center gap-1"
-            >
-              <IconPlus size={12} />
-              {t("settings.skills.newSkill")}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setImportOpen(true)}
-              className="w-full justify-center gap-1"
-            >
-              <IconDownload size={12} />
-              {t("settings.skills.importSkill")}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setMarketOpen(true)}
-              className="w-full justify-center gap-1"
-            >
-              <IconWorld size={12} />
-              {t("settings.skillMarket.open")}
-            </Button>
-          </div>
         </aside>
 
         {/* ───────── Right: editor / empty state ───────── */}
-        <div className="min-h-0 overflow-y-auto pr-1">
-          {selected == null ? (
-            <EmptyDetail />
-          ) : selected.kind === "new" && newForm ? (
+        {selected && <div className="min-h-0 overflow-y-auto pr-1">
+          {selected.kind === "new" && newForm ? (
             <NewSkillForm
               form={newForm}
               setForm={setNewForm}
@@ -666,8 +653,9 @@ export function SkillsPanel() {
               }}
             />
           ) : null}
-        </div>
+        </div>}
       </div>
+      </>}
 
       {/* ───────── Delete confirmation ───────── */}
       <ConfirmDialog
@@ -694,27 +682,9 @@ export function SkillsPanel() {
         open={importOpen}
         onOpenChange={setImportOpen}
         projectPath={projectPath}
-        onImported={() => void refreshAfterMutation()}
+        onImported={() => { void refreshAfterMutation(); setQuery(""); setOriginFilter("all"); setView("mine"); }}
       />
 
-      <SkillMarketDialog
-        open={marketOpen}
-        onOpenChange={setMarketOpen}
-        onInstalled={() => void refreshAfterMutation()}
-      />
-    </div>
-  );
-}
-
-/** Right-pane empty state — nothing selected. */
-function EmptyDetail() {
-  const { t } = useI18n();
-  return (
-    <div className="flex h-full flex-col items-center justify-center text-center">
-      <IconSparkles size={28} className="mb-2 text-content-subtle" />
-      <p className="max-w-[240px] text-[0.7857em] leading-relaxed text-content-subtle">
-        {t("settings.skills.emptyDetail")}
-      </p>
     </div>
   );
 }

@@ -58,6 +58,7 @@ import {
   skillSyncMirrorRoots,
 } from "@main/lib/skillSync.js";
 import { parseSkillFrontmatter, readTextHead } from "@main/lib/skillFrontmatter.js";
+import { readExtensionOrigins, setExtensionOrigin } from "@main/lib/extensionOrigins.js";
 import {
   listMarkets,
   addMarket,
@@ -401,6 +402,8 @@ export async function listSkillsForProject(projectPath: string | undefined): Pro
   }
   // Stable ordering: project-first then global, alphabetical within each,
   // so the menu doesn't reshuffle between renders.
+  const origins = await readExtensionOrigins();
+  for (const skill of byName.values()) if (skill.source === "global") skill.origin = origins.skill[skill.name];
   return [...byName.values()].sort((a, b) => {
     if (a.source !== b.source) return a.source === "project" ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -490,6 +493,12 @@ export function registerSkillsHandlers(ipcMain: IpcMain): void {
       // project-scoped skill). recursive:true is a no-op if it already exists.
       await fs.mkdir(targetDir, { recursive: true });
       await fs.writeFile(path.join(targetDir, "SKILL.md"), input.content, "utf-8");
+      if (input.source === "global") {
+        const origins = await readExtensionOrigins();
+        const targetName = input.newName ?? input.name;
+        await setExtensionOrigin("skill", targetName, origins.skill[input.name] ?? { kind: "manual", label: "" });
+        if (targetName !== input.name) await setExtensionOrigin("skill", input.name, null);
+      }
       return { ok: true };
     } catch (err) {
       return { ok: false, error: (err as Error).message };
@@ -520,6 +529,7 @@ export function registerSkillsHandlers(ipcMain: IpcMain): void {
         // file type (defensive; the lister only ever surfaces directories).
         return { ok: false, error: "目标不是 skill 目录" };
       }
+      if (input.source === "global") await setExtensionOrigin("skill", input.name, null);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: (err as Error).message };
@@ -634,6 +644,7 @@ export function registerSkillsHandlers(ipcMain: IpcMain): void {
           await fs.copyFile(item.sourcePath, path.join(destDir, "SKILL.md"));
         }
         imported.push(item.name);
+        await setExtensionOrigin("skill", item.name, { kind: "import", label: item.sourcePath });
       } catch (err) {
         errors.push({ name: item.name, error: (err as Error).message });
       }

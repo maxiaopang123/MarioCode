@@ -18,6 +18,7 @@ import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { normWorktreeKey } from "@renderer/lib/worktree.js";
 import type { ContextSnapshot, Session } from "@contracts/session";
 import type { SessionListEntry } from "@contracts/runtime";
+import { runRegressionChecks } from "./regressions.js";
 
 const PROJECT = "p1";
 const WT_OLD = "D:\\proj\\.worktrees\\wt-1";
@@ -226,6 +227,8 @@ console.log("\n[8] unloaded project");
   check("no cache bucket materialized for p2", useSessionStore.getState().sessionsByProject["p2"] === undefined);
   check("p1 untouched", cache().length === 1);
 }
+
+await runRegressionChecks(check, mkSession);
 
 console.log(`\n${checks - failures}/${checks} checks passed`);
 if (failures > 0) {

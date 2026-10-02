@@ -8521,7 +8521,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     // OLD scope — the view must refetch its first page so the list AND the
     // bottom "显示更多" count (hasMore/total are scope-filtered server-side)
     // follow the switched-to project.
-    set({ streamScope: scope, streamDirty: true });
+    const changed = scope !== get().streamScope;
+    // Invalidate immediately, before the sidebar effect starts the next
+    // request. A second scope switch may happen while dirty is already true.
+    if (changed) streamFetchSeq++;
+    set({
+      streamScope: scope,
+      streamDirty: true,
+      ...(changed ? { streamSessions: [], streamHasMore: false, streamTotal: 0 } : {}),
+    });
     // setting.set only accepts strings — the unfiltered "全部项目" state is
     // encoded as the empty string (mirror of the hydration rule in init).
     // Fire-and-forget: a failed write just means the next visit falls back
@@ -8554,6 +8562,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         // Superseded by a newer fetch (scope flipped / re-dirty mid-flight):
         // the newer response owns the cache.
         if (seq !== streamFetchSeq) return;
+        if (cur.streamScope !== get().streamScope) continue;
         if (mutateGen !== streamMutateSeq) continue; // raced a mutation — refetch
         set({ streamSessions: res.sessions, streamHasMore: res.hasMore, streamTotal: res.total, streamDirty: false });
         return;
@@ -8571,7 +8580,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   loadMoreStreamSessions: async () => {
     const s = get();
-    if (!s.streamHasMore) return;
+    if (s.streamDirty || !s.streamHasMore) return;
     const seq = ++streamFetchSeq;
     try {
       const res = await api.session.listAll({
@@ -8580,6 +8589,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         ...streamScopeQuery(s.streamScope, s.projects),
       });
       if (seq !== streamFetchSeq) return;
+      if (s.streamScope !== get().streamScope) return;
       set((st) => ({
         streamSessions: [...st.streamSessions, ...res.sessions],
         streamHasMore: res.hasMore,

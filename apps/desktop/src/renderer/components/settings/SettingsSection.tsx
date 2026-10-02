@@ -33,10 +33,10 @@ export function SettingsSection({
   children: ReactNode;
 }) {
   return (
-    <section className={cn("space-y-1.5", className)}>
-      <div className="flex items-center gap-1.5 px-1">
+    <section className={cn("settings-section space-y-3", className)}>
+      <div className="flex items-center gap-2 px-1">
         {Icon && <Icon size={15} className="shrink-0 text-content-muted" />}
-        <h3 className="text-[0.9286em] font-medium text-content-subtle">
+        <h3 className="text-[0.9286em] font-medium text-content-muted">
           {title}
         </h3>
       </div>

@@ -4,6 +4,7 @@
  * the main process acts on it. This is the security boundary.
  */
 import { z } from "zod";
+import { MCP_MARKET_IDS } from "./mcpMarket.js";
 import type { RuntimeEvent } from "./runtime.js";
 import type { Project, Session, MessageRecord, TurnInput, ApprovalDecision, SessionBookmark } from "./session.js";
 import type { ProviderCapabilities, UserInputAnswers, BuiltinModelOption } from "./provider.js";
@@ -2838,7 +2839,14 @@ export interface ProviderInfo {
  *  fields the SDK's own `SlashCommand` exposes (name / description /
  *  argumentHint) plus a `source` discriminator so the UI can show whether a
  *  skill came from the user's global dir or the active project. */
+export interface ExtensionOrigin {
+  kind: "market" | "import" | "manual";
+  label: string;
+  id?: string;
+}
+
 export interface SkillInfo {
+  origin?: ExtensionOrigin;
   /** Skill name without the leading slash (e.g. "pdf"). Used as the slash
    *  command the user sends, and as the dedupe key (project overrides global). */
   name: string;
@@ -3396,6 +3404,8 @@ export type McpKind = "stdio" | "http" | "sse" | "builtin";
  *  ("node server.js --foo" / "https://example.com/mcp") — env and header
  *  values are never included. */
 export interface McpServerEntry {
+  origin?: ExtensionOrigin;
+  syncSource?: string;
   name: string;
   scope: McpScope;
   kind: McpKind;
@@ -3499,6 +3509,16 @@ export const McpSaveSchema = z.object({
 });
 export type McpSaveInput = z.infer<typeof McpSaveSchema>;
 
+export const McpReadSchema = z.object({ name: z.string().regex(MCP_NAME_RE) });
+export type McpReadInput = z.infer<typeof McpReadSchema>;
+export const McpUpdateSchema = McpSaveSchema;
+export type McpUpdateInput = z.infer<typeof McpUpdateSchema>;
+export const McpMarketInstallSchema = z.object({
+  id: z.enum(MCP_MARKET_IDS), name: z.string().regex(MCP_NAME_RE),
+  credential: z.string().max(8192).optional(), directory: z.string().max(4096).optional(),
+});
+export type McpMarketInstallInput = z.infer<typeof McpMarketInstallSchema>;
+
 /** Remove a user-scope server — from both the config file and the disabled
  *  stash (whichever holds it). Project/builtin entries have no delete. */
 export const McpRemoveSchema = z.object({
@@ -3525,6 +3545,7 @@ export type McpScanImportInput = z.infer<typeof McpScanImportSchema>;
 /** A single server to import (name + full config, from a scanImport result). */
 export const McpImportItemSchema = z.object({
   name: z.string().min(1),
+  origin: z.string().max(4096).optional(),
   config: McpServerConfigSchema,
 });
 
@@ -5029,6 +5050,9 @@ export interface RpcMap {
   "mcp.unauthorize": (input: McpUnauthorizeInput) => Promise<{ ok: boolean; error?: string }>;
   /** Add a user-scope server (writes into ~/.mariocode/.claude.json). */
   "mcp.save": (input: McpSaveInput) => Promise<{ ok: boolean; error?: string }>;
+  "mcp.read": (input: McpReadInput) => Promise<{ config: McpServerConfig | null }>;
+  "mcp.update": (input: McpUpdateInput) => Promise<{ ok: boolean; error?: string }>;
+  "mcp.marketInstall": (input: McpMarketInstallInput) => Promise<{ ok: boolean; error?: string }>;
   /** Remove a user-scope server (from both the config file and the stash). */
   "mcp.remove": (input: McpRemoveInput) => Promise<{ ok: boolean; error?: string }>;
   /** Scan the local Claude CLI config (~/.claude.json) for servers available
@@ -5412,6 +5436,9 @@ export const IPC = {
   MCP_AUTHORIZE: "mcp:authorize",
   MCP_UNAUTHORIZE: "mcp:unauthorize",
   MCP_SAVE: "mcp:save",
+  MCP_READ: "mcp:read",
+  MCP_UPDATE: "mcp:update",
+  MCP_MARKET_INSTALL: "mcp:marketInstall",
   MCP_REMOVE: "mcp:remove",
   MCP_SCAN_IMPORT: "mcp:scanImport",
   MCP_IMPORT: "mcp:import",

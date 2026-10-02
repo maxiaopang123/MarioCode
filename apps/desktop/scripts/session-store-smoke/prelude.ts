@@ -11,9 +11,11 @@ const asyncNoop = (): Promise<undefined> => Promise.resolve(undefined);
 
 function deepApiStub(): unknown {
   return new Proxy(asyncNoop, {
-    get: (_target, prop) => {
+    get: (target, prop) => {
       if (prop === "then") return undefined;
       if (prop === "constructor") return Object;
+      // Regression tests can override one namespace with controlled RPCs.
+      if (Object.prototype.hasOwnProperty.call(target, prop)) return Reflect.get(target, prop);
       return deepApiStub();
     },
     apply: () => Promise.resolve(undefined),

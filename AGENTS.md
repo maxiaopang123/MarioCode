@@ -103,6 +103,10 @@ cd apps/desktop && npx tsc --noEmit -p tsconfig.json
 pnpm build
 ```
 
+### 版本与打包约定
+- 完成一批修改并验证后,更新 `apps/desktop/package.json` 的版本号并提交 Git,提交标题带版本号;用户明确要求暂缓时遵从该要求。
+- 生成安装包时直接使用当前已提交的软件版本号,不按打包次数增加版本或追加流水编号;同一版本重复打包仍生成同名安装包。
+
 ### ⚠️ 启动前注意
 异常退出后,5173 端口可能残留(TIME_WAIT)。若窗口没弹出,先在任务管理器结束所有 `electron.exe`,或等约 30 秒端口释放。
 
@@ -180,6 +184,20 @@ pnpm build
 - **代码**:核心 `main/lib/skillMarket.ts`(设置读写只在 `readRecords`/`writeRecords`,其余纯 fs);IPC `skills.marketList/marketAdd/marketRemove/marketRefresh/marketInstall`;界面 `SkillMarketDialog.tsx`(搜索、按市场分组、未拉取时「拉取技能列表」+ GitHub 代理提示、底部添加来源),词条 `settings.skillMarket.*`。
 - **验证**:`node apps/desktop/scripts/skill-market-smoke/run.mjs`(esbuild 打包真实模块、logger/db/repositories 打桩、HOME 指向临时目录;覆盖扫描规则、安装与重复安装、路径穿越、来源分类、本地源 添加/空源拒绝/刷新/失败保留旧树/移除、内置不可移除),45 项;加 `--live` 走联网:真实克隆 anthropics/skills 到临时 HOME、列出并装一个(2026-09-28 实测 3–9 秒、20 个技能)。frontmatter 解析支持 YAML 块标量(`description: >` / `|`,官方库里有 3 个技能这么写,之前描述显示成 `>`)。**未验证**:界面真机查看、装好的技能在三引擎里被调用。
 
+### MCP / Skills 市场与我的扩展(2026-10-02)
+- **入口**:设置保留 MCP 与 Skills 两个独立页面,各含「发现市场 / 我的扩展」;安装和导入统一管理,支持搜索、来源筛选。外部源同步保留为折叠区,不混淆同步镜像与安装副本。
+- **MCP 模板**:`contracts/mcpMarket.ts` 集中定义 Context7 / GitHub / Notion / Playwright / Filesystem / Memory 的官方配置;`mcp.marketInstall` 在主进程构建并校验,不覆盖同名配置。Notion 添加后复用已有 Claude CLI OAuth 授权,凭据不进入来源元数据。`mcp.read/update` 支持编辑用户配置,编辑关闭项保持关闭,同步源拥有的项必须在源文件修改。
+- **来源**:`main/lib/extensionOrigins.ts` 持久化 settings `extensions.origins`,按 MCP / 全局 Skill 的名称记录 market/import/manual 与来源标签;删除清理,编辑保留,技能重命名迁移。旧条目无可追溯来源时标「已有配置」;同步 MCP 按实际 ownership 判断,不能仅根据源文件扫描结果判断所有权。
+- **Skills**:`SkillMarketDialog` 支持内嵌市场;安装仍走原有 `skillMarket.ts`。设置面板分别加载全局与项目技能,保留两个范围内的同名项;对话 `/` 菜单原有项目优先规则不变。
+- **验证**:类型检查、构建、45 项离线技能市场检查与 `pnpm --filter @mariocode/desktop test:extension-market-electron` 的 8 组隔离真应用检查(安装/导入/去重/来源筛选/关闭项编辑/技能编辑/落盘)通过。尚未验证真实第三方 OAuth 与模型调用市场 MCP / Skills。
+
+### 设置页布局(2026-10-02)
+- **独立双栏**:`SettingsDialog` 最大 1440×960,保留避让窗口拖动区的 88px 水平 / 56px 垂直边距;`SettingsPage` 不再复用工作台的 `ThreePaneLayout`,取消内层大卡片,216px 导航与内容独立滚动。
+- **导航**:五个分组可展开,初次只展开当前分组;搜索匹配本地化页面名称 / 分组 / section id。选中后清搜索并展开对应组;设置内的 `setSettingsOpen(true, sectionId)` 跳转仍生效。Escape 优先交给子弹窗,其次清搜索,最后关闭设置;关闭后恢复工作台焦点。
+- **自适应**:`SettingsPage` 用 `ResizeObserver` 读取稳定外层的实际内容宽度,在 `settings-content-container` 上写 `data-narrow`(≤800px) / `data-compact`(≤560px),`styles.css` 据此排列设置行、模型列表 / MCP 配置 / Skills 编辑分栏。不要在设置页使用 CSS `container-type: inline-size`:真 Electron 中反复切换常规 / 外观会出现 DOM 仍在、整窗绘制和命中测试空白的问题。响应布局仍按面板实际宽度,勿改成只按桌面窗口宽度判断。
+- **验证入口**:`node apps/desktop/scripts/test-extension-market-electron.mjs --settings-layout`,在隔离真应用内检查搜索、窄屏排版、子弹窗、焦点以及市场原有流程,并保存截图。
+- **空白回归**:`test:settings-navigation-electron` 在隔离 Electron 内用真实鼠标事件反复切换常规 / 外观,覆盖浅深色、1024 / 1680 宽度以及关闭重开;除 DOM 外还解码截图判断是否整窗空白,并捕捉渲染异常。不可只看 DOM 存在就宣称页面正常。
+
 ### claude 解析(SdkMessageAdapter)
 - `SdkMessageAdapter.dispatch()` 将 SDK 的 `SDKMessage` 归一化为 `RuntimeEvent`
 - 流是按 `message.type` 分发的 if/else 链,未知 type 静默忽略(向前兼容)
@@ -209,6 +227,7 @@ pnpm build
 - **契约**:`RewindTurnSchema` 含 `files`(内联 zod)+ 必填 `targetFiles`;`TurnRewoundEvent` 带必填 `targetFiles`。
 
 ### 界面焕新 v3 布局(2026-09-28,原型 `prototypes/ui-refresh-v3.html`;**本节覆盖下方「左栏双模式」中与之冲突的描述**)
+- **加载模型的地址规则**(2026-10-02):`sharedProviderDiscovery.ts` 接受与提供商配置一致的 HTTP(S) 地址,包括局域网与用户指定的 HTTP 网关;不要再加「HTTP 仅限 loopback」限制。仍拒绝 URL 内嵌凭据 / query / fragment、链路本地与云元数据地址,跳转仅同源,未保存的地址修改不能复用旧密钥。回归:`test:shared-providers` 58 项;`test:shared-providers-electron` 用隔离配置和本地 HTTP 服务验证临时 / 已保存密钥加载、取消保留表单、合并与保存模型(优先用本机非 loopback IPv4)。
 - **五段布局**:`ProjectRail`(60px 项目栏)+ 会话列(`StreamSidebar`)+ 主区 + `ToolStrip`(右缘竖向工具条)+ `StatusBar`(底部全局状态栏)。**项目树视图已删除**(`LeftBar.tsx` / `SidebarQuickActions.tsx` / `SidebarTopStrip` / `LeftBarModeSwitch` / `SidebarFooter` 均已移除);store 的 `leftBarMode` 字段与 `ui.leftBarMode` 设置键仅为兼容保留,App 不再读取。项目管理(重命名 / 分组 / 颜色 / 打开文件夹 / 归档 / 删除)改为**项目栏头像右键**(`ProjectManageMenuPopup` 新增可选 `onOpenFolder/onArchive/onDelete`);归档项目在会话列底部归档区恢复;拖拽排序随树视图一起取消。
 - **模型配置 = 只有公用提供商**(2026-09-28):旧版专属配置页 `CustomModelsPanel.tsx` 已删,设置导航直接挂 `SharedProvidersPanel`。面板重做为 左列表(头像 + 域名 + 引擎图标 + 密钥状态点)| 右表单(顶部身份栏含删除/保存 → 连接 → 协议与引擎 → 模型表格 → 可折叠高级),保存后**保持选中该提供商**(用返回的行重建 draft,密钥框显示「已保存」角标)——旧实现保存即关表单,二次编辑像从头再来。`Button` 的 primary 变体改用 `--primary`(浅=石墨/深=薄荷),薄荷底白字只有 ~3:1。
 - **模型多了 `imageGeneration` 标记 + 「加载模型」弹窗逐模型勾选**:`SharedProviderModelSchema` 新增 `imageGeneration?: boolean`(**跨进程契约,改完必须重启 `pnpm dev`** —— 只热更新 renderer 会让主进程以 `unrecognized_keys` 拒绝保存);弹窗每行 = 三个接口 chip(Chat / Messages / Responses,默认开前两个)+ 生图 chip(默认关),合并时按勾选写 `model.interfaces`,并**自动把用到的协议补进 provider.protocols**(否则撞上「model interfaces must be enabled by provider」)。生图目前只是标记,MarioTool 生图仍从 设置 → 内置工具 取模型。

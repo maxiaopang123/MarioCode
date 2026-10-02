@@ -19,6 +19,9 @@ import {
   McpListSchema,
   McpToggleSchema,
   McpSaveSchema,
+  McpReadSchema,
+  McpUpdateSchema,
+  McpMarketInstallSchema,
   McpRemoveSchema,
   McpScanImportSchema,
   McpImportSchema,
@@ -41,6 +44,8 @@ import {
   type McpServerEntry,
 } from "@contracts/ipc";
 import { resolveImageEndpoint } from "@main/tools/builtinToolsConfig.js";
+import { MCP_MARKET, buildMcpMarketConfig } from "@contracts/mcpMarket";
+import { readExtensionOrigins, setExtensionOrigin } from "@main/lib/extensionOrigins.js";
 import { clawBotService } from "@main/clawbot/ClawBotService.js";
 import {
   listMcpSync,
@@ -50,6 +55,7 @@ import {
   removeMcpSyncSource,
   rescanMcpSync,
   clearOwnershipFor,
+  mcpSyncOwner,
 } from "@main/lib/mcpSync.js";
 import { ProjectRepo } from "@main/store/repositories.js";
 import { samePath } from "@main/lib/pathGuard.js";
@@ -572,6 +578,11 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
     servers.sort((a, b) =>
       a.scope === b.scope ? a.name.localeCompare(b.name) : a.scope === "user" ? -1 : b.scope === "user" ? 1 : a.scope === "project" ? -1 : 1,
     );
+    const origins = await readExtensionOrigins();
+    for (const server of servers) if (server.scope === "user") {
+      server.syncSource = await mcpSyncOwner(server.name);
+      if (!server.syncSource) server.origin = origins.mcp[server.name];
+    }
     return { servers };
   });
 
@@ -766,6 +777,46 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
   });
 
   // ── Add a user-scope server ──
+  ipcMain.handle(IPC.MCP_READ, async (_evt, raw) => {
+    const { name } = McpReadSchema.parse(raw);
+    const file = mcpServersOf(await readUserClaudeJson());
+    const state = await getMcpManagement();
+    return { config: parseMcpConfig(file[name] ?? state.userDisabled?.[name]) };
+  });
+  ipcMain.handle(IPC.MCP_UPDATE, async (_evt, raw) => {
+    const input = McpUpdateSchema.parse(raw);
+    if (MCP_RESERVED_NAMES.includes(input.name)) return { ok: false, error: "内置服务不能编辑" };
+    if (await mcpSyncOwner(input.name)) return { ok: false, error: "同步服务请在来源文件中编辑" };
+    try {
+      const cfg = await readUserClaudeJson();
+      const file = mcpServersOf(cfg);
+      const state = await getMcpManagement();
+      if (!(input.name in file) && !state.userDisabled?.[input.name]) return { ok: false, error: "未找到该 server" };
+      if (input.name in file) { file[input.name] = input.config; cfg.mcpServers = file; await writeUserClaudeJson(cfg); }
+      else { state.userDisabled = { ...state.userDisabled, [input.name]: input.config }; saveMcpManagement(state); }
+      clearOwnershipFor(input.name);
+      forgetNeedsAuth(input.name);
+      return { ok: true };
+    } catch (err) { return { ok: false, error: (err as Error).message }; }
+  });
+  ipcMain.handle(IPC.MCP_MARKET_INSTALL, async (_evt, raw) => {
+    const input = McpMarketInstallSchema.parse(raw);
+    if (MCP_RESERVED_NAMES.includes(input.name)) return { ok: false, error: "内置服务名称不可使用" };
+    try {
+      const config = buildMcpMarketConfig(input.id, input.credential, input.directory);
+      if (input.id === "filesystem" && !path.isAbsolute(input.directory?.trim() ?? "")) return { ok: false, error: "请选择绝对路径的文件夹" };
+      const cfg = await readUserClaudeJson();
+      const file = mcpServersOf(cfg);
+      const state = await getMcpManagement();
+      if (input.name in file || state.userDisabled?.[input.name]) return { ok: false, error: "同名 server 已存在" };
+      file[input.name] = config; cfg.mcpServers = file;
+      await writeUserClaudeJson(cfg);
+      const template = MCP_MARKET.find((item) => item.id === input.id)!;
+      await setExtensionOrigin("mcp", input.name, { kind: "market", label: template.publisher, id: template.id });
+      clearOwnershipFor(input.name);
+      return { ok: true };
+    } catch (err) { return { ok: false, error: (err as Error).message }; }
+  });
   ipcMain.handle(IPC.MCP_SAVE, async (_evt, raw) => {
     const input = McpSaveSchema.parse(raw);
     if (MCP_RESERVED_NAMES.includes(input.name)) {
@@ -784,6 +835,7 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
       // The user now owns this name locally — a later sync pass must never
       // retract or overwrite it (see mcpSync.clearOwnershipFor).
       clearOwnershipFor(input.name);
+      await setExtensionOrigin("mcp", input.name, { kind: "manual", label: "" });
       return { ok: true };
     } catch (err) {
       return { ok: false, error: (err as Error).message };
@@ -807,6 +859,7 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
       state.userDisabled = stash;
       await writeUserClaudeJson(cfg);
       saveMcpManagement(state);
+      await setExtensionOrigin("mcp", input.name, null);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: (err as Error).message };
@@ -850,6 +903,9 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
       if (changed) {
         cfg.mcpServers = fileServers;
         await writeUserClaudeJson(cfg);
+        for (const item of input.servers) if (imported.includes(item.name)) {
+          await setExtensionOrigin("mcp", item.name, { kind: "import", label: `Claude Code CLI${item.origin ? ` · ${item.origin}` : ""}` });
+        }
       }
       return { imported, skipped, errors };
     } catch (err) {

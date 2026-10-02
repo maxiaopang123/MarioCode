@@ -44,8 +44,8 @@ export function PanelHeader({
   return (
     <header
       className={cn(
-        "sticky top-0 z-10 mb-3 mt-6 flex items-center justify-between gap-4",
-        "border-b border-edge bg-surface py-3",
+        "settings-panel-header sticky top-0 z-10 mb-6 mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3",
+        "border-b border-edge bg-surface py-5",
         className,
       )}
     >
@@ -55,7 +55,7 @@ export function PanelHeader({
           {title}
         </h2>
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {action && <div className="settings-panel-actions min-w-0 max-w-full">{action}</div>}
     </header>
   );
 }

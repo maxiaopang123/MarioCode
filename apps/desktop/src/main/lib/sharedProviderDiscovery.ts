@@ -45,20 +45,13 @@ function isExplicitMetadataOrLinkLocal(hostname: string): boolean {
   ]).has(hostname);
 }
 
-function isExplicitLoopback(hostname: string): boolean {
-  if (hostname === "localhost" || hostname === "::1") return true;
-  const octets = hostname.split(".").map(Number);
-  return octets.length === 4 && octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)
-    && octets[0] === 127;
-}
-
-/** Validate every credential-bearing discovery hop. HTTPS remains available
- * for private/self-hosted services; plaintext HTTP is limited to explicit
- * loopback hosts, and well-known metadata/link-local targets are always denied. */
+/** Match the HTTP(S) endpoints accepted by provider configuration, including
+ * user-configured HTTP gateways. Saved-key route checks and same-origin
+ * redirects protect credentials; metadata/link-local targets remain denied. */
 export function validateSharedProviderDiscoveryUrl(value: string): URL {
   let parsed: URL;
   try { parsed = new URL(value); }
-  catch { throw new Error("Model discovery requires a valid HTTPS endpoint; you can still add model IDs manually"); }
+  catch { throw new Error("Model discovery requires a valid HTTP(S) endpoint; you can still add model IDs manually"); }
   if ((parsed.protocol !== "http:" && parsed.protocol !== "https:")
     || parsed.username !== ""
     || parsed.password !== ""
@@ -69,9 +62,6 @@ export function validateSharedProviderDiscoveryUrl(value: string): URL {
   const hostname = bareHostname(parsed);
   if (isExplicitMetadataOrLinkLocal(hostname)) {
     throw new Error("Model discovery blocks link-local and cloud metadata endpoints; you can still add model IDs manually");
-  }
-  if (parsed.protocol === "http:" && !isExplicitLoopback(hostname)) {
-    throw new Error("Model discovery only permits HTTPS, or HTTP on localhost/127.0.0.0/8/[::1]; you can still add model IDs manually");
   }
   return parsed;
 }

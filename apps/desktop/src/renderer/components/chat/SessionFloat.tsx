@@ -38,6 +38,7 @@ import {
   IconX,
 } from "@renderer/lib/icons.js";
 import { useSessionStore, type ChatMessage, type TodoItem } from "@renderer/stores/sessionStore.js";
+import { useSessionUsageHistory } from "@renderer/hooks/useSessionUsageHistory.js";
 import {
   cacheSparkline,
   fmtPct,
@@ -186,7 +187,7 @@ export function SessionFloat({
 
   const messages = useSessionStore((s) => s.messagesBySession[sessionId] ?? EMPTY_MESSAGES);
   const snapshot = useSessionStore((s) => s.contextSnapshotBySession[sessionId]);
-  const usageHistory = useSessionStore((s) => s.usageHistoryBySession[sessionId]);
+  const history = useSessionUsageHistory(sessionId);
   const turnGens = useSessionStore((s) => s.turnGenBySession[sessionId]);
   const running = useSessionStore((s) => !!s.runningBySession[sessionId]);
   const expandNonce = useSessionStore((s) => s.sessionFloatOpenNonce);
@@ -224,7 +225,6 @@ export function SessionFloat({
     };
   }, [folded]);
 
-  const history = usageHistory ?? [];
   const gens = turnGens ?? [];
   const lastTurn = history[history.length - 1];
   const lastGen = gens[gens.length - 1];

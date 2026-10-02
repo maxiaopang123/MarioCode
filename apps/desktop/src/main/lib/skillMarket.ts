@@ -29,6 +29,7 @@ import { SettingRepo } from "@main/store/repositories.js";
 import { log } from "@main/lib/logger.js";
 import { gitClone } from "@main/lib/fetchTools.js";
 import { parseSkillFrontmatter, readTextHead } from "@main/lib/skillFrontmatter.js";
+import { setExtensionOrigin } from "@main/lib/extensionOrigins.js";
 
 /** Max directory depth (below the tree root) searched for SKILL.md. */
 const SCAN_MAX_DEPTH = 4;
@@ -397,10 +398,11 @@ export async function removeMarket(id: string): Promise<void> {
 
 export async function installFromMarket(marketId: string, relPath: string, name: string): Promise<void> {
   if (!MARKET_ID_RE.test(marketId)) throw new Error("未知的技能市场");
-  const known = (await allMarkets()).some((m) => m.id === marketId);
+  const known = (await allMarkets()).find((m) => m.id === marketId);
   if (!known) throw new Error("未知的技能市场");
   const tree = treeDirFor(marketId);
   if (!(await exists(tree))) throw new Error("技能市场尚未拉取");
   await installSkillFromTree(tree, relPath, name, globalSkillsRoot());
+  await setExtensionOrigin("skill", name, { kind: "market", label: known.name, id: marketId });
   log.info(`skillMarket: installed ${name} from ${marketId}/${relPath}`);
 }

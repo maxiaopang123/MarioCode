@@ -1,5 +1,5 @@
-import { app, BrowserWindow, session } from "electron";
-import { createMainWindow, sendToRenderer } from "@main/window.js";
+import { app, Menu, session } from "electron";
+import { createMainWindow, getMainWindow, sendToRenderer } from "@main/window.js";
 import { registerIpcHandlers } from "@main/ipc/index.js";
 import { initDb, closeDb, awaitDb } from "@main/store/db.js";
 import { initTheme } from "@main/lib/theme.js";
@@ -94,11 +94,18 @@ if (!gotLock) {
   process.exit(0);
 }
 
+/** Set once the quit sequence starts (before-quit). The window is already
+ *  gone by then, but the process keeps the single-instance lock for up to
+ *  ~6s while before-quit flushes the cookie vault and stops ClawBot. */
+let appQuitting = false;
+
 app.on("second-instance", () => {
   // Someone tried to run a second instance — surface our existing window.
-  const wins = BrowserWindow.getAllWindows();
-  if (wins.length > 0) {
-    const [win] = wins;
+  // Target the MAIN window explicitly: getAllWindows() also returns the
+  // hidden web-tools scraping windows (tools/webPage.ts), and popping one of
+  // those up left the real window unfocused.
+  const win = getMainWindow();
+  if (win && !win.isDestroyed()) {
     if (win.isMinimized()) win.restore();
     // show() is essential here: the main window is created with show:false
     // and only revealed on ready-to-show. If the first launch's renderer is
@@ -107,7 +114,12 @@ app.on("second-instance", () => {
     // "clicking the shortcut does nothing" even though the process is alive.
     win.show();
     win.focus();
+    return;
   }
+  // The user closed the window and immediately launched again: this process
+  // is still finishing its quit and holds the lock, so the new launch exited.
+  // Come back once the quit completes instead of silently doing nothing.
+  if (appQuitting) app.relaunch();
 });
 
 app.whenReady().then(async () => {
@@ -192,6 +204,19 @@ app.whenReady().then(async () => {
     );
   });
 
+  // Windows / Linux: replace Electron's default (hidden) application menu.
+  // Its Window ▸ Close item binds Ctrl+W, and Ctrl+W is also the in-app
+  // "close tab" shortcut — whenever that command was unavailable (single
+  // display mode, no open tabs) the keystroke fell through to the menu,
+  // closed the window and, via window-all-closed, quit the whole app. Keep
+  // the Edit + View roles (clipboard / undo, reload, DevTools, zoom,
+  // fullscreen) and drop the File / Window menus (Exit, Ctrl+M minimize,
+  // Ctrl+W close); the native caption buttons and Alt+F4 still work. macOS
+  // keeps the default menu: Cmd+W closes the window without quitting there.
+  if (process.platform !== "darwin") {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: "editMenu" }, { role: "viewMenu" }]));
+  }
+
   // Create the window immediately - don't wait for DB init to finish. The
   // renderer starts loading its JS/HMR while the DB opens in parallel.
   createMainWindow();
@@ -246,8 +271,11 @@ app.whenReady().then(async () => {
   })();
 
   app.on("activate", () => {
-    // macOS: re-create a window when the dock icon is clicked.
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+    // macOS: re-create the main window when the dock icon is clicked. A
+    // hidden web-tools window may still exist, so check the main window
+    // itself rather than "any window".
+    const win = getMainWindow();
+    if (!win || win.isDestroyed()) createMainWindow();
   });
 });
 
@@ -284,6 +312,7 @@ async function maybeAutoStartRelay(): Promise<void> {
 let sessionCookiesFlushed = false;
 let clawBotStoppedForQuit = false;
 app.on("before-quit", (event) => {
+  appQuitting = true;
   if (!sessionCookiesFlushed) {
     event.preventDefault();
     const timeout = new Promise<void>((r) => setTimeout(r, 3000).unref());

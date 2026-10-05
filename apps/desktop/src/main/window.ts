@@ -4,18 +4,18 @@ import { is } from "@main/utils.js";
 import { getEffectiveTheme, getThemeStylePreference } from "@main/lib/theme.js";
 import { log } from "@main/lib/logger.js";
 import { logStartup } from "@main/lib/startupTimer.js";
-import { IPC } from "@contracts/ipc";
+import { IPC, type WindowFocusChangedMessage } from "@contracts/ipc";
 
 let mainWindow: BrowserWindow | null = null;
 
 /** Background color matching the effective theme, so the first frame (before
  *  React mounts) doesn't flash the wrong color. Mirrors --surface in CSS
- *  (styles.css): light = #ffffff (sketch paper #fcfaf3), dark = #17181b
- *  (sketch kraft #3b3126) — the pre-DB fallback below is an imperceptible
- *  delta. */
+ *  (styles.css): light = #ffffff (sketch paper #fcfaf3), dark = #161b19
+ *  (v3 graphite; sketch kraft #3b3126) — the pre-DB fallback below is an
+ *  imperceptible delta. */
 function bgColor(): string {
   const sketch = getThemeStylePreference() === "sketch";
-  if (getEffectiveTheme() === "dark") return sketch ? "#3b3126" : "#17181b";
+  if (getEffectiveTheme() === "dark") return sketch ? "#3b3126" : "#161b19";
   return sketch ? "#fcfaf3" : "#ffffff";
 }
 
@@ -26,8 +26,10 @@ function bgColor(): string {
  *  `color` mirrors --surface-base (the toolbar's background — it matches the
  *  full-height sidebar so they read as one frame); `symbolColor` mirrors
  *  --content-subtle so the button glyphs match the dim UI text tone. Values
- *  must stay in sync with styles.css (.dark block + the sketch section's
- *  paper palette: #f6f2e7 / #8d8371, and kraft palette: #332a20 / #aca089).
+ *  must stay in sync with styles.css — :root #eff1ef / #6c7772, .dark
+ *  #0c0f0e / #88938d (the v3 green-grey palette; the old cool greys left a
+ *  visibly different block behind the buttons), sketch paper #f6f2e7 /
+ *  #8d8371 and kraft #332a20 / #aca089.
  *
  *  `height` must match the renderer titlebar's height (h-10 = 40px): Electron
  *  draws the overlay aligned to the top of the window, and the buttons are
@@ -37,8 +39,8 @@ function overlayColors() {
   const dark = getEffectiveTheme() === "dark";
   const sketch = getThemeStylePreference() === "sketch";
   return {
-    color: dark ? (sketch ? "#332a20" : "#0e0f11") : sketch ? "#f6f2e7" : "#f3f4f6",
-    symbolColor: dark ? (sketch ? "#aca089" : "#868b95") : sketch ? "#8d8371" : "#6e737e",
+    color: dark ? (sketch ? "#332a20" : "#0c0f0e") : sketch ? "#f6f2e7" : "#eff1ef",
+    symbolColor: dark ? (sketch ? "#aca089" : "#88938d") : sketch ? "#8d8371" : "#6c7772",
     height: 40,
   };
 }
@@ -143,7 +145,14 @@ export function createMainWindow(): BrowserWindow {
   // also tracks document.visibilityState for tab-hide, but the Electron-level
   // focus event is the authoritative "is our app frontmost?" signal.
   // `blur`/`focus` fire on app switch, dock click, minimize, and restore.
-  const pushFocus = (focused: boolean) => sendToRenderer(IPC.WINDOW_FOCUS_CHANGED, { focused });
+  // The payload MUST carry `channel`: the preload listener filters on
+  // `msg.channel === IPC.WINDOW_FOCUS_CHANGED`, and sendToRenderer is untyped,
+  // so a missing field silently dropped every focus / blur / minimize signal
+  // (the renderer only ever saw visibilitychange).
+  const pushFocus = (focused: boolean) => {
+    const msg: WindowFocusChangedMessage = { channel: IPC.WINDOW_FOCUS_CHANGED, focused };
+    sendToRenderer(IPC.WINDOW_FOCUS_CHANGED, msg);
+  };
   mainWindow.on("focus", () => pushFocus(true));
   mainWindow.on("blur", () => pushFocus(false));
   // On macOS, minimize doesn't trigger blur reliably in all versions, so also

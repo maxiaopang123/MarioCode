@@ -10,7 +10,7 @@
  *
  * Order: approvals first (they block a live turn), then plan approvals,
  * questions, errors — within a kind, insertion order, which approximates
- * "waiting longest".
+ * "waiting longest". Archived sessions are excluded.
  */
 import { useMemo } from "react";
 import type { SessionState } from "@renderer/stores/sessionStore.js";
@@ -25,14 +25,25 @@ export interface AttentionItem {
 
 type AttentionSlices = Pick<
   SessionState,
-  "pendingApprovals" | "pendingPlanApprovalBySession" | "pendingQuestionBySession" | "turnErrorBySession"
+  | "pendingApprovals"
+  | "pendingPlanApprovalBySession"
+  | "pendingQuestionBySession"
+  | "turnErrorBySession"
+  | "archivedSessionsByProject"
 >;
 
 export function computeAttention(s: AttentionSlices): AttentionItem[] {
+  // Archived sessions never wait on the user: archiving clears their signals
+  // (clearArchivedSessionSignals in the store), and this guard keeps a late
+  // write from bringing one back into the count.
+  const archived = new Set<string>();
+  for (const list of Object.values(s.archivedSessionsByProject)) {
+    for (const sess of list) archived.add(sess.id);
+  }
   const seen = new Set<string>();
   const out: AttentionItem[] = [];
   const push = (sessionId: string, kind: AttentionKind) => {
-    if (seen.has(sessionId)) return;
+    if (seen.has(sessionId) || archived.has(sessionId)) return;
     seen.add(sessionId);
     out.push({ sessionId, kind });
   };
@@ -51,6 +62,7 @@ export function useAttention(): AttentionItem[] {
   const pendingPlanApprovalBySession = useSessionStore((s) => s.pendingPlanApprovalBySession);
   const pendingQuestionBySession = useSessionStore((s) => s.pendingQuestionBySession);
   const turnErrorBySession = useSessionStore((s) => s.turnErrorBySession);
+  const archivedSessionsByProject = useSessionStore((s) => s.archivedSessionsByProject);
   return useMemo(
     () =>
       computeAttention({
@@ -58,8 +70,15 @@ export function useAttention(): AttentionItem[] {
         pendingPlanApprovalBySession,
         pendingQuestionBySession,
         turnErrorBySession,
+        archivedSessionsByProject,
       }),
-    [pendingApprovals, pendingPlanApprovalBySession, pendingQuestionBySession, turnErrorBySession],
+    [
+      pendingApprovals,
+      pendingPlanApprovalBySession,
+      pendingQuestionBySession,
+      turnErrorBySession,
+      archivedSessionsByProject,
+    ],
   );
 }
 

@@ -2826,6 +2826,103 @@ function dropSessionBuckets(s: SessionState, id: string) {
   };
 }
 
+/** Copy of `bucket` without `ids`, or null when none of them is present —
+ *  lets callers skip the patch (and keep the slice reference) entirely. */
+function omitSessionKeys<T>(bucket: Record<string, T>, ids: readonly string[]): Record<string, T> | null {
+  if (!ids.some((id) => id in bucket)) return null;
+  const next = { ...bucket };
+  for (const id of ids) delete next[id];
+  return next;
+}
+
+/** Signals that make an ARCHIVED session look like it still needs the user:
+ *  the 「等你处理」 sources (tool / plan approval, question, error), the
+ *  running flag + its start anchor, running subagents, the unread dot and any
+ *  live upstream hint.
+ *
+ *  Why archiving needs its own cleanup: main's SESSION_ARCHIVE disposes the
+ *  runtime (interrupt + reject every pending request, without a
+ *  request.resolved), and the provider emit gate then drops the interrupted
+ *  turn's closing turn.done / error. Nothing else would ever clear these
+ *  buckets, so the reminder bar, rail badge and status bar kept counting a
+ *  session the user had put away. Mirrors the local `interrupt` action for
+ *  the running state (stop the clock, demote running subagents, freeze the
+ *  open turnMeta) so a restored session isn't stuck "running".
+ *
+ *  `passiveOnly` (project archive): main does NOT dispose a project's
+ *  runtimes there, so a pending approval still blocks a live turn and must
+ *  stay visible — only the passive signals (error label, unread dot) go.
+ *
+ *  Reference-preserving: a bucket is copied only when one of `ids` is in it,
+ *  so the frequent session.changed echoes (rename / pin / title) stay no-ops.
+ *  Pure apart from clearing upstream-hint decay timers (idempotent). */
+function clearArchivedSessionSignals(
+  s: SessionState,
+  ids: readonly string[],
+  passiveOnly = false,
+): Partial<SessionState> {
+  const patch: Partial<SessionState> = {};
+  if (ids.length === 0) return patch;
+
+  const turnErrorBySession = omitSessionKeys(s.turnErrorBySession, ids);
+  if (turnErrorBySession) patch.turnErrorBySession = turnErrorBySession;
+  const unreadBySession = omitSessionKeys(s.unreadBySession, ids);
+  if (unreadBySession) patch.unreadBySession = unreadBySession;
+  if (passiveOnly) return patch;
+
+  const idSet = new Set(ids);
+  if (s.pendingApprovals.some((p) => idSet.has(p.sessionId))) {
+    patch.pendingApprovals = s.pendingApprovals.filter((p) => !idSet.has(p.sessionId));
+  }
+  const pendingPlanApprovalBySession = omitSessionKeys(s.pendingPlanApprovalBySession, ids);
+  if (pendingPlanApprovalBySession) patch.pendingPlanApprovalBySession = pendingPlanApprovalBySession;
+  const pendingQuestionBySession = omitSessionKeys(s.pendingQuestionBySession, ids);
+  if (pendingQuestionBySession) patch.pendingQuestionBySession = pendingQuestionBySession;
+
+  if (ids.some((id) => s.runningBySession[id])) {
+    const runningBySession = { ...s.runningBySession };
+    for (const id of ids) if (runningBySession[id]) runningBySession[id] = false;
+    patch.runningBySession = runningBySession;
+  }
+  const runningTurnStartedAt = omitSessionKeys(s.runningTurnStartedAt, ids);
+  if (runningTurnStartedAt) patch.runningTurnStartedAt = runningTurnStartedAt;
+
+  let subagentsBySession: SessionState["subagentsBySession"] | null = null;
+  let messagesBySession: SessionState["messagesBySession"] | null = null;
+  const now = Date.now();
+  for (const id of ids) {
+    const agents = s.subagentsBySession[id];
+    if (agents?.some((a) => a.status === "running")) {
+      subagentsBySession ??= { ...s.subagentsBySession };
+      subagentsBySession[id] = agents.map((a) =>
+        a.status === "running" ? { ...a, status: "killed" as const } : a,
+      );
+    }
+    const list = s.messagesBySession[id];
+    if (list?.some((m) => m.turnMeta && m.turnMeta.endedAt === undefined)) {
+      messagesBySession ??= { ...s.messagesBySession };
+      messagesBySession[id] = list.map((m) =>
+        m.turnMeta && m.turnMeta.endedAt === undefined
+          ? { ...m, turnMeta: { ...m.turnMeta, endedAt: now } }
+          : m,
+      );
+    }
+  }
+  if (subagentsBySession) patch.subagentsBySession = subagentsBySession;
+  if (messagesBySession) patch.messagesBySession = messagesBySession;
+
+  const upstreamIssueBySession = omitSessionKeys(s.upstreamIssueBySession, ids);
+  if (upstreamIssueBySession) patch.upstreamIssueBySession = upstreamIssueBySession;
+  for (const id of ids) {
+    const timer = upstreamIssueDecayTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      upstreamIssueDecayTimers.delete(id);
+    }
+  }
+  return patch;
+}
+
 /** In-memory cleanup for a hard-deleted session — shared by the local
  *  `deleteSession` action and the remote `session.deleted` event reducer, so a
  *  phone deleting a thread cleans the desktop's lists/tabs/buckets exactly
@@ -6158,13 +6255,28 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // shouldn't linger in the center pane.
       const removedSessionIds = new Set((s.sessionsByProject[id] ?? []).map((sess) => sess.id));
       const openTabs = s.openTabs.filter((sid) => !removedSessionIds.has(sid));
+      // An archived project's threads stop showing 「失败」/ unread. Passive
+      // signals only: main keeps this project's runtimes alive, so a pending
+      // approval there still blocks a real turn and must stay reachable.
+      const signals = archived
+        ? clearArchivedSessionSignals(
+            s,
+            [
+              ...removedSessionIds,
+              ...s.pinnedSessions.filter((p) => p.projectId === id).map((p) => p.id),
+              ...s.streamSessions.filter((p) => p.projectId === id).map((p) => p.id),
+            ],
+            true,
+          )
+        : {};
       if (!wasActive || !archived) {
-        return { projects, openTabs };
+        return { ...signals, projects, openTabs };
       }
       const next = projects.find((p) => !p.archived);
       const nextSessions = next ? (s.sessionsByProject[next.id] ?? []) : [];
       const nextSession = nextSessions.find((sess) => !sess.archived);
       return {
+        ...signals,
         projects,
         activeProjectId: next?.id ?? null,
         sessions: nextSessions,
@@ -6195,9 +6307,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
    *  server response so `hasMore` / the load-more button stay accurate. */
   archiveSession: async (id, archived) => {
     const { session } = await api.session.archive({ id, archived });
+    if (archived) {
+      // Main already stopped the turn (runtime disposed) — drop anything
+      // still buffered for it, like the local interrupt does.
+      clearSessionDeltas(id);
+      dropGenTimer(id);
+    }
     set((s) => {
       const projectId = session.projectId;
       const isActiveProject = projectId === s.activeProjectId;
+      // Archived sessions stop counting as 「等你处理」/ running / unread
+      // (see clearArchivedSessionSignals). Restoring brings none of it back:
+      // the pending requests were rejected main-side and the error label is
+      // session-lifetime only.
+      const signals = archived ? clearArchivedSessionSignals(s, [id]) : {};
 
       // Stream aggregate mirrors the listAll shape (active + unpinned rows
       // only): archiving removes, restoring re-inserts at its updatedAt
@@ -6271,6 +6394,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const wasActive = s.activeSessionId === id;
       if (!isActiveProject || !wasActive || !archived) {
         return {
+          ...signals,
           sessionsByProject,
           archivedSessionsByProject: archivedByProject,
           pinnedSessions: nextPinned,
@@ -6294,9 +6418,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         ? findSession(sessionsByProject, archivedByProject, nextPinned, streamSessions, nextActiveId)
         : undefined;
       // Clear the new active session's unread badge - it's now visible.
-      const unreadBySession = { ...s.unreadBySession };
+      // Start from the signals patch so the archived row's dot goes too.
+      const unreadBySession = { ...(signals.unreadBySession ?? s.unreadBySession) };
       if (nextActiveId) delete unreadBySession[nextActiveId];
       return {
+        ...signals,
         sessionsByProject,
         archivedSessionsByProject: archivedByProject,
         pinnedSessions: nextPinned,
@@ -7205,9 +7331,21 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         });
         return;
       }
+      if (entry.archived) {
+        // Archived elsewhere (auto-archiver, phone) — same buffered-content
+        // drop as the local archive action. No-ops when nothing is buffered.
+        clearSessionDeltas(entry.id);
+        dropGenTimer(entry.id);
+      }
       set((s) => {
-        const patch: Partial<SessionState> = {};
-        let touched = false;
+        // Archived rows stop counting as 「等你处理」/ running / unread. This is
+        // the one path every archive passes through (local echo, phone,
+        // hourly auto-archive), so the cleanup lives here as well as in the
+        // local action; the helper returns {} when nothing is left to clear.
+        const patch: Partial<SessionState> = entry.archived
+          ? clearArchivedSessionSignals(s, [entry.id])
+          : {};
+        let touched = Object.keys(patch).length > 0;
         // Global pinned bucket — upsert while the changed row is pinned AND
         // active, evict otherwise (unpinned / archived). Maintained regardless
         // of whether the owning project's window is loaded, since the pinned

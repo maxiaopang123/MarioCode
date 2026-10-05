@@ -18,6 +18,7 @@ import {
 } from "@renderer/lib/icons.js";
 import {
   AUTO_UPDATE_ENABLED,
+  DOWNLOAD_PAGE_URL,
   UPDATE_STATE_SETTING_KEY,
   type AppInfoResult,
   type CheckForUpdatesResult,
@@ -43,9 +44,9 @@ import {
 const APP_NAME = "MarioCode";
 /** GitHub repo URL. */
 const REPO_URL = "https://github.com/maxiaopang123/MarioCode";
-/** GitHub Releases latest URL — where the user lands to manually download on
- *  macOS when Squirrel.Mac can't auto-install (ad-hoc signature). */
-const RELEASES_URL = "https://github.com/maxiaopang123/MarioCode/releases/latest";
+/** Download homepage on the update server — where the user lands to manually
+ *  download on macOS when Squirrel.Mac can't auto-install (ad-hoc signature). */
+const RELEASES_URL = DOWNLOAD_PAGE_URL;
 /** SPDX license identifier. */
 const LICENSE = "MIT";
 

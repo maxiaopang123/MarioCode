@@ -9,11 +9,14 @@
  *   pnpm --filter @mariocode/desktop run release:upload --dry-run     # local checks only, no SSH
  *   pnpm --filter @mariocode/desktop run release:upload --setup       # (re)create the nginx container
  *   pnpm --filter @mariocode/desktop run release:upload --site        # upload the download homepage (www/)
+ *   pnpm --filter @mariocode/desktop run release:upload --mac         # mirror the macOS dmgs from the GitHub Release
  *
  * Flags:
  *   --dry-run      validate release/ artifacts + git state, print the plan, no network
  *   --setup        upload nginx.conf + run setup.sh on the server, then exit
  *   --site         upload the homepage in www/ (index.html last), then exit
+ *   --mac          server pulls MarioCode-<ver>{,-arm64}.dmg + latest-mac.yml from the
+ *                  GitHub Release v<ver> (built by .github/workflows/release.yml), then exit
  *   --allow-dirty  publish even if tracked files have uncommitted changes
  *   --force        allow publishing a version LOWER than the one currently live
  *
@@ -51,6 +54,7 @@ const argv = new Set(process.argv.slice(2).filter((a) => a !== "--"));
 const DRY = argv.has("--dry-run");
 const SETUP = argv.has("--setup");
 const SITE = argv.has("--site");
+const MAC = argv.has("--mac");
 const ALLOW_DIRTY = argv.has("--allow-dirty");
 const FORCE = argv.has("--force");
 
@@ -464,6 +468,163 @@ async function publish(feedUrl) {
   console.log(`\n✓ 已发布 v${version}。v0.2.5 及以上的客户端会在启动 10 秒后或每 4 小时检查到它。`);
 }
 
+/** latest-mac.yml `files:` entries → [{ url, sha512, size }]. The merged file
+ *  (.github/scripts/merge-mac-update-yml.cjs) lists the zips (updater payload)
+ *  and the dmgs (manual download) of both architectures. */
+function parseMacFiles(text) {
+  const files = [];
+  let cur = null;
+  for (const raw of text.replace(/\r\n/g, "\n").split("\n")) {
+    const line = raw.trim();
+    const m = /^(?:- )?(\w+):\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const value = m[2].replace(/^["']|["']$/g, "");
+    if (line.startsWith("- ")) {
+      cur = {};
+      files.push(cur);
+    } else if (raw.length === raw.trimStart().length) {
+      cur = null; // back at a top-level key
+      continue;
+    }
+    if (cur) cur[m[1]] = m[1] === "size" ? Number(value) : value;
+  }
+  return files;
+}
+
+/**
+ * Publish the macOS build of the current version. The dmgs are produced by
+ * the GitHub release workflow (.github/workflows/release.yml, on tag
+ * v<version>) because they can only be built on macOS. The SERVER downloads
+ * them straight from the GitHub Release (it reaches github.com far faster than
+ * a local download + re-upload), each file is checked against the sha512 in
+ * latest-mac.yml, moved into public/, and latest-mac.yml goes LAST.
+ *
+ * Only the dmgs are mirrored, not the zips: the mac build is ad-hoc signed,
+ * Squirrel.Mac can't install updates, and the app sends mac users to the
+ * download page instead of downloading the zip (updater.ts
+ * detectManualInstallRequired). latest-mac.yml is still published so the app
+ * learns that a new version exists.
+ */
+async function publishMac(feedUrl) {
+  const pkg = JSON.parse(readFileSync(join(APP_DIR, "package.json"), "utf8"));
+  const version = pkg.version;
+  if (!SEMVER.test(version)) fail(`package.json 版本号不合法: ${version}`);
+  const repo = process.env.MARIOCODE_GITHUB_REPO || "maxiaopang123/MarioCode";
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) fail(`MARIOCODE_GITHUB_REPO 不合法: ${repo}`);
+  const base = `https://github.com/${repo}/releases/download/v${version}/`;
+  const host = process.env.MARIOCODE_UPDATE_SSH_HOST || feedUrl.hostname;
+  console.log(`→ macOS v${version}:由服务器从 ${base} 拉取`);
+  if (DRY) {
+    console.log("(--dry-run:未连接服务器)");
+    return;
+  }
+
+  const remote = new Remote(host);
+  try {
+    // ── Manifest from the GitHub Release ──
+    const ymlText = await remote.retry("读取 GitHub 上的 latest-mac.yml", (r) =>
+      r.run(`curl -fsSL --retry 3 --connect-timeout 20 -m 120 ${q(`${base}latest-mac.yml`)}`),
+    );
+    const ymlVersion = parseLatestYml(ymlText).version;
+    if (ymlVersion !== version) {
+      fail(`GitHub Release v${version} 的 latest-mac.yml 是 v${ymlVersion}(打包工作流还没跑完?)`);
+    }
+    const dmgs = parseMacFiles(ymlText).filter((f) => /\.dmg$/.test(f.url ?? ""));
+    for (const f of dmgs) {
+      if (!SAFE_NAME.test(f.url) || !f.sha512 || !Number.isFinite(f.size)) fail(`latest-mac.yml 条目不完整: ${JSON.stringify(f)}`);
+    }
+    const arm = dmgs.filter((f) => /arm64/i.test(f.url));
+    const intel = dmgs.filter((f) => !/arm64/i.test(f.url));
+    if (arm.length !== 1 || intel.length !== 1) {
+      fail(`latest-mac.yml 里应有 Apple 芯片和 Intel 各一个 dmg,实际: ${dmgs.map((f) => f.url).join(", ") || "无"}`);
+    }
+    console.log(`  ✓ latest-mac.yml v${version}:${arm[0].url}(${fmtMB(arm[0].size)})、${intel[0].url}(${fmtMB(intel[0].size)})`);
+
+    // ── Live state / downgrade guard ──
+    const live = await remote.retry("读取线上状态", (r) =>
+      r.run(`test -d ${q(`${REMOTE_ROOT}/public`)} || { echo NO_ROOT; exit 0; }; cat ${q(`${REMOTE_ROOT}/public/latest-mac.yml`)} 2>/dev/null || true`),
+    );
+    if (live.trim() === "NO_ROOT") fail(`服务器上没有 ${REMOTE_ROOT}/public,先运行 --setup`);
+    const liveVersion = parseLatestYml(live).version;
+    if (liveVersion) {
+      console.log(`  线上 macOS 版本:v${liveVersion}`);
+      if (compareVersions(version, liveVersion) < 0 && !FORCE) {
+        fail(`线上 macOS 已是 v${liveVersion},比 v${version} 新;确需回退加 --force`);
+      }
+    } else {
+      console.log("  线上暂无 macOS 版本(首次发布)");
+    }
+
+    // ── Server-side download + verify + publish ──
+    console.log("\n→ 服务器拉取 dmg");
+    for (const f of [...arm, ...intel]) {
+      const hex = Buffer.from(f.sha512, "base64").toString("hex");
+      const part = `${REMOTE_ROOT}/incoming/${f.url}.part`;
+      const dest = `${REMOTE_ROOT}/public/${f.url}`;
+      const already = await remote.retry(`检查 ${f.url}`, async (r) =>
+        (await r.run(`[ -f ${q(dest)} ] && sha512sum ${q(dest)} | cut -d' ' -f1 || true`)).trim(),
+      );
+      if (already === hex) {
+        console.log(`  = ${f.url}(线上已是同一文件,跳过)`);
+        continue;
+      }
+      const started = Date.now();
+      // -C - resumes after a dropped SSH channel; a .part whose size already
+      // exceeds the target belongs to another build and is discarded.
+      await remote.retry(`拉取 ${f.url}`, (r) =>
+        r.run(
+          `mkdir -p ${q(`${REMOTE_ROOT}/incoming`)}; ` +
+            `[ "$(stat -c %s ${q(part)} 2>/dev/null || echo 0)" -gt ${f.size} ] && rm -f ${q(part)}; ` +
+            `curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 20 -C - -o ${q(part)} ${q(base + f.url)}`,
+        ),
+      );
+      const got = await remote.retry(`校验 ${f.url}`, async (r) =>
+        (await r.run(`sha512sum ${q(part)} | cut -d' ' -f1`)).trim(),
+      );
+      if (got !== hex) {
+        await remote.retry(`清理 ${f.url}`, (r) => r.run(`rm -f ${q(part)}`));
+        fail(`${f.url} 下载后 sha512 与 latest-mac.yml 不一致,已删除分片,重跑本命令即可`);
+      }
+      await remote.retry(`发布 ${f.url}`, (r) =>
+        r.run(
+          `if [ -f ${q(part)} ]; then chmod 644 ${q(part)} && mv -f ${q(part)} ${q(dest)}; fi; ` +
+            `[ "$(sha512sum ${q(dest)} | cut -d' ' -f1)" = ${q(hex)} ]`,
+        ),
+      );
+      console.log(`  ✓ ${f.url}(${fmtMB(f.size)},${Math.round((Date.now() - started) / 1000)} 秒)`);
+    }
+
+    // ── Manifest last ──
+    const ymlBuf = Buffer.from(ymlText);
+    const ymlHex = createHash("sha512").update(ymlBuf).digest("hex");
+    const tmp = `${REMOTE_ROOT}/incoming/latest-mac.yml.part`;
+    await remote.retry("发布 latest-mac.yml", (r) =>
+      r.run(
+        `cat > ${q(tmp)} && [ "$(sha512sum ${q(tmp)} | cut -d' ' -f1)" = ${q(ymlHex)} ] && ` +
+          `chmod 644 ${q(tmp)} && mv -f ${q(tmp)} ${q(`${REMOTE_ROOT}/public/latest-mac.yml`)}`,
+        { input: ymlBuf },
+      ),
+    );
+    console.log("  ✓ latest-mac.yml");
+  } finally {
+    remote.drop();
+  }
+
+  // ── Public HTTP check ──
+  console.log("\n→ 公网校验");
+  const res = await fetch(new URL("latest-mac.yml", feedUrl));
+  if (!res.ok) fail(`GET latest-mac.yml → HTTP ${res.status}`);
+  const servedText = await res.text();
+  if (parseLatestYml(servedText).version !== version) fail("线上 latest-mac.yml 版本与刚发布的不一致");
+  for (const f of parseMacFiles(servedText).filter((x) => /\.dmg$/.test(x.url ?? ""))) {
+    const head = await fetch(new URL(f.url, feedUrl), { method: "HEAD" });
+    const len = Number(head.headers.get("content-length"));
+    if (!head.ok || len !== f.size) fail(`HEAD ${f.url} → HTTP ${head.status},长度 ${len}(应为 ${f.size})`);
+    console.log(`  ✓ ${new URL(f.url, feedUrl)}(${fmtMB(len)})`);
+  }
+  console.log(`\n✓ 已发布 macOS v${version},下载页会自动显示。`);
+}
+
 /** Every file under www/, as POSIX relative paths. */
 function listSiteFiles(dir, prefix = "") {
   const out = [];
@@ -521,6 +682,7 @@ const feedUrl = readFeedUrl();
 try {
   if (SETUP) await setupServer(feedUrl);
   else if (SITE) await publishSite(feedUrl);
+  else if (MAC) await publishMac(feedUrl);
   else await publish(feedUrl);
 } catch (err) {
   fail(err instanceof Error ? err.message : String(err));

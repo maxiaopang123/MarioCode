@@ -161,6 +161,11 @@ jobs:
 
   publish:
     needs: build
+    # Publish even if one leg failed (e.g. Windows): the Windows build that
+    # reaches users comes from the self-hosted update server, built locally,
+    # while macOS builds only come from here. The merge step still fails the
+    # job unless BOTH mac legs produced a latest-mac.yml.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     # The default GITHUB_TOKEN is read-only; grant write on contents so
     # softprops/action-gh-release can create the release + upload assets.

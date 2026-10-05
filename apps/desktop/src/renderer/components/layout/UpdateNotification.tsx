@@ -41,10 +41,11 @@ import {
   IconRocket,
   IconX,
 } from "@renderer/lib/icons.js";
+import { DOWNLOAD_PAGE_URL } from "@contracts/ipc";
 
-/** GitHub Releases latest URL — where macOS users land for a manual download
- *  (ad-hoc signature, Squirrel.Mac can't auto-install). */
-const RELEASES_URL = "https://github.com/maxiaopang123/MarioCode/releases/latest";
+/** Download homepage on the update server — where macOS users land for a
+ *  manual download (ad-hoc signature, Squirrel.Mac can't auto-install). */
+const RELEASES_URL = DOWNLOAD_PAGE_URL;
 
 /** Update flow state shown by the card. `hidden` = nothing to say. */
 type NoticeState =

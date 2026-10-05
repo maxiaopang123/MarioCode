@@ -150,6 +150,14 @@ export const UPDATE_STATE_SETTING_KEY = "update.state";
 export const AUTO_UPDATE_ENABLED: boolean = true;
 
 /**
+ * Public download homepage on the self-hosted update server (same origin as
+ * `publish.url` in electron-builder.yml). macOS builds are ad-hoc signed, so
+ * Squirrel.Mac can't apply updates; the update card / About panel send those
+ * users here to download the new dmg by hand.
+ */
+export const DOWNLOAD_PAGE_URL = "http://39.109.58.6:3458/";
+
+/**
  * Display mode for the center pane:
  *  - "single" (default): clicking a thread in the left bar replaces the
  *    center pane content (legacy behavior).

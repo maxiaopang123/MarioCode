@@ -363,7 +363,7 @@ export const en = {
   // ── UpdateNotification (global bottom-right update notice card) ──
   "settings.update.availableTitle": "New version v{version} available",
   "settings.update.availableBodyWin": "Restart to install once downloaded, or it installs automatically when you quit the app.",
-  "settings.update.availableBodyManual": "In-app auto-update isn't supported by this build. Please download the latest version from the releases page.",
+  "settings.update.availableBodyManual": "In-app auto-update isn't supported by this build. Please download the latest version from the download page.",
   "settings.update.downloadNow": "Download now",
   "settings.update.remindLater": "Remind me later",
   "settings.update.goToDownload": "Go to downloads",

@@ -80,6 +80,16 @@ asarUnpack:
   - "**/node_modules/node-pty/build/Release/**"
   - "**/node_modules/node-pty/prebuilds/**"
 
+# System-tray icon (main/tray.ts reads process.resourcesPath/tray-icon.*).
+# build/ itself is not shipped, and the exe's embedded icon isn't loadable as
+# a NativeImage, so copy the icon next to app.asar. .ico on Windows (multi-
+# size, crisp at every DPI), .png for Linux.
+extraResources:
+  - from: build/icon.ico
+    to: tray-icon.ico
+  - from: build/icon.png
+    to: tray-icon.png
+
 # Pin the main entry explicitly (matches package.json "main").
 extraMetadata:
   main: out/main/index.js

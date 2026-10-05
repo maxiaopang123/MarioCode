@@ -1,5 +1,7 @@
 import { app, Menu, session } from "electron";
 import { createMainWindow, getMainWindow, sendToRenderer } from "@main/window.js";
+import { initTray, destroyTray } from "@main/tray.js";
+import { isQuitting, markQuitting } from "@main/lib/quitState.js";
 import { registerIpcHandlers } from "@main/ipc/index.js";
 import { initDb, closeDb, awaitDb } from "@main/store/db.js";
 import { initTheme } from "@main/lib/theme.js";
@@ -94,11 +96,6 @@ if (!gotLock) {
   process.exit(0);
 }
 
-/** Set once the quit sequence starts (before-quit). The window is already
- *  gone by then, but the process keeps the single-instance lock for up to
- *  ~6s while before-quit flushes the cookie vault and stops ClawBot. */
-let appQuitting = false;
-
 app.on("second-instance", () => {
   // Someone tried to run a second instance — surface our existing window.
   // Target the MAIN window explicitly: getAllWindows() also returns the
@@ -116,10 +113,11 @@ app.on("second-instance", () => {
     win.focus();
     return;
   }
-  // The user closed the window and immediately launched again: this process
-  // is still finishing its quit and holds the lock, so the new launch exited.
-  // Come back once the quit completes instead of silently doing nothing.
-  if (appQuitting) app.relaunch();
+  // The user quit and immediately launched again: this process is still
+  // finishing its quit (before-quit can take ~6s flushing the cookie vault
+  // and stopping ClawBot) and holds the lock, so the new launch exited. Come
+  // back once the quit completes instead of silently doing nothing.
+  if (isQuitting()) app.relaunch();
 });
 
 app.whenReady().then(async () => {
@@ -221,6 +219,8 @@ app.whenReady().then(async () => {
   // renderer starts loading its JS/HMR while the DB opens in parallel.
   createMainWindow();
   logStartup("createMainWindow returned");
+  // Windows / Linux: tray icon + ✕ hides to the tray instead of quitting.
+  initTray();
 
   // Warm the Claude Agent SDK module in idle time (deferred 3s). Keeps the
   // large module out of startup AND out of the first turn's send→first-reply
@@ -312,7 +312,9 @@ async function maybeAutoStartRelay(): Promise<void> {
 let sessionCookiesFlushed = false;
 let clawBotStoppedForQuit = false;
 app.on("before-quit", (event) => {
-  appQuitting = true;
+  // A real quit (tray ▸ 退出, updater install, OS session end): from here on
+  // the window's close must go through instead of hiding to the tray.
+  markQuitting();
   if (!sessionCookiesFlushed) {
     event.preventDefault();
     const timeout = new Promise<void>((r) => setTimeout(r, 3000).unref());
@@ -346,6 +348,7 @@ app.on("before-quit", (event) => {
     });
     return;
   }
+  destroyTray();
   BridgeRegistry.disposeAll();
   TerminalManager.disposeAll();
   lspManager.disposeAll();

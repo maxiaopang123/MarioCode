@@ -19,6 +19,7 @@ import {
   SetSettingSchema,
   GetManySettingsSchema,
   THEME_STYLE_SETTING_KEY,
+  UI_LOCALE_SETTING_KEY,
 } from "@contracts/ipc";
 import type {
   SaveMessagesInput,
@@ -30,6 +31,7 @@ import { SessionRepo, ProjectRepo, MessageRepo, SettingRepo } from "@main/store/
 import { runtimeManager } from "@main/claude/RuntimeManager.js";
 import { providerRegistry } from "@main/providers/registry.js";
 import { updateTitleBarOverlay } from "@main/window.js";
+import { refreshTrayMenu } from "@main/tray.js";
 import { log } from "@main/lib/logger.js";
 import { broadcastSessionChanged } from "@main/lib/sessionSync.js";
 import { createOrReuseSession } from "@main/lib/sessionStart.js";
@@ -251,6 +253,8 @@ export function registerClaudeHandlers(ipcMain: IpcMain): void {
         // Window not created yet — initTheme's startup sync covers it.
       }
     }
+    // Tray menu labels follow the UI language (no-op without a tray).
+    if (input.key === UI_LOCALE_SETTING_KEY) refreshTrayMenu();
   });
 
   ipcMain.handle(IPC.SETTING_GET_MANY, (_evt, raw) => {

@@ -57,7 +57,9 @@ import {
   GetSettingSchema,
   SetSettingSchema,
   GetManySettingsSchema,
+  UI_LOCALE_SETTING_KEY,
 } from "@contracts/ipc";
+import { refreshTrayMenu } from "@main/tray.js";
 import type {
   SaveMessagesInput,
   UpsertMessagesInput,
@@ -212,6 +214,7 @@ const HANDLERS: Record<string, RpcHandler> = {
   "setting:set": (raw) => {
     const input = SetSettingSchema.parse(raw);
     SettingRepo.set(input.key, input.value);
+    if (input.key === UI_LOCALE_SETTING_KEY) refreshTrayMenu();
   },
 
   "setting:getMany": (raw) => {

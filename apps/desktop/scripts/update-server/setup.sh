@@ -29,7 +29,10 @@ if ss -tln | awk '{print $4}' | grep -qE "[:.]$PORT\$"; then
   fi
 fi
 
-docker pull "$IMAGE"
+# The registry mirror occasionally drops a layer mid-pull ("short read"); a
+# re-run of setup (e.g. to apply a new nginx.conf) shouldn't fail on that
+# when the pinned image is already present locally.
+docker pull "$IMAGE" || docker image inspect "$IMAGE" >/dev/null
 
 if docker ps -a --format '{{.Names}}' | grep -qx "$NAME"; then
   docker rm -f "$NAME" >/dev/null
@@ -48,8 +51,11 @@ if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
   ufw allow "$PORT/tcp" comment "MarioCode update server" >/dev/null
 fi
 
+# "Up" = nginx answers with a non-5xx status. `/` is the homepage, which is a
+# 404 until `publish.mjs --site` uploads it, so don't require a 200.
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  if curl -fsS "http://127.0.0.1:$PORT/" >/dev/null 2>&1; then
+  code=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/" 2>/dev/null || echo 000)
+  if [ "$code" != "000" ] && [ "$code" -lt 500 ]; then
     echo "update server up on :$PORT (root $ROOT/public)"
     exit 0
   fi

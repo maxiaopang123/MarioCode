@@ -8,10 +8,12 @@
  *   pnpm --filter @mariocode/desktop run release:upload               # publish current version
  *   pnpm --filter @mariocode/desktop run release:upload --dry-run     # local checks only, no SSH
  *   pnpm --filter @mariocode/desktop run release:upload --setup       # (re)create the nginx container
+ *   pnpm --filter @mariocode/desktop run release:upload --site        # upload the download homepage (www/)
  *
  * Flags:
  *   --dry-run      validate release/ artifacts + git state, print the plan, no network
  *   --setup        upload nginx.conf + run setup.sh on the server, then exit
+ *   --site         upload the homepage in www/ (index.html last), then exit
  *   --allow-dirty  publish even if tracked files have uncommitted changes
  *   --force        allow publishing a version LOWER than the one currently live
  *
@@ -32,9 +34,9 @@
  * previous version's .blockmap from the same directory.
  */
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "ssh2";
 
@@ -48,6 +50,7 @@ const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 const argv = new Set(process.argv.slice(2).filter((a) => a !== "--"));
 const DRY = argv.has("--dry-run");
 const SETUP = argv.has("--setup");
+const SITE = argv.has("--site");
 const ALLOW_DIRTY = argv.has("--allow-dirty");
 const FORCE = argv.has("--force");
 
@@ -332,9 +335,11 @@ async function setupServer(feedUrl) {
   } finally {
     conn.end();
   }
-  const res = await fetch(feedUrl).catch((e) => ({ ok: false, statusText: e.message }));
-  if (!res.ok) fail(`公网访问 ${feedUrl} 失败:${res.status ?? ""} ${res.statusText}`);
-  console.log(`✓ 公网可访问 ${feedUrl}`);
+  // `/` is the homepage — a 404 until --site uploads it — so "reachable"
+  // means nginx answered at all, not that it returned 200.
+  const res = await fetch(feedUrl).catch((e) => ({ status: 0, statusText: e.message }));
+  if (!res.status || res.status >= 500) fail(`公网访问 ${feedUrl} 失败:${res.status || ""} ${res.statusText}`);
+  console.log(`✓ 公网可访问 ${feedUrl}(HTTP ${res.status}${res.status === 404 ? ",主页未上传,运行 --site" : ""})`);
 }
 
 async function publish(feedUrl) {
@@ -459,9 +464,63 @@ async function publish(feedUrl) {
   console.log(`\n✓ 已发布 v${version}。v0.2.5 及以上的客户端会在启动 10 秒后或每 4 小时检查到它。`);
 }
 
+/** Every file under www/, as POSIX relative paths. */
+function listSiteFiles(dir, prefix = "") {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(...listSiteFiles(join(dir, entry.name), rel));
+    else if (entry.isFile()) out.push(rel);
+  }
+  return out;
+}
+
+/** Upload the static homepage (www/) into public/. Each file goes to
+ *  incoming/ first and is moved only after its sha512 matches; index.html is
+ *  moved LAST so the page never references an asset that isn't there yet. */
+async function publishSite(feedUrl) {
+  const root = join(HERE, "www");
+  const files = listSiteFiles(root);
+  if (!files.includes("index.html")) fail(`${root} 里没有 index.html`);
+  for (const rel of files) {
+    if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(rel) || rel.split("/").includes("..")) {
+      fail(`非法站点文件名: ${rel}`);
+    }
+  }
+  const ordered = [...files.filter((f) => f !== "index.html").sort(), "index.html"];
+  const host = process.env.MARIOCODE_UPDATE_SSH_HOST || feedUrl.hostname;
+  console.log(`→ 上传主页到 ${host}:${REMOTE_ROOT}/public(${ordered.length} 个文件)`);
+  const remote = new Remote(host);
+  try {
+    for (const rel of ordered) {
+      const buf = readFileSync(join(root, rel));
+      const hex = createHash("sha512").update(buf).digest("hex");
+      const dest = `${REMOTE_ROOT}/public/${rel}`;
+      const tmp = `${REMOTE_ROOT}/incoming/site--${rel.replace(/\//g, "--")}.part`;
+      await remote.retry(`上传 ${rel}`, (r) =>
+        r.run(
+          `mkdir -p ${q(posix.dirname(dest))} ${q(`${REMOTE_ROOT}/incoming`)} && cat > ${q(tmp)} && ` +
+            `[ "$(sha512sum ${q(tmp)} | cut -d' ' -f1)" = ${q(hex)} ] && chmod 644 ${q(tmp)} && mv -f ${q(tmp)} ${q(dest)}`,
+          { input: buf },
+        ),
+      );
+      console.log(`  ✓ ${rel}`);
+    }
+  } finally {
+    remote.drop();
+  }
+  const res = await fetch(feedUrl);
+  const body = res.ok ? await res.text() : "";
+  if (!res.ok || !/text\/html/.test(res.headers.get("content-type") ?? "") || !body.includes("site/app.js")) {
+    fail(`公网主页检查失败:HTTP ${res.status} ${res.headers.get("content-type") ?? ""}(nginx.conf 是否已用 --setup 更新?)`);
+  }
+  console.log(`✓ 主页已上线 ${feedUrl}`);
+}
+
 const feedUrl = readFeedUrl();
 try {
   if (SETUP) await setupServer(feedUrl);
+  else if (SITE) await publishSite(feedUrl);
   else await publish(feedUrl);
 } catch (err) {
   fail(err instanceof Error ? err.message : String(err));

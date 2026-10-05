@@ -23,8 +23,9 @@
  *   MARIOCODE_UPDATE_SSH_PORT  default: 22
  *
  * Upload protocol: SFTP is avoided (ssh2's sftp.fastPut breaks on new Node),
- * files are streamed through `cat > incoming/<name>.part` over exec, the
- * remote sha512 is compared with the local one, and only then is the file
+ * files are streamed through `cat >> incoming/<name>.part` over exec —
+ * resuming from the bytes already on the server after a dropped connection —
+ * the remote sha512 is compared with the local one, and only then is the file
  * moved into public/. The exe + blockmap go first and latest.yml goes LAST,
  * so clients never see a manifest that points at a file still uploading.
  * Old versions are kept: electron-updater's differential download fetches the
@@ -149,9 +150,61 @@ function connect(host) {
   });
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 /**
- * Run `cmd` remotely. `input` (Buffer or local file path) is streamed to the
- * command's stdin; file uploads print coarse progress.
+ * Lazily (re)connecting SSH session. Long transfers through a proxy get cut
+ * (observed: the channel dies after ~4 min / ~170 MB with `exit null`), so
+ * every remote step goes through `retry()`, which drops the dead connection
+ * and reconnects before trying again.
+ */
+class Remote {
+  constructor(host) {
+    this.host = host;
+    this.conn = null;
+  }
+  async get() {
+    if (!this.conn) {
+      const conn = await connect(this.host);
+      conn.on("close", () => {
+        if (this.conn === conn) this.conn = null;
+      });
+      conn.on("error", () => {});
+      this.conn = conn;
+    }
+    return this.conn;
+  }
+  drop() {
+    try {
+      this.conn?.end();
+    } catch {
+      // already gone
+    }
+    this.conn = null;
+  }
+  async run(cmd, opts) {
+    return run(await this.get(), cmd, opts);
+  }
+  /** Run `fn(this)` up to `attempts` times, reconnecting between failures. */
+  async retry(what, fn, attempts = 8) {
+    for (let i = 1; ; i++) {
+      try {
+        return await fn(this);
+      } catch (err) {
+        this.drop();
+        const msg = (err instanceof Error ? err.message : String(err)).split("\n")[0];
+        if (i >= attempts) throw new Error(`${what} 失败(已重试 ${attempts} 次):${msg}`);
+        warn(`${what} 中断(${msg}),${Math.min(5 * i, 30)} 秒后重连续传(第 ${i} 次)`);
+        await sleep(Math.min(5000 * i, 30_000));
+      }
+    }
+  }
+}
+
+/**
+ * Run `cmd` remotely. `input` (Buffer, local file path, or `{ path, start }`
+ * to stream a file from a byte offset) is piped to the command's stdin; file
+ * uploads print coarse progress.
  */
 function run(conn, cmd, { input, label } = {}) {
   return new Promise((res, rej) => {
@@ -160,10 +213,12 @@ function run(conn, cmd, { input, label } = {}) {
       let out = "";
       let errOut = "";
       let exitCode = null;
+      let rs = null;
       stream.on("data", (d) => (out += d));
       stream.stderr.on("data", (d) => (errOut += d));
       stream.on("exit", (code) => (exitCode = code));
       stream.on("close", () => {
+        rs?.destroy(); // channel gone mid-upload: stop reading the local file
         if (exitCode === 0) res(out);
         else rej(new Error(`remote exit ${exitCode}: ${cmd.split("\n")[0].slice(0, 120)}\n${errOut.trim()}`));
       });
@@ -173,18 +228,22 @@ function run(conn, cmd, { input, label } = {}) {
       } else if (Buffer.isBuffer(input)) {
         stream.end(input);
       } else {
-        const total = statSync(input).size;
+        const path = typeof input === "string" ? input : input.path;
+        const start = typeof input === "string" ? 0 : input.start;
+        const total = statSync(path).size;
         const started = Date.now();
-        let sent = 0;
+        let sent = start;
         let lastPct = -1;
-        const rs = createReadStream(input);
+        rs = createReadStream(path, { start });
         rs.on("data", (chunk) => {
           sent += chunk.length;
           const pct = Math.floor((sent / total) * 100);
           if (label && pct !== lastPct && (pct % 5 === 0 || sent === total)) {
             lastPct = pct;
             const secs = Math.max((Date.now() - started) / 1000, 0.001);
-            process.stdout.write(`\r  ↑ ${label} ${pct}% (${fmtMB(sent)} / ${fmtMB(total)}, ${fmtMB(sent / secs)}/s)   `);
+            process.stdout.write(
+              `\r  ↑ ${label} ${pct}% (${fmtMB(sent)} / ${fmtMB(total)}, ${fmtMB((sent - start) / secs)}/s)   `,
+            );
           }
         });
         rs.on("end", () => label && process.stdout.write("\n"));
@@ -198,17 +257,60 @@ function run(conn, cmd, { input, label } = {}) {
   });
 }
 
-/** Stream → incoming/<name>.part → verify sha512 → atomic mv into public/. */
-async function uploadVerified(conn, localPath, name, hex) {
+/**
+ * Resumable upload: stream → incoming/<name>.part (appending from whatever
+ * byte count already landed, across reconnects) → verify the whole file's
+ * sha512 → atomic mv into public/. A sidecar `<part>.want` records which file
+ * the partial bytes belong to, so a leftover .part from a different build is
+ * discarded instead of being resumed into a corrupt file.
+ */
+async function uploadVerified(remote, localPath, name, hex) {
   if (!SAFE_NAME.test(name)) fail(`非法文件名: ${name}`);
   const part = `${REMOTE_ROOT}/incoming/${name}.part`;
-  await run(conn, `cat > ${q(part)}`, { input: localPath, label: name });
-  const remoteHex = (await run(conn, `sha512sum ${q(part)}`)).split(/\s+/)[0];
-  if (remoteHex !== hex) {
-    await run(conn, `rm -f ${q(part)}`).catch(() => {});
-    fail(`${name} 上传后校验不一致(本地 ${hex.slice(0, 12)}… / 远端 ${remoteHex.slice(0, 12)}…)`);
+  const want = `${part}.want`;
+  const total = statSync(localPath).size;
+
+  for (let pass = 1; pass <= 2; pass++) {
+    await remote.retry(`上传 ${name}`, async (r) => {
+      // A `cat` orphaned by a dropped channel may still be flushing into the
+      // part file; stop it (fuser matches by open file, not command line, so
+      // it can't hit this shell) before measuring how much landed.
+      const have = Number(
+        (
+          await r.run(
+            `command -v fuser >/dev/null && fuser -k ${q(part)} >/dev/null 2>&1 && sleep 1; ` +
+              `if [ "$(cat ${q(want)} 2>/dev/null)" != ${q(hex)} ]; then rm -f ${q(part)}; printf %s ${q(hex)} > ${q(want)}; fi; ` +
+              `stat -c %s ${q(part)} 2>/dev/null || echo 0`,
+          )
+        ).trim(),
+      );
+      if (have > total) {
+        await r.run(`rm -f ${q(part)}`);
+        throw new Error("远端分片比本地文件大,已清空重传");
+      }
+      if (have > 0 && have < total) console.log(`  … 从 ${fmtMB(have)} 处续传 ${name}`);
+      if (have < total) await r.run(`cat >> ${q(part)}`, { input: { path: localPath, start: have }, label: name });
+    });
+
+    const remoteHex = await remote.retry(`校验 ${name}`, async (r) =>
+      (await r.run(`sha512sum ${q(part)}`)).split(/\s+/)[0],
+    );
+    if (remoteHex === hex) break;
+    await remote.retry(`清理 ${name}`, (r) => r.run(`rm -f ${q(part)} ${q(want)}`));
+    if (pass === 2) {
+      fail(`${name} 上传后校验不一致(本地 ${hex.slice(0, 12)}… / 远端 ${remoteHex.slice(0, 12)}…)`);
+    }
+    warn(`${name} 校验不一致,整文件重传一次`);
   }
-  await run(conn, `chmod 644 ${q(part)} && mv -f ${q(part)} ${q(`${REMOTE_ROOT}/public/${name}`)}`);
+
+  // Idempotent so a reconnect after a successful mv doesn't fail the step.
+  const dest = `${REMOTE_ROOT}/public/${name}`;
+  await remote.retry(`发布 ${name}`, (r) =>
+    r.run(
+      `if [ -f ${q(part)} ]; then chmod 644 ${q(part)} && mv -f ${q(part)} ${q(dest)}; fi; rm -f ${q(want)}; ` +
+        `[ "$(sha512sum ${q(dest)} | cut -d' ' -f1)" = ${q(hex)} ]`,
+    ),
+  );
   console.log(`  ✓ ${name}`);
 }
 
@@ -289,18 +391,19 @@ async function publish(feedUrl) {
   }
 
   // ── Remote state ──
-  const conn = await connect(host);
+  const remote = new Remote(host);
   try {
-    const probe = await run(
-      conn,
-      [
-        `test -d ${q(`${REMOTE_ROOT}/public`)} || { echo NO_ROOT; exit 0; }`,
-        `mkdir -p ${q(`${REMOTE_ROOT}/incoming`)}`,
-        `cd ${q(`${REMOTE_ROOT}/public`)}`,
-        `for f in ${q(exeName)} ${q(blockmapName)} latest.yml; do [ -f "$f" ] && sha512sum "$f"; done`,
-        `echo ---`,
-        `cat latest.yml 2>/dev/null || true`,
-      ].join("; "),
+    const probe = await remote.retry("读取线上状态", (r) =>
+      r.run(
+        [
+          `test -d ${q(`${REMOTE_ROOT}/public`)} || { echo NO_ROOT; exit 0; }`,
+          `mkdir -p ${q(`${REMOTE_ROOT}/incoming`)}`,
+          `cd ${q(`${REMOTE_ROOT}/public`)}`,
+          `for f in ${q(exeName)} ${q(blockmapName)} latest.yml; do [ -f "$f" ] && sha512sum "$f"; done`,
+          `echo ---`,
+          `cat latest.yml 2>/dev/null || true`,
+        ].join("; "),
+      ),
     );
     if (probe.trim() === "NO_ROOT") fail(`服务器上没有 ${REMOTE_ROOT}/public,先运行 --setup`);
     const [sums, liveYmlText = ""] = probe.split("---\n");
@@ -332,12 +435,12 @@ async function publish(feedUrl) {
       [blockmapPath, blockmapName, blockmapHash.hex],
     ]) {
       if (remoteHex.get(name) === hex) console.log(`  = ${name}(线上已是同一文件,跳过)`);
-      else await uploadVerified(conn, path, name, hex);
+      else await uploadVerified(remote, path, name, hex);
     }
     if (remoteHex.get("latest.yml") === ymlHex) console.log("  = latest.yml(线上已是同一文件,跳过)");
-    else await uploadVerified(conn, ymlPath, "latest.yml", ymlHex);
+    else await uploadVerified(remote, ymlPath, "latest.yml", ymlHex);
   } finally {
-    conn.end();
+    remote.drop();
   }
 
   // ── Public HTTP check (what users' apps will actually see) ──

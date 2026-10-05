@@ -180,7 +180,7 @@
 #### 🔄 其他
 
 - **运行时按需下载** —— agent 运行时不再随安装包捆绑，MarioCode 在首次使用时自动下载，安装包瘦身约 600MB/平台；可在**设置 → 运行时**管理。
-- 自动更新：通过 `electron-updater` 从 GitHub Releases 拉 `latest*.yml`；也可在**设置 → 关于**手动检查。
+- 自动更新：通过 `electron-updater` 从 MarioCode 自建更新服务器获取（Windows，v0.2.5 起）；也可在**设置 → 关于**手动检查。
 - Provider 抽象层（`AgentProvider`）——目前内置 Claude、Codex 与 Pi，易于扩展其他 agent 平台。
 
 ### 常见问题

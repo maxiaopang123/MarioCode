@@ -1,6 +1,6 @@
 {
   "name": "@mariocode/desktop",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "description": "MarioCode - Desktop GUI for Claude Code",
   "author": "huangbh",
@@ -29,6 +29,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "rebuild:native": "node build/rebuild-native.cjs",
     "pack:pi-runtime": "node build/pack-pi-runtime.cjs",
+    "release:upload": "node scripts/update-server/publish.mjs",
     "package": "pnpm run build && node -e \"require('fs').rmSync('../../packages/contracts/dist',{recursive:true,force:true})\" && node build/dereference-workspace-symlinks.cjs && electron-builder --publish never"
   },
   "dependencies": {

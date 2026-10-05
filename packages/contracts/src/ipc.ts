@@ -141,12 +141,13 @@ export const UI_FONT_FAMILY_SETTING_KEY = "ui.uiFontFamily";
 export const UPDATE_STATE_SETTING_KEY = "update.state";
 
 /**
- * Master switch for auto-update. The release feed (`publish` in
- * apps/desktop/electron-builder.yml) and the About / update-card release links
- * point at MarioCode's own repo (maxiaopang123/MarioCode). Kept off until that
- * repo publishes its first Release with latest*.yml assets.
+ * Master switch for auto-update. The release feed is MarioCode's own update
+ * server (generic provider, `publish.url` in apps/desktop/electron-builder.yml);
+ * releases are uploaded with `pnpm --filter @mariocode/desktop run release:upload`.
+ * Turning this off hides the About-page check button / banner and skips the
+ * boot + 4h background checks.
  */
-export const AUTO_UPDATE_ENABLED: boolean = false;
+export const AUTO_UPDATE_ENABLED: boolean = true;
 
 /**
  * Display mode for the center pane:
@@ -1903,7 +1904,7 @@ export interface AppInfoResult {
   arch: string;
 }
 
-/* ── Auto-update (electron-updater, GitHub Releases channel) ── */
+/* ── Auto-update (electron-updater, MarioCode update server) ── */
 
 /** Result of a manual/auto update check. */
 export type CheckForUpdatesResult =
@@ -4960,7 +4961,7 @@ export interface RpcMap {
   "builtinTools.save": (input: BuiltinToolsSaveInput) => Promise<BuiltinToolsSaveResult>;
   /** One real mario_web_search with the saved settings. */
   "builtinTools.testSearch": (input: BuiltinToolsTestSearchInput) => Promise<BuiltinToolsTestSearchResult>;
-  /** Check for updates on the GitHub Releases channel. Returns the current
+  /** Check for updates on the MarioCode update server. Returns the current
    *  version when up-to-date, the new version when available, or an error.
    *  In dev this short-circuits to "up-to-date" (updater only runs in prod). */
   "app.checkForUpdates": () => Promise<CheckForUpdatesResult>;

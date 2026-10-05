@@ -1,5 +1,6 @@
 /**
- * Auto-update module (electron-updater, GitHub Releases channel).
+ * Auto-update module (electron-updater, generic provider pointed at
+ * MarioCode's own update server - see `publish` in electron-builder.yml).
  *
  * electron-updater only works inside a packaged app (it reads app-update.yml
  * from the asar/resources dir, which doesn't exist in dev). So in dev every
@@ -233,7 +234,7 @@ export async function initUpdater(): Promise<void> {
     }, RECURRING_CHECK_INTERVAL_MS);
 
     initialized = true;
-    log.info("updater: initialized (GitHub Releases channel)");
+    log.info("updater: initialized (MarioCode update server)");
   } catch (err) {
     log.error(`updater: init failed ${err instanceof Error ? err.message : String(err)}`);
   }

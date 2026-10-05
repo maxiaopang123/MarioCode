@@ -107,6 +107,12 @@ pnpm build
 - 完成一批修改并验证后,更新 `apps/desktop/package.json` 的版本号并提交 Git,提交标题带版本号;用户明确要求暂缓时遵从该要求。
 - 生成安装包时直接使用当前已提交的软件版本号,不按打包次数增加版本或追加流水编号;同一版本重复打包仍生成同名安装包。
 
+### 自动更新(自建服务器,2026-10-05,0.2.5 起)
+- **渠道**:`electron-builder.yml` 的 `publish` = `generic`,地址 `http://39.109.58.6:3458/`(亿联云;无域名先用 IP+端口,纯 HTTP)。地址在打包时写进安装包的 `app-update.yml`,改地址只影响之后打的包。`AUTO_UPDATE_ENABLED = true`:启动 10 秒后检查、之后每 4 小时一次;发现新版弹卡片,用户点下载,重启或退出时安装(不静默,静默 + 最低版本强制更新见 TODO-026)。0.2.4 及以前开关是关的,那些安装要手动装一次 0.2.5。
+- **服务器**:容器 `mariocode-updates`(`nginx:1.27-alpine`,`--restart unless-stopped`,内存上限 128MB)把 `/opt/mariocode-updates/public` 只读挂成站点根;配置在 `apps/desktop/scripts/update-server/nginx.conf`(只放行平铺的 `*.yml` / `*.exe` / `*.blockmap` / `*.zip` / `*.dmg`,无目录列表,全部 `Cache-Control: no-cache`——同版本重打包会复用文件名)。重建:`release:upload --setup`(跑 `setup.sh`,可重复执行,只动这一个容器,并 `ufw allow 3458/tcp`)。
+- **发布**:先按版本约定提交并打包(`scripts\package-win.bat`),再 `$env:MARIOCODE_UPDATE_SSH_PASS='…'; pnpm --filter @mariocode/desktop run release:upload`(`--dry-run` 只做本地校验)。脚本校验 安装包 / blockmap / latest.yml 三者版本与 sha512 一致、工作区已提交、线上版本不比本地新(回退要 `--force`);上传走 exec `cat >` 流式写到 `incoming/*.part`,远端 sha512 比对通过才 `mv` 进 `public/`,**latest.yml 最后传**;最后从公网 GET latest.yml / HEAD 安装包复核。**旧版本文件不要删**:差量下载要用上一版的 `.blockmap`。SFTP 不用(ssh2 新 Node 下坏)。凭据只走环境变量,不进仓库。
+- **已知限制**:纯 HTTP 下 latest.yml 本身没有防篡改,sha512 只能防传输损坏,有域名后改 HTTPS;只发布 Windows 包,mac 版检查会 404(只记日志);本机经代理出口连服务器时 SSH 建连约 1 分钟、上传速度取决于代理线路。
+
 ### ⚠️ 启动前注意
 异常退出后,5173 端口可能残留(TIME_WAIT)。若窗口没弹出,先在任务管理器结束所有 `electron.exe`,或等约 30 秒端口释放。
 
@@ -503,7 +509,7 @@ pnpm build
 | P4 IDE 右栏 | ✅ | 文件树、git、终端(xterm+node-pty)、Monaco 编辑器 + diff |
 | P4.5 LSP 语言服务器 | ✅ | 设置页可安装/启停 TS/Python/Go/Java 语言服务器;`LspManager`(main)管理 stdio JSON-RPC 子进程;Monaco 手写 Provider(definition/references/hover)+ 诊断 markers + 跳转定位 |
 | P5 体验打磨 | 🟡 | ✅ 浏览器预览(agent 驱动应用内浏览器);⬜ checkpoint 时间线、Cmd+K、审批 UI |
-| P6 发布 | ✅ 基础 | electron-builder(mac/win 安装包)、electron-updater(GitHub Releases 渠道)、CI(typecheck + tag 自动发布)。mac 包已接 ad-hoc 签名(无 Apple 付费证书,dmg 直下首次启动需 `xattr -dr com.apple.quarantine` 或系统设置"仍要打开";brew cask 安装无此问题);真实 Developer ID 签名+公证未做,未含 Vitest。**自动更新暂时关闭**(2026-09-26,`packages/contracts/src/ipc.ts` 的 `AUTO_UPDATE_ENABLED = false`,不做开机/定时检查,关于页的检查更新按钮和更新横幅隐藏):`publish` 和关于页/更新卡的发布链接已改指 MarioCode 自己的仓库(maxiaopang123/MarioCode,appId `com.mariocode.desktop`、数据目录 `%APPDATA%\MarioCode` + `~/.mariocode`,与上游 M Code 完全分开、不迁移旧数据);等该仓库发出第一个带 latest*.yml 的 Release 再打开开关 |
+| P6 发布 | ✅ 基础 | electron-builder(mac/win 安装包)、electron-updater(自建更新服务器,见下方「自动更新」节)、CI(typecheck + tag 自动发布到 GitHub Release,仅作存档)。mac 包已接 ad-hoc 签名(无 Apple 付费证书,dmg 直下首次启动需 `xattr -dr com.apple.quarantine` 或系统设置"仍要打开";brew cask 安装无此问题);真实 Developer ID 签名+公证未做,未含 Vitest。appId `com.mariocode.desktop`、数据目录 `%APPDATA%\MarioCode` + `~/.mariocode`,与上游 M Code 完全分开、不迁移旧数据 |
 
 详见 `docs/tech-stack.md` 第八节。
 

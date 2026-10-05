@@ -234,7 +234,7 @@ const api = {
    *  About panel. Parameterless RPC. */
   app: {
     info: (() => ipcRenderer.invoke(IPC.APP_INFO)) as RpcMap["app.info"],
-    /** Check for updates on the GitHub Releases channel. */
+    /** Check for updates on the MarioCode update server. */
     checkForUpdates: (() =>
       ipcRenderer.invoke(IPC.APP_CHECK_FOR_UPDATES)) as RpcMap["app.checkForUpdates"],
     /** Start downloading the pending update (user opted in). */

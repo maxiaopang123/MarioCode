@@ -180,7 +180,7 @@ Plus: **Mouse gestures** (record drag gestures bound to app commands), **Voice i
 #### 🔄 Other
 
 - **On-demand runtimes** — agent runtimes are no longer bundled with the installer; MarioCode downloads them automatically on first use, making installers ~600 MB smaller per platform. Manage them in **Settings → Runtimes**.
-- Auto-update via `electron-updater` (pulls `latest*.yml` from GitHub Releases); manual check in **Settings → About**.
+- Auto-update via `electron-updater` from MarioCode's own update server (Windows, v0.2.5+); manual check in **Settings → About**.
 - Provider abstraction layer (`AgentProvider`) — Claude, Codex, and Pi today, easy to extend to other agent platforms.
 
 ### FAQ

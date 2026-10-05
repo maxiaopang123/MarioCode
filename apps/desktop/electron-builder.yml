@@ -7,8 +7,9 @@ productName: MarioCode
 copyright: MIT
 # Version is read from apps/desktop/package.json. In CI, the release workflow
 # overwrites that field with the pushed git tag (e.g. v0.1.4 -> 0.1.4) before
-# packaging, so artifact names track the tag. Local `pnpm package` keeps the
-# dev version (0.1.0).
+# packaging, so artifact names track the tag. Local `pnpm package` uses the
+# committed package.json version as-is (repackaging the same version produces
+# the same file names).
 
 directories:
   output: release
@@ -141,10 +142,20 @@ nsis:
   deleteAppDataOnUninstall: false
 
 # ── Auto-update channel ──
-# electron-updater fetches latest-mac.yml / latest.yml from the GitHub Releases
-# "Assets" of this repo. The release workflow uploads these yml files alongside
-# the installers (see .github/workflows/release.yml).
+# electron-updater fetches latest.yml (+ the versioned installer / .blockmap)
+# from MarioCode's own update server: a static nginx directory on the 亿联云
+# host. This url is baked into resources/app-update.yml at package time, so
+# changing it only affects builds made AFTER the change.
+#
+# Publishing: `pnpm --filter @mariocode/desktop run release:upload` uploads the
+# current version's exe + blockmap, then latest.yml last (scripts/update-server/
+# publish.mjs). Server setup: same command with `--setup` (setup.sh + nginx.conf).
+#
+# Plain HTTP on an IP:port (no domain / TLS yet). electron-updater still
+# verifies the installer against the sha512 in latest.yml, but that file is
+# fetched over the same unauthenticated channel — move to HTTPS once a domain
+# exists. Only Windows artifacts are published here; mac builds would 404 on
+# latest-mac.yml (logged, non-fatal).
 publish:
-  provider: github
-  owner: maxiaopang123
-  repo: MarioCode
+  provider: generic
+  url: http://39.109.58.6:3458/

@@ -2,13 +2,25 @@
 
 > 只记录功能 TODO 进度和 Git 版本，保持简单。
 
-最后更新：2026-10-03
+最后更新：2026-10-06
 
 ## 功能 TODO
 
 状态：⚪ 未开始　🟡 进行中　🟢 已完成　🔴 阻塞　⏸ 暂定（条件不具备，等条件到位再排期）
 
-## 当前进度（2026-09-29）
+## 当前进度（2026-10-06）
+
+**10/6 更新（v0.2.9，当前已打包待发布）**：
+- **Claude 支持 Responses API**：协议桥新增 `responsesRequestTranslator` 与 `responsesResponseTranslator`，全面支持 Claude Agent 驱动 OpenAI `/v1/responses` 接口（含工具调用、思考流提取、缓存换算）；
+- **Chat 接口补齐思考强度映射**：在 `requestTranslator` 中将 Claude 的 `effort` / `budget_tokens` 自动转换为 OpenAI Chat 的 `reasoning_effort`（`low` / `medium` / `high`），普通模型不带该字段以确保兼容；
+- **会话面板 LaTeX 公式渲染优化**：在 `Markdown.tsx` 中增加多层公式定界符自动识别归一化，支持 `\[...\]`、`\(...\)` 以及独立行嵌套公式 `[ ... \command ... ]`；配合 `styles.css` 增加了横向平滑滚动；
+- **全链路测试通过**：`pnpm test:shared-providers` 扩展至 110 项全部通过，完成构建并打出 Windows 安装包 `MarioCode-0.2.9-x64.exe`（192.5 MB）。
+
+**10/5–10/6 发布流水（v0.2.5–v0.2.8）**：
+- **v0.2.5**：自建更新服务器上线（`publish` 指向 `http://39.109.58.6:3458/`），实现断点续传发布脚本 `release:upload`，应用内自动检查更新开启；
+- **v0.2.6**：修复窗口控制边界情况（归档清除关注状态，窗口关闭交互完善）；
+- **v0.2.7**：关闭窗口默认最小化隐藏至系统托盘；更新服务器首页上线轻量下载官网（`www/` 纯静态双语自适应）；
+- **v0.2.8**：macOS 构建正式接入，通过 GitHub Actions 构建 Apple 芯片 (`arm64`) 与 Intel (`x64`) 镜像，下载页同步呈现三平台下载与芯片指引。
 
 **10/2 Review 修复（源码仍为 v0.2.1）**：修复连续切换项目时旧会话列表请求覆盖新范围的问题——范围变化立即作废旧请求并清空旧分页，侧栏按范围变化重新加载，首页刷新时暂停分页请求。Pi 的「本会话」浮窗和输入框指标统一将会话累计用量转成每轮增量后计算 tokens、费用、缓存率、输出速度与缓存趋势；保留原始持久化记录及 Claude / Codex 的单轮口径。新增跨平台 `pnpm test:session-store`（在 `apps/desktop` 下执行），51 项覆盖原有 store 回归、乱序返回/分页切换，以及累计与单轮用量计算。当前尚未发布软件，旧数据目录迁移不列为本轮阻塞项；本次不涉及安装包发布。
 
@@ -28,11 +40,11 @@
 
 **Git 状态（9/29）**：分支 `ui-refresh-v3`，v3 这批改动已提交为 `188b481`（原型与文档）+ `1a1d948`（功能 + mcode→mariocode 改名），之后又有 `03c5d5b` / `983d60d` 两个文档提交，以及 v0.2.1 的 `8350d7f`；`dbdab86` 之后共 65 个提交，都没推送（分支无远端），也还没合回 `master`。
 
-**版本（9/29）**：`v0.2.0` 已在本机打出安装包 `apps/desktop/release/MarioCode-0.2.0-x64.exe`（未发布）；`v0.2.1` 是它之后的修复，已通过 typecheck，**暂不打包、不发布**。
+**版本（10/06）**：当前版本 `v0.2.9`，已提交并打出 Windows 安装包 `apps/desktop/release/MarioCode-0.2.9-x64.exe`，待上传发布到更新服务器。
 
-仍需人工验收：TODO-005 在三个引擎的真实对话里调用（要模型额度）、真实图片模型出图；TODO-006 三端提示词一致性、TODO-007 / TODO-014 的运行时视觉检查、TODO-009 真实 Pi 会话、TODO-015 的真实系统代理和 Claude / Codex 端到端；TODO-019 / 020 真实调用与界面；TODO-022 / 023 / 025 真实对话里的图片、标签和缓存 / 速度数值；Pi 真实模型调用也还没验。`apps/desktop/release/` 里的 0.1.54 安装包是旧代码打的（自动更新指向上游 + 坏的 Pi host），已被 0.2.0 取代，可以删掉。本机打包用 `scripts\package-win.bat`（`--skip-build` 跳过构建），它会设好国内镜像并用 `scripts/fix-wincodesign.mjs` 绕过 winCodeSign 解压时的符号链接报错。
+仍需人工验收：TODO-005 在三个引擎的真实对话里调用（要模型额度）、真实图片模型出图；TODO-006 三端提示词一致性、TODO-007 / TODO-014 的运行时视觉检查、TODO-009 真实 Pi 会话、TODO-015 的真实系统代理和 Claude / Codex 端到端；TODO-019 / 020 真实调用与界面；TODO-022 / 023 / 025 真实对话里的图片、标签和缓存 / 速度数值；Pi 真实模型调用也还没验。本机打包用 `scripts\package-win.bat`（`--skip-build` 跳过构建），发布用 `pnpm --filter @mariocode/desktop run release:upload`。
 
-### 未完成清单（9/29）
+### 未完成清单（10/06）
 
 | 类别 | 条目 | 剩下什么 |
 |---|---|---|
@@ -42,13 +54,12 @@
 | | TODO-023 缓存率与速度（75%） | 计时写进 `TurnUsageRecord` 持久化（现在重开会话就没了）、首字延迟、OpenAI 桥 / Codex / Pi 缓存字段核对 |
 | | TODO-024 模型配置收尾（33%） | ② 密钥规则拍板（要你定）、③ 旧版专属配置的遗留数据怎么处理（要你定） |
 | | TODO-019 定时器 + 微信通知（90%）、TODO-020 技能市场（90%） | 只差真实使用验收 |
-| ⚠️ 发版前必做 | 旧数据目录迁移 | `%APPDATA%\Mcode` → `%APPDATA%\MarioCode`，否则老用户升级后数据"丢失"（0.2.0 安装包也还没做迁移） |
-| | v0.2.1 打包 / 发布 | 已提交 `8350d7f`；「切项目后会话列表为空」要在真 app 里复现验证；再用 `scripts\package-win.bat` 打包 |
-| ⏸ 等条件 | TODO-026 静默更新 + 强制更新 | 等 TODO-016 发布渠道 + 数据迁移；先定更新包放哪 |
+| ⚠️ 发布维护 | v0.2.9 上传发布 | 本地已打包完成，等待上传更新服务器与下载页同步 |
+| ⏸ 等条件 | TODO-027 静默更新 + 强制更新 | 等域名/HTTPS 配置；先定最低版本策略 |
 | ⚪ 可选 | 本地运行时探测 | 新装版找不到本机 claude / pi 是因为本机没全局安装（应用已自动下载托管运行时）；可再加探 `~\.local\bin\claude.exe` 和自定义 npm prefix |
 | ⚪ 未开始 | TODO-021 出错后自动「继续」 | 方案已写，待动工 |
 | | TODO-008 DeepSeek Harness 第四个 Provider | 先做 1–2 天可行性验证 |
-| ⏸ 等条件 | TODO-010 / 011 / 012 / 016 / 017 / 018 | 各自的解除条件见表格备注 |
+| ⏸ 等条件 | TODO-010 / 011 / 012 / 017 / 018 | 各自的解除条件见表格备注 |
 
 回归脚本（在 `apps/desktop` 下跑）：`pnpm test:sync-load`（TODO-004，同步产物被三个引擎加载）、`pnpm test:web-tools`（TODO-005，真实搜索 / 读网页 + 本地假图片接口）、`pnpm test:builtin-tools-electron`（TODO-005，先 `pnpm build`，真 app 设置页截图）。`pnpm test:pi-host` 自动检查可用的项目 / 全局 Pi 运行时，也可传入额外运行时路径；包含本地服务上的 Chat / Messages / Responses 请求及跨接口续聊。
 
@@ -78,7 +89,7 @@
 | `TODO-010` | 聊天流渲染性能：行高估值与流式重算（原 TODO-007 第 5、6 项） | 0% | ⏸ 暂定 | - | P1。**解除条件：把应用跑起来采一次数**。两项都按「先量后改」的口径走，而行高分布与分组耗时都拿不到静态答案。文档里备了一段开发者工具即贴即用的行高统计脚本；分组耗时要现加 dev-only `performance.mark`。没有真实数字之前不要改 `estimatedItemSize`，也不要动分组切点——切错会让聊天记录错乱 |
 | `TODO-011` | 文件树 / 会话树拍平虚拟化（原 TODO-007 第 7 项第二步） | 0% | ⏸ 暂定 | - | P3。**解除条件：出现真实的大仓库卡顿反馈**。第一步（删除确认框提到树根）已随 TODO-007 落地；第二步要把递归树拍平交给 LegendList，连带重写展开折叠、键盘导航、拖拽与右键菜单的掌控，估 3～5 天，属于「有人抱怨再做」的那类 |
 | `TODO-012` | 前端 lint 基建：从零搭 ESLint + 禁止 JSX 文本出现 CJK | 0% | ⏸ 暂定 | - | P2。**解除条件：确认要不要引入这套工具链**。本仓库根本没装 ESLint——两个包都没有 `lint` script，也没有任何 `eslint.config.*` / `.eslintrc*`，`turbo.json` 里的 `lint` task 一直在跑空（源码里残留的 `// eslint-disable-next-line` 是上游留下的）。TODO-007 第 3 项欠的那条「挡中文回流」规则要落地，得先把这套装起来 |
-| `TODO-016` | 自有发布渠道（重开自动更新） | 90% | 🟡 已上线（待真机升级验收） | `d3e8599`（先关掉）→ v0.2.5 | 2026-10-05 改为**自建更新服务器**而不是 GitHub Release：`publish` = generic `http://39.109.58.6:3458/`（亿联云，nginx 容器 `mariocode-updates`），`AUTO_UPDATE_ENABLED = true`；发布用 `pnpm --filter @mariocode/desktop run release:upload`（校验 + 流式上传 + latest.yml 最后传 + 公网复核），细节见 AGENTS.md「自动更新」节。appId / 数据目录早已与 M Code 分开。**剩下**：装好的 0.2.5 真机收到 0.2.6 并完成安装（需要发下一个版本才能验）；有域名后改 HTTPS；mac 包未上服务器 |
+| `TODO-016` | 自有发布渠道（重开自动更新） | 100% | � 已完成 | `d3e8599`（先关掉）→ v0.2.5–v0.2.8 | 2026-10-05 改为**自建更新服务器**：`publish` = generic `http://39.109.58.6:3458/`（亿联云，nginx 容器 `mariocode-updates`），`AUTO_UPDATE_ENABLED = true`；发布用 `pnpm --filter @mariocode/desktop run release:upload`（校验 + 流式断点续传 + latest.yml 最后传 + 公网复核）；macOS 由 GitHub Actions 打包后通过 `--mac` 自动镜像至服务器，下载页与应用内更新已全链路打通。 |
 | `TODO-017` | 同步上游 M Code 新功能（v0.2.3–v0.2.5） | 0% | ⏸ 暂定 | - | **解除条件：拍板合不合、合哪些**。分叉点 `130fd90`（v0.2.2）之后上游又有 39 个提交、动了 168 个文件：Agent / 任务编排、定时任务 v2（和本仓库 TODO-001 重叠）、终端并入右栏 + 文件树分栏、Git 面板实时 diff、右栏会话级页签、外部文件拖进输入框、后台 bash 任务列表、Agent 启动服务的端口扫描、控制中心样式的活动区，以及两个社区修复（Codex 第三方模型上下文窗口、终端 Shell 路径设置反馈）。两边都大改过界面，建议先拉下来列冲突清单再挑 |
 | `TODO-018` | 用户账户 + Token 计费（内嵌官方模型服务） | 0% | ⏸ 暂定 | - | 2026-09-26 立项，具体做法之后再定。用户在 MarioCode 里登录，使用你提供的模型服务，按 token 扣费；计费在服务端网关算，客户端只负责登录、拿到用户 Key、自动配成「MarioCode 官方」共享提供商。**解除条件：拍板规划详情里的 5 个问题**（「新的 tool」指什么、用户在国内还是海外、卖哪些模型、收费方式、是否保留自带 Key）。初步规划见下方规划详情 TODO-018 |
 

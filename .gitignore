@@ -9,6 +9,7 @@ out/
 
 # Electron
 release/
+release-build/
 
 # OS files
 .DS_Store

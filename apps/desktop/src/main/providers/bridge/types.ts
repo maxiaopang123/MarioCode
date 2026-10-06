@@ -226,7 +226,8 @@ export type AnthropicSseEvent =
   | { type: "content_block_delta"; index: number; delta: AnthropicContentBlockDelta }
   | { type: "content_block_stop"; index: number }
   | { type: "message_delta"; delta: { stop_reason: string; stop_sequence: null }; usage: AnthropicUsage }
-  | { type: "message_stop" };
+  | { type: "message_stop" }
+  | { type: "error"; error: { type: string; message: string } };
 
 /** The upstream endpoint the bridge forwards to. Extracted from an ApiConfig —
  *  only the fields the bridge needs; everything else (model list, selected
@@ -316,6 +317,8 @@ export interface ResponsesSseChunk {
   response_id?: string;
   output_index?: number;
   call_id?: string;
+  item_id?: string;
+  arguments?: string;
   delta?: string;
   error?: {
     message?: string;
@@ -335,10 +338,21 @@ export interface ResponsesSseChunk {
     id?: string;
     model?: string;
     status?: string;
+    /** Terminal failure details on `response.failed`. */
+    error?: {
+      message?: string;
+      type?: string;
+      code?: string;
+    };
     usage?: {
       input_tokens?: number;
       output_tokens?: number;
       total_tokens?: number;
+      /** Standard Responses field (note the `s` in `tokens`). */
+      input_tokens_details?: {
+        cached_tokens?: number;
+      };
+      /** Legacy single-word spelling, kept for gateway compatibility. */
       input_token_details?: {
         cached_tokens?: number;
       };
@@ -351,6 +365,9 @@ export interface ResponsesSseChunk {
     input_tokens?: number;
     output_tokens?: number;
     total_tokens?: number;
+    input_tokens_details?: {
+      cached_tokens?: number;
+    };
     input_token_details?: {
       cached_tokens?: number;
     };

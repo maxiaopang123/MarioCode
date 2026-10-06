@@ -1,3 +1,4 @@
+export const session = { fromPartition: () => { throw new Error("Unexpected Electron network access in smoke test"); } };
 let available = true;
 export function setEncryptionAvailable(value: boolean): void { available = value; }
 export const safeStorage = {

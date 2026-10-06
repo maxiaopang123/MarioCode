@@ -2,6 +2,8 @@ import { sharedRuntimeId, SharedProviderSaveInputSchema, resolveSharedModelProto
 import { anthropicToOpenAI, translateReasoningEffort } from "@main/providers/bridge/requestTranslator.js";
 import { anthropicToResponses } from "@main/providers/bridge/responsesRequestTranslator.js";
 import { ResponsesToAnthropicSse } from "@main/providers/bridge/responsesResponseTranslator.js";
+import { CodexResponsesStream, translateCodexRequest, object, type WireObject } from "@main/providers/codex-sdk/codexResponsesTranslation.js";
+import { startCodexResponsesBridge } from "@main/providers/codex-sdk/codexResponsesBridge.js";
 import { ContextPolicySchema, parseContextPolicy, resolveContextPolicy } from "@contracts/contextPolicy.js";
 import { readContextPolicy } from "@main/lib/contextPolicy.js";
 import { SettingRepo } from "./stub-db.js";
@@ -61,9 +63,9 @@ check("unpacked host is not unpacked twice", unpackPiHostPath("/App/resources/ap
 for (const order of [["anthropic", "responses", "chat-completions"], ["responses", "chat-completions", "anthropic"]] as const) {
   check("Pi routing is independent of checkbox order", resolveSharedModelProtocol("pi", order, order) === "chat-completions");
   check("Claude routing agrees with Pi", resolveSharedModelProtocol("claude", order, order) === "chat-completions");
-  check("Codex always selects Responses", resolveSharedModelProtocol("codex", order, order) === "responses");
+  check("Codex prefers Responses", resolveSharedModelProtocol("codex", order, order) === "responses");
 }
-check("Codex rejects a chat-only model on a Responses provider", resolveSharedModelProtocol("codex", base.protocols, ["chat-completions"]) === undefined);
+check("Codex bridges chat-only models", resolveSharedModelProtocol("codex", base.protocols, ["chat-completions"]) === "chat-completions");
 check("Pi can select Messages-only models", resolveSharedModelProtocol("pi", base.protocols, ["anthropic"]) === "anthropic");
 check("Claude can select Responses-only models", resolveSharedModelProtocol("claude", base.protocols, ["responses"]) === "responses");
 check("disabled provider interface cannot be routed", resolveSharedModelProtocol("pi", ["anthropic"], ["responses"]) === undefined);
@@ -74,7 +76,7 @@ check("Pi Responses preserves versioned API base", normalizePiRegisteredModel({ 
 const saved = SharedProviderStore.save({ ...base, apiKey: "TEST_SECRET_DO_NOT_PERSIST" });
 check("saving freezes inherited model interfaces", JSON.stringify(saved[0]!.models[0]!.interfaces) === JSON.stringify(base.protocols));
 check("duplicate per-model interfaces are rejected", !SharedProviderSaveInputSchema.safeParse({ ...base, models: [{ id: "duplicates", interfaces: ["responses", "responses"] }] }).success);
-check("Codex cannot enable a chat-only endpoint", !SharedProviderSaveInputSchema.safeParse({ ...base, protocols: ["chat-completions"], endpointOverrides: {}, enabledAgents: ["codex"] }).success);
+check("Codex can enable a chat-only endpoint", SharedProviderSaveInputSchema.safeParse({ ...base, protocols: ["chat-completions"], endpointOverrides: {}, enabledAgents: ["codex"] }).success);
 check("URL query secrets cannot enter public metadata", !SharedProviderSaveInputSchema.safeParse({ ...base, baseUrl: "https://example.invalid/v1?api_key=secret" }).success);
 check("duplicate model IDs are rejected", !SharedProviderSaveInputSchema.safeParse({ ...base, models: [{ id: "same" }, { id: "same" }] }).success);
 check("new provider is saved", saved.length === 1 && saved[0]!.hasApiKey);
@@ -110,7 +112,7 @@ const scopedClaude = CustomModelStore.listPublic().find((provider) => provider.i
 const scopedCodex = (await CodexModelsStore.listPublic()).find((provider) => provider.id === runtimeId);
 const scopedPi = (await PiModelsStore.listPublic())[runtimeId];
 check("Claude receives models with compatible interfaces including Responses", JSON.stringify(scopedClaude?.models.map((model) => model.id)) === JSON.stringify(["chat-model", "responses-model"]));
-check("Codex only receives models with a Responses interface", JSON.stringify(scopedCodex?.models.map((model) => model.id)) === JSON.stringify(["responses-model"]));
+check("Codex receives compatible models", JSON.stringify(scopedCodex?.models.map((model) => model.id)) === JSON.stringify(["chat-model", "responses-model"]));
 check("Pi keeps the interface on each projected model", scopedPi?.models?.find((model) => model.id === "responses-model")?.api === "openai-responses");
 SharedProviderStore.save({ ...base, id: saved[0]!.id, apiKey: "TEST_SECRET_DO_NOT_PERSIST" });
 let legacyWriteRefused = false;
@@ -520,7 +522,145 @@ check("ResponsesToAnthropicSse deduplicates function calls by call_id", !dupEven
 const errorTranslator = new ResponsesToAnthropicSse();
 const errorEvents = errorTranslator.feed({ error: { message: "model overloaded", type: "rate_limit" } }, "response.error");
 const errorFinish = errorTranslator.finish();
-check("ResponsesToAnthropicSse surfaces upstream errors as text_delta", errorEvents.some((e) => e.type === "content_block_delta" && e.delta.type === "text_delta" && e.delta.text.includes("model overloaded")));
-check("ResponsesToAnthropicSse maps upstream error to stop_sequence", errorFinish.some((e) => e.type === "message_delta" && e.delta.stop_reason === "stop_sequence"));
+check("ResponsesToAnthropicSse emits actual upstream error", errorEvents.some((e) => e.type === "error" && e.error.message === "model overloaded"));
+check("ResponsesToAnthropicSse never completes an upstream error", errorFinish.length === 0);
+
+// Full standard sequence: added → args.delta → args.done → output_item.done → completed.
+// The tool block must be created exactly once, with arguments fed exactly once.
+const fullSeq = new ResponsesToAnthropicSse();
+fullSeq.feed({ response: { model: "t" } }, "response.created");
+const fe1 = fullSeq.feed({ item: { type: "function_call", id: "fc_1", call_id: "call_1", name: "read_file" }, output_index: 0 }, "response.output_item.added");
+const fe2 = fullSeq.feed({ item_id: "fc_1", delta: '{"path":' }, "response.function_call_arguments.delta");
+const fe2b = fullSeq.feed({ item_id: "fc_1", delta: '"a.txt"}' }, "response.function_call_arguments.delta");
+const fe3 = fullSeq.feed({ item_id: "fc_1", arguments: '{"path":"a.txt"}' }, "response.function_call_arguments.done");
+const fe4 = fullSeq.feed({ output_index: 0, item: { type: "function_call", id: "fc_1", call_id: "call_1", name: "read_file", arguments: '{"path":"a.txt"}' } }, "response.output_item.done");
+const fullFinish = fullSeq.finish();
+const allEv = [...fe1, ...fe2, ...fe2b, ...fe3, ...fe4, ...fullFinish];
+const toolStarts = allEv.filter((e) => e.type === "content_block_start" && e.content_block.type === "tool_use");
+const argDeltas = allEv.filter((e) => e.type === "content_block_delta" && e.delta.type === "input_json_delta");
+check("standard done sequence creates exactly one tool_use block", toolStarts.length === 1 && toolStarts[0]!.content_block.id === "call_1");
+check("standard done sequence reconstructs exact arguments without repeats", argDeltas.map((e) => e.delta.partial_json).join("") === '{"path":"a.txt"}');
+
+// response.failed must not be swallowed into a normal end_turn.
+const failedSeq = new ResponsesToAnthropicSse();
+failedSeq.feed({ response: { model: "t" } }, "response.created");
+failedSeq.feed({ delta: "partial" }, "response.output_text.delta");
+const failedEvents = failedSeq.feed({ response: { status: "failed", error: { message: "upstream failed" } } }, "response.failed");
+const failedFinish = failedSeq.finish();
+check("response.failed emits error without message_stop",
+  failedEvents.some((e) => e.type === "error" && e.error.message === "upstream failed") && failedFinish.length === 0);
+
+// Standard usage field input_tokens_details (with the "s").
+const stdUsage = new ResponsesToAnthropicSse();
+stdUsage.feed({ response: { model: "t" } }, "response.created");
+stdUsage.feed({ delta: "ok" }, "response.output_text.delta");
+stdUsage.feed({ response: { status: "completed", usage: { input_tokens: 1500, output_tokens: 300, input_tokens_details: { cached_tokens: 1200 } } } }, "response.completed");
+const stdUsageFinish = stdUsage.finish().find((e) => e.type === "message_delta");
+check("standard input_tokens_details cached_tokens is honored",
+  stdUsageFinish?.type === "message_delta" &&
+  stdUsageFinish.usage.cache_read_input_tokens === 1200 &&
+  stdUsageFinish.usage.input_tokens === 300);
+
+// Codex keeps Responses on the wire while translating full tool history upstream.
+const codexInput = {
+  instructions: "system", input: [
+    { role: "user", content: [{ type: "input_text", text: "inspect" }, { type: "input_image", image_url: "data:image/png;base64,YQ==" }] },
+    { type: "function_call", call_id: "c1", name: "read", arguments: '{"path":"a"}' },
+    { type: "function_call_output", call_id: "c1", output: "file contents" },
+    { type: "custom_tool_call", call_id: "c2", name: "patch", input: "raw patch" },
+    { type: "custom_tool_call_output", call_id: "c2", output: "applied" },
+  ], tools: [{ type: "function", name: "read", parameters: { type: "object" } }, { type: "custom", name: "patch", format: { type: "text" } }],
+};
+for (const protocol of ["chat-completions", "anthropic"] as const) {
+  const translated = translateCodexRequest(codexInput, protocol, "upstream", 100);
+  const encoded = JSON.stringify(translated.body);
+  check(`Codex ${protocol} preserves text, image and tool results`, encoded.includes("file contents") && encoded.includes("raw patch") && encoded.includes("applied") && encoded.includes("YQ=="));
+  check(`Codex ${protocol} maps custom tools explicitly`, translated.customTools.has("patch") && encoded.includes('"input"'));
+  const events: WireObject[] = [];
+  const stream = new CodexResponsesStream(protocol, "upstream", translated.customTools, (event) => events.push(structuredClone(event)));
+  stream.start();
+  if (protocol === "chat-completions") {
+    stream.feed(JSON.stringify({ choices: [{ delta: { content: "ok", tool_calls: [{ index: 0, id: "c1", function: { name: "read", arguments: '{"path":' } }] } }] }));
+    stream.feed(JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"a"}' } }, { index: 1, id: "c2", function: { name: "patch", arguments: '{"input":"raw patch"}' } }] }, finish_reason: "tool_calls" }] }));
+    stream.feed(JSON.stringify({ choices: [], usage: { prompt_tokens: 12, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 3 } } }));
+    stream.feed("[DONE]");
+  } else {
+    stream.feed(JSON.stringify({ type: "message_start", message: { usage: { input_tokens: 9, cache_read_input_tokens: 3 } } }));
+    stream.feed(JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } }));
+    stream.feed(JSON.stringify({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "c1", name: "read", input: {} } }));
+    stream.feed(JSON.stringify({ type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '{"path":"a"}' } }));
+    stream.feed(JSON.stringify({ type: "content_block_start", index: 2, content_block: { type: "tool_use", id: "c2", name: "patch", input: {} } }));
+    stream.feed(JSON.stringify({ type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: '{"input":"raw patch"}' } }));
+    stream.feed(JSON.stringify({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 5 } }));
+    stream.feed(JSON.stringify({ type: "message_stop" }));
+  }
+  stream.finish();
+  const args = events.filter((event) => event.type === "response.function_call_arguments.delta").map((event) => event.delta).join("");
+  check(`Codex ${protocol} reconstructs exact streamed function arguments`, args === '{"path":"a"}');
+  check(`Codex ${protocol} emits custom input and terminal usage`, events.some((event) => event.type === "response.custom_tool_call_input.done" && event.input === "raw patch") && events.some((event) => event.type === "response.completed" && object(object(event.response).usage).total_tokens === 17));
+  const completion = object(events.at(-1)!.response);
+  const replay = translateCodexRequest({ ...codexInput, input: [...codexInput.input, ...(completion.output as unknown[]), { type: "custom_tool_call_output", call_id: "c2", output: "done" }] }, protocol, "upstream");
+  check(`Codex ${protocol} output items can be replayed`, JSON.stringify(replay.body).includes("done"));
+}
+let rejectedTool = false;
+try { translateCodexRequest({ input: [], tools: [{ type: "web_search" }] }, "chat-completions", "m"); } catch { rejectedTool = true; }
+check("Codex rejects unsupported tools rather than dropping them", rejectedTool);
+const disconnectedEvents: WireObject[] = [];
+const disconnectedStream = new CodexResponsesStream("chat-completions", "m", new Set(), (event) => disconnectedEvents.push(event));
+disconnectedStream.start();
+let disconnected = false;
+try { disconnectedStream.finish(); } catch (error) { disconnected = true; disconnectedStream.fail(error); }
+check("Codex clean EOF without terminal marker is a failure", disconnected && disconnectedEvents.at(-1)?.type === "response.failed" && !disconnectedEvents.some((event) => event.type === "response.completed"));
+
+let upstreamCalls = 0;
+const bridge = await startCodexResponsesBridge({ protocol: "chat-completions", baseUrl: "https://example.invalid/v1", apiKey: "UPSTREAM_TEST_KEY", model: "m", sessionId: "test" }, async (_url, init) => {
+  upstreamCalls++;
+  check("Codex loopback token is not forwarded upstream", new Headers(init?.headers).get("authorization") === "Bearer UPSTREAM_TEST_KEY");
+  return new Response('data: {"choices":[{"delta":{"content":"hello"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { "content-type": "text/event-stream" } });
+});
+try {
+  const endpoint = `${bridge.localUrl}/responses`;
+  check("Codex bridge rejects unauthenticated loopback requests", (await fetch(endpoint, { method: "POST", body: "{}" })).status === 401 && upstreamCalls === 0);
+  const headers = { Authorization: `Bearer ${bridge.routeToken}`, "Content-Type": "application/json" };
+  check("Codex bridge does not fabricate compact success", (await fetch(`${endpoint}/compact`, { method: "POST", headers, body: "{}" })).status === 400);
+  const result = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ input: "hello" }) });
+  const sse = await result.text();
+  check("Codex loopback serves Responses SSE", result.ok && sse.includes("response.output_text.delta") && sse.includes("response.completed"));
+} finally { bridge.close(); }
+let timeoutAborted = false;
+const timeoutBridge = await startCodexResponsesBridge({ protocol: "anthropic", baseUrl: "https://example.invalid", apiKey: "TEST", model: "m", sessionId: "test", timeoutMs: 20 }, async (_url, init) => {
+  const signal = init?.signal;
+  return new Promise<Response>((_resolve, reject) => {
+    const abort = () => { timeoutAborted = true; reject(new Error("aborted")); };
+    if (signal?.aborted) abort(); else signal?.addEventListener("abort", abort, { once: true });
+  });
+});
+try {
+  const result = await fetch(`${timeoutBridge.localUrl}/responses`, { method: "POST", headers: { Authorization: `Bearer ${timeoutBridge.routeToken}` }, body: JSON.stringify({ input: "hello" }) });
+  check("Codex bridge timeout aborts the upstream request", result.status === 502 && timeoutAborted);
+} finally { timeoutBridge.close(); }
+
+const failedBridge = await startCodexResponsesBridge({ protocol: "chat-completions", baseUrl: "https://example.invalid", apiKey: "TEST", model: "m", sessionId: "test" }, async () => new Response('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n', { headers: { "content-type": "text/event-stream" } }));
+try {
+  const result = await fetch(`${failedBridge.localUrl}/responses`, { method: "POST", headers: { Authorization: `Bearer ${failedBridge.routeToken}` }, body: JSON.stringify({ input: "hello" }) });
+  const sse = await result.text();
+  check("Codex HTTP bridge emits failed instead of completed on truncated SSE", sse.includes("response.failed") && !sse.includes("response.completed"));
+} finally { failedBridge.close(); }
+let cancelledUpstream = false;
+const cancelBridge = await startCodexResponsesBridge({ protocol: "chat-completions", baseUrl: "https://example.invalid", apiKey: "TEST", model: "m", sessionId: "test" }, async (_url, init) => {
+  init?.signal?.addEventListener("abort", () => { cancelledUpstream = true; }, { once: true });
+  return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+    controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'));
+    init?.signal?.addEventListener("abort", () => controller.error(new Error("aborted")), { once: true });
+  } }), { headers: { "content-type": "text/event-stream" } });
+});
+try {
+  const result = await fetch(`${cancelBridge.localUrl}/responses`, { method: "POST", headers: { Authorization: `Bearer ${cancelBridge.routeToken}` }, body: JSON.stringify({ input: "hello" }) });
+  const reader = result.body!.getReader();
+  await reader.read();
+  await reader.cancel();
+  for (let attempt = 0; attempt < 20 && !cancelledUpstream; attempt++) await new Promise((resolve) => setTimeout(resolve, 10));
+  check("Codex client cancellation aborts upstream", cancelledUpstream);
+} finally { cancelBridge.close(); }
 
 process.stdout.write(`shared-provider smoke passed (${checks} checks)\n`);

@@ -11,8 +11,8 @@
  * `env_key` field). Cleartext keys never touch disk or IPC.
  *
  * ⚠️ Codex only supports `wire_api = "responses"` (the Chat Completions wire
- * API is deprecated upstream). Endpoints must expose `/v1/responses` — MarioCode's
- * Claude-side custom models (chat-completions bridge) are NOT reusable here.
+ * API is deprecated upstream). Native Responses endpoints are preferred; shared
+ * Chat Completions and Anthropic Messages models use a per-turn local bridge.
  */
 
 /** One model entry under a provider. */
@@ -30,13 +30,16 @@ export interface CodexModelOption {
    *  windows never race on the shared config file. Omitted → codex's
    *  fallback metadata. */
   contextWindow?: number;
+  protocol?: "responses" | "chat-completions" | "anthropic";
+  baseUrl?: string;
+  maxTokens?: number;
 }
 
 /** Persisted shape of one provider entry (settings table, no secrets). */
 export interface CodexProviderConfig {
   /** Human display name. */
   name: string;
-  /** API endpoint base URL — must speak the OpenAI Responses API. */
+  /** Default Responses endpoint base URL; shared models may override protocol and endpoint. */
   baseUrl: string;
   /** Models offered by this provider (>= 1 required). */
   models: CodexModelOption[];

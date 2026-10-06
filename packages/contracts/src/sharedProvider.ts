@@ -95,7 +95,7 @@ export function resolveSharedModelInterfaces(
  * and Pi support Chat, Messages and Responses; Codex only speaks Responses. */
 const AGENT_PROTOCOLS: Record<SharedProviderAgent, readonly SharedProviderProtocol[]> = {
   claude: ["chat-completions", "anthropic", "responses"],
-  codex: ["responses"],
+  codex: ["responses", "chat-completions", "anthropic"],
   pi: ["chat-completions", "anthropic", "responses"],
 };
 

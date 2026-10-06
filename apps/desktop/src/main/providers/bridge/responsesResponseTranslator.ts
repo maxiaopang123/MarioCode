@@ -29,10 +29,16 @@ export class ResponsesToAnthropicSse {
   private openBlockKind: "text" | "tool_use" | "thinking" | undefined;
   private thinkSplitter = new ThinkTagSplitter();
   private nextIndex = 0;
-  /** Map: output_index / call_id → Anthropic block index. */
+  /** Map: output_index / call_id / item id → Anthropic block index. */
   private toolIndexMap = new Map<string | number, number>();
+  /** Tool blocks that already received their argument JSON (streamed deltas
+   *  or a complete payload). Guards against re-sending full arguments from
+   *  `function_call_arguments.done` / `output_item.done`. */
+  private toolArgumentsFed = new Set<number>();
   private hadToolUse = false;
   private capturedFinishReason: string | null = null;
+  /** Terminal upstream failure, emitted as an Anthropic error event. */
+  private capturedError: string | null = null;
   private usage: AnthropicUsage = {
     input_tokens: 0,
     output_tokens: 0,
@@ -111,6 +117,7 @@ export class ResponsesToAnthropicSse {
   /** Process one Responses SSE chunk/event → zero or more Anthropic events. */
   feed(chunk: ResponsesSseChunk, eventName?: string): AnthropicSseEvent[] {
     const events: AnthropicSseEvent[] = [];
+    if (this.capturedError) return events;
     const eventType = eventName ?? chunk.type ?? chunk.event;
 
     // First chunk emits message_start envelope
@@ -132,10 +139,13 @@ export class ResponsesToAnthropicSse {
       this.started = true;
     }
 
-    // Capture usage if present on chunk or response object
+    // Capture usage if present on chunk or response object. Standard Responses
+    // field is `input_tokens_details` (with the "s"); keep the single-word
+    // spelling as a gateway-compatibility fallback.
     const u = chunk.usage ?? chunk.response?.usage;
     if (u) {
       const cached =
+        u.input_tokens_details?.cached_tokens ??
         u.input_token_details?.cached_tokens ??
         u.prompt_tokens_details?.cached_tokens ??
         0;
@@ -147,51 +157,76 @@ export class ResponsesToAnthropicSse {
       };
     }
 
-    // 6. Upstream error events — surface as a proper error stop, not end_turn.
-    if (chunk.error) {
-      const msg = chunk.error.message ?? "upstream error";
-      this.capturedFinishReason = `error:${msg}`;
-      // Close any open block, then open a fresh text block for the error.
+    // 6. Upstream error events (top-level `error` frame) — surface as a proper
+    // error stop, not a normal end. `response.failed` additionally carries the
+    // message on `response.error`.
+    const errMsg = chunk.error?.message ?? chunk.response?.error?.message;
+    if (errMsg || eventType === "response.failed" || eventType === "error" || eventType === "response.error" || chunk.response?.status === "failed" || chunk.response?.status === "cancelled") {
+      this.capturedError = errMsg ?? `Upstream response ${chunk.response?.status ?? "failed"}`;
+      this.capturedFinishReason = "failed";
       this.closeOpenBlock(events);
-      const errorBlockIndex = this.openTextBlock(events);
-      events.push({
-        type: "content_block_delta",
-        index: errorBlockIndex,
-        delta: { type: "text_delta", text: `[Upstream Error] ${msg}` },
-      });
+      events.push({ type: "error", error: { type: "api_error", message: this.capturedError } });
+      return events;
     }
 
-    // 1. New function call item added (deduplicated by call_id)
-    if (
-      eventType === "response.output_item.added" ||
-      (chunk.item && (chunk.item.type === "function_call" || chunk.item.call_id))
-    ) {
-      const item = chunk.item;
-      if (item && (item.type === "function_call" || item.call_id)) {
-        const callId = item.call_id ?? item.id ?? `call_${this.nextIndex}`;
-        // Dedup: if this call_id was already mapped to a block, skip re-creating it.
-        const existing = this.toolIndexMap.get(callId);
-        if (existing !== undefined) {
-          // Already created — nothing to do.
-        } else {
-          const name = item.name ?? "";
-          const blockIdx = this.openToolBlock(events, callId, name);
-          this.toolIndexMap.set(callId, blockIdx);
-          if (chunk.output_index !== undefined) {
-            this.toolIndexMap.set(chunk.output_index, blockIdx);
-          }
-          if (item.id) {
-            this.toolIndexMap.set(item.id, blockIdx);
-          }
-          // If arguments are already supplied in the item
-          if (typeof item.arguments === "string" && item.arguments.length > 0) {
-            events.push({
-              type: "content_block_delta",
-              index: blockIdx,
-              delta: { type: "input_json_delta", partial_json: item.arguments },
-            });
+    // 1. New function call item added. Tool blocks are created ONLY on
+    // `response.output_item.added` (the single event that carries the item's
+    // name/call_id). `output_item.done` and generic no-event-type payloads
+    // must never re-create an existing call — that would produce duplicate
+    // tool_use blocks for the same upstream function call.
+    if (eventType === "response.output_item.added" && chunk.item && chunk.item.type === "function_call") {
+      const item = chunk.item as { id?: string; call_id?: string; name?: string; arguments?: string };
+      const callId = item.call_id ?? item.id ?? `call_${this.nextIndex}`;
+      if (this.toolIndexMap.has(callId)) {
+        /* already created by a prior added event — ignore duplicate */
+      } else {
+        const name = item.name ?? "";
+        const blockIdx = this.openToolBlock(events, callId, name);
+        this.toolIndexMap.set(callId, blockIdx);
+        if (chunk.output_index !== undefined) this.toolIndexMap.set(chunk.output_index, blockIdx);
+        if (item.id) this.toolIndexMap.set(item.id, blockIdx);
+        // added events may already carry the complete arguments (some
+        // gateways buffer the call before streaming deltas)
+        if (typeof item.arguments === "string" && item.arguments.length > 0) {
+          events.push({
+            type: "content_block_delta",
+            index: blockIdx,
+            delta: { type: "input_json_delta", partial_json: item.arguments },
+          });
+          this.toolArgumentsFed.add(blockIdx);
+        }
+      }
+    }
+
+    // 1b. `response.output_item.done` carries the terminal item payload. A
+    // function_call here must NEVER re-create the block (the `added` event
+    // already did) — that would duplicate the same tool_use. Only complete an
+    // existing call, and bridge the (rare) gateway that skips
+    // `function_call_arguments.done` by feeding the final arguments once.
+    if (eventType === "response.output_item.done" && chunk.item && chunk.item.type === "function_call") {
+      const item = chunk.item as { id?: string; call_id?: string; name?: string; arguments?: string };
+      const callId = item.call_id ?? item.id;
+      const existing = callId !== undefined ? this.toolIndexMap.get(callId) : undefined;
+      if (existing === undefined) {
+        // Abnormal stream (no prior added event) — create so the call is not lost.
+        const fallbackId = callId ?? `call_${this.nextIndex}`;
+        if (!this.toolIndexMap.has(fallbackId)) {
+          const blockIdx = this.openToolBlock(events, fallbackId, item.name ?? "");
+          this.toolIndexMap.set(fallbackId, blockIdx);
+          if (chunk.output_index !== undefined) this.toolIndexMap.set(chunk.output_index, blockIdx);
+          if (item.id) this.toolIndexMap.set(item.id, blockIdx);
+          if (item.arguments) {
+            events.push({ type: "content_block_delta", index: blockIdx, delta: { type: "input_json_delta", partial_json: item.arguments } });
+            this.toolArgumentsFed.add(blockIdx);
           }
         }
+      } else if (!this.toolArgumentsFed.has(existing) && typeof item.arguments === "string" && item.arguments.length > 0) {
+        events.push({
+          type: "content_block_delta",
+          index: existing,
+          delta: { type: "input_json_delta", partial_json: item.arguments },
+        });
+        this.toolArgumentsFed.add(existing);
       }
     }
 
@@ -221,7 +256,9 @@ export class ResponsesToAnthropicSse {
       }
     }
 
-    // 4. Function call arguments delta
+    // 4. Function call arguments: streaming deltas and the terminal
+    // `function_call_arguments.done` payload (the exact `arguments` the item's
+    // `output_item.done` will later repeat — fed once).
     if (
       eventType === "response.function_call_arguments.delta" ||
       eventType === "response.function_call.arguments.delta"
@@ -231,7 +268,8 @@ export class ResponsesToAnthropicSse {
         const key =
           (chunk.output_index !== undefined ? this.toolIndexMap.get(chunk.output_index) : undefined) ??
           (chunk.call_id ? this.toolIndexMap.get(chunk.call_id) : undefined) ??
-          this.openBlockIndex;
+          (chunk.item_id ? this.toolIndexMap.get(chunk.item_id) : undefined) ??
+          (this.openBlockKind === "tool_use" ? this.openBlockIndex : NO_BLOCK);
 
         if (key !== undefined && key !== NO_BLOCK) {
           events.push({
@@ -239,6 +277,25 @@ export class ResponsesToAnthropicSse {
             index: key,
             delta: { type: "input_json_delta", partial_json: delta },
           });
+          this.toolArgumentsFed.add(key);
+        }
+      }
+    }
+    if (eventType === "response.function_call_arguments.done") {
+      const args = chunk.arguments ?? chunk.delta ?? chunk.item?.arguments;
+      if (typeof args === "string" && args.length > 0) {
+        const key =
+          (chunk.output_index !== undefined ? this.toolIndexMap.get(chunk.output_index) : undefined) ??
+          (chunk.item?.call_id ? this.toolIndexMap.get(chunk.item.call_id) : undefined) ??
+          (chunk.item_id ? this.toolIndexMap.get(chunk.item_id) : undefined) ??
+          (this.openBlockKind === "tool_use" ? this.openBlockIndex : NO_BLOCK);
+        if (key !== undefined && key !== NO_BLOCK && !this.toolArgumentsFed.has(key)) {
+          events.push({
+            type: "content_block_delta",
+            index: key,
+            delta: { type: "input_json_delta", partial_json: args },
+          });
+          this.toolArgumentsFed.add(key);
         }
       }
     }
@@ -255,26 +312,12 @@ export class ResponsesToAnthropicSse {
       }
     }
 
-    // 6. Upstream error events — surface as a proper error stop, not end_turn.
-    if (chunk.error) {
-      const msg = chunk.error.message ?? "upstream error";
-      this.capturedFinishReason = `error:${msg}`;
-      // Close any open block, then open a fresh text block for the error.
-      this.closeOpenBlock(events);
-      const errorBlockIndex = this.openTextBlock(events);
-      events.push({
-        type: "content_block_delta",
-        index: errorBlockIndex,
-        delta: { type: "text_delta", text: `[Upstream Error] ${msg}` },
-      });
-    }
-
     return events;
   }
 
   private mapStopReason(captured: string | null): string {
     if (captured?.startsWith("error:")) return "stop_sequence";
-    if (this.hadToolUse) return "tool_use";
+    if (this.hadToolUse && captured !== "failed") return "tool_use";
     if (!captured) return "end_turn";
     switch (captured) {
       case "completed":
@@ -294,6 +337,7 @@ export class ResponsesToAnthropicSse {
   /** Close out the message after the stream ends. */
   finish(stopReason?: string | null): AnthropicSseEvent[] {
     const events: AnthropicSseEvent[] = [];
+    if (this.capturedError) return events;
     if (!this.started) {
       events.push({
         type: "message_start",

@@ -69,7 +69,7 @@ export const en = {
   "settings.shared.protocols": "Protocols actually supported by this service",
   "settings.shared.protocolHint": "Select only supported interfaces. Saving validates configuration locally, sends no requests, and does not certify tool-call compatibility.",
   "settings.shared.agents": "Enabled agents",
-  "settings.shared.compatibilityHint": "Each engine needs a compatible model. Claude prefers Chat, then Messages; Pi prefers Chat, then Messages, then Responses. Codex requires Responses.",
+  "settings.shared.compatibilityHint": "Each engine needs a compatible model. Claude and Pi prefer Chat, then Messages, then Responses. Codex prefers native Responses, then Chat and Messages through a local bridge.",
   "settings.shared.agentNeedsModel": "An enabled engine has no compatible model. Select interfaces the model actually supports, or disable that engine before saving.",
   "settings.shared.modelRoute": "{agent}: {protocol}",
   "settings.shared.unavailable": "Unavailable",

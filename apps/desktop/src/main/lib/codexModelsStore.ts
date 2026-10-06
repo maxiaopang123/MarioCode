@@ -1,6 +1,6 @@
 /**
- * Codex model-provider store — manages the user's third-party Responses-API
- * endpoint configs that drive the Codex harness.
+ * Codex model-provider store — manages native Responses endpoints and shared
+ * models routed through the per-turn Chat/Messages bridge.
  *
  * ## Storage layout
  *   - settings key `codexProviders`  : JSON array of CodexProviderConfig +
@@ -84,17 +84,23 @@ function writeKeyMap(map: KeyMap): void {
 
 function sharedCodexProviders(): StoredProvider[] {
   return SharedProviderStore.listPublic()
-    .filter((provider) => provider.enabledAgents.includes("codex") && provider.protocols.includes("responses"))
+    .filter((provider) => provider.enabledAgents.includes("codex"))
     .map((provider) => ({
       id: sharedRuntimeId(provider.id),
       name: `${provider.name}（共享）`,
-      baseUrl: SharedProviderStore.endpointUrl(provider, "responses"),
-      models: provider.models.filter((model) => resolveSharedModelProtocol("codex", provider.protocols, model.interfaces) === "responses").map((model) => ({
-        id: model.id,
-        ...(model.label ? { label: model.label } : {}),
-        ...(typeof model.contextWindow === "number" ? { contextWindow: model.contextWindow } : {}),
-      })),
-    }));
+      baseUrl: provider.endpointOverrides?.responses ?? provider.baseUrl,
+      models: provider.models.flatMap((model) => {
+        const protocol = resolveSharedModelProtocol("codex", provider.protocols, model.interfaces);
+        return protocol ? [{
+          id: model.id,
+          protocol,
+          baseUrl: SharedProviderStore.endpointUrl(provider, protocol),
+          ...(model.label ? { label: model.label } : {}),
+          ...(typeof model.contextWindow === "number" ? { contextWindow: model.contextWindow } : {}),
+          ...(typeof model.maxTokens === "number" ? { maxTokens: model.maxTokens } : {}),
+        }] : [];
+      }),
+    })).filter((provider) => provider.models.length > 0);
 }
 
 function allCodexProviders(): StoredProvider[] {
@@ -356,8 +362,8 @@ export const CodexModelsStore = {
   resolveApiKey(providerId: string): string | null {
     const shared = SharedProviderStore.resolveRuntimeId(providerId);
     if (shared) {
-      if (!shared.enabledAgents.includes("codex") || !shared.protocols.includes("responses")) {
-        throw new Error(`共享提供商 "${shared.name}" 未启用 Codex Responses 协议`);
+      if (!shared.enabledAgents.includes("codex") || !shared.models.some((model) => resolveSharedModelProtocol("codex", shared.protocols, model.interfaces))) {
+        throw new Error(`共享提供商 "${shared.name}" 未启用 Codex 兼容模型`);
       }
       return SharedProviderStore.resolveApiKey(shared.id);
     }

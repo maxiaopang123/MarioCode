@@ -72,7 +72,7 @@ export const zh = {
   "settings.shared.protocols": "此服务商实际支持的协议",
   "settings.shared.protocolHint": "请选择真实支持的接口。保存只校验配置，不向服务商发送请求，也不代表已通过工具调用兼容测试。",
   "settings.shared.agents": "允许使用的 Agent",
-  "settings.shared.compatibilityHint": "引擎需要至少一个兼容模型。Claude 优先 Chat，其次 Messages；Pi 优先 Chat，其次 Messages、Responses；Codex 仅支持 Responses。",
+  "settings.shared.compatibilityHint": "引擎需要至少一个兼容模型。Claude 和 Pi 优先 Chat，其次 Messages、Responses；Codex 优先原生 Responses，其次通过本地桥接使用 Chat、Messages。",
   "settings.shared.agentNeedsModel": "已启用的引擎缺少兼容模型：请勾选模型实际支持的接口，或关闭该引擎后保存。",
   "settings.shared.modelRoute": "{agent}：{protocol}",
   "settings.shared.unavailable": "不可用",

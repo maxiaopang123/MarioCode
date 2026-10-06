@@ -10,6 +10,15 @@
 
 ## 当前进度（2026-10-06）
 
+**10/6 更新（v0.2.12）**：
+- **Codex 支持 Chat / Messages 接口**：共享提供商里只支持 Chat Completions 或 Anthropic Messages 的模型现在也可勾选 Codex；协议选择优先级为原生 Responses → Chat → Messages，后两者通过每回合临时本地 Responses 桥接转换，支持文本 / 图片、函数与 freeform 工具调用、用量统计、取消与超时；
+- **Claude Responses 兼容性修复**：修复工具调用参数重复发送、网关跳过 `function_call_arguments.done` 时参数丢失、上游失败被伪装成正常结束、标准 `input_tokens_details.cached_tokens` 缓存字段漏算；
+- **回归验证**：`pnpm run typecheck` 通过，`pnpm run test:shared-providers` 139 项通过；Chat / Messages 桥接已覆盖请求转换、流式工具参数重建、断流失败和超时取消用例，真实 Codex 二进制端到端仍待验收。
+
+**10/6 更新（v0.2.11）**：修复 Claude Responses 上游错误映射、工具调用去重与错误透传。
+
+**10/6 更新（v0.2.10）**：修复 Claude Responses 历史 assistant 文本内容类型映射为 `output_text`。
+
 **10/6 更新（v0.2.9，当前已打包待发布）**：
 - **Claude 支持 Responses API**：协议桥新增 `responsesRequestTranslator` 与 `responsesResponseTranslator`，全面支持 Claude Agent 驱动 OpenAI `/v1/responses` 接口（含工具调用、思考流提取、缓存换算）；
 - **Chat 接口补齐思考强度映射**：在 `requestTranslator` 中将 Claude 的 `effort` / `budget_tokens` 自动转换为 OpenAI Chat 的 `reasoning_effort`（`low` / `medium` / `high`），普通模型不带该字段以确保兼容；

@@ -54,6 +54,7 @@ import type {
 } from "@contracts/provider";
 import type { ServerRequestFrame } from "./CodexAppServerClient.js";
 import { CodexAppServerClient } from "./CodexAppServerClient.js";
+import { startCodexResponsesBridge, type CodexResponsesBridgeHandle } from "./codexResponsesBridge.js";
 import { CodexMessageAdapter } from "./CodexMessageAdapter.js";
 import { CodexFileSnapshot } from "./CodexFileSnapshot.js";
 import { createCodexContextCatalog } from "./codexContextCatalog.js";
@@ -309,8 +310,31 @@ export class CodexAgentSdkProvider implements AgentProvider {
     const { contextWindow, autoCompactTokenLimit } = resolveContextPolicy(selectedModel?.contextWindow, readContextPolicy());
 
     /* ── 4. Spawn app-server (env carries CODEX_HOME + provider keys) ── */
+    const protocol = selectedModel?.protocol ?? "responses";
+    const upstreamBaseUrl = selectedModel?.baseUrl ?? selectedProvider?.baseUrl;
     const env = await buildCodexEnv(ctx);
+    let bridge: CodexResponsesBridgeHandle | undefined;
+    const endpointArgs: string[] = [];
     const contextCatalog = await createCodexContextCatalog(modelId, contextWindow, autoCompactTokenLimit);
+    try {
+      if (protocol !== "responses") {
+        if (!upstreamBaseUrl) throw new Error("Codex bridge requires an upstream endpoint");
+        const apiKey = CodexModelsStore.resolveApiKey(providerId);
+        if (!apiKey) throw new Error("Codex bridge requires an API key");
+        bridge = await startCodexResponsesBridge({
+          protocol, baseUrl: upstreamBaseUrl, apiKey, model: modelId,
+          maxTokens: selectedModel?.maxTokens, sessionId: req.sessionId,
+        });
+        env[codexKeyEnvVar(providerId)] = bridge.routeToken;
+      }
+      const baseUrl = bridge?.localUrl ?? upstreamBaseUrl;
+      if (baseUrl) endpointArgs.push("-c", `model_providers.${providerId}.base_url=${JSON.stringify(baseUrl)}`);
+      endpointArgs.push("-c", `model_providers.${providerId}.wire_api="responses"`);
+    } catch (error) {
+      bridge?.close();
+      await contextCatalog.dispose();
+      throw error;
+    }
     // File snapshot: sandboxed writes reconstruct from the turn diff at
     // freeze (there is no pre-write hook; approval params carry only
     // grantRoot, so no recordPre path exists on this provider).
@@ -348,6 +372,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
       cwd: req.cwd,
       env,
       extraArgs: [
+        ...endpointArgs,
         // Collab spawnAgent threads are spawned by the server itself and do
         // NOT inherit the main thread's model/modelProvider (thread/start and
         // thread/resume overrides apply to the main thread only) — they fall
@@ -551,6 +576,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
           await adapter.flushFinal();
         }
       } finally {
+        bridge?.close();
         unsubscribe();
         finished = true;
         // The turn ended with the model still in plan mode (interrupt, error,
@@ -583,6 +609,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
       done,
       interrupt: () => {
         ac.abort();
+        bridge?.close();
         adapter.markAborted();
       },
       isRunning: () => !finished && !ac.signal.aborted,

@@ -505,4 +505,22 @@ check("ResponsesToAnthropicSse converts cached_tokens into cache_read_input_toke
   messageDelta.delta.stop_reason === "tool_use"
 );
 
+// Bridge Responses -> Anthropic error handling & dedup
+const dupTranslator = new ResponsesToAnthropicSse();
+dupTranslator.feed({
+  item: { type: "function_call", call_id: "call_dup", name: "bash" },
+  output_index: 1,
+}, "response.output_item.added");
+const dupEvents = dupTranslator.feed({
+  item: { type: "function_call", call_id: "call_dup", name: "bash" },
+  output_index: 1,
+}, "response.output_item.added");
+check("ResponsesToAnthropicSse deduplicates function calls by call_id", !dupEvents.some((e) => e.type === "content_block_start" && e.content_block.type === "tool_use" && e.content_block.id === "call_dup"));
+
+const errorTranslator = new ResponsesToAnthropicSse();
+const errorEvents = errorTranslator.feed({ error: { message: "model overloaded", type: "rate_limit" } }, "response.error");
+const errorFinish = errorTranslator.finish();
+check("ResponsesToAnthropicSse surfaces upstream errors as text_delta", errorEvents.some((e) => e.type === "content_block_delta" && e.delta.type === "text_delta" && e.delta.text.includes("model overloaded")));
+check("ResponsesToAnthropicSse maps upstream error to stop_sequence", errorFinish.some((e) => e.type === "message_delta" && e.delta.stop_reason === "stop_sequence"));
+
 process.stdout.write(`shared-provider smoke passed (${checks} checks)\n`);

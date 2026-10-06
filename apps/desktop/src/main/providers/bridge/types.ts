@@ -317,6 +317,11 @@ export interface ResponsesSseChunk {
   output_index?: number;
   call_id?: string;
   delta?: string;
+  error?: {
+    message?: string;
+    type?: string;
+    code?: string;
+  };
   item?: {
     id?: string;
     type?: string;

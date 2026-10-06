@@ -147,32 +147,50 @@ export class ResponsesToAnthropicSse {
       };
     }
 
-    // 1. New function call item added
+    // 6. Upstream error events — surface as a proper error stop, not end_turn.
+    if (chunk.error) {
+      const msg = chunk.error.message ?? "upstream error";
+      this.capturedFinishReason = `error:${msg}`;
+      // Close any open block, then open a fresh text block for the error.
+      this.closeOpenBlock(events);
+      const errorBlockIndex = this.openTextBlock(events);
+      events.push({
+        type: "content_block_delta",
+        index: errorBlockIndex,
+        delta: { type: "text_delta", text: `[Upstream Error] ${msg}` },
+      });
+    }
+
+    // 1. New function call item added (deduplicated by call_id)
     if (
       eventType === "response.output_item.added" ||
       (chunk.item && (chunk.item.type === "function_call" || chunk.item.call_id))
     ) {
       const item = chunk.item;
       if (item && (item.type === "function_call" || item.call_id)) {
-        const id = item.call_id ?? item.id ?? `call_${this.nextIndex}`;
-        const name = item.name ?? "";
-        const blockIdx = this.openToolBlock(events, id, name);
-        if (chunk.output_index !== undefined) {
-          this.toolIndexMap.set(chunk.output_index, blockIdx);
-        }
-        if (item.call_id) {
-          this.toolIndexMap.set(item.call_id, blockIdx);
-        }
-        if (item.id) {
-          this.toolIndexMap.set(item.id, blockIdx);
-        }
-        // If arguments are already supplied in the item
-        if (typeof item.arguments === "string" && item.arguments.length > 0) {
-          events.push({
-            type: "content_block_delta",
-            index: blockIdx,
-            delta: { type: "input_json_delta", partial_json: item.arguments },
-          });
+        const callId = item.call_id ?? item.id ?? `call_${this.nextIndex}`;
+        // Dedup: if this call_id was already mapped to a block, skip re-creating it.
+        const existing = this.toolIndexMap.get(callId);
+        if (existing !== undefined) {
+          // Already created — nothing to do.
+        } else {
+          const name = item.name ?? "";
+          const blockIdx = this.openToolBlock(events, callId, name);
+          this.toolIndexMap.set(callId, blockIdx);
+          if (chunk.output_index !== undefined) {
+            this.toolIndexMap.set(chunk.output_index, blockIdx);
+          }
+          if (item.id) {
+            this.toolIndexMap.set(item.id, blockIdx);
+          }
+          // If arguments are already supplied in the item
+          if (typeof item.arguments === "string" && item.arguments.length > 0) {
+            events.push({
+              type: "content_block_delta",
+              index: blockIdx,
+              delta: { type: "input_json_delta", partial_json: item.arguments },
+            });
+          }
         }
       }
     }
@@ -237,10 +255,25 @@ export class ResponsesToAnthropicSse {
       }
     }
 
+    // 6. Upstream error events — surface as a proper error stop, not end_turn.
+    if (chunk.error) {
+      const msg = chunk.error.message ?? "upstream error";
+      this.capturedFinishReason = `error:${msg}`;
+      // Close any open block, then open a fresh text block for the error.
+      this.closeOpenBlock(events);
+      const errorBlockIndex = this.openTextBlock(events);
+      events.push({
+        type: "content_block_delta",
+        index: errorBlockIndex,
+        delta: { type: "text_delta", text: `[Upstream Error] ${msg}` },
+      });
+    }
+
     return events;
   }
 
   private mapStopReason(captured: string | null): string {
+    if (captured?.startsWith("error:")) return "stop_sequence";
     if (this.hadToolUse) return "tool_use";
     if (!captured) return "end_turn";
     switch (captured) {

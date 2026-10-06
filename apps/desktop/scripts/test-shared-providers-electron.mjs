@@ -93,6 +93,10 @@ try {
   const codexPath = process.env.MARIOCODE_TEST_CODEX_BIN || join(desktop, "../../node_modules/.pnpm", `@openai+codex@${codexVersion}-${suffix}`, "node_modules/@openai/codex/vendor", triples[suffix], "bin", process.platform === "win32" ? "codex.exe" : "codex");
   const codexSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "codex", mode: "external", path: codexPath })})`);
   assert.equal(codexSelection.ok, true, codexSelection.error);
+  const sdkRequire = createRequire(require.resolve("@anthropic-ai/claude-agent-sdk"));
+  const claudePath = join(dirname(sdkRequire.resolve(`@anthropic-ai/claude-agent-sdk-${suffix}/package.json`)), process.platform === "win32" ? "claude.exe" : "claude");
+  const claudeSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "claude", mode: "external", path: claudePath })})`);
+  assert.equal(claudeSelection.ok, true, claudeSelection.error);
   // Visible settings navigation, not a fabricated renderer state.
   await evaluate("document.querySelector('button .tabler-icon-settings')?.closest('button').click()");
   const openUntil = Date.now() + 20000;
@@ -134,12 +138,12 @@ try {
   await command("Input.insertText", { text: "fixture-model" });
   // Provider flags must not grant interfaces to an existing model.
   assert.equal(await evaluate("[...document.querySelectorAll('li')].find(l=>l.querySelector('input[aria-label=\"模型 ID（与服务商一致）\"]'))?.textContent.includes('Pi：Chat')"), true);
-  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Codex').disabled"), true, "Codex requires a Responses model, not just a provider flag");
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Codex').disabled"), false, "Codex supports the model's Chat interface through the bridge");
   await evaluate("[...[...document.querySelectorAll('li')].find(l=>l.querySelector('input[aria-label=\"模型 ID（与服务商一致）\"]')).querySelectorAll('button')].find(b=>b.textContent.trim()==='Responses').click()");
   await check("Codex");
   await check("OpenAI Responses");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Codex').getAttribute('aria-pressed')"), "true", "Protocol edits must preserve engine choice");
-  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='保存公用配置').disabled"), true);
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='保存公用配置').disabled"), false, "Disabling Responses still permits the selected Chat interface");
   await check("OpenAI Responses");
   assert.equal(await evaluate("[...[...document.querySelectorAll('li')].find(l=>l.querySelector('input[aria-label=\"模型 ID（与服务商一致）\"]')).querySelectorAll('button')].find(b=>b.textContent.trim()==='Responses').getAttribute('aria-pressed')"), "false", "Re-enabling a provider protocol must not silently grant model capabilities");
   await evaluate("[...[...document.querySelectorAll('li')].find(l=>l.querySelector('input[aria-label=\"模型 ID（与服务商一致）\"]')).querySelectorAll('button')].find(b=>b.textContent.trim()==='Responses').click()");
@@ -228,16 +232,22 @@ try {
     { engine: "pi-sdk", id: "vendor/chat-model", path: "/v1/chat/completions" },
     { engine: "pi-sdk", id: "messages-model", path: "/messages/v1/messages" },
     { engine: "pi-sdk", id: "responses-model", path: "/responses/v1/responses" },
+    { engine: "claude-sdk", id: "vendor/chat-model", path: "/v1/chat/completions" },
+    { engine: "claude-sdk", id: "messages-model", path: "/messages/v1/messages" },
+    { engine: "claude-sdk", id: "responses-model", path: "/responses/v1/responses" },
+    { engine: "codex-sdk", id: "vendor/chat-model", path: "/v1/chat/completions" },
+    { engine: "codex-sdk", id: "messages-model", path: "/messages/v1/messages" },
     { engine: "codex-sdk", id: "responses-model", path: "/responses/v1/responses" },
   ];
   let codexSession;
   for (const turn of [...turns, { engine: "codex-sdk", id: "vendor/responses-alt", path: "/responses/v1/responses", resume: true }]) {
-    const { session } = turn.resume ? { session: codexSession } : await evaluate(`window.api.claude.startSession(${JSON.stringify({ projectId: project.id, title: "Offline wire check", kind: "side", providerId: turn.engine, model: `${runtimeId}/${turn.id}`, permissionMode: "bypassPermissions" })})`);
+    const routedModel = turn.engine === "claude-sdk" ? turn.id : `${runtimeId}/${turn.id}`;
+    const { session } = turn.resume ? { session: codexSession } : await evaluate(`window.api.claude.startSession(${JSON.stringify({ projectId: project.id, title: "Offline wire check", kind: "side", providerId: turn.engine, customModelId: turn.engine === "claude-sdk" ? runtimeId : undefined, model: routedModel, permissionMode: "bypassPermissions" })})`);
     if (turn.engine === "codex-sdk") codexSession = session;
     await evaluate("globalThis.__wireEvents = []; globalThis.__stopWireEvents = window.api.on.claudeEvent(msg => globalThis.__wireEvents.push(msg.event))");
     try {
       const requestCount = fixtureRequests.length;
-      await evaluate(`window.api.claude.sendTurn(${JSON.stringify({ sessionId: session.id, prompt: "Reply briefly", model: `${runtimeId}/${turn.id}` })})`);
+      await evaluate(`window.api.claude.sendTurn(${JSON.stringify({ sessionId: session.id, prompt: "Reply briefly", model: routedModel })})`);
       const deadline = Date.now() + 45000;
       let events;
       do {
@@ -252,9 +262,6 @@ try {
     } finally { await evaluate("globalThis.__stopWireEvents()"); }
   }
   if (process.argv.includes("--context")) {
-    const sdkPackage = JSON.parse(await readFile(join(dirname(require.resolve("@anthropic-ai/claude-agent-sdk")), "package.json"), "utf8"));
-    const claudePlatform = `@anthropic-ai+claude-agent-sdk-${process.platform}-${process.arch}`;
-    const claudePath = join(desktop, "../../node_modules/.pnpm", `${claudePlatform}@${sdkPackage.version}`, "node_modules/@anthropic-ai", `claude-agent-sdk-${process.platform}-${process.arch}`, process.platform === "win32" ? "claude.exe" : "claude");
     await access(claudePath);
     const claudeSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "claude", mode: "external", path: claudePath })})`);
     assert.equal(claudeSelection.ok, true, claudeSelection.error);
@@ -328,7 +335,7 @@ try {
   await writeFile(join(data, "verification.json"), JSON.stringify({
     result: "passed", providerId: provider.id,
     fixtureBaseUrl,
-    checks: ["real shared provider form save", "three agent projections", "Pi SDK in-memory registration", "encrypted key at rest", "no key disclosure via legacy IPC", "local Pi models unchanged", "reopened form does not reveal key", "real HTTP model discovery with draft key", "cancel discovery preserves form", "real HTTP model discovery with stored key", "discovered model selection and save", "discovery does not invent interfaces", "interface edits preserve engine choices", "Pi real Chat/Messages/Responses turns", "Codex real Responses turn and model switch on resume", ...(process.argv.includes("--context") ? ["context settings persistence and main-process validation", "three-engine compaction thresholds at 1M and 200K", "Codex known-model catalog capacity"] : [])],
+    checks: ["real shared provider form save", "three agent projections", "Pi SDK in-memory registration", "encrypted key at rest", "no key disclosure via legacy IPC", "local Pi models unchanged", "reopened form does not reveal key", "real HTTP model discovery with draft key", "cancel discovery preserves form", "real HTTP model discovery with stored key", "discovered model selection and save", "discovery does not invent interfaces", "interface edits preserve engine choices", "three engines real Chat/Messages/Responses turns", "Codex model switch on resume", ...(process.argv.includes("--context") ? ["context settings persistence and main-process validation", "three-engine compaction thresholds at 1M and 200K", "Codex known-model catalog capacity"] : [])],
   }, null, 2));
   console.log(`Electron shared-provider verification passed. Artifacts: ${data}`);
 } finally {

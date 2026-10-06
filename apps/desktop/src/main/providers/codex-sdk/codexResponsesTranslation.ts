@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 export type WireObject = Record<string, unknown>;
 export type CodexUpstreamProtocol = "chat-completions" | "anthropic";
@@ -12,6 +12,7 @@ function string(value: unknown): string { return typeof value === "string" ? val
 export interface TranslatedCodexRequest {
   body: WireObject;
   customTools: Set<string>;
+  toolNames: Map<string, { name: string; namespace?: string }>;
 }
 
 function parts(value: unknown, anthropic: boolean): WireObject[] {
@@ -35,9 +36,37 @@ export function translateCodexRequest(raw: unknown, protocol: CodexUpstreamProto
   if (request.previous_response_id) throw new Error("previous_response_id is not supported by the stateless Codex bridge; send full input history");
   const anthropic = protocol === "anthropic";
   const customTools = new Set<string>();
-  const definitions = array(request.tools).map((rawTool) => {
-    const tool = object(rawTool);
-    if (tool.type !== "function" && tool.type !== "custom") throw new Error(`Unsupported Codex tool type: ${string(tool.type)} (tools are never silently dropped)`);
+  const toolNames: TranslatedCodexRequest["toolNames"] = new Map();
+  const alias = (name: string, namespace?: string): string => {
+    if (!name) throw new Error("Tool definition has no name");
+    const identity = { name, ...(namespace ? { namespace } : {}) };
+    const key = !namespace && /^[a-zA-Z0-9_-]{1,64}$/.test(name) ? name
+      : `mc_ns_${name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 32)}_${createHash("sha256").update(JSON.stringify(identity)).digest("hex").slice(0, 20)}`;
+    const existing = toolNames.get(key);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(identity)) throw new Error(`Tool alias collision: ${name}`);
+    toolNames.set(key, identity);
+    return key;
+  };
+  const input = typeof request.input === "string" ? [{ role: "user", content: request.input }] : array(request.input);
+  const flatTools = new Map<string, WireObject>();
+  const collect = (tools: unknown, namespace?: string, namespaceDescription = "") => {
+    for (const rawTool of array(tools)) {
+      const tool = object(rawTool);
+      if (tool.type === "namespace") {
+        const nested = string(tool.name);
+        if (!nested) throw new Error("Tool namespace has no name");
+        collect(tool.tools, namespace ? `${namespace}.${nested}` : nested, string(tool.description));
+      } else {
+        if (tool.type !== "function" && tool.type !== "custom") throw new Error(`Unsupported Codex tool type: ${string(tool.type)} (tools are never silently dropped)`);
+        const toolNamespace = namespace ?? (string(tool.namespace) || undefined);
+        const name = alias(string(tool.name), toolNamespace);
+        flatTools.set(name, { ...tool, name, description: [toolNamespace ? `Original tool: ${toolNamespace}.${string(tool.name)}` : "", namespaceDescription, string(tool.description)].filter(Boolean).join("\n") });
+      }
+    }
+  };
+  collect(request.tools);
+  for (const rawItem of input) { const item = object(rawItem); if (item.type === "additional_tools") collect(item.tools); }
+  const definitions = [...flatTools.values()].map((tool) => {
     const name = string(tool.name);
     if (!name) throw new Error("Tool definition has no name");
     let parameters = tool.parameters ?? { type: "object", properties: {} };
@@ -62,16 +91,19 @@ export function translateCodexRequest(raw: unknown, protocol: CodexUpstreamProto
     } else messages.push({ role: role === "developer" && !anthropic ? "system" : role, content });
   };
   if (request.instructions) push("system", parts(request.instructions, anthropic));
-  const input = typeof request.input === "string" ? [{ role: "user", content: request.input }] : array(request.input);
+  let resultImages: WireObject[] = [];
+  const flushImages = () => { if (resultImages.length) { push("user", resultImages); resultImages = []; } };
   for (const rawItem of input) {
     const item = object(rawItem);
     const type = item.type ?? "message";
+    if (type === "additional_tools") continue;
+    if (!["function_call_output", "custom_tool_call_output", "reasoning"].includes(string(type))) flushImages();
     if (type === "message") {
       const role = string(item.role);
       if (!["system", "developer", "user", "assistant"].includes(role)) throw new Error(`Unsupported message role: ${role}`);
       push(role, parts(item.content, anthropic));
     } else if (type === "function_call" || type === "custom_tool_call") {
-      const name = string(item.name);
+      const name = alias(string(item.name), string(item.namespace) || undefined);
       const args = type === "custom_tool_call" ? JSON.stringify({ input: string(item.input) }) : string(item.arguments);
       if (anthropic) push("assistant", [{ type: "tool_use", id: item.call_id, name, input: JSON.parse(args || "{}") as unknown }]);
       else {
@@ -83,21 +115,25 @@ export function translateCodexRequest(raw: unknown, protocol: CodexUpstreamProto
     } else if (type === "function_call_output" || type === "custom_tool_call_output") {
       if (anthropic) push("user", [{ type: "tool_result", tool_use_id: item.call_id, content: parts(item.output, true) }]);
       else {
-        const content = typeof item.output === "string" ? item.output : parts(item.output, false);
+        const outputParts = typeof item.output === "string" ? undefined : parts(item.output, false);
+        const content = typeof item.output === "string" ? item.output : outputParts!.filter((part) => part.type === "text").map((part) => string(part.text)).join("\n");
         messages.push({ role: "tool", tool_call_id: item.call_id, content });
+        for (const image of outputParts?.filter((part) => part.type === "image_url") ?? []) resultImages.push({ type: "text", text: `Image returned by tool call ${string(item.call_id)}:` }, image);
       }
     } else if (type === "reasoning") {
       // Responses reasoning is opaque and cannot be replayed on another protocol.
       continue;
     } else throw new Error(`Unsupported Responses input item: ${string(type)}`);
   }
+  flushImages();
   const choice = request.tool_choice;
   let toolChoice: unknown;
   if (typeof choice === "string") toolChoice = anthropic ? { type: choice === "required" ? "any" : choice } : choice;
   else if (choice) {
     const named = object(choice);
     if (named.type !== "function" && named.type !== "custom") throw new Error(`Unsupported tool_choice: ${string(named.type)}`);
-    toolChoice = anthropic ? { type: "tool", name: named.name } : { type: "function", function: { name: named.name } };
+    const name = alias(string(named.name), string(named.namespace) || undefined);
+    toolChoice = anthropic ? { type: "tool", name } : { type: "function", function: { name } };
   }
   if (anthropic && toolChoice && request.parallel_tool_calls === false) object(toolChoice).disable_parallel_tool_use = true;
   const requestedLimit = typeof request.max_output_tokens === "number" ? request.max_output_tokens : undefined;
@@ -112,10 +148,19 @@ export function translateCodexRequest(raw: unknown, protocol: CodexUpstreamProto
   if (definitions.length) body.tools = definitions;
   if (toolChoice !== undefined) body.tool_choice = toolChoice;
   for (const key of ["temperature", "top_p"]) if (request[key] !== undefined) body[key] = request[key];
-  return { body, customTools };
+  const effort = request.reasoning ? string(object(request.reasoning).effort) : "";
+  if (effort && effort !== "none") {
+    const level = ["minimal", "low"].includes(effort) ? "low" : effort === "medium" ? "medium" : "high";
+    if (anthropic) {
+      const budget = Math.min(level === "low" ? 1024 : level === "medium" ? 4096 : 8192, Number(body.max_tokens) - 1);
+      if (budget < 1024) throw new Error("Messages reasoning requires max_tokens greater than 1024");
+      body.thinking = { type: "enabled", budget_tokens: budget };
+    } else body.reasoning_effort = level;
+  }
+  return { body, customTools, toolNames };
 }
 
-interface OutputState { index: number; item: WireObject; args: string; added: boolean; }
+interface OutputState { index: number; item: WireObject; args: string; added: boolean; upstreamName?: string; }
 
 /** Incremental upstream decoder. A terminal marker is mandatory, including on clean EOF. */
 export class CodexResponsesStream {
@@ -130,7 +175,7 @@ export class CodexResponsesStream {
   private inputTokens = 0;
   private outputTokens = 0;
   private cachedTokens = 0;
-  constructor(private readonly protocol: CodexUpstreamProtocol, private readonly model: string, private readonly customTools: Set<string>, private readonly emit: (event: WireObject) => void) {}
+  constructor(private readonly protocol: CodexUpstreamProtocol, private readonly model: string, private readonly customTools: Set<string>, private readonly emit: (event: WireObject) => void, private readonly toolNames: TranslatedCodexRequest["toolNames"] = new Map()) {}
   private event(type: string, fields: WireObject = {}): void { this.emit({ type, sequence_number: this.sequence++, ...fields }); }
   private response(status: string): WireObject {
     return { id: this.id, object: "response", created_at: this.created, status, model: this.model, output: this.outputs.filter((s) => s.added).map((s) => s.item), usage: { input_tokens: this.inputTokens, output_tokens: this.outputTokens, total_tokens: this.inputTokens + this.outputTokens, input_tokens_details: { cached_tokens: this.cachedTokens }, output_tokens_details: { reasoning_tokens: 0 } } };
@@ -163,9 +208,14 @@ export class CodexResponsesStream {
       this.calls.set(index, state); this.outputs.push(state);
     }
     if (id) state.item.call_id = id;
-    if (name) state.item.name = string(state.item.name) + (state.item.name === name ? "" : name);
+    if (name) {
+      state.upstreamName = (state.upstreamName ?? "") + (state.upstreamName === name ? "" : name);
+      const identity = this.toolNames.get(state.upstreamName);
+      state.item.name = identity?.name ?? state.upstreamName;
+      if (identity?.namespace) state.item.namespace = identity.namespace;
+    }
     state.args += delta;
-    const custom = this.customTools.has(string(state.item.name));
+    const custom = this.customTools.has(state.upstreamName ?? string(state.item.name));
     if (custom) {
       state.item.type = "custom_tool_call"; delete state.item.arguments; state.item.input = "";
       // JSON string escapes can straddle SSE chunks; decode only when complete.
@@ -231,7 +281,7 @@ export class CodexResponsesStream {
         this.event("response.content_part.done", { ...fields, part: array(state.item.content)[0] });
       } else {
         if (!state.item.name || !state.item.call_id) throw new Error("Incomplete upstream tool identity");
-        if (this.customTools.has(string(state.item.name))) {
+        if (this.customTools.has(state.upstreamName ?? string(state.item.name))) {
           const parsed = object(JSON.parse(state.args || "{}") as unknown);
           if (typeof parsed.input !== "string") throw new Error(`Custom tool ${string(state.item.name)} requires an input string`);
           state.item.input = parsed.input;

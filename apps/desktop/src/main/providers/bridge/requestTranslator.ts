@@ -115,9 +115,8 @@ function translateMessage(msg: AnthropicMessage): OpenAIMessage[] {
       let resultText = typeof block.content === "string"
         ? block.content
         : Array.isArray(block.content)
-          // OpenAI tool messages are text-only; image blocks inside a tool
-          // result (e.g. Read on an image file) have no representation there
-          // and are dropped.
+          // Tool messages carry text. Put their images in the accompanying
+          // user message after all tool results, retaining the call id.
           ? block.content
               .filter((t): t is { type: "text"; text: string } => t.type === "text")
               .map((t) => t.text)
@@ -131,6 +130,16 @@ function translateMessage(msg: AnthropicMessage): OpenAIMessage[] {
         tool_call_id: block.tool_use_id,
         content: resultText,
       });
+      if (Array.isArray(block.content)) {
+        for (const part of block.content) {
+          if (part.type === "image" && part.source.type === "base64") {
+            userImages.push(
+              { type: "text", text: `Image returned by tool call ${block.tool_use_id}:` },
+              { type: "image_url", image_url: { url: `data:${part.source.media_type};base64,${part.source.data}` } },
+            );
+          }
+        }
+      }
     } else if (block.type === "text") {
       userText.push(block.text);
     } else if (block.type === "image") {
@@ -189,7 +198,7 @@ function translateToolChoice(tc: AnthropicToolChoice): OpenAIRequest["tool_choic
 
 /** Translate Anthropic's `thinking` / `effort` config into OpenAI's `reasoning_effort`. */
 export function translateReasoningEffort(req: AnthropicRequest): "low" | "medium" | "high" | undefined {
-  const effort = req.effort?.toLowerCase();
+  const effort = (req.output_config?.effort ?? req.effort)?.toLowerCase();
   if (effort) {
     if (effort === "low") return "low";
     if (effort === "medium") return "medium";

@@ -32,7 +32,7 @@ export interface AnthropicToolUseBlock {
 export interface AnthropicToolResultBlock {
   type: "tool_result";
   tool_use_id: string;
-  /** string or an array of text/image blocks — we only forward the text. */
+  /** Text and images both need to reach the upstream model. */
   content?: string | (AnthropicTextBlock | AnthropicImageBlock)[];
   is_error?: boolean;
 }
@@ -99,6 +99,7 @@ export interface AnthropicRequest {
   tool_choice?: AnthropicToolChoice;
   thinking?: AnthropicThinkingConfig;
   effort?: string;
+  output_config?: { effort?: string };
 }
 
 /* ───────────────────────── OpenAI (what the bridge SENDS / RECEIVES) ───────────────────────── */
@@ -194,6 +195,8 @@ export interface OpenAIChunk {
   model?: string;
   choices?: OpenAIChoice[];
   usage?: OpenAIUsage;
+  error?: { message?: string; type?: string; code?: string };
+  type?: string;
 }
 
 /* ───────────────────────── Anthropic SSE (what the bridge EMITS) ───────────────────────── */
@@ -282,7 +285,7 @@ export interface ResponsesFunctionCallItem {
 export interface ResponsesFunctionCallOutputItem {
   type: "function_call_output";
   call_id: string;
-  output: string;
+  output: string | ResponsesInputContentPart[];
 }
 
 export type ResponsesInputItem =

@@ -1,6 +1,6 @@
 {
   "name": "@mariocode/desktop",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "private": true,
   "description": "MarioCode - Desktop GUI for Claude Code",
   "author": "huangbh",
@@ -19,6 +19,7 @@
     "test:pi-host": "node build/build-pi-host.mjs && node scripts/test-pi-host.mjs",
     "test:runtime-electron": "node scripts/test-runtime-electron.mjs",
     "test:shared-providers": "node scripts/shared-provider-smoke/run.mjs",
+    "test:protocol-bridges-native": "node scripts/test-protocol-bridges-native.mjs",
     "test:shared-providers-electron": "node scripts/test-shared-providers-electron.mjs",
     "test:clawbot": "node scripts/clawbot-smoke/run.mjs",
     "test:sync-load": "node scripts/sync-load-smoke/run.mjs",

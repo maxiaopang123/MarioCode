@@ -13,6 +13,7 @@ import type { ApiConfig } from "@contracts/customModel.js";
 import { unpackPiHostPath } from "@main/providers/pi-sdk/piHostPath.js";
 import { normalizePiRegisteredModel } from "@main/providers/pi-sdk/piRegisteredModel.js";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
+import { runBridgeRegressions } from "./bridge-regressions.js";
 import { addSession, corruptSharedKey, rawSettings } from "./stub-db.js";
 import { setEncryptionAvailable } from "./stub-electron.js";
 import { CustomModelStore } from "@main/lib/secretStore.js";
@@ -478,14 +479,14 @@ const ev4 = responsesTranslator.feed({
   item: { type: "function_call", call_id: "call_abc", name: "bash" },
   output_index: 1,
 }, "response.output_item.added");
-check("ResponsesToAnthropicSse opens tool_use block on output_item.added", ev4.some((e) => e.type === "content_block_start" && e.content_block.type === "tool_use" && e.content_block.name === "bash"));
+check("ResponsesToAnthropicSse buffers tools until stream validation", !ev4.some((e) => e.type === "content_block_start" && e.content_block.type === "tool_use"));
 
 const ev5 = responsesTranslator.feed({
   output_index: 1,
   call_id: "call_abc",
   delta: '{"cmd":"ls"}',
 }, "response.function_call_arguments.delta");
-check("ResponsesToAnthropicSse emits input_json_delta for tool arguments", ev5.some((e) => e.type === "content_block_delta" && e.delta.type === "input_json_delta" && e.delta.partial_json === '{"cmd":"ls"}'));
+check("ResponsesToAnthropicSse does not expose partial tool arguments", !ev5.some((e) => e.type === "content_block_delta" && e.delta.type === "input_json_delta"));
 
 const ev6 = responsesTranslator.feed({
   response: {
@@ -498,6 +499,7 @@ const ev6 = responsesTranslator.feed({
   },
 }, "response.completed");
 const finishEvents = responsesTranslator.finish();
+check("ResponsesToAnthropicSse publishes complete tool arguments", finishEvents.some((e) => e.type === "content_block_delta" && e.delta.type === "input_json_delta" && e.delta.partial_json === '{"cmd":"ls"}'));
 const messageDelta = finishEvents.find((e) => e.type === "message_delta");
 check("ResponsesToAnthropicSse converts cached_tokens into cache_read_input_tokens",
   messageDelta?.type === "message_delta" &&
@@ -517,7 +519,8 @@ const dupEvents = dupTranslator.feed({
   item: { type: "function_call", call_id: "call_dup", name: "bash" },
   output_index: 1,
 }, "response.output_item.added");
-check("ResponsesToAnthropicSse deduplicates function calls by call_id", !dupEvents.some((e) => e.type === "content_block_start" && e.content_block.type === "tool_use" && e.content_block.id === "call_dup"));
+dupTranslator.feed({ response: { status: "completed" } }, "response.completed");
+check("ResponsesToAnthropicSse deduplicates function calls by call_id", [...dupEvents, ...dupTranslator.finish()].filter((e) => e.type === "content_block_start" && e.content_block.type === "tool_use" && e.content_block.id === "call_dup").length === 1);
 
 const errorTranslator = new ResponsesToAnthropicSse();
 const errorEvents = errorTranslator.feed({ error: { message: "model overloaded", type: "rate_limit" } }, "response.error");
@@ -534,6 +537,7 @@ const fe2 = fullSeq.feed({ item_id: "fc_1", delta: '{"path":' }, "response.funct
 const fe2b = fullSeq.feed({ item_id: "fc_1", delta: '"a.txt"}' }, "response.function_call_arguments.delta");
 const fe3 = fullSeq.feed({ item_id: "fc_1", arguments: '{"path":"a.txt"}' }, "response.function_call_arguments.done");
 const fe4 = fullSeq.feed({ output_index: 0, item: { type: "function_call", id: "fc_1", call_id: "call_1", name: "read_file", arguments: '{"path":"a.txt"}' } }, "response.output_item.done");
+fullSeq.feed({ response: { status: "completed" } }, "response.completed");
 const fullFinish = fullSeq.finish();
 const allEv = [...fe1, ...fe2, ...fe2b, ...fe3, ...fe4, ...fullFinish];
 const toolStarts = allEv.filter((e) => e.type === "content_block_start" && e.content_block.type === "tool_use");
@@ -606,6 +610,7 @@ let rejectedTool = false;
 try { translateCodexRequest({ input: [], tools: [{ type: "web_search" }] }, "chat-completions", "m"); } catch { rejectedTool = true; }
 check("Codex rejects unsupported tools rather than dropping them", rejectedTool);
 const disconnectedEvents: WireObject[] = [];
+await runBridgeRegressions(check);
 const disconnectedStream = new CodexResponsesStream("chat-completions", "m", new Set(), (event) => disconnectedEvents.push(event));
 disconnectedStream.start();
 let disconnected = false;

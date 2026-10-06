@@ -54,7 +54,7 @@ import type {
 } from "@contracts/provider";
 import type { ServerRequestFrame } from "./CodexAppServerClient.js";
 import { CodexAppServerClient } from "./CodexAppServerClient.js";
-import { startCodexResponsesBridge, type CodexResponsesBridgeHandle } from "./codexResponsesBridge.js";
+import { CODEX_BRIDGE_CONFIG_ARGS, startCodexResponsesBridge, type CodexResponsesBridgeHandle } from "./codexResponsesBridge.js";
 import { CodexMessageAdapter } from "./CodexMessageAdapter.js";
 import { CodexFileSnapshot } from "./CodexFileSnapshot.js";
 import { createCodexContextCatalog } from "./codexContextCatalog.js";
@@ -326,6 +326,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
           maxTokens: selectedModel?.maxTokens, sessionId: req.sessionId,
         });
         env[codexKeyEnvVar(providerId)] = bridge.routeToken;
+        endpointArgs.push(...CODEX_BRIDGE_CONFIG_ARGS);
       }
       const baseUrl = bridge?.localUrl ?? upstreamBaseUrl;
       if (baseUrl) endpointArgs.push("-c", `model_providers.${providerId}.base_url=${JSON.stringify(baseUrl)}`);

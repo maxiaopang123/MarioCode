@@ -32,8 +32,18 @@ function joinText(content: string | AnthropicContentBlock[]): string {
     .join("");
 }
 
-/** Format a tool_result content into a plain string for function_call_output. */
-function formatToolResultOutput(content: unknown, isError?: boolean): string {
+/** Keep typed image content in function_call_output; text-only results stay strings. */
+function formatToolResultOutput(content: unknown, isError?: boolean): string | ResponsesInputContentPart[] {
+  if (Array.isArray(content) && content.some((part: unknown) =>
+    typeof part === "object" && part !== null && "type" in part && part.type === "image")) {
+    const parts: ResponsesInputContentPart[] = [];
+    if (isError) parts.push({ type: "input_text", text: "[ERROR]" });
+    for (const part of content as AnthropicContentBlock[]) {
+      if (part.type === "text") parts.push({ type: "input_text", text: part.text });
+      else if (part.type === "image") parts.push({ type: "input_image", image_url: `data:${part.source.media_type};base64,${part.source.data}` });
+    }
+    return parts;
+  }
   let text = "";
   if (typeof content === "string") {
     text = content;

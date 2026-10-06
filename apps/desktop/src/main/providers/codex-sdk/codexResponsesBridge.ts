@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import { engineFetch } from "@main/network/engineProxy.js";
+import { SseDecoder } from "@main/providers/bridge/sseDecoder.js";
 import { resolveUpstreamHeaders } from "@main/providers/upstreamHeaders.js";
 import { CodexResponsesStream, translateCodexRequest, type CodexUpstreamProtocol } from "./codexResponsesTranslation.js";
 
@@ -20,6 +21,9 @@ export interface CodexResponsesBridgeHandle {
   routeToken: string;
   close(): void;
 }
+
+/** Hosted Responses web_search cannot execute on Chat/Messages; MarioTool remains available. */
+export const CODEX_BRIDGE_CONFIG_ARGS = ["-c", 'web_search="disabled"'] as const;
 
 export function codexUpstreamUrl(base: string, protocol: CodexUpstreamProtocol): string {
   const url = new URL(base);
@@ -89,33 +93,17 @@ export async function startCodexResponsesBridge(config: CodexResponsesBridgeConf
       res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
       translator = new CodexResponsesStream(config.protocol, config.model, translated.customTools, (event) => {
         if (!res.destroyed) res.write(`event: ${String(event.type)}\ndata: ${JSON.stringify(event)}\n\n`);
-      });
+      }, translated.toolNames);
       translator.start();
       reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      const frame = (text: string) => {
-        const lines = text.split(/\r?\n/);
-        const data = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
-        const event = lines.find((line) => line.startsWith("event:"))?.slice(6).trim();
-        if (data) translator!.feed(data, event);
-      };
-      const drain = () => {
-        let match: RegExpExecArray | null;
-        while ((match = /\r?\n\r?\n/.exec(buffer))) {
-          frame(buffer.slice(0, match.index));
-          buffer = buffer.slice(match.index + match[0].length);
-        }
-        if (buffer.length > 8 * 1024 * 1024) throw new Error("Codex upstream SSE frame exceeds 8 MB");
-      };
+      const decoder = new SseDecoder((data, event) => translator!.feed(data, event));
       for (;;) {
         ac.signal.throwIfAborted();
         const { done, value } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true }); drain();
+        decoder.push(value);
       }
-      buffer += decoder.decode(); drain();
-      if (buffer.trim()) frame(buffer);
+      decoder.finish();
       ac.signal.throwIfAborted();
       translator.finish();
       res.end();

@@ -33,6 +33,7 @@ import { anthropicToOpenAI } from "./requestTranslator.js";
 import { OpenAiToAnthropicSse } from "./responseTranslator.js";
 import { anthropicToResponses } from "./responsesRequestTranslator.js";
 import { ResponsesToAnthropicSse } from "./responsesResponseTranslator.js";
+import { SseDecoder } from "./sseDecoder.js";
 import type {
   AnthropicRequest,
   AnthropicSseEvent,
@@ -143,12 +144,13 @@ async function fetchUpstreamWithRetry(
   onStatus?: (s: BridgeStatus) => void,
   attempts = 2,
   backoffMs = 500,
+  fetchUpstream: typeof engineFetch = engineFetch,
 ): Promise<Response> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     if (signal.aborted) throw new Error("aborted before fetch");
     try {
-      const res = await engineFetch(url, { ...init, signal });
+      const res = await fetchUpstream(url, { ...init, signal });
       // A request that needed retries finally went through — tell
       // subscribers the stall is over (they clear the retry hint).
       if (attempt > 1) onStatus?.({ kind: "ok", cause: "", attempt, attempts });
@@ -287,8 +289,9 @@ function writeSseEvent(res: ServerResponse, ev: AnthropicSseEvent): void {
 /** Send a minimal Anthropic-shaped error back to the binary. We use a 400 with
  *  an `error` JSON body so the SDK surfaces a readable message. */
 function sendError(res: ServerResponse, status: number, message: string): void {
+  if (res.destroyed || res.writableEnded) return;
   if (res.headersSent) {
-    // Mid-stream — best we can do is a message_delta stop; just end.
+    writeSseEvent(res, { type: "error", error: { type: "api_error", message } });
     res.end();
     return;
   }
@@ -311,186 +314,72 @@ async function handleMessages(
   upstream: UpstreamConfig,
   sessionId: string,
   onStatus?: (s: BridgeStatus) => void,
+  fetchUpstream: typeof engineFetch = engineFetch,
 ): Promise<void> {
-  let body: AnthropicRequest;
-  try {
-    const parsed = (await readJsonBody(req)) as AnthropicRequest;
-    body = parsed;
-  } catch (err) {
-    sendError(res, 400, `invalid request body: ${(err as Error).message}`);
-    return;
-  }
-
-  const isResponses = upstream.protocol === "responses";
-  const upstreamUrl = buildUpstreamUrl(upstream.baseUrl, upstream.protocol);
-
-  let jsonBody: string;
-  if (isResponses) {
-    const responsesReq = anthropicToResponses(body);
-    jsonBody = JSON.stringify(responsesReq);
-    log.info(`bridge: forwarding to Responses API (${upstreamUrl})`);
-  } else {
-    const openaiReq: OpenAIRequest = anthropicToOpenAI(body);
-    // Observability for image turns: count the image_url parts we forward so a
-    // gateway that silently drops them (non-vision model behind an OpenAI-
-    // protocol endpoint) is diagnosable from main.log — the app-side chain is
-    // proven complete when this line shows a non-zero count.
-    const imageParts = openaiReq.messages.reduce(
-      (n, m) => n + (Array.isArray(m.content) ? m.content.filter((p) => p.type === "image_url").length : 0),
-      0,
-    );
-    if (imageParts > 0) {
-      log.info(`bridge: forwarding ${imageParts} image part(s) to upstream (${upstreamUrl})`);
-    }
-    // Always stream upstream and re-frame on our side — even non-streaming
-    // Anthropic requests can be served from a streaming OpenAI response (we'd
-    // just collect the deltas). For the POC we forward stream as-is.
-    openaiReq.stream = true;
-    // OpenAI only includes `usage` in the final streaming chunk when explicitly
-    // asked; without it the bridge never sees token counts, so the context ring
-    // in the composer stays empty. Most OpenAI-compatible endpoints honor this
-    // flag; those that don't simply omit usage and the ring degrades to its
-    // (empty) fallback — same as before.
-    openaiReq.stream_options = { include_usage: true };
-    jsonBody = JSON.stringify(openaiReq);
-  }
-
   const ac = new AbortController();
-  if (upstream.timeoutMs) {
-    setTimeout(() => ac.abort(), upstream.timeoutMs).unref();
-  }
-  // If the client disconnects, abort the upstream fetch.
-  req.on("close", () => ac.abort());
-
-  let upstreamRes: Response;
+  const timer = upstream.timeoutMs ? setTimeout(() => ac.abort(new Error("Upstream request timed out")), upstream.timeoutMs) : undefined;
+  timer?.unref();
+  const disconnect = () => { if (!res.writableEnded) ac.abort(new Error("Claude client disconnected")); };
+  req.once("aborted", disconnect);
+  res.once("close", disconnect);
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
-    upstreamRes = await fetchUpstreamWithRetry(
-      upstreamUrl,
-      {
-        method: "POST",
-        headers: upstreamHeaders(upstream, sessionId),
-        body: jsonBody,
-      },
-      ac.signal,
-      onStatus,
-    );
-  } catch (err) {
-    // Use describeFetchError so the real cause (ECONNREFUSED / connect timeout
-    // / etc.) surfaces in both the log and the message the user sees — the raw
-    // `err.message` is always the opaque "fetch failed".
-    const cause = describeFetchError(err);
-    log.error(`bridge: upstream fetch failed: ${cause}`);
-    sendError(res, 502, `upstream unreachable: ${cause}`);
-    return;
-  }
-
-  if (!upstreamRes.ok || !upstreamRes.body) {
-    // Surface the upstream error text so the user sees auth/model failures.
-    const errText = await upstreamRes.text().catch(() => "");
-    log.warn(`bridge: upstream ${upstreamRes.status}: ${errText.slice(0, 500)}`);
-    sendError(res, upstreamRes.status || 502, errText.slice(0, 1000) || `upstream ${upstreamRes.status}`);
-    return;
-  }
-
-  // Stream headers — Anthropic SSE.
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-  });
-
-  const translator = isResponses ? new ResponsesToAnthropicSse() : new OpenAiToAnthropicSse();
-  const reader = upstreamRes.body.getReader();
-  const decoder = new TextDecoder();
-  let sseBuffer = "";
-
-  /** Parse one SSE frame (the text between two blank-line separators) and
-   *  feed its data chunk to the translator. Returns how many chunks were
-   *  fed (0 for [DONE] / empty / malformed frames). Malformed frames are
-   *  logged and skipped — dropping them silently made truncations
-   *  unattributable after the fact. */
-  const processFrame = (frame: string): number => {
-    const lines = frame.split("\n");
-    const eventLine = lines.find((l) => l.startsWith("event:"));
-    const eventName = eventLine ? eventLine.slice(6).trim() : undefined;
-    // Each frame is one or more `data: ...` lines. OpenAI sends a single
-    // data line per frame; we parse anything that starts with "data:".
-    const dataLines = lines
-      .filter((l) => l.startsWith("data:"))
-      .map((l) => l.slice(5).trimStart());
-    const dataStr = dataLines.join("\n");
-    if (!dataStr || dataStr === "[DONE]") {
-      // [DONE] is the terminator — nothing to feed.
-      return 0;
+    let body: AnthropicRequest;
+    try { body = await readJsonBody(req) as AnthropicRequest; }
+    catch (error) { sendError(res, 400, `invalid request body: ${describeFetchError(error)}`); return; }
+    ac.signal.throwIfAborted();
+    const isResponses = upstream.protocol === "responses";
+    const upstreamUrl = buildUpstreamUrl(upstream.baseUrl, upstream.protocol);
+    const translated = isResponses ? anthropicToResponses(body) : anthropicToOpenAI(body);
+    translated.stream = true;
+    if (!isResponses) (translated as OpenAIRequest).stream_options = { include_usage: true };
+    const response = await fetchUpstreamWithRetry(upstreamUrl, {
+      method: "POST", headers: upstreamHeaders(upstream, sessionId), body: JSON.stringify(translated),
+    }, ac.signal, onStatus, 2, 500, fetchUpstream);
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      sendError(res, response.status || 502, detail.slice(0, 1000) || `upstream ${response.status}`);
+      return;
     }
-    let chunk: OpenAIChunk & ResponsesSseChunk;
-    try {
-      chunk = JSON.parse(dataStr) as OpenAIChunk & ResponsesSseChunk;
-    } catch {
-      log.warn(`bridge: malformed SSE frame skipped: ${dataStr.slice(0, 200)}`);
-      return 0;
-    }
-    const events = isResponses
-      ? (translator as ResponsesToAnthropicSse).feed(chunk, eventName)
-      : (translator as OpenAiToAnthropicSse).feed(chunk);
-    for (const ev of events) {
-      writeSseEvent(res, ev);
-    }
-    return 1;
-  };
-
-  try {
+    if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) throw new Error("Upstream did not return an SSE stream");
+    res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+    const translator = isResponses ? new ResponsesToAnthropicSse() : new OpenAiToAnthropicSse();
+    const decoder = new SseDecoder((data, event) => {
+      if (data === "[DONE]") return;
+      const chunk: unknown = JSON.parse(data);
+      if (!chunk || typeof chunk !== "object" || Array.isArray(chunk)) throw new Error("Invalid upstream SSE payload");
+      const events = translator instanceof ResponsesToAnthropicSse
+        ? translator.feed(chunk as ResponsesSseChunk, event)
+        : translator.feed(event === "error" ? { ...(chunk as OpenAIChunk), type: "error" } : chunk as OpenAIChunk);
+      for (const ev of events) writeSseEvent(res, ev);
+    });
+    reader = response.body.getReader();
     for (;;) {
+      ac.signal.throwIfAborted();
       const { done, value } = await reader.read();
       if (done) break;
-      sseBuffer += decoder.decode(value, { stream: true });
-
-      // OpenAI SSE frames are separated by blank lines. Process whole frames,
-      // keeping any partial tail in the buffer for the next chunk.
-      let sep: number;
-      while ((sep = sseBuffer.indexOf("\n\n")) >= 0) {
-        const frame = sseBuffer.slice(0, sep);
-        sseBuffer = sseBuffer.slice(sep + 2);
-        processFrame(frame);
-      }
+      decoder.push(value);
     }
-    // Flush the decoder (a multi-byte char can straddle the last read), then
-    // process whatever is left in the buffer as a final frame. Some upstreams
-    // close the socket right after the last `data:` line without the trailing
-    // blank line — and that frame typically carries the tool_call fragments
-    // + finish_reason. Until 2026-09-02 the residue was dropped silently,
-    // which produced exactly the "text streamed fine, the announced tool call
-    // never arrived" truncation shape; recovering it (or at least logging it
-    // as malformed) makes the next occurrence attributable.
-    sseBuffer += decoder.decode();
-    const tail = sseBuffer.trim();
-    if (tail && processFrame(tail) > 0) {
-      log.info(`bridge: recovered tail SSE frame after stream end (${tail.length} bytes) — upstream omitted the trailing blank line`);
-    }
-    // Stream ended. Close any open block + emit message_delta/message_stop.
-    // The translator captured finish_reason off the final choice-bearing
-    // chunk and maps it onto Anthropic's stop_reason (a bare stream end with
-    // no finish_reason anywhere degrades to end_turn).
-    for (const ev of translator.finish()) {
-      writeSseEvent(res, ev);
-    }
-    // Upstream-blame diagnostic: the stream TERMINATED claiming tool_calls,
-    // yet not a single tool_call fragment was translated. That combination
-    // means the upstream generated the call but dropped its wire fragments —
-    // the CLI then sees a text-only end_turn message and closes the turn as
-    // success (surfaced downstream as a turn.incomplete "unfinished-text").
-    if (translator.finishReason === "tool_calls" && translator.toolBlockCount === 0) {
-      log.warn("bridge: upstream finished with finish_reason=tool_calls but no tool-call fragments arrived — upstream dropped them");
-    }
-  } catch (err) {
-    log.error(`bridge: stream read failed: ${(err as Error).message}`);
-  } finally {
+    decoder.finish();
+    ac.signal.throwIfAborted();
+    for (const ev of translator.finish()) writeSseEvent(res, ev);
     res.end();
+  } catch (error) {
+    const cause = describeFetchError(ac.signal.aborted ? ac.signal.reason : error);
+    log.error(`bridge: upstream request failed: ${cause}`);
+    sendError(res, 502, cause);
+  } finally {
+    if (timer) clearTimeout(timer);
+    ac.abort();
+    await reader?.cancel().catch(() => {});
+    reader?.releaseLock();
+    req.off("aborted", disconnect);
+    res.off("close", disconnect);
   }
 }
 
 /** Start a bridge server bound to a random local port. Resolves once listening. */
-export async function startBridge(upstream: UpstreamConfig): Promise<BridgeHandle> {
+export async function startBridge(upstream: UpstreamConfig, fetchUpstream: typeof engineFetch = engineFetch): Promise<BridgeHandle> {
   // Status subscribers (RuntimeManager fans these out as `upstream.issue`
   // RuntimeEvents per session using this bridge). Listener errors are
   // swallowed — status is best-effort observability, never control flow.
@@ -534,7 +423,7 @@ export async function startBridge(upstream: UpstreamConfig): Promise<BridgeHandl
     const rawUrl = req.url ?? "";
     const path = rawUrl.split("?", 2)[0];
     if (req.method === "POST" && (path.endsWith("/v1/messages") || path.endsWith("/messages"))) {
-      handleMessages(req, res, upstream, bridgeSessionId, notifyStatus).catch((err) => {
+      handleMessages(req, res, upstream, bridgeSessionId, notifyStatus, fetchUpstream).catch((err) => {
         log.error(`bridge: handler threw: ${(err as Error).message}`);
         sendError(res, 500, "internal bridge error");
       });

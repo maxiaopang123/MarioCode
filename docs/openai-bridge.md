@@ -43,6 +43,10 @@ apps/desktop/src/main/providers/bridge/
   types.ts                  # Anthropic/OpenAI 协议的局部类型（不依赖任一 SDK 包）
   requestTranslator.ts      # anthropicToOpenAI(req) — 纯函数
   responseTranslator.ts     # OpenAiToAnthropicSse 状态机类
+  responsesRequestTranslator.ts  # Anthropic → Responses（含工具返回图片）
+  responsesResponseTranslator.ts # Responses → Anthropic SSE
+  anthropicStreamWriter.ts   # 共用块输出器：验证完整参数后才交给引擎执行
+  sseDecoder.ts              # 共用 SSE 分帧（LF / CRLF / UTF-8 跨包 / 无空行尾帧）
   bridgeServer.ts           # 本地 HTTP server（http.createServer）+ startBridge()
   bridgeRegistry.ts         # 按 customModelId 复用 server 的注册表（单例，引用计数）
 ```
@@ -62,13 +66,13 @@ apps/desktop/src/main/providers/bridge/
 | `messages[].content`（string 或 block 数组） | 统一展开为数组再映射 |
 | `text` block | content 拼接 |
 | `tool_use` block（assistant） | `tool_calls[].{id, type:"function", function:{name, arguments: JSON.stringify(input)}}` |
-| `tool_result` block（user） | 拆成独立 `{role:"tool", tool_call_id, content}` 消息（`is_error` 塞进 content 前缀 `[ERROR]`） |
+| `tool_result` block（user） | 文本拆成独立 `tool` 消息；图片提升到所有工具结果之后的 `user.image_url` 并标明调用 ID。Responses 则原位保留 `function_call_output.output` 的 `input_text/input_image` 数组 |
 | `max_tokens` | `max_tokens` |
 | `temperature` / `top_p` | 透传 |
 | `stop_sequences` | `stop` |
 | `tools[].{name,description,input_schema}` | `tools[].{type:"function", function:{name,description,parameters:input_schema}}` |
 | `tool_choice` auto/any/tool/none | `"auto"` / `"required"` / `{type:"function",function:{name}}` / `"none"` |
-| `thinking` | **丢弃**（OpenAI 无对应） |
+| `output_config.effort` / 旧顶层 `effort` / `thinking.budget_tokens` | 转为 Chat `reasoning_effort` 或 Responses `reasoning.effort`；优先读真实 Claude 请求的 `output_config`，`xhigh/max` 归 `high` |
 | `cache_control` | 丢弃（OpenAI 自动 cache） |
 
 ### 4.2 响应翻译（OpenAI SSE → Anthropic SSE）状态机
@@ -78,20 +82,21 @@ apps/desktop/src/main/providers/bridge/
 | 第一个 chunk（含 role） | `message_start`（usage 全 0） |
 | `delta.content` 首次 | `content_block_start`(text) |
 | `delta.content` 后续 | `content_block_delta`(text_delta) |
-| `delta.tool_calls[].id` + `name` 首次 | 关闭前块 + `content_block_start`(tool_use) |
-| `delta.tool_calls[].function.arguments`（增量） | `content_block_delta`(input_json_delta, partial_json) |
-| `finish_reason` | 关闭所有块 + `message_delta`(stop_reason + usage) + `message_stop` |
+| `delta.tool_calls[].id` + `name` 首次 | 为该工具 index 创建独立缓冲；工具块暂不对引擎发布 |
+| `delta.tool_calls[].function.arguments`（增量） | 追加到该工具缓冲，支持并行交错分片 |
+| 流结束且有 `finish_reason`（Responses 要有终态事件） | 先校验全部工具 JSON，再逐个发 start → 完整 input_json_delta → stop，最后 message_delta + message_stop |
+| 缺终态、坏 JSON、上游 error / 读流故障 / 取消 / 超时 | 返回 Anthropic error，不伪造正常 message_stop；未完成工具不交给引擎 |
 | `usage`（末尾 chunk） | `message_delta.usage` |
 
 **stop_reason 映射**：`stop`→`end_turn`，`tool_calls`/`function_call`→`tool_use`，`length`→`max_tokens`，`content_filter`→`refusal`，其他→`end_turn`。
 
 **不发 `ping` 事件**（SDK 客户端 `Stream.fromSSEResponse` 直接丢弃）。
 
-**usage 字段**：OpenAI 的 `prompt_tokens`/`completion_tokens` → `input_tokens`/`output_tokens`；cache 字段填 0。
+**usage 字段**：OpenAI 的 prompt/input tokens 先减去 cached 部分；缓存量单列 `cache_read_input_tokens`，避免下游重复计数。输出量取 completion/output tokens。
 
 ### 4.3 thinking 块策略
 
-OpenAI 不暴露 reasoning 签名，无法真实合成 Anthropic 的 `signature`。策略：**请求丢弃 thinking 配置，响应不合成 thinking 块**。这样不存在多轮续接 thinking 的 signature 校验问题。代价：扩展思考在 OpenAI 模型上不可用（GPT-4o 等本就不支持 Anthropic 式 interleaved thinking）。
+请求侧将推理强度映射到 OpenAI 参数。响应侧将 `reasoning/reasoning_content`、Responses reasoning delta 与 `<think>` 文本归为 thinking 块；签名留空，多轮请求丢弃这些 thinking 历史，避免跨协议伪造签名。推理参数是否被上游接受仍取决于服务商和模型。
 
 ### 4.4 认证
 
@@ -147,9 +152,9 @@ OpenAI 不暴露 reasoning 签名，无法真实合成 Anthropic 的 `signature`
 
 | 项 | 说明 |
 |---|---|
-| **tool_calls 流式分片拼接** | OpenAI 把一个 tool call 的 arguments 分多个 chunk 发。翻译层用 `oaiToolIndex → anthropicBlockIndex` 状态机保证分片落到同一块。已用单元测试覆盖（含真实分片拼接回归） |
+| **tool_calls 流式分片拼接** | 各工具独立缓冲，流终态和全部参数校验通过后串行输出完整工具块；不会关闭前一块再往它写增量。工具执行等待上游流结束，文本和思考仍实时显示 |
 | **Azure 形态差异** | `api-version` query + `api-key` header，按 host 判断分支 |
-| **扩展思考不可用** | OpenAI 模型上 thinking 被丢弃（见 4.3） |
+| **推理差异** | 强度按兼容级别映射，响应的 thinking 无真实签名，历史不回传（见 4.3） |
 | **模型对 Claude 风格工具的适配** | Claude 二进制的 system prompt / 工具定义是 Claude 风格的，发给 GPT-4o 后模型能否按预期调工具是模型能力问题非架构问题；GPT-4o 系列对 function calling 适配良好 |
 | **并发** | 多会话共用同一 OpenAI 配置时，bridge 按 configId 复用 + 引用计数，不会冲突 |
 
@@ -161,3 +166,15 @@ OpenAI 不暴露 reasoning 签名，无法真实合成 Anthropic 的 `signature`
 - [ ] Azure OpenAI：`api-version` / `api-key` 分支
 - [ ] 聚合网关（one-api / OpenRouter）：连通性
 - [ ] 并发：多会话共用同一 OpenAI 配置（验证 bridge 复用 + 引用计数）
+
+## 10. Codex Chat/Messages 桥与离线回归（2026-10-07）
+
+Codex 原生继续发 Responses，`codexResponsesBridge.ts` 每轮提供经 token 鉴权的本地端点，向共享提供商的 Chat Completions / Messages 转换。`codexResponsesTranslation.ts` 同时收集顶层 `tools` 和历史中的 `additional_tools`，展开 namespace；用稳定、合法且区分同名工具的别名投递，再在 function/custom 调用响应中恢复 `name + namespace`，下一轮历史与指定 `tool_choice` 用同一映射。custom 工具的原文包装在 `input` 字符串，返回时恢复原文。
+
+仅桥接模式禁用依赖原生 Responses 的 hosted `web_search`；MarioTool 搜索仍由 dynamicTools 提供。其余不支持的工具类型明确拒绝，不能静默丢弃。Codex `reasoning.effort` 转 Chat 的 low/medium/high；Messages 转 enabled thinking，预算至少 1024、严格小于 max_tokens，额度过小报错。
+
+- `pnpm --filter @mariocode/desktop test:shared-providers`：配置与转换回归，含并行调用、图片、真实 effort 形状、namespace/custom 回放、LF/CRLF、坏 JSON、截流、上游错误与超时。
+- `pnpm --filter @mariocode/desktop test:protocol-bridges-native`：假 Key + 本地接口，实际启动 Codex 0.153.4（已知/未知模型各测 Chat/Messages）及 Claude SDK 0.3.258，校验并行工具执行、下一轮结果回放、MCP 图片与推理参数。无付费请求。
+- `test:shared-providers-electron`：隔离应用配置，通过真实 provider 验证三个引擎的三种接口及 Codex 模型切换续聊。
+
+真实服务商和实际模型的联网兼容性仍按第 9 节联调。

@@ -18,6 +18,7 @@ import type {
   AnthropicToolChoice,
   ResponsesInputContentPart,
   ResponsesInputItem,
+  ResponsesOutputTextPart,
   ResponsesRequest,
   ResponsesTool,
 } from "./types.js";
@@ -82,19 +83,27 @@ function translateResponsesMessage(msg: AnthropicMessage): ResponsesInputItem[] 
   const out: ResponsesInputItem[] = [];
 
   if (typeof msg.content === "string") {
-    out.push({
-      type: "message",
-      role: msg.role,
-      content: [{ type: "input_text", text: msg.content }],
-    });
+    if (msg.role === "assistant") {
+      out.push({
+        type: "message",
+        role: msg.role,
+        content: [{ type: "output_text", text: msg.content }],
+      });
+    } else {
+      out.push({
+        type: "message",
+        role: msg.role,
+        content: [{ type: "input_text", text: msg.content }],
+      });
+    }
     return out;
   }
 
   if (msg.role === "assistant") {
-    const textParts: ResponsesInputContentPart[] = [];
+    const textParts: ResponsesOutputTextPart[] = [];
     for (const block of msg.content) {
       if (block.type === "text") {
-        textParts.push({ type: "input_text", text: block.text });
+        textParts.push({ type: "output_text", text: block.text });
       } else if (block.type === "tool_use") {
         if (textParts.length > 0) {
           out.push({

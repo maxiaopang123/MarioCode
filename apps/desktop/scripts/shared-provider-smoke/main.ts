@@ -457,6 +457,9 @@ check("anthropicToResponses maps effort to reasoning.effort", translatedResponse
 check("anthropicToResponses maps tool_use to function_call", translatedResponses.input.some((item) => item.type === "function_call" && item.call_id === "tool_123" && item.name === "read_file"));
 check("anthropicToResponses maps tool_result to function_call_output", translatedResponses.input.some((item) => item.type === "function_call_output" && item.call_id === "tool_123" && item.output === "hello world"));
 check("anthropicToResponses maps tools definition", translatedResponses.tools?.[0]?.name === "read_file");
+check("anthropicToResponses maps user text to input_text", translatedResponses.input.some((item) => item.type === "message" && item.role === "user" && Array.isArray(item.content) && item.content.some((c) => c.type === "input_text")));
+check("anthropicToResponses maps assistant text to output_text", translatedResponses.input.some((item) => item.type === "message" && item.role === "assistant" && Array.isArray(item.content) && item.content.some((c) => c.type === "output_text")));
+check("anthropicToResponses maps assistant string content to output_text", anthropicToResponses({ model: "test", messages: [{ role: "assistant", content: "Reply directly" }], max_tokens: 100 }).input.some((item) => item.type === "message" && item.role === "assistant" && Array.isArray(item.content) && item.content.some((c) => c.type === "output_text" && c.text === "Reply directly")));
 
 // Bridge Responses -> Anthropic SSE streaming translation
 const responsesTranslator = new ResponsesToAnthropicSse();

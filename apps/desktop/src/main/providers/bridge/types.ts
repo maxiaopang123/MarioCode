@@ -256,12 +256,18 @@ export interface ResponsesInputImagePart {
   image_url: string;
 }
 
+export interface ResponsesOutputTextPart {
+  type: "output_text";
+  text: string;
+}
+
 export type ResponsesInputContentPart = ResponsesInputTextPart | ResponsesInputImagePart;
+export type ResponsesOutputContentPart = ResponsesOutputTextPart;
 
 export interface ResponsesMessageItem {
   type: "message";
   role: "user" | "assistant" | "system";
-  content: string | ResponsesInputContentPart[];
+  content: string | (ResponsesInputContentPart | ResponsesOutputContentPart)[];
 }
 
 export interface ResponsesFunctionCallItem {

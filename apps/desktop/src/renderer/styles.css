@@ -2946,3 +2946,17 @@ html.sketch.dark body::after {
   border: 1px solid rgb(var(--edge));
   color: rgb(var(--content));
 }
+
+/* ───────────── KaTeX LaTeX display block container ─────────────
+ * Block math equations (.katex-display) can be wide. Give them safe
+ * overflow scrolling and margin rhythm so they never break the chat layout. */
+.chat-md .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 0;
+  margin: var(--chat-md-gap-md, 12px) 0;
+}
+.chat-md .katex {
+  font-size: 1.05em;
+  text-rendering: auto;
+}

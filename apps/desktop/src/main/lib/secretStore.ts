@@ -295,7 +295,7 @@ function sharedClaudeProjection(): CustomModelPublic[] {
         .map((model) => ({
           model,
           interfaces: resolveSharedModelInterfaces(provider.protocols, model.interfaces)
-            .filter((protocol) => protocol === "anthropic" || protocol === "chat-completions"),
+            .filter((protocol) => protocol === "anthropic" || protocol === "chat-completions" || protocol === "responses"),
         }))
         .filter(({ interfaces }) => interfaces.length > 0);
       // Third-party gateways commonly expose both labels while only their
@@ -303,13 +303,16 @@ function sharedClaudeProjection(): CustomModelPublic[] {
       // Prefer that route when both are enabled; a provider that genuinely
       // needs Anthropic Messages can simply omit Chat Completions or give it
       // a separate shared configuration.
-      const upstreamProtocol = models.some(({ interfaces }) => interfaces.includes("chat-completions"))
+      const upstreamProtocol: Protocol | null = models.some(({ interfaces }) => interfaces.includes("chat-completions"))
         ? "openai"
         : models.some(({ interfaces }) => interfaces.includes("anthropic"))
           ? "anthropic"
-          : null;
+          : models.some(({ interfaces }) => interfaces.includes("responses"))
+            ? "responses"
+            : null;
       if (!upstreamProtocol || models.length === 0) return [];
-      const routeProtocol: SharedProviderProtocol = upstreamProtocol === "anthropic" ? "anthropic" : "chat-completions";
+      const routeProtocol: SharedProviderProtocol =
+        upstreamProtocol === "anthropic" ? "anthropic" : upstreamProtocol === "responses" ? "responses" : "chat-completions";
       return [{
         id: sharedRuntimeId(provider.id),
         name: `${provider.name}（共享）`,
@@ -471,13 +474,13 @@ export const CustomModelStore = {
         baseUrl: SharedProviderStore.endpointUrl(shared, upstreamProtocol),
         authToken,
         authMode: upstreamProtocol === "anthropic" ? "api_key" : "auth_token",
-        protocol: upstreamProtocol === "anthropic" ? "anthropic" : "openai",
+        protocol: upstreamProtocol === "anthropic" ? "anthropic" : upstreamProtocol === "responses" ? "responses" : "openai",
         selectedModel: selectedEntry.id,
         models: shared.models
           .map((model) => ({
           id: model.id,
           interfaces: resolveSharedModelInterfaces(shared.protocols, model.interfaces)
-            .filter((protocol) => protocol === "anthropic" || protocol === "chat-completions"),
+            .filter((protocol) => protocol === "anthropic" || protocol === "chat-completions" || protocol === "responses"),
           contextWindow: model.contextWindow,
           }))
           .filter((model) => model.interfaces.length > 0),

@@ -713,6 +713,60 @@ function buildComponents(): Components {
   };
 }
 
+// ── LaTeX normalization helper ────────────────────────────────────────
+/**
+ * Normalize LaTeX math delimiters in raw markdown:
+ * - `\[ ... \]` -> `$$ ... $$` (standard block math)
+ * - `\( ... \)` -> `$ ... $`   (standard inline math)
+ * - Lone lines like `[ \rho ... ]` or `[ x(t) = ... \rho ... ]` where the model omitted
+ *   the leading backslash but contained LaTeX syntax commands (`\rho`, `\alpha`, `\frac`, etc.)
+ *
+ * Models frequently emit `\[ ... \]` or naked `[ \command ... ]` instead of `$$...$$`.
+ * `remark-math` only recognizes dollar-sign delimiters by default. Normalizing before
+ * remark-math ensures KaTeX renders them.
+ *
+ * Guarded against code blocks (fenced ``` or indented) and backtick inline code.
+ */
+function normalizeMathDelimiters(content: string): string {
+  if (!content) return content;
+
+  // Split by code blocks (```...```) and inline code (`...`) so we never touch math-like syntax inside code
+  const parts = content.split(/(```[\s\S]*?```|`[^`\n]*`)/g);
+
+  return parts
+    .map((part, idx) => {
+      // Odd indices are code fences or inline code spans
+      if (idx % 2 === 1) return part;
+
+      let res = part;
+      // 1. Standard LaTeX block math: \[ math \] -> $$ math $$
+      res = res.replace(/\\\[([\s\S]*?)\\\]/g, (_, math) => `$$\n${math.trim()}\n$$`);
+      // 2. Standard LaTeX inline math: \( math \) -> $math$
+      res = res.replace(/\\\(([\s\S]*?)\\\)/g, (_, math) => `$${math.trim()}$`);
+
+      // 3. Fallback: Standalone line or block like `[ x(t) = ... \rho ... ]` where the
+      // leading backslash was omitted or stripped by model/markdown, but contains LaTeX commands (\rho, \frac, etc.)
+      const lines = res.split("\n");
+      const mappedLines = lines.map((line) => {
+        const trimmed = line.trim();
+        if (
+          trimmed.startsWith("[") &&
+          trimmed.endsWith("]") &&
+          !trimmed.endsWith("](") &&
+          /\\[a-zA-Z]/.test(trimmed)
+        ) {
+          const inner = trimmed.slice(1, -1).trim();
+          return `$$\n${inner}\n$$`;
+        }
+        return line;
+      });
+      res = mappedLines.join("\n");
+
+      return res;
+    })
+    .join("");
+}
+
 export const Markdown = memo(function Markdown({
   children,
   projectPath,
@@ -751,6 +805,7 @@ export const Markdown = memo(function Markdown({
   // never mistaken for a skill) and only in chat — the .md preview (baseDir
   // set) is a document whose prose should stay prose.
   const chatChips = !baseDir;
+  const normalizedChildren = useMemo(() => normalizeMathDelimiters(children), [children]);
   const rehypePlugins = useMemo(() => {
     const list: NonNullable<Parameters<typeof ReactMarkdown>[0]["rehypePlugins"]> = [rehypeKatex, rehypeImageGallery];
     if (chatChips) list.push(rehypePathChips);
@@ -781,7 +836,7 @@ export const Markdown = memo(function Markdown({
             urlTransform={urlTransform}
             components={components}
           >
-            {children}
+            {normalizedChildren}
           </ReactMarkdown>
         </MarkdownBaseDirContext.Provider>
       </MarkdownProjectContext.Provider>

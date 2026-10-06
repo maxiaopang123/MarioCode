@@ -577,14 +577,14 @@ class RuntimeManager {
         log.warn(`sendTurn: custom model ${session.customModelId} not found, token undecryptable, or no model configured; falling back to default endpoint`);
         this.releaseBridge(rt);
       } else {
-        // OpenAI-protocol endpoints need an in-process bridge that impersonates
+        // OpenAI-protocol and Responses-protocol endpoints need an in-process bridge that impersonates
         // Anthropic /v1/messages. We rewrite the apiConfig to point at the
         // local bridge, so the rest of the pipeline (buildCustomEnv, the binary)
         // is completely unaware anything special is happening — it just sees an
         // Anthropic-compatible endpoint on localhost. The bridge is shared
         // across sessions via the registry (grouped by config id and revision,
         // then reference-counted).
-        if (cfg.protocol === "openai") {
+        if (cfg.protocol === "openai" || cfg.protocol === "responses") {
           // A saved provider may have a newer revision while this session is
           // still holding the old one. Acquire the new listener first so a
           // failed startup leaves the old revision usable, then release the

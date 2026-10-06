@@ -1,4 +1,7 @@
 import { sharedRuntimeId, SharedProviderSaveInputSchema, resolveSharedModelProtocol } from "@contracts/sharedProvider.js";
+import { anthropicToOpenAI, translateReasoningEffort } from "@main/providers/bridge/requestTranslator.js";
+import { anthropicToResponses } from "@main/providers/bridge/responsesRequestTranslator.js";
+import { ResponsesToAnthropicSse } from "@main/providers/bridge/responsesResponseTranslator.js";
 import { ContextPolicySchema, parseContextPolicy, resolveContextPolicy } from "@contracts/contextPolicy.js";
 import { readContextPolicy } from "@main/lib/contextPolicy.js";
 import { SettingRepo } from "./stub-db.js";
@@ -62,7 +65,7 @@ for (const order of [["anthropic", "responses", "chat-completions"], ["responses
 }
 check("Codex rejects a chat-only model on a Responses provider", resolveSharedModelProtocol("codex", base.protocols, ["chat-completions"]) === undefined);
 check("Pi can select Messages-only models", resolveSharedModelProtocol("pi", base.protocols, ["anthropic"]) === "anthropic");
-check("Claude excludes Responses-only models", resolveSharedModelProtocol("claude", base.protocols, ["responses"]) === undefined);
+check("Claude can select Responses-only models", resolveSharedModelProtocol("claude", base.protocols, ["responses"]) === "responses");
 check("disabled provider interface cannot be routed", resolveSharedModelProtocol("pi", ["anthropic"], ["responses"]) === undefined);
 check("Pi Messages removes duplicate version prefix", normalizePiRegisteredModel({ id: "m", api: "anthropic-messages", baseUrl: "https://example.invalid/anthropic/v1/" }).baseUrl === "https://example.invalid/anthropic");
 check("Pi Messages preserves a hostname named v1", normalizePiRegisteredModel({ id: "m", api: "anthropic-messages", baseUrl: "http://v1" }).baseUrl === "http://v1");
@@ -106,7 +109,7 @@ SharedProviderStore.save({
 const scopedClaude = CustomModelStore.listPublic().find((provider) => provider.id === runtimeId);
 const scopedCodex = (await CodexModelsStore.listPublic()).find((provider) => provider.id === runtimeId);
 const scopedPi = (await PiModelsStore.listPublic())[runtimeId];
-check("Claude only receives models with a Claude interface", JSON.stringify(scopedClaude?.models.map((model) => model.id)) === JSON.stringify(["chat-model"]));
+check("Claude receives models with compatible interfaces including Responses", JSON.stringify(scopedClaude?.models.map((model) => model.id)) === JSON.stringify(["chat-model", "responses-model"]));
 check("Codex only receives models with a Responses interface", JSON.stringify(scopedCodex?.models.map((model) => model.id)) === JSON.stringify(["responses-model"]));
 check("Pi keeps the interface on each projected model", scopedPi?.models?.find((model) => model.id === "responses-model")?.api === "openai-responses");
 SharedProviderStore.save({ ...base, id: saved[0]!.id, apiKey: "TEST_SECRET_DO_NOT_PERSIST" });
@@ -406,4 +409,97 @@ try { SharedProviderStore.save({ ...base, id: saved[0]!.id }); } catch { corrupt
 check("corrupt saved key requires replacement on save", corruptSaveBlocked);
 SharedProviderStore.remove(saved[0]!.id);
 check("provider referenced by sessions can be removed", SharedProviderStore.getPublic(saved[0]!.id) === null);
+
+// Bridge reasoning_effort translation
+check("default request has no reasoning_effort", anthropicToOpenAI({ model: "test", messages: [], max_tokens: 1000 }).reasoning_effort === undefined);
+check("effort=low maps to reasoning_effort=low", anthropicToOpenAI({ model: "test", messages: [], max_tokens: 1000, effort: "low" }).reasoning_effort === "low");
+check("effort=medium maps to reasoning_effort=medium", anthropicToOpenAI({ model: "test", messages: [], max_tokens: 1000, effort: "medium" }).reasoning_effort === "medium");
+check("effort=high/xhigh/max maps to reasoning_effort=high",
+  anthropicToOpenAI({ model: "test", messages: [], max_tokens: 1000, effort: "high" }).reasoning_effort === "high" &&
+  anthropicToOpenAI({ model: "test", messages: [], max_tokens: 1000, effort: "xhigh" }).reasoning_effort === "high" &&
+  anthropicToOpenAI({ model: "test", messages: [], max_tokens: 1000, effort: "max" }).reasoning_effort === "high"
+);
+check("thinking enabled with budget <= 2048 maps to low", anthropicToOpenAI({ model: "test", messages: [], max_tokens: 1000, thinking: { type: "enabled", budget_tokens: 1024 } }).reasoning_effort === "low");
+check("thinking enabled with budget <= 8192 maps to medium", anthropicToOpenAI({ model: "test", messages: [], max_tokens: 1000, thinking: { type: "enabled", budget_tokens: 4096 } }).reasoning_effort === "medium");
+check("thinking enabled with budget > 8192 maps to high", anthropicToOpenAI({ model: "test", messages: [], max_tokens: 1000, thinking: { type: "enabled", budget_tokens: 16000 } }).reasoning_effort === "high");
+check("thinking disabled maps to undefined", anthropicToOpenAI({ model: "test", messages: [], max_tokens: 1000, thinking: { type: "disabled" } }).reasoning_effort === undefined);
+
+// Bridge Anthropic -> Responses request translation
+const sampleAnthropicReq = {
+  model: "gpt-4o-realtime[1m]",
+  system: "You are a helpful assistant.",
+  messages: [
+    { role: "user" as const, content: [{ type: "text" as const, text: "Check files" }] },
+    {
+      role: "assistant" as const,
+      content: [
+        { type: "text" as const, text: "I will check" },
+        { type: "tool_use" as const, id: "tool_123", name: "read_file", input: { path: "a.txt" } },
+      ],
+    },
+    {
+      role: "user" as const,
+      content: [
+        { type: "tool_result" as const, tool_use_id: "tool_123", content: "hello world" },
+      ],
+    },
+  ],
+  max_tokens: 2048,
+  effort: "high",
+  tools: [
+    { name: "read_file", description: "Read a file", input_schema: { type: "object", properties: { path: { type: "string" } } } },
+  ],
+};
+const translatedResponses = anthropicToResponses(sampleAnthropicReq);
+check("anthropicToResponses strips [1m] model suffix", translatedResponses.model === "gpt-4o-realtime");
+check("anthropicToResponses maps system to instructions", translatedResponses.instructions === "You are a helpful assistant.");
+check("anthropicToResponses maps effort to reasoning.effort", translatedResponses.reasoning?.effort === "high");
+check("anthropicToResponses maps tool_use to function_call", translatedResponses.input.some((item) => item.type === "function_call" && item.call_id === "tool_123" && item.name === "read_file"));
+check("anthropicToResponses maps tool_result to function_call_output", translatedResponses.input.some((item) => item.type === "function_call_output" && item.call_id === "tool_123" && item.output === "hello world"));
+check("anthropicToResponses maps tools definition", translatedResponses.tools?.[0]?.name === "read_file");
+
+// Bridge Responses -> Anthropic SSE streaming translation
+const responsesTranslator = new ResponsesToAnthropicSse();
+const ev1 = responsesTranslator.feed({ response: { id: "resp_1", model: "o3-mini" } }, "response.created");
+check("ResponsesToAnthropicSse emits message_start", ev1.some((e) => e.type === "message_start" && e.message.model === "o3-mini"));
+
+const ev2 = responsesTranslator.feed({ delta: "Let me ponder..." }, "response.reasoning_text.delta");
+check("ResponsesToAnthropicSse emits thinking block for reasoning", ev2.some((e) => e.type === "content_block_delta" && e.delta.type === "thinking_delta" && e.delta.thinking === "Let me ponder..."));
+
+const ev3 = responsesTranslator.feed({ delta: "Hello there!" }, "response.text.delta");
+check("ResponsesToAnthropicSse emits text delta", ev3.some((e) => e.type === "content_block_delta" && e.delta.type === "text_delta" && e.delta.text === "Hello there!"));
+
+const ev4 = responsesTranslator.feed({
+  item: { type: "function_call", call_id: "call_abc", name: "bash" },
+  output_index: 1,
+}, "response.output_item.added");
+check("ResponsesToAnthropicSse opens tool_use block on output_item.added", ev4.some((e) => e.type === "content_block_start" && e.content_block.type === "tool_use" && e.content_block.name === "bash"));
+
+const ev5 = responsesTranslator.feed({
+  output_index: 1,
+  call_id: "call_abc",
+  delta: '{"cmd":"ls"}',
+}, "response.function_call_arguments.delta");
+check("ResponsesToAnthropicSse emits input_json_delta for tool arguments", ev5.some((e) => e.type === "content_block_delta" && e.delta.type === "input_json_delta" && e.delta.partial_json === '{"cmd":"ls"}'));
+
+const ev6 = responsesTranslator.feed({
+  response: {
+    status: "completed",
+    usage: {
+      input_tokens: 1500,
+      output_tokens: 300,
+      input_token_details: { cached_tokens: 1200 },
+    },
+  },
+}, "response.completed");
+const finishEvents = responsesTranslator.finish();
+const messageDelta = finishEvents.find((e) => e.type === "message_delta");
+check("ResponsesToAnthropicSse converts cached_tokens into cache_read_input_tokens",
+  messageDelta?.type === "message_delta" &&
+  messageDelta.usage.input_tokens === 300 &&
+  messageDelta.usage.cache_read_input_tokens === 1200 &&
+  messageDelta.usage.output_tokens === 300 &&
+  messageDelta.delta.stop_reason === "tool_use"
+);
+
 process.stdout.write(`shared-provider smoke passed (${checks} checks)\n`);

@@ -77,7 +77,15 @@ class BridgeRegistryImpl {
     // A different fingerprint is intentionally not destructive. Existing
     // turns keep their old listener; new turns receive this fresh revision.
     if (entries.size > 0) log.info(`bridge: config ${customModelId} changed, starting a new server revision`);
-    const handle = await startBridge(upstream);
+    const targetProtocol = upstream.protocol === "responses" ? "responses" : "chat-completions";
+    const handle = await startBridge({
+      baseUrl: upstream.baseUrl,
+      authToken: upstream.authToken,
+      authMode: upstream.authMode,
+      timeoutMs: upstream.timeoutMs,
+      protocol: targetProtocol,
+      customHeaders: upstream.customHeaders,
+    });
     entries.set(fp, { handle, fingerprint: fp, refCount: 1 });
     return handle;
   }

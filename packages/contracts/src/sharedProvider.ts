@@ -91,10 +91,10 @@ export function resolveSharedModelInterfaces(
   return [...new Set(source.filter((protocol) => providerProtocols.includes(protocol)))];
 }
 
-/** Stable routing order, independent of checkbox / JSON ordering. Claude's
- * Chat route uses the existing Messages bridge; Codex only speaks Responses. */
+/** Stable routing order, independent of checkbox / JSON ordering. Claude
+ * and Pi support Chat, Messages and Responses; Codex only speaks Responses. */
 const AGENT_PROTOCOLS: Record<SharedProviderAgent, readonly SharedProviderProtocol[]> = {
-  claude: ["chat-completions", "anthropic"],
+  claude: ["chat-completions", "anthropic", "responses"],
   codex: ["responses"],
   pi: ["chat-completions", "anthropic", "responses"],
 };

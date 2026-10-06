@@ -92,7 +92,7 @@ export function registerCustomModelHandlers(ipcMain: IpcMain): void {
     // `[1m]`-suffixed model id straight onto the OpenAI wire — which has no
     // such convention — so gateways read `model[1m]` as an unknown model and
     // answered 401, failing tests for configs that work fine live.)
-    if (cfg.protocol === "openai") {
+    if (cfg.protocol === "openai" || cfg.protocol === "responses") {
       const probeId = `probe:${randomUUID()}`;
       const handle = await BridgeRegistry.acquire(probeId, cfg);
       try {

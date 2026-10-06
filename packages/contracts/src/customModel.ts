@@ -52,10 +52,11 @@ export type AuthMode = "auth_token" | "api_key";
 /** The wire protocol an endpoint speaks. `anthropic` (the default) means the
  *  endpoint implements Anthropic's `/v1/messages` — the binary talks to it
  *  directly via `ANTHROPIC_BASE_URL`. `openai` means the endpoint speaks
- *  OpenAI's `/v1/chat/completions`; the host runs an in-process bridge that
+ *  OpenAI's `/v1/chat/completions`, and `responses` means OpenAI's `/v1/responses`;
+ *  in both non-Anthropic cases the host runs an in-process protocol bridge that
  *  impersonates an Anthropic endpoint and translates both directions, so the
  *  binary still thinks it's talking to Anthropic. */
-export type Protocol = "anthropic" | "openai";
+export type Protocol = "anthropic" | "openai" | "responses";
 
 /** Default protocol when a stored config predates the `protocol` field, or when
  *  the user creates one without choosing. `anthropic` keeps every existing

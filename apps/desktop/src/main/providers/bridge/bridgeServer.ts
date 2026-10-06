@@ -31,11 +31,14 @@ import {
 } from "@main/providers/upstreamHeaders.js";
 import { anthropicToOpenAI } from "./requestTranslator.js";
 import { OpenAiToAnthropicSse } from "./responseTranslator.js";
+import { anthropicToResponses } from "./responsesRequestTranslator.js";
+import { ResponsesToAnthropicSse } from "./responsesResponseTranslator.js";
 import type {
   AnthropicRequest,
   AnthropicSseEvent,
   OpenAIChunk,
   OpenAIRequest,
+  ResponsesSseChunk,
   UpstreamConfig,
 } from "./types.js";
 
@@ -241,8 +244,17 @@ function upstreamHeaders(upstream: UpstreamConfig, sessionId: string): Record<st
 
 /** Build the full upstream URL, normalizing the path and adding Azure's
  *  api-version query param when applicable. */
-function buildUpstreamUrl(baseUrl: string): string {
+function buildUpstreamUrl(baseUrl: string, protocol?: "chat-completions" | "responses"): string {
   const trimmed = baseUrl.replace(/\/+$/, "");
+  if (protocol === "responses") {
+    if (/\/responses\/?$/i.test(trimmed)) {
+      return trimmed.replace(/\/+$/, "");
+    }
+    if (/\/v1\/?$/i.test(trimmed)) {
+      return `${trimmed.replace(/\/+$/, "")}/responses`;
+    }
+    return `${trimmed}/v1/responses`;
+  }
   if (looksLikeAzure(baseUrl)) {
     // Azure deployments are addressed as {base}/openai/deployments/{deployment}
     // and require `?api-version=`. We assume the user's baseUrl already points
@@ -309,31 +321,40 @@ async function handleMessages(
     return;
   }
 
-  const openaiReq: OpenAIRequest = anthropicToOpenAI(body);
-  // Observability for image turns: count the image_url parts we forward so a
-  // gateway that silently drops them (non-vision model behind an OpenAI-
-  // protocol endpoint) is diagnosable from main.log — the app-side chain is
-  // proven complete when this line shows a non-zero count.
-  const imageParts = openaiReq.messages.reduce(
-    (n, m) => n + (Array.isArray(m.content) ? m.content.filter((p) => p.type === "image_url").length : 0),
-    0,
-  );
-  if (imageParts > 0) {
-    log.info(`bridge: forwarding ${imageParts} image part(s) to upstream (${buildUpstreamUrl(upstream.baseUrl)})`);
-  }
-  // Always stream upstream and re-frame on our side — even non-streaming
-  // Anthropic requests can be served from a streaming OpenAI response (we'd
-  // just collect the deltas). For the POC we forward stream as-is.
-  openaiReq.stream = true;
-  // OpenAI only includes `usage` in the final streaming chunk when explicitly
-  // asked; without it the bridge never sees token counts, so the context ring
-  // in the composer stays empty. Most OpenAI-compatible endpoints honor this
-  // flag; those that don't simply omit usage and the ring degrades to its
-  // (empty) fallback — same as before.
-  openaiReq.stream_options = { include_usage: true };
+  const isResponses = upstream.protocol === "responses";
+  const upstreamUrl = buildUpstreamUrl(upstream.baseUrl, upstream.protocol);
 
-  const upstreamUrl = buildUpstreamUrl(upstream.baseUrl);
-  const jsonBody = JSON.stringify(openaiReq);
+  let jsonBody: string;
+  if (isResponses) {
+    const responsesReq = anthropicToResponses(body);
+    jsonBody = JSON.stringify(responsesReq);
+    log.info(`bridge: forwarding to Responses API (${upstreamUrl})`);
+  } else {
+    const openaiReq: OpenAIRequest = anthropicToOpenAI(body);
+    // Observability for image turns: count the image_url parts we forward so a
+    // gateway that silently drops them (non-vision model behind an OpenAI-
+    // protocol endpoint) is diagnosable from main.log — the app-side chain is
+    // proven complete when this line shows a non-zero count.
+    const imageParts = openaiReq.messages.reduce(
+      (n, m) => n + (Array.isArray(m.content) ? m.content.filter((p) => p.type === "image_url").length : 0),
+      0,
+    );
+    if (imageParts > 0) {
+      log.info(`bridge: forwarding ${imageParts} image part(s) to upstream (${upstreamUrl})`);
+    }
+    // Always stream upstream and re-frame on our side — even non-streaming
+    // Anthropic requests can be served from a streaming OpenAI response (we'd
+    // just collect the deltas). For the POC we forward stream as-is.
+    openaiReq.stream = true;
+    // OpenAI only includes `usage` in the final streaming chunk when explicitly
+    // asked; without it the bridge never sees token counts, so the context ring
+    // in the composer stays empty. Most OpenAI-compatible endpoints honor this
+    // flag; those that don't simply omit usage and the ring degrades to its
+    // (empty) fallback — same as before.
+    openaiReq.stream_options = { include_usage: true };
+    jsonBody = JSON.stringify(openaiReq);
+  }
+
   const ac = new AbortController();
   if (upstream.timeoutMs) {
     setTimeout(() => ac.abort(), upstream.timeoutMs).unref();
@@ -378,7 +399,7 @@ async function handleMessages(
     Connection: "keep-alive",
   });
 
-  const translator = new OpenAiToAnthropicSse();
+  const translator = isResponses ? new ResponsesToAnthropicSse() : new OpenAiToAnthropicSse();
   const reader = upstreamRes.body.getReader();
   const decoder = new TextDecoder();
   let sseBuffer = "";
@@ -389,10 +410,12 @@ async function handleMessages(
    *  logged and skipped — dropping them silently made truncations
    *  unattributable after the fact. */
   const processFrame = (frame: string): number => {
+    const lines = frame.split("\n");
+    const eventLine = lines.find((l) => l.startsWith("event:"));
+    const eventName = eventLine ? eventLine.slice(6).trim() : undefined;
     // Each frame is one or more `data: ...` lines. OpenAI sends a single
     // data line per frame; we parse anything that starts with "data:".
-    const dataLines = frame
-      .split("\n")
+    const dataLines = lines
       .filter((l) => l.startsWith("data:"))
       .map((l) => l.slice(5).trimStart());
     const dataStr = dataLines.join("\n");
@@ -400,14 +423,17 @@ async function handleMessages(
       // [DONE] is the terminator — nothing to feed.
       return 0;
     }
-    let chunk: OpenAIChunk;
+    let chunk: OpenAIChunk & ResponsesSseChunk;
     try {
-      chunk = JSON.parse(dataStr) as OpenAIChunk;
+      chunk = JSON.parse(dataStr) as OpenAIChunk & ResponsesSseChunk;
     } catch {
       log.warn(`bridge: malformed SSE frame skipped: ${dataStr.slice(0, 200)}`);
       return 0;
     }
-    for (const ev of translator.feed(chunk)) {
+    const events = isResponses
+      ? (translator as ResponsesToAnthropicSse).feed(chunk, eventName)
+      : (translator as OpenAiToAnthropicSse).feed(chunk);
+    for (const ev of events) {
       writeSseEvent(res, ev);
     }
     return 1;

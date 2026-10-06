@@ -298,7 +298,8 @@ export async function resolveModelForGitOp(
     return { ok: false, error: "找不到指定的模型配置" };
   }
 
-  if (resolveProtocol(cfg.protocol) === "openai") {
+  const proto = resolveProtocol(cfg.protocol);
+  if (proto === "openai" || proto === "responses") {
     try {
       const handle = await BridgeRegistry.acquire(customModelId, cfg);
       return {
@@ -313,7 +314,7 @@ export async function resolveModelForGitOp(
     } catch (err) {
       const msg = (err as Error).message || String(err);
       log.warn(`resolveModelForGitOp: bridge acquire failed for ${customModelId}: ${msg}`);
-      return { ok: false, error: `启动 OpenAI 协议桥接失败: ${msg}` };
+      return { ok: false, error: `启动 OpenAI / Responses 协议桥接失败: ${msg}` };
     }
   }
 

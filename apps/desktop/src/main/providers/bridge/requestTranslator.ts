@@ -31,8 +31,9 @@
  *    math is unaffected: the binary's 1M behavior is driven by
  *    ANTHROPIC_MODEL (env), and the UI's window resolution keys off the
  *    role's `supports1m` flag (highest-priority input), not the echo.
- * 7. **Dropped fields**: `thinking` (no OpenAI equivalent), `cache_control`
- *    (OpenAI caches automatically). These are intentionally NOT forwarded.
+ * 7. **Thinking / Effort**: Anthropic's `thinking` / `effort` fields map to
+ *    OpenAI's `reasoning_effort` ("low" | "medium" | "high") when enabled.
+ *    Dropped fields: `cache_control` (OpenAI caches automatically).
  */
 import { strip1MSuffix } from "@main/providers/claude-sdk/customEnv.js";
 import type {
@@ -186,6 +187,31 @@ function translateToolChoice(tc: AnthropicToolChoice): OpenAIRequest["tool_choic
   }
 }
 
+/** Translate Anthropic's `thinking` / `effort` config into OpenAI's `reasoning_effort`. */
+export function translateReasoningEffort(req: AnthropicRequest): "low" | "medium" | "high" | undefined {
+  const effort = req.effort?.toLowerCase();
+  if (effort) {
+    if (effort === "low") return "low";
+    if (effort === "medium") return "medium";
+    if (effort === "high" || effort === "xhigh" || effort === "max") return "high";
+  }
+
+  const thinking = req.thinking;
+  if (thinking) {
+    if (thinking.type === "enabled" || (typeof thinking.budget_tokens === "number" && thinking.budget_tokens > 0)) {
+      const budget = thinking.budget_tokens;
+      if (typeof budget === "number" && budget > 0) {
+        if (budget <= 2048) return "low";
+        if (budget <= 8192) return "medium";
+        return "high";
+      }
+      return "medium";
+    }
+  }
+
+  return undefined;
+}
+
 /** Translate an Anthropic request body into an OpenAI request body. Pure. */
 export function anthropicToOpenAI(req: AnthropicRequest): OpenAIRequest {
   const messages: OpenAIMessage[] = [];
@@ -214,5 +240,7 @@ export function anthropicToOpenAI(req: AnthropicRequest): OpenAIRequest {
   if (req.stop_sequences && req.stop_sequences.length > 0) out.stop = req.stop_sequences;
   if (req.tools && req.tools.length > 0) out.tools = translateTools(req.tools);
   if (req.tool_choice) out.tool_choice = translateToolChoice(req.tool_choice);
+  const reasoningEffort = translateReasoningEffort(req);
+  if (reasoningEffort !== undefined) out.reasoning_effort = reasoningEffort;
   return out;
 }

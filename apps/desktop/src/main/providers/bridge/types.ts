@@ -79,6 +79,11 @@ export type AnthropicToolChoice =
   | { type: "tool"; name: string; disable_parallel_tool_use?: boolean }
   | { type: "none" };
 
+export interface AnthropicThinkingConfig {
+  type?: string;
+  budget_tokens?: number;
+}
+
 /** The POST /v1/messages body the Claude binary sends to the bridge.
  *  Only the fields we translate are declared; anything else is ignored. */
 export interface AnthropicRequest {
@@ -92,6 +97,8 @@ export interface AnthropicRequest {
   stop_sequences?: string[];
   tools?: AnthropicTool[];
   tool_choice?: AnthropicToolChoice;
+  thinking?: AnthropicThinkingConfig;
+  effort?: string;
 }
 
 /* ───────────────────────── OpenAI (what the bridge SENDS / RECEIVES) ───────────────────────── */
@@ -141,6 +148,7 @@ export interface OpenAIRequest {
   stop?: string[];
   tools?: OpenAITool[];
   tool_choice?: string | { type: "function"; function: { name: string } };
+  reasoning_effort?: "low" | "medium" | "high";
 }
 
 /** A streaming delta's tool_call fragment. `index` identifies which tool_call
@@ -229,7 +237,114 @@ export interface UpstreamConfig {
   authToken: string;
   authMode: "auth_token" | "api_key";
   timeoutMs?: number;
+  /** Target wire protocol: "chat-completions" (default) or "responses". */
+  protocol?: "chat-completions" | "responses";
   /** Extra headers to send upstream (the config's `customHeaders`). Merged by
    *  `upstreamHeaders()` so both delivery paths send one header set. */
   customHeaders?: Record<string, string>;
+}
+
+/* ───────────────────────── OpenAI Responses API (wire protocol) ───────────────────────── */
+
+export interface ResponsesInputTextPart {
+  type: "input_text";
+  text: string;
+}
+
+export interface ResponsesInputImagePart {
+  type: "input_image";
+  image_url: string;
+}
+
+export type ResponsesInputContentPart = ResponsesInputTextPart | ResponsesInputImagePart;
+
+export interface ResponsesMessageItem {
+  type: "message";
+  role: "user" | "assistant" | "system";
+  content: string | ResponsesInputContentPart[];
+}
+
+export interface ResponsesFunctionCallItem {
+  type: "function_call";
+  id?: string;
+  call_id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface ResponsesFunctionCallOutputItem {
+  type: "function_call_output";
+  call_id: string;
+  output: string;
+}
+
+export type ResponsesInputItem =
+  | ResponsesMessageItem
+  | ResponsesFunctionCallItem
+  | ResponsesFunctionCallOutputItem;
+
+export interface ResponsesTool {
+  type: "function";
+  name: string;
+  description?: string;
+  parameters: Record<string, unknown>;
+}
+
+export interface ResponsesRequest {
+  model: string;
+  input: ResponsesInputItem[];
+  instructions?: string;
+  tools?: ResponsesTool[];
+  tool_choice?: string | { type: "function"; name: string };
+  temperature?: number;
+  top_p?: number;
+  max_output_tokens?: number;
+  stream?: boolean;
+  reasoning?: { effort?: "low" | "medium" | "high" };
+}
+
+/** Streaming chunk/event payload received from OpenAI Responses API. */
+export interface ResponsesSseChunk {
+  type?: string;
+  event?: string;
+  response_id?: string;
+  output_index?: number;
+  call_id?: string;
+  delta?: string;
+  item?: {
+    id?: string;
+    type?: string;
+    role?: string;
+    name?: string;
+    call_id?: string;
+    arguments?: string;
+    content?: unknown;
+  };
+  response?: {
+    id?: string;
+    model?: string;
+    status?: string;
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      total_tokens?: number;
+      input_token_details?: {
+        cached_tokens?: number;
+      };
+      prompt_tokens_details?: {
+        cached_tokens?: number;
+      };
+    };
+  };
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    input_token_details?: {
+      cached_tokens?: number;
+    };
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+    };
+  };
 }

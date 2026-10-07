@@ -29,10 +29,13 @@ const MODEL_COLORS = {
 export function ModelAvatar({
   model,
   className,
+  title,
 }: {
   /** The turn's recorded model id; renders nothing when absent/empty. */
   model?: string | null;
   className?: string;
+  /** Override the raw model tooltip when a surface has extra context. */
+  title?: string;
 }) {
   const name = modelDisplayName(model);
   if (!name) return null;
@@ -45,7 +48,7 @@ export function ModelAvatar({
         className,
       )}
       style={{ color: MODEL_COLORS[family] }}
-      title={model ?? name}
+      title={title ?? model ?? name}
       aria-label={name}
     >
       <Icon size={15} />

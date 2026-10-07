@@ -23,6 +23,8 @@ export const zh = {
   "layout.archived": "已归档",
   "layout.archivedCount": "已归档 ({n})",
   "layout.lastUsedModel": "最近使用：{model}",
+  "layout.sessionEngine": "引擎：{engine}",
+  "layout.sessionModelUnused": "尚无模型使用记录",
   "layout.forkConversation": "分叉为独立会话",
   "layout.forkFromMessage": "从此消息分叉",
   "layout.referenceConversation": "添加到另一聊天",

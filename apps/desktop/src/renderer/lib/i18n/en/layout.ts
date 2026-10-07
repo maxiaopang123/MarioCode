@@ -20,6 +20,8 @@ export const en = {
   "layout.archived": "Archived",
   "layout.archivedCount": "Archived ({n})",
   "layout.lastUsedModel": "Last used: {model}",
+  "layout.sessionEngine": "Engine: {engine}",
+  "layout.sessionModelUnused": "No model usage recorded",
   "layout.forkConversation": "Fork into a new conversation",
   "layout.forkFromMessage": "Fork from this message",
   "layout.referenceConversation": "Add to another conversation",

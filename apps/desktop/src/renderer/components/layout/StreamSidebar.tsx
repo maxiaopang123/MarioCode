@@ -48,7 +48,6 @@ import {
 } from "@renderer/lib/icons.js";
 import { cn } from "@renderer/lib/cn.js";
 import { isMac } from "@renderer/lib/platform.js";
-import { getProviderIcon } from "@renderer/lib/providerIcon.js";
 import { modelDisplayName } from "@renderer/lib/modelAvatar.js";
 import { selectArchiveShelf } from "@renderer/lib/archiveScope.js";
 import { projectDisplayColor } from "@renderer/lib/projectAvatar.js";
@@ -63,6 +62,7 @@ import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { WorktreeMergeBackDialog, WorktreeRemoveDialog } from "@renderer/components/chat/WorktreeMergeBack.js";
 import { ProjectManageMenuPopup, type ManageMenuState } from "./ProjectManageMenu.js";
 import { ProjectAvatar } from "./ProjectAvatar.js";
+import { SessionModelAvatar } from "./SessionModelAvatar.js";
 import { findSession } from "./SessionTabs.js";
 import {
   ArchivedRow,
@@ -860,10 +860,7 @@ function StreamSidebarBase() {
                 {archivedList.map((s) => (
                   <ArchivedRow
                     key={s.id}
-                    icon={(() => {
-                      const { Icon, color } = getProviderIcon(s.providerId);
-                      return <Icon size={14} className={cn("opacity-60", color)} />;
-                    })()}
+                    icon={<SessionModelAvatar session={s} className="opacity-60" />}
                     title={s.title}
                     subtitle={modelDisplayName(s.lastUsedModel) ?? undefined}
                     onRestore={() => void archiveSession(s.id, false)}
@@ -1022,8 +1019,6 @@ function StreamRow({
   registerNode: (id: string, el: HTMLLIElement | null) => void;
 }) {
   const { t } = useI18n();
-  const { Icon: ProviderIcon, color: providerColor, label: providerLabel } =
-    getProviderIcon(session.providerId);
   const canArchive = status.kind !== "working";
   const unread = status.kind === "done";
 
@@ -1103,9 +1098,8 @@ function StreamRow({
     >
       <span
         className={cn("grid h-[22px] w-[22px] place-items-center self-start", hasSub && "row-span-2")}
-        title={providerLabel || undefined}
       >
-        <ProviderIcon size={14} className={cn("shrink-0", providerColor)} />
+        <SessionModelAvatar session={session} />
       </span>
 
       <span

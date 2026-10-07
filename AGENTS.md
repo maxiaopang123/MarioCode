@@ -24,7 +24,11 @@
 | 技术栈、架构、踩坑记录 | [`docs/tech-stack.md`](docs/tech-stack.md) |
 | claude stream-json 数据格式(旧 CLI 方式的 dump 记录,SDK 的 SDKMessage 与此对应) | [`docs/claude-stream-json.md`](docs/claude-stream-json.md) |
 | Pi SDK 接入记录 | [`docs/pi-sdk-integration.md`](docs/pi-sdk-integration.md) |
+| 新想法、未完成事项与验收清单 | [`docs/MarioCode-TODO.md`](docs/MarioCode-TODO.md) |
+| 完成结果、软件版本与 Git 记录 | [`docs/MarioCode-版本迭代跟踪.md`](docs/MarioCode-版本迭代跟踪.md) |
 | Claude Agent SDK 参考 | https://code.claude.com/docs/en/agent-sdk |
+
+新想法先写入 `docs/MarioCode-TODO.md` 的「随手记想法」，保留用户原意；记录想法不等于要求立即实施。未完成事项在该文档维护，完成后将结果、提交与验证写入版本记录。SSH / Pi MCP 为 TODO-026，静默与强制更新为 TODO-027。
 
 改 `SdkMessageAdapter` 或涉及 SDK 输出解析时,**必须**先读 stream-json 文档——SDK 的 `SDKMessage` 类型本质上是对 CLI stream-json 的类型化封装,字段语义一一对应。
 
@@ -108,7 +112,7 @@ pnpm build
 - 生成安装包时直接使用当前已提交的软件版本号,不按打包次数增加版本或追加流水编号;同一版本重复打包仍生成同名安装包。
 
 ### 自动更新(自建服务器,2026-10-05,0.2.5 起)
-- **渠道**:`electron-builder.yml` 的 `publish` = `generic`,地址 `http://39.109.58.6:3458/`(亿联云;无域名先用 IP+端口,纯 HTTP)。地址在打包时写进安装包的 `app-update.yml`,改地址只影响之后打的包。`AUTO_UPDATE_ENABLED = true`:启动 10 秒后检查、之后每 4 小时一次;发现新版弹卡片,用户点下载,重启或退出时安装(不静默,静默 + 最低版本强制更新见 TODO-026)。0.2.4 及以前开关是关的,那些安装要手动装一次 0.2.5。
+- **渠道**:`electron-builder.yml` 的 `publish` = `generic`,地址 `http://39.109.58.6:3458/`(亿联云;无域名先用 IP+端口,纯 HTTP)。地址在打包时写进安装包的 `app-update.yml`,改地址只影响之后打的包。`AUTO_UPDATE_ENABLED = true`:启动 10 秒后检查、之后每 4 小时一次;发现新版弹卡片,用户点下载,重启或退出时安装(不静默,静默 + 最低版本强制更新见 TODO-027)。0.2.4 及以前开关是关的,那些安装要手动装一次 0.2.5。
 - **服务器**:容器 `mariocode-updates`(`nginx:1.27-alpine`,`--restart unless-stopped`,内存上限 128MB)把 `/opt/mariocode-updates/public` 只读挂成站点根;配置在 `apps/desktop/scripts/update-server/nginx.conf`(只放行平铺的 `*.yml` / `*.exe` / `*.blockmap` / `*.zip` / `*.dmg`,无目录列表,全部 `Cache-Control: no-cache`——同版本重打包会复用文件名)。重建:`release:upload --setup`(跑 `setup.sh`,可重复执行,只动这一个容器,并 `ufw allow 3458/tcp`)。
 - **发布**:先按版本约定提交并打包(`scripts\package-win.bat`),再 `$env:MARIOCODE_UPDATE_SSH_PASS='…'; pnpm --filter @mariocode/desktop run release:upload`(`--dry-run` 只做本地校验)。脚本校验 安装包 / blockmap / latest.yml 三者版本与 sha512 一致、工作区已提交、线上版本不比本地新(回退要 `--force`);上传走 exec `cat >>` 流式追加到 `incoming/*.part`(断线自动重连、从服务器已有字节处续传,`.part.want` 记录目标 sha512,防止把别的构建的残片续上),远端 sha512 比对通过才 `mv` 进 `public/`,**latest.yml 最后传**;最后从公网 GET latest.yml / HEAD 安装包复核。**旧版本文件不要删**:差量下载要用上一版的 `.blockmap`。SFTP 不用(ssh2 新 Node 下坏)。凭据只走环境变量,不进仓库。
 - **下载主页**(2026-10-05):同一台服务器的 `/` 就是下载页,源码在 `apps/desktop/scripts/update-server/www/`(`index.html` + `site/{style.css,app.js,logo.svg}`,纯静态,无构建步骤)。页面自己读 `latest.yml` 填下载按钮和「版本 · 大小 · 日期」,**发版不用改页面**;安装包名在用作链接前过 `^[A-Za-z0-9._-]+\.exe$` 校验(清单被篡改也变不成 javascript: / 外链)。中英双语(`app.js` 内置两套文案,按浏览器语言默认、选择存 localStorage `mc-site-lang`)、跟随系统浅深色、手机排版;首屏是 HTML/CSS 画的界面示意,不放真实截图(旧截图还是 Mcode 时期、含个人会话)。nginx:`/` → `index.html` 并加严格 CSP(`script-src 'self'`,页面里不能写内联脚本 / 内联样式),`/site/` 走 `^~` 前缀,其余路径仍只放行平铺的更新文件。更新页面:改 `www/` 后 `release:upload --site`(逐文件先进 incoming、sha512 校验后 mv,`index.html` 最后);改了 `nginx.conf` 要先 `release:upload --setup`。本地预览:`.turbo/site-preview/main.cjs`(本机脚本,用同一 CSP 起本地服务、假 latest.yml,截浅 / 深 / 手机 / 英文四张图)。

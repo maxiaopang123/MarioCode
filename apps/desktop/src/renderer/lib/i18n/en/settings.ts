@@ -1,5 +1,13 @@
 /** English mirror of `zh/settings.ts`. */
 export const en = {
+  "settings.shared.legacy.title": "Import legacy configurations ({n})",
+  "settings.shared.legacy.hint": "Copy to a shared provider to edit here. Originals and old chats remain; edits to the copy affect only chats using the new provider.",
+  "settings.shared.legacy.models": "models",
+  "settings.shared.legacy.copy": "Copy to shared provider",
+  "settings.shared.legacy.copied": "Copied",
+  "settings.shared.legacy.advanced": "Custom options cannot be converted completely. The original is kept; add a shared provider manually.",
+  "settings.shared.legacy.keyMissing": "No decryptable saved key. Handwritten environment or command references are preserved.",
+  "settings.shared.legacy.invalid": "Address or model fields do not meet shared configuration requirements. The original is kept.",
   "settings.appearance.replyDisplay": "Reply display",
   "settings.appearance.prosePaths": "Recognize file paths in prose",
   "settings.appearance.prosePathsDesc": "Show clear paths as file chips. Paths inside inline code remain available.",

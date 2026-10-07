@@ -3,6 +3,14 @@
  * Keys: `settings.*`. Owned by the settings/* migration batch.
  */
 export const zh = {
+  "settings.shared.legacy.title": "旧配置导入（{n}）",
+  "settings.shared.legacy.hint": "复制到统一提供商后可在此编辑。原配置和旧会话保留；修改复制后的配置只影响使用新提供商的聊天。",
+  "settings.shared.legacy.models": "个模型",
+  "settings.shared.legacy.copy": "复制到统一提供商",
+  "settings.shared.legacy.copied": "已复制",
+  "settings.shared.legacy.advanced": "含无法完整转换的自定义选项，保留原配置；可手动新增统一提供商。",
+  "settings.shared.legacy.keyMissing": "未找到可解密的保存密钥；手写的环境变量或命令引用保留。",
+  "settings.shared.legacy.invalid": "地址或模型字段不符合统一配置要求，保留原配置。",
   "settings.appearance.replyDisplay": "回复显示",
   "settings.appearance.prosePaths": "识别正文文件路径",
   "settings.appearance.prosePathsDesc": "将正文中明确的路径显示为可打开标签；行内代码中的路径仍可打开。",

@@ -4,12 +4,16 @@ import {
   SharedProviderDiscoverInputSchema,
   SharedProviderRemoveInputSchema,
   SharedProviderSaveInputSchema,
+  LegacyProviderImportSchema,
 } from "@contracts/ipc";
 import { discoverSharedProviderModels } from "@main/lib/sharedProviderDiscovery.js";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 import { engineFetch } from "@main/network/engineProxy.js";
+import { listLegacyProviders, importLegacyProvider } from "@main/lib/legacyProviderMigration.js";
 
 export function registerSharedProviderHandlers(ipcMain: IpcMain): void {
+  ipcMain.handle(IPC.SHARED_PROVIDERS_LIST_LEGACY, async () => ({entries:await listLegacyProviders()}));
+  ipcMain.handle(IPC.SHARED_PROVIDERS_IMPORT_LEGACY, async (_event, raw) => importLegacyProvider(LegacyProviderImportSchema.parse(raw)));
   ipcMain.handle(IPC.SHARED_PROVIDERS_LIST, async () => ({
     providers: SharedProviderStore.listPublic(),
   }));

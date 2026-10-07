@@ -7,6 +7,7 @@ import type {
   SharedProviderSaveInput,
 } from "@contracts/sharedProvider";
 import { resolveSharedModelInterfaces, resolveSharedModelProtocol, sharedProviderAddsOrigin } from "@contracts/sharedProvider";
+import type { LegacyProviderEntry } from "@contracts/legacyProvider";
 import { api } from "@renderer/lib/api.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { useSessionStore, validateComposerSelection } from "@renderer/stores/sessionStore.js";
@@ -177,6 +178,7 @@ function MiniToggle({ on, disabled, onClick, children, title }: {
 export function SharedProvidersPanel() {
   const { t } = useI18n();
   const [providers, setProviders] = useState<SharedProviderPublic[]>([]);
+  const [legacy, setLegacy] = useState<LegacyProviderEntry[]>([]);
   const [draft, setDraft] = useState<SharedProviderSaveInput | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -204,7 +206,7 @@ export function SharedProvidersPanel() {
   const draftRevisionRef = useRef(0);
   useEffect(() => {
     let mounted = true;
-    api.sharedProviders.list().then((r) => { if (mounted) setProviders(r.providers); })
+    Promise.all([api.sharedProviders.list(),api.sharedProviders.listLegacy()]).then(([r,old]) => { if (mounted) { setProviders(r.providers); setLegacy(old.entries); } })
       .catch((e: unknown) => { if (mounted) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
@@ -260,6 +262,18 @@ export function SharedProvidersPanel() {
       setDirty(false);
       await reloadConsumers();
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+  async function importOld(entry: LegacyProviderEntry) {
+    setBusy(true); setError(null);
+    try {
+      const result=await api.sharedProviders.importLegacy({engine:entry.engine,sourceId:entry.sourceId});
+      setProviders(result.providers);
+      setLegacy((await api.sharedProviders.listLegacy()).entries);
+      const imported=result.providers.find(p=>p.id===result.providerId);
+      if (imported) select(draftOf(imported));
+      await reloadConsumers();
+    } catch(e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
   async function remove(p: SharedProviderPublic) {
@@ -421,6 +435,20 @@ export function SharedProvidersPanel() {
     <section className="mx-auto w-full max-w-5xl space-y-4">
       <PanelHeader title={t("settings.shared.title")} icon={IconKey} />
       <p className="text-[13px] leading-relaxed text-content-muted">{t("settings.shared.description")}</p>
+      {legacy.length > 0 && <details className="rounded-xl border border-edge bg-surface p-3" data-legacy-providers>
+        <summary className="cursor-pointer text-[13px] font-medium">{t("settings.shared.legacy.title",{n:legacy.length})}</summary>
+        <p className="my-2 text-[12px] text-content-muted">{t("settings.shared.legacy.hint")}</p>
+        <div className="space-y-2">{legacy.map(entry=><div key={`${entry.engine}:${entry.sourceId}`} className="flex items-center gap-3 rounded-lg bg-surface-muted p-2" data-legacy-id={entry.sourceId}>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px]">{LABELS[entry.engine]} · {entry.name}</p>
+            <p className="truncate text-[11px] text-content-subtle" title={entry.baseUrl}>{hostOf(entry.baseUrl)} · {entry.models.length} {t("settings.shared.legacy.models")}</p>
+            {entry.issue && <p className="text-[11px] text-warning">{t(`settings.shared.legacy.${entry.issue}`)}</p>}
+          </div>
+          <Button size="sm" disabled={locked || dirty || Boolean(entry.issue) || Boolean(entry.importedProviderId)} onClick={()=>void importOld(entry)}>
+            {t(entry.importedProviderId ? "settings.shared.legacy.copied" : "settings.shared.legacy.copy")}
+          </Button>
+        </div>)}</div>
+      </details>}
       {error && <p role="alert" className="break-words rounded-lg bg-danger/10 px-3 py-2.5 text-[13px] text-danger">{error}</p>}
       <div className="settings-provider-layout grid min-h-[480px] grid-cols-[236px_minmax(0,1fr)] overflow-hidden rounded-xl border border-edge bg-surface shadow-sm">
         {/* ── Provider list ── */}

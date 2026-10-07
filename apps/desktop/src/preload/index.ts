@@ -671,6 +671,8 @@ const api = {
   },
 
   sharedProviders: {
+    listLegacy: (() => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_LIST_LEGACY)) as RpcMap["sharedProviders.listLegacy"],
+    importLegacy: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_IMPORT_LEGACY, input)) as RpcMap["sharedProviders.importLegacy"],
     list: (() => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_LIST)) as RpcMap["sharedProviders.list"],
     save: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_SAVE, input)) as RpcMap["sharedProviders.save"],
     remove: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_REMOVE, input)) as RpcMap["sharedProviders.remove"],

@@ -5,6 +5,8 @@
  */
 import { z } from "zod";
 import { MCP_MARKET_IDS } from "./mcpMarket.js";
+import { LegacyProviderImportSchema, type LegacyProviderEntry, type LegacyProviderImportInput } from "./legacyProvider.js";
+export { LegacyProviderImportSchema };
 import type { RuntimeEvent } from "./runtime.js";
 import type { Project, Session, MessageRecord, TurnInput, ApprovalDecision, SessionBookmark } from "./session.js";
 import type { ProviderCapabilities, UserInputAnswers, BuiltinModelOption } from "./provider.js";
@@ -5202,6 +5204,8 @@ export interface RpcMap {
   "runtimes.select": (input: RuntimesSelectInput) => Promise<{ ok: boolean; error?: string }>;
   "runtimes.discover": (input: RuntimesDiscoverInput) => Promise<{ candidates: RuntimeCandidate[] }>;
   "sharedProviders.list": () => Promise<{ providers: SharedProviderPublic[] }>;
+  "sharedProviders.listLegacy": () => Promise<{ entries: LegacyProviderEntry[] }>;
+  "sharedProviders.importLegacy": (input: LegacyProviderImportInput) => Promise<{ providers: SharedProviderPublic[]; providerId: string }>;
   "sharedProviders.save": (input: SharedProviderSaveInput) => Promise<{ providers: SharedProviderPublic[] }>;
   "sharedProviders.remove": (input: SharedProviderRemoveInput) => Promise<{ providers: SharedProviderPublic[] }>;
   "sharedProviders.discoverModels": (input: SharedProviderDiscoverInput) => Promise<SharedProviderDiscoveryResult>;
@@ -5533,6 +5537,8 @@ export const IPC = {
   RUNTIMES_DISCOVER: "runtimes:discover",
   RUNTIMES_EVENT: "runtimes:event",
   SHARED_PROVIDERS_LIST: "sharedProviders:list",
+  SHARED_PROVIDERS_LIST_LEGACY: "sharedProviders:listLegacy",
+  SHARED_PROVIDERS_IMPORT_LEGACY: "sharedProviders:importLegacy",
   SHARED_PROVIDERS_SAVE: "sharedProviders:save",
   SHARED_PROVIDERS_REMOVE: "sharedProviders:remove",
   SHARED_PROVIDERS_DISCOVER_MODELS: "sharedProviders:discoverModels",

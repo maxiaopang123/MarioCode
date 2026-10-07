@@ -28,7 +28,7 @@
 | 完成结果、软件版本与 Git 记录 | [`docs/MarioCode-版本迭代跟踪.md`](docs/MarioCode-版本迭代跟踪.md) |
 | Claude Agent SDK 参考 | https://code.claude.com/docs/en/agent-sdk |
 
-新想法先写入 `docs/MarioCode-TODO.md` 的「随手记想法」，保留用户原意；记录想法不等于要求立即实施。未完成事项在该文档维护，完成后将结果、提交与验证写入版本记录。SSH / Pi MCP 为 TODO-026，静默与强制更新为 TODO-027。
+新想法直接在 `docs/MarioCode-TODO.md` 的表格新增一行，状态填「想法」，保留用户原意；记录想法不等于要求立即实施。任务状态在该文档维护，已实现部分标 ✅，遗留开发与验收写在最后一列；完成后将结果、提交与验证写入版本记录。SSH / Pi MCP 为 TODO-026，静默与强制更新为 TODO-027。
 
 改 `SdkMessageAdapter` 或涉及 SDK 输出解析时,**必须**先读 stream-json 文档——SDK 的 `SDKMessage` 类型本质上是对 CLI stream-json 的类型化封装,字段语义一一对应。
 

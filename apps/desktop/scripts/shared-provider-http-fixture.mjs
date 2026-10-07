@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 
 /** Offline upstream for exercising the real SDK / binary wire protocols. */
-export async function startSharedProviderFixture() {
+export async function startSharedProviderFixture(options = {}) {
   const requests = [];
   const usagePlans = new Map();
   const server = createServer(async (req, res) => {
@@ -18,6 +18,10 @@ export async function startSharedProviderFixture() {
     }
     const inputTokens = usagePlans.get(body.model)?.shift() ?? 10;
     const text = `fixture-ok:${body.model}`;
+    const textParts = options.metrics ? [text.slice(0, 8), text.slice(8)] : [text];
+    const cacheRead = options.metrics ? 4 : 0;
+    const cacheFields = options.metrics ? { cache_read_input_tokens: cacheRead, cache_creation_input_tokens: 0 } : {};
+    const pause = () => new Promise(r => setTimeout(r, 250));
     if (path.endsWith("/responses/compact")) {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ id: "compact-fixture", object: "response.compaction", created_at: 1,
@@ -36,19 +40,23 @@ export async function startSharedProviderFixture() {
     const send = (value, event) => res.write(`${event ? `event: ${event}\n` : ""}data: ${JSON.stringify(value)}\n\n`);
     if (path.endsWith("/chat/completions")) {
       const chunk = { id: "chat-fixture", object: "chat.completion.chunk", created: 1, model: body.model };
-      send({ ...chunk, choices: [{ index: 0, delta: { role: "assistant", content: text }, finish_reason: null }] });
-      send({ ...chunk, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: inputTokens, completion_tokens: 5, total_tokens: inputTokens + 5 } });
+      for (const [index, content] of textParts.entries()) {
+        if (index) await pause();
+        send({ ...chunk, choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] });
+      }
+      send({ ...chunk, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: inputTokens, completion_tokens: 5, total_tokens: inputTokens + 5, ...(options.metrics ? { prompt_tokens_details: { cached_tokens: cacheRead } } : {}) } });
       res.end("data: [DONE]\n\n");
     } else if (path.endsWith("/messages")) {
       const events = [
-        { type: "message_start", message: { id: messageId, type: "message", role: "assistant", model: body.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: inputTokens, output_tokens: 0 } } },
+        { type: "message_start", message: { id: messageId, type: "message", role: "assistant", model: body.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: inputTokens, output_tokens: 0, ...cacheFields } } },
         { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
-        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
+        ...textParts.map(text => ({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } })),
         { type: "content_block_stop", index: 0 },
-        { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { input_tokens: inputTokens, output_tokens: 5 } },
+        { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { input_tokens: inputTokens, output_tokens: 5, ...cacheFields } },
         { type: "message_stop" },
       ];
-      for (const event of events) send(event, event.type);
+      let deltaCount = 0;
+      for (const event of events) { if (event.type === "content_block_delta" && deltaCount++) await pause(); send(event, event.type); }
       res.end();
     } else if (path.endsWith("/responses")) {
       const item = { id: messageId, type: "message", role: "assistant", status: "in_progress", content: [] };
@@ -59,13 +67,14 @@ export async function startSharedProviderFixture() {
         { type: "response.created", response },
         { type: "response.output_item.added", output_index: 0, item },
         { type: "response.content_part.added", output_index: 0, item_id: item.id, content_index: 0, part },
-        { type: "response.output_text.delta", output_index: 0, item_id: item.id, content_index: 0, delta: text },
+        ...textParts.map(delta => ({ type: "response.output_text.delta", output_index: 0, item_id: item.id, content_index: 0, delta })),
         { type: "response.output_text.done", output_index: 0, item_id: item.id, content_index: 0, text },
         { type: "response.content_part.done", output_index: 0, item_id: item.id, content_index: 0, part: { ...part, text } },
         { type: "response.output_item.done", output_index: 0, item: doneItem },
-        { type: "response.completed", response: { ...response, status: "completed", output: [doneItem], usage: { input_tokens: inputTokens, output_tokens: 5, total_tokens: inputTokens + 5, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
+        { type: "response.completed", response: { ...response, status: "completed", output: [doneItem], usage: { input_tokens: inputTokens, output_tokens: 5, total_tokens: inputTokens + 5, input_tokens_details: { cached_tokens: cacheRead }, output_tokens_details: { reasoning_tokens: 0 } } } },
       ];
-      for (const [sequence_number, event] of events.entries()) send({ ...event, sequence_number }, event.type);
+      let deltaCount = 0;
+      for (const [sequence_number, event] of events.entries()) { if (event.type === "response.output_text.delta" && deltaCount++) await pause(); send({ ...event, sequence_number }, event.type); }
       res.end();
     } else res.end();
   });

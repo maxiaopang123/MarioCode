@@ -44,9 +44,9 @@ export function SessionMetrics({ sessionId }: { sessionId: string }) {
   const avgCache = sessionCacheRate(usageHistory);
   const avgSpeed = sessionSpeed(usageHistory, gens);
   const last = usageHistory[usageHistory.length - 1];
-  const lastGen = gens[gens.length - 1];
+  const lastGen = gens.find(g => g.endedAt === last?.endedAt);
   const turnCache = turnCacheRate(last);
-  const turnTokPerSec = turnSpeed(last?.outputTokens, lastGen?.genMs);
+  const turnTokPerSec = turnSpeed(last?.outputTokens, last?.generationMs ?? lastGen?.genMs);
 
   // Nothing measured yet → render nothing rather than a row of dashes.
   if (!snapshot && avgCache == null && avgSpeed == null) return null;

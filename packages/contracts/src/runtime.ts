@@ -222,6 +222,12 @@ export interface ContextUsageEvent {
  *  from the latest {@link ContextSnapshot} + timing metadata. Persisted to
  *  the sessions table so the history survives app restart. */
 export interface TurnUsageRecord {
+  /** Sum of observed streaming spans, excluding tools/waits. Unknown for old records. */
+  generationMs?: number;
+  /** Time from accepting the turn to its first text/thinking delta. */
+  firstTokenMs?: number;
+  /** False when no cache counters were reported; old records remain compatible. */
+  cacheUsageKnown?: boolean;
   /** Wall-clock ms when the turn finalized (turnMeta.endedAt). */
   endedAt: number;
   /** Duration of the turn in ms (endedAt - startedAt). */
@@ -262,6 +268,8 @@ export interface ErrorEvent {
 /** The turn has fully completed. */
 export type TurnDoneReason = "end_turn" | "max_tokens" | "tool_use" | "interrupted" | "error";
 export interface TurnDoneEvent {
+  generationMs?: number;
+  firstTokenMs?: number;
   type: "turn.done";
   sessionId: string;
   reason: TurnDoneReason;

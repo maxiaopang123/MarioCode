@@ -14,6 +14,7 @@ import { providerRegistry } from "@main/providers/registry.js";
 import { SessionRepo, ProjectRepo } from "@main/store/repositories.js";
 import { CustomModelStore } from "@main/lib/secretStore.js";
 import { ApprovalBridge } from "./ApprovalBridge.js";
+import { GenerationTiming } from "@main/lib/generationTiming.js";
 import { getFileSnapshot, dropFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
 import { restoreFiles } from "@main/lib/fileSnapshot.js";
 import { BridgeRegistry } from "@main/providers/bridge/bridgeRegistry.js";
@@ -38,6 +39,7 @@ interface SessionRuntime {
   /** Wall-clock ms when the current turn started (Date.now()). Used to
    *  compute `durationMs` in the per-turn usage history. */
   turnStartedAt: number;
+  timing?: GenerationTiming;
   turnReportedModel?: string;
   /** Set at `turn.done` with the turn's endedAt/durationMs; consumed by the
    *  next `token-usage.updated` (the turn-end context snapshot, which the
@@ -45,7 +47,7 @@ interface SessionRuntime {
    *  after turn.done) to append the per-turn usage-history record with the
    *  turn's final throughput/cost data. Flushed at the next sendTurn if no
    *  snapshot ever arrives (all-zero usage turn / abort before result). */
-  pendingTurnEnd?: { endedAt: number; durationMs: number };
+  pendingTurnEnd?: { endedAt: number; durationMs: number; generationMs?: number; firstTokenMs?: number };
   /** Latest context snapshot emitted by the adapter (tracked from
    *  `token-usage.updated` events). Read at `turn.done` to build the
    *  per-turn usage history entry. */
@@ -132,6 +134,9 @@ class RuntimeManager {
 
     const emit = (rawEvent: RuntimeEvent) => {
       if (!isCurrentProviderContext(this.sessions.get(session.id)?.ctx, ctx)) return;
+      const timing = this.sessions.get(session.id)?.timing;
+      if ((rawEvent.type === "text.delta" || rawEvent.type === "thinking") && rawEvent.text) timing?.delta();
+      else if (["tool.use", "message.complete", "approval.request", "question.ask", "plan.approval_request"].includes(rawEvent.type)) timing?.pause();
       // Stamp the turn-end wall-clock ONCE and share it with both consumers:
       // the usage record filed below (keyed by this timestamp) and the renderer
       // (which adopts it as turnMeta.endedAt). The renderer uses the match to
@@ -139,8 +144,8 @@ class RuntimeManager {
       // never be equal. Stamped here because this is the single exit every
       // provider event passes through — no per-adapter bookkeeping.
       const e: RuntimeEvent =
-        rawEvent.type === "turn.done" && rawEvent.endedAt === undefined
-          ? { ...rawEvent, endedAt: Date.now() }
+        rawEvent.type === "turn.done"
+          ? { ...rawEvent, endedAt: rawEvent.endedAt ?? Date.now(), ...timing?.finish() }
           : rawEvent;
       sendToRenderer(IPC.CLAUDE_EVENT, { channel: IPC.CLAUDE_EVENT, sessionId: e.sessionId, event: e });
       // Fan out to mobile clients over SSE. Same fire-and-forget contract — a
@@ -191,6 +196,8 @@ class RuntimeManager {
           rt.pendingTurnEnd = {
             endedAt,
             durationMs: Math.max(0, endedAt - rt.turnStartedAt),
+            generationMs: e.generationMs,
+            firstTokenMs: e.firstTokenMs,
           };
           // Ordering, as observed in production (usage history silently lost on
           // single-turn sessions): the adapter emits the turn-end snapshot from
@@ -445,6 +452,9 @@ class RuntimeManager {
       const record: TurnUsageRecord = {
         endedAt: pending.endedAt,
         durationMs: pending.durationMs,
+        generationMs: pending.generationMs,
+        firstTokenMs: pending.firstTokenMs,
+        cacheUsageKnown: snap.cacheReadTokens !== undefined || snap.cacheCreationTokens !== undefined,
         totalProcessedTokens: snap.totalProcessedTokens,
         outputTokens: snap.outputTokens,
         cacheReadTokens: snap.cacheReadTokens ?? 0,
@@ -518,6 +528,7 @@ class RuntimeManager {
 
     // Record turn start time for per-turn usage history persistence.
     rt.turnStartedAt = Date.now();
+    rt.timing = new GenerationTiming();
     rt.turnReportedModel = undefined;
     // 1-based turn counter for per-turn artifacts (browser screenshot dirs).
     rt.turnCount++;

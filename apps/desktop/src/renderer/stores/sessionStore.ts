@@ -362,6 +362,8 @@ export interface TurnMeta {
   /** Wall-clock ms when the turn ended (turn.done / error). Undefined while
    *  the turn is still streaming — the renderer treats this as "live". */
   endedAt?: number;
+  generationMs?: number;
+  firstTokenMs?: number;
   /** Model this turn was SENT with (the composer's resolved send-model id,
    *  e.g. "deepseek-flash" / "claude-sonnet-4-5"), stamped from the send-time
    *  anchor at turn creation. Recorded per turn because the model can change
@@ -8240,9 +8242,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           // same system clock, so this stays compatible with the renderer-side
           // startedAt used for durations. Falls back to now for older senders.
           const endedAt = e.endedAt ?? Date.now();
+          const fallbackGenMs = finishTurn(sid);
           next = next.map((m) =>
             m.turnMeta && m.turnMeta.endedAt === undefined
-              ? { ...m, turnMeta: { ...m.turnMeta, endedAt } }
+              ? { ...m, turnMeta: { ...m.turnMeta, endedAt, generationMs: e.generationMs, firstTokenMs: e.firstTokenMs } }
               : m,
           );
           // Freeze or prune the inline plan block(s) on this just-closed turn.
@@ -8303,6 +8306,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
                     {
                       endedAt,
                       durationMs: Math.max(0, endedAt - turnStart),
+                      generationMs: e.generationMs,
+                      firstTokenMs: e.firstTokenMs,
+                      cacheUsageKnown: snap.cacheReadTokens !== undefined || snap.cacheCreationTokens !== undefined,
                       totalProcessedTokens: snap.totalProcessedTokens,
                       outputTokens: snap.outputTokens,
                       cacheReadTokens: snap.cacheReadTokens ?? 0,
@@ -8373,7 +8379,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
               // did it feel just now" number, not an archive.
               turnGenBySession: {
                 ...s.turnGenBySession,
-                [sid]: [...(s.turnGenBySession[sid] ?? []), { endedAt: Date.now(), genMs: finishTurn(sid) }].slice(-200),
+                [sid]: [...(s.turnGenBySession[sid] ?? []), { endedAt, genMs: e.generationMs ?? fallbackGenMs }].slice(-200),
               },
               ...(rowsUsagePatch ?? {}),
             };

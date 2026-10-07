@@ -873,7 +873,7 @@ export function TurnPanel({
               <span className="tabular-nums">{fmtClock(startedAt)}</span>
               <span className="opacity-60">·</span>
             </span>
-            <span className="chat-ledger-duration tabular-nums">{fmtDuration(duration)}</span>
+            <span className="chat-ledger-duration tabular-nums" title={turnMeta?.firstTokenMs == null ? undefined : t("chatStream.byline.firstTokenHint", { secs: (turnMeta.firstTokenMs / 1000).toFixed(2) })}>{fmtDuration(duration)}</span>
             {/* Live current-operation ticker — rolls like a slot machine as
                 the agent moves between commands. Clears when the turn ends so
                 historical cards never show a stale operation. */}
@@ -887,7 +887,7 @@ export function TurnPanel({
               <span className="tabular-nums">{fmtClock(startedAt)}</span>
               <span className="opacity-60">·</span>
             </span>
-            <span className="chat-ledger-duration tabular-nums">{fmtDuration(duration)}</span>
+            <span className="chat-ledger-duration tabular-nums" title={turnMeta?.firstTokenMs == null ? undefined : t("chatStream.byline.firstTokenHint", { secs: (turnMeta.firstTokenMs / 1000).toFixed(2) })}>{fmtDuration(duration)}</span>
             {stats && stats.steps > 0 && (
               <>
                 <span className="opacity-60">·</span>

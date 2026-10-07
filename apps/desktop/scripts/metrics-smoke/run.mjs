@@ -1,0 +1,10 @@
+import { createRequire } from "node:module";
+import { mkdir } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL, fileURLToPath } from "node:url";
+const desktop=resolve(dirname(fileURLToPath(import.meta.url)),"../..");
+const require=createRequire(join(desktop,"package.json"));
+const {build}=createRequire(require.resolve("vite/package.json"))("esbuild");
+const output=join(desktop,".turbo/metrics-smoke.mjs"); await mkdir(dirname(output),{recursive:true});
+await build({entryPoints:[join(desktop,"scripts/metrics-smoke/main.ts")],outfile:output,bundle:true,platform:"node",format:"esm",target:"node22",tsconfig:join(desktop,"tsconfig.json")});
+await import(pathToFileURL(output).href);

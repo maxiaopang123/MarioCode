@@ -227,7 +227,7 @@ export function SessionFloat({
 
   const gens = turnGens ?? [];
   const lastTurn = history[history.length - 1];
-  const lastGen = gens[gens.length - 1];
+  const lastGen = gens.find(g => g.endedAt === lastTurn?.endedAt);
 
   const done = todos.filter((x) => x.status === "completed").length;
   const taskPct = todos.length > 0 ? Math.round((done / todos.length) * 100) : 0;
@@ -653,7 +653,7 @@ export function SessionFloat({
                   <span className="text-[11.5px] text-content-subtle">{t("chatStream.float.speed")}</span>
                   <span className="flex items-baseline gap-1">
                     <b className="text-[20px] font-[650] leading-none tracking-[-0.02em] text-content tabular-nums">
-                      {fmtSpeed(turnSpeed(lastTurn?.outputTokens, lastGen?.genMs))}
+                      {fmtSpeed(turnSpeed(lastTurn?.outputTokens, lastTurn?.generationMs ?? lastGen?.genMs))}
                     </b>
                     <em className="not-italic text-[11.5px] text-content-subtle">tok/s</em>
                   </span>

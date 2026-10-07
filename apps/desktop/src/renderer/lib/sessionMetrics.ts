@@ -12,7 +12,7 @@
  * much as a 50k-token one.
  *
  * OUTPUT SPEED = outputTokens / generation time, where generation time comes
- * from the renderer's delta timing (see lib/genTimer.ts) and excludes tool
+ * from persisted main-process delta timing and excludes tool
  * execution and waits. The session average is likewise token-weighted: total
  * output tokens over total generation time.
  *
@@ -23,8 +23,8 @@
 import type { TurnUsageRecord } from "@contracts/runtime";
 
 /** Convert session-cumulative counters (Pi) to per-turn values before feeding
- *  the metrics below. Preserve input order so generation-time records retain
- *  their positional pairing. Occupancy and subagent tokens aren't cumulative.
+ *  the metrics below. Generation times pair by endedAt; occupancy and subagent
+ *  tokens aren't cumulative.
  *  The first record uses a zero baseline, as in main/lib/usageStats.ts. */
 export function normalizeSessionUsageHistory(
   history: readonly TurnUsageRecord[],
@@ -69,7 +69,7 @@ function inputSide(r: TurnUsageRecord): number {
 /** Cache hit rate of one turn as a fraction [0,1], or null when the turn
  *  processed no input tokens (nothing to have cached). */
 export function turnCacheRate(r: TurnUsageRecord | undefined): number | null {
-  if (!r) return null;
+  if (!r || r.cacheUsageKnown === false) return null;
   const denom = inputSide(r);
   if (denom <= 0) return null;
   return Math.min(1, r.cacheReadTokens / denom);
@@ -81,6 +81,7 @@ export function sessionCacheRate(history: readonly TurnUsageRecord[]): number | 
   let reads = 0;
   let denom = 0;
   for (const r of history) {
+    if (r.cacheUsageKnown === false) continue;
     denom += inputSide(r);
     reads += r.cacheReadTokens;
   }
@@ -104,16 +105,12 @@ export function sessionSpeed(
 ): number | null {
   let tokens = 0;
   let ms = 0;
-  // The two arrays are appended once per turn in the same order; align from
-  // the end so a missing older entry (history trimmed on reopen) can't shift
-  // the pairing of recent turns.
-  const n = Math.min(history.length, gens.length);
-  for (let i = 1; i <= n; i++) {
-    const r = history[history.length - i]!;
-    const g = gens[gens.length - i]!;
-    if (g.genMs <= 0 || r.outputTokens <= 0) continue;
+  const measured = new Map(gens.map(g => [g.endedAt, g.genMs]));
+  for (const r of history) {
+    const duration = r.generationMs ?? measured.get(r.endedAt);
+    if (!duration || duration <= 0 || r.outputTokens <= 0) continue;
     tokens += r.outputTokens;
-    ms += g.genMs;
+    ms += duration;
   }
   if (ms <= 0) return null;
   return (tokens / ms) * 1000;
@@ -135,7 +132,7 @@ export function turnCacheRateAt(
 ): number | null {
   if (!history || endedAt === undefined) return null;
   const target = history.find((r) => r.endedAt === endedAt);
-  if (!target) return null;
+  if (!target || target.cacheUsageKnown === false) return null;
   if (!cumulative) return turnCacheRate(target);
   let prev: TurnUsageRecord | undefined;
   for (const r of history) {
@@ -167,21 +164,17 @@ export function turnOutputTokens(
   return Math.max(0, target.outputTokens - (prev?.outputTokens ?? 0));
 }
 
-/** Generation time measured for the turn that ended at `endedAt`.
- *  The two arrays are appended once per turn in the same order but carry
- *  different clocks (the usage record's `endedAt` comes from the provider,
- *  the gen record's from the renderer), so they are paired by POSITION,
- *  aligned at the end. */
+/** Persisted generation time for this turn, with a renderer fallback matched
+ *  by the same main-process endedAt. Never borrow another turn's duration. */
 export function genMsForTurn(
   history: readonly TurnUsageRecord[] | undefined,
   gens: readonly TurnGenRecord[] | undefined,
   endedAt: number | undefined,
 ): number | null {
-  if (!history || !gens || endedAt === undefined) return null;
-  const idx = history.findIndex((r) => r.endedAt === endedAt);
-  if (idx < 0) return null;
-  const g = gens[idx - (history.length - gens.length)];
-  return g && g.genMs > 0 ? g.genMs : null;
+  if (!history || endedAt === undefined) return null;
+  const record = history.find(r => r.endedAt === endedAt);
+  const ms = record?.generationMs ?? gens?.find(g => g.endedAt === endedAt)?.genMs;
+  return ms && ms > 0 ? ms : null;
 }
 
 /** Per-turn cache rates for the sparkline, oldest first. Turns with no input

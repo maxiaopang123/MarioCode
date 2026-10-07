@@ -50,7 +50,7 @@ import type {
 import type { ProviderContext } from "@contracts/provider";
 import type { NotificationFrame } from "./CodexAppServerClient.js";
 import type { CodexFileSnapshot } from "./CodexFileSnapshot.js";
-import { buildCodexTokenSnapshot, type CodexUsage } from "./codexTokenUsage.js";
+import { buildCodexTokenSnapshot, CodexTurnUsage, type CodexUsage } from "./codexTokenUsage.js";
 
 export class CodexMessageAdapter {
   /** Set when the user interrupts; late notifications are dropped. */
@@ -62,6 +62,8 @@ export class CodexMessageAdapter {
   private turnDoneResolve: ((reason: TurnDoneReason) => void) | null = null;
   /** Terminal error text for the current turn (surfaced once). */
   private lastUsage: CodexUsage | null = null;
+  private readonly turnUsage = new CodexTurnUsage();
+  private usageArmed = false;
   private modelContextWindow: number | null = null;
   /** Occupancy fallback when the server never reports modelContextWindow —
    *  the user-configured per-model context window (or undefined to use the
@@ -231,11 +233,16 @@ export class CodexMessageAdapter {
         if (typeof diff === "string") this.snapshots.setTurnDiff(diff);
         break;
       }
+      case "turn/started": {
+        if (!this.mainThreadId || p.threadId === this.mainThreadId) this.usageArmed = true;
+        break;
+      }
       case "thread/tokenUsage/updated": {
+        if (!this.usageArmed || (typeof p.threadId === "string" && this.mainThreadId && p.threadId !== this.mainThreadId)) break;
         const tu = p.tokenUsage as
-          | { last?: CodexUsage & { totalTokens?: number }; modelContextWindow?: number | null }
+          | { last?: CodexUsage; total?: CodexUsage; modelContextWindow?: number | null }
           | undefined;
-        if (tu?.last) this.lastUsage = tu.last;
+        if (tu?.last) { this.lastUsage = tu.last; this.turnUsage.observe(tu.last, tu.total); }
         if (typeof tu?.modelContextWindow === "number" && tu.modelContextWindow > 0) {
           this.modelContextWindow = tu.modelContextWindow;
         }
@@ -914,6 +921,7 @@ export class CodexMessageAdapter {
     const snapshot = buildCodexTokenSnapshot(
       this.lastUsage,
       this.modelContextWindow ?? this.contextWindowFallback,
+      this.turnUsage.value,
     );
     if (!snapshot) return;
     this.emit({ type: "token-usage.updated", sessionId: this.sessionId, snapshot });

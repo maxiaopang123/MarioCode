@@ -3193,6 +3193,8 @@ function ChatPaneForSession({
       const turnGenMs = genMsForTurn(usageHistory, turnGens, item.turnMeta?.endedAt);
       const turnOut = turnOutputTokens(usageHistory, item.turnMeta?.endedAt, cumulativeUsage);
       const turnTokPerSec = turnSpeed(turnOut ?? undefined, turnGenMs ?? undefined);
+      const firstTokenMs = usageHistory.find(r => r.endedAt === item.turnMeta?.endedAt)?.firstTokenMs ?? item.turnMeta?.firstTokenMs;
+      const firstTokenHint = firstTokenMs == null ? "" : t("chatStream.byline.firstTokenHint", { secs: (firstTokenMs / 1000).toFixed(2) });
       const turnStats =
         stepCount > 0 || turnTokens != null
           ? {
@@ -3209,8 +3211,8 @@ function ChatPaneForSession({
                   ? t("chatStream.byline.speedHint", {
                       tokens: turnOut.toLocaleString(),
                       secs: (turnGenMs / 1000).toFixed(1),
-                    })
-                  : undefined,
+                    }) + (firstTokenHint ? ` · ${firstTokenHint}` : "")
+                  : firstTokenHint || undefined,
             }
           : undefined;
       const body = (

@@ -20,7 +20,7 @@ await mkdir(localPiDir, { recursive: true });
 const localModels = JSON.stringify({ providers: {}, preservationMarker: "unchanged" });
 await writeFile(join(localPiDir, "models.json"), localModels);
 const fixtureKey = "test-only-shared-key-not-a-real-credential";
-const fixture = await startSharedProviderFixture();
+const fixture = await startSharedProviderFixture({ metrics: process.argv.includes("--metrics") });
 const fixtureRequests = fixture.requests;
 const fixtureHost = Object.values(networkInterfaces()).flat().find((address) => address?.family === "IPv4" && !address.internal)?.address ?? "127.0.0.1";
 const fixtureBaseUrl = `http://${fixtureHost}:${fixture.port}/v1`;
@@ -259,6 +259,27 @@ try {
       assert.ok(!events.some((e) => e.type === "error"), `${turn.engine} errors: ${JSON.stringify(events)}`);
       assert.ok(events.filter((e) => e.type === "text.delta").map((e) => e.text).join("").includes(`fixture-ok:${turn.id}`), `${turn.engine} streaming answer missing: ${JSON.stringify(events)}`);
       assert.ok(fixtureRequests.slice(requestCount).some((r) => r.path === turn.path && r.body.model === turn.id && (r.authorization === `Bearer ${fixtureKey}` || r.apiKey === fixtureKey)), `${turn.engine} request did not use its model endpoint and stored key`);
+      if (process.argv.includes("--metrics")) {
+        const done = events.find(e => e.type === "turn.done" && e.sessionId === session.id);
+        assert.ok(done.generationMs >= 100 && done.generationMs < 5000, `${turn.engine}: measured streaming span ${done.generationMs}`);
+        assert.ok(done.firstTokenMs >= 0, `${turn.engine}: missing first-token latency`);
+        const savedDb = new DatabaseSync(join(data, "claude-gui.db"), { readOnly: true });
+        let row;
+        try {
+          const deadline = Date.now() + 5000;
+          do {
+            const saved = savedDb.prepare("SELECT usage_history FROM sessions WHERE id=?").get(session.id);
+            row = JSON.parse(saved?.usage_history ?? "[]").find(u=>u.endedAt===done.endedAt);
+            if (row?.generationMs === done.generationMs && row?.firstTokenMs === done.firstTokenMs) break;
+            assert.ok(Date.now() < deadline, `${turn.engine}: timing not persisted`);
+            await delay(100);
+          } while (true);
+        } finally { savedDb.close(); }
+        assert.ok(row.cacheReadTokens >= 4, `${turn.engine}: cache counters ${JSON.stringify(row)}`);
+        const latestSnapshot = events.filter(e=>e.type==='token-usage.updated').at(-1)?.snapshot;
+        assert.ok([15,19].includes(latestSnapshot.totalProcessedTokens) || turn.resume, `${turn.engine}: cache counted twice ${JSON.stringify(latestSnapshot)}`);
+        console.log(`Persisted timing/cache: ${turn.engine} ${turn.path}; ${JSON.stringify(row)}`);
+      }
       // turn.done is streamed before native app-server/state-DB teardown finishes.
       if (turn.engine === "codex-sdk") await delay(750);
     } finally { await evaluate("globalThis.__stopWireEvents()"); }

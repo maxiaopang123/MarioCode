@@ -412,15 +412,26 @@ function StreamSidebarBase() {
   // register nodes; when the active row isn't mounted, load pages until it
   // appears (pinned rows are always mounted; archived ones need the shelf).
   const rowNodes = useRef<Map<string, HTMLLIElement>>(new Map());
+  const locateVersion = useRef(0);
   const registerNode = useCallback((id: string, el: HTMLLIElement | null) => {
     if (el) rowNodes.current.set(id, el);
     else rowNodes.current.delete(id);
   }, []);
 
   const locateActiveSession = useCallback((center = false) => {
-    const id = useSessionStore.getState().activeSessionId;
+    const version = ++locateVersion.current;
+    const initial = useSessionStore.getState();
+    const id = initial.activeSessionId;
     if (!id) return;
+    const active = findSession(initial.sessionsByProject, initial.pinnedSessions, initial.streamSessions, id);
+    if (active && !scopeMatches(active)) return;
+    const isCurrent = () => {
+      const s = useSessionStore.getState();
+      return version === locateVersion.current && s.activeSessionId === id && s.streamScope === initial.streamScope;
+    };
+    const waitForRows = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const tryScroll = () => {
+      if (!isCurrent()) return false;
       const el = rowNodes.current.get(id);
       if (el) {
         el.scrollIntoView({ block: center ? "center" : "nearest", behavior: "smooth" });
@@ -430,29 +441,42 @@ function StreamSidebarBase() {
     };
     if (tryScroll()) return;
     void (async () => {
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      await waitForRows();
+      if (!isCurrent()) return;
       if (tryScroll()) return;
       const st = useSessionStore.getState();
       if (st.archivedSessionsByProject && Object.values(st.archivedSessionsByProject).some((l) => l.some((x) => x.id === id))) {
         setArchiveOpen(true);
-        await new Promise((r) => requestAnimationFrame(() => r(null)));
-        await new Promise((r) => requestAnimationFrame(() => r(null)));
+        await waitForRows();
+        await waitForRows();
         tryScroll();
         return;
       }
       for (;;) {
         const s = useSessionStore.getState();
-        if (!s.streamHasMore) break;
+        // A dirty stream needs its first page refreshed. loadMore returns
+        // immediately in that state; repeatedly awaiting it starves IPC and
+        // React commits, leaving the startup shell frozen with zero projects.
+        if (!isCurrent() || s.streamDirty || !s.streamHasMore) break;
+        const loaded = s.streamSessions.length;
         await s.loadMoreStreamSessions();
+        // Let React mount the new rows and let pending IPC/timers run before
+        // looking for the active row or requesting another page.
+        await waitForRows();
+        if (!isCurrent() || useSessionStore.getState().streamDirty) break;
         if (tryScroll()) break;
+        // Failed, superseded or empty requests must end this attempt even
+        // when hasMore still describes the previous successful page.
+        if (useSessionStore.getState().streamSessions.length <= loaded) break;
       }
     })();
-  }, []);
+  }, [scopeMatches]);
 
   useEffect(() => {
     if (!activeSessionId) return;
     locateActiveSession();
-  }, [activeSessionId, locateActiveSession]);
+    return () => { locateVersion.current++; };
+  }, [activeSessionId, streamScope, streamDirty, locateActiveSession]);
 
   // ── Shared card renderer (pinned block + live list).
   const renderCard = useCallback(

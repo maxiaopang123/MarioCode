@@ -12,7 +12,7 @@ export async function electronTest(name, seed, verify) {
   const data = await mkdtemp(join(root, "run-"));
   await seed(data);
   const require = createRequire(join(desktop, "package.json"));
-  const child = spawn(require("electron"), [desktop, `--user-data-dir=${data}`, "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"], {
+  const child = spawn(require("electron"), [process.env.MARIOCODE_TEST_ASAR || desktop, `--user-data-dir=${data}`, "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"], {
     cwd: desktop, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, HOME: data, USERPROFILE: data },
   });

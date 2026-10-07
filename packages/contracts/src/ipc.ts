@@ -1740,6 +1740,29 @@ export type SetNotificationPrefsInput = NotificationPrefs;
 export const FocusSessionSchema = z.object({ sessionId: z.string() });
 export type FocusSessionInput = z.infer<typeof FocusSessionSchema>;
 
+// Private bridge for the desktop progress window; not exposed to web/mobile clients.
+export const ProgressCapsuleReadSchema = z.object({}).strict();
+export const ProgressCapsuleOpenSchema = z.object({ sessionId: z.string().min(1) }).strict();
+export interface ProgressCapsuleSession {
+  sessionId: string;
+  title: string;
+  model: string | null;
+  startedAt: number;
+  phase: "running" | "approval" | "question" | "plan";
+  completed: number;
+  total: number;
+  task: string | null;
+}
+export interface ProgressCapsuleState {
+  locale: Locale;
+  sessions: ProgressCapsuleSession[];
+}
+export interface ProgressCapsuleApi {
+  getState(): Promise<ProgressCapsuleState>;
+  openSession(sessionId: string): Promise<void>;
+  onState(fn: (state: ProgressCapsuleState) => void): () => void;
+}
+
 /* ── Custom model configs (user-defined Anthropic-compatible endpoints) ── */
 
 /** One selectable model within a custom-model config. */
@@ -5301,6 +5324,9 @@ export const IPC = {
   NOTIFICATION_GET_PREFS: "notification:getPrefs",
   NOTIFICATION_SET_PREFS: "notification:setPrefs",
   NOTIFICATION_FOCUS_SESSION: "notification:focusSession",
+  PROGRESS_CAPSULE_READ: "progressCapsule:read",
+  PROGRESS_CAPSULE_OPEN: "progressCapsule:open",
+  PROGRESS_CAPSULE_STATE: "progressCapsule:state",
   // Custom models (user-defined Anthropic-compatible endpoints)
   CUSTOM_MODEL_LIST: "customModel:list",
   CUSTOM_MODEL_SAVE: "customModel:save",

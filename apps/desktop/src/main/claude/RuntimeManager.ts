@@ -394,6 +394,10 @@ class RuntimeManager {
     return [...ids];
   }
 
+  runningSessionStartedAt(sessionId: string): number | null {
+    return this.sessions.get(sessionId)?.turnStartedAt || null;
+  }
+
   /** Release exactly the bridge revision held by this session. A provider can
    * be edited while another turn is still using its previous revision, so a
    * release must identify the local listener rather than only the config id. */

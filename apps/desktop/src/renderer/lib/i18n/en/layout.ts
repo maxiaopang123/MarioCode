@@ -1,5 +1,13 @@
 /** English mirror of `zh/layout.ts`. */
 export const en = {
+  "layout.progress.running": "Running",
+  "layout.progress.approval": "Awaiting tool approval",
+  "layout.progress.question": "Awaiting your answer",
+  "layout.progress.plan": "Awaiting plan approval",
+  "layout.progress.tasks": "Tasks {done}/{total}",
+  "layout.progress.drag": "Drag to move",
+  "layout.progress.next": "Switch active chats ({count} total)",
+  "layout.progress.open": "Return to this chat",
   /* ── left bar / brand ── */
   "layout.about": "About MarioCode",
   "layout.tagline": "Smart coding workbench",

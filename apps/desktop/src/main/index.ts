@@ -17,6 +17,8 @@ import { SettingRepo } from "@main/store/repositories.js";
 import { initUpdater } from "@main/updater.js";
 import { initAutoArchiver } from "@main/session/AutoArchiver.js";
 import { notificationManager } from "@main/notifications/NotificationManager.js";
+import { ProgressCapsule } from "@main/progress/ProgressCapsule.js";
+import { runtimeManager } from "@main/claude/RuntimeManager.js";
 import { is } from "@main/utils.js";
 import { preloadClaudeSdk } from "@main/providers/claude-sdk/ClaudeAgentSdkProvider.js";
 import { logStartup } from "@main/lib/startupTimer.js";
@@ -32,6 +34,18 @@ import { join } from "node:path";
 
 let clawBotStartupPromise: Promise<void> | null = null;
 let clawBotQuitRequested = false;
+const progressCapsule = new ProgressCapsule(runtimeManager, {
+  preloadPath: join(__dirname, "../preload/progressCapsule.mjs"),
+  rendererFile: join(__dirname, "../renderer/capsule.html"),
+  devUrl: process.env.ELECTRON_RENDERER_URL ? `${process.env.ELECTRON_RENDERER_URL}/capsule.html` : undefined,
+  focusSession: (sessionId) => {
+    const win = getMainWindow();
+    if (!win || win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.show(); win.focus();
+    sendToRenderer(IPC.NOTIFICATION_FOCUS_SESSION, { channel: IPC.NOTIFICATION_FOCUS_SESSION, sessionId });
+  },
+});
 
 // App identity for OS-level surfaces (desktop notifications, taskbar grouping,
 // Windows AUMID). setName("MarioCode") makes the system notification card title
@@ -249,6 +263,7 @@ app.whenReady().then(async () => {
     try {
       await awaitDb();
       notificationManager.start();
+      if (!isQuitting()) progressCapsule.start();
     } catch (err) {
       log.error(`NotificationManager failed to start: ${(err as Error).message}`);
     }
@@ -349,6 +364,7 @@ app.on("before-quit", (event) => {
     return;
   }
   destroyTray();
+  progressCapsule.stop();
   BridgeRegistry.disposeAll();
   TerminalManager.disposeAll();
   lspManager.disposeAll();

@@ -3,6 +3,14 @@
  * zh is the source of truth for `MessageId`.
  */
 export const zh = {
+  "layout.progress.running": "正在运行",
+  "layout.progress.approval": "等待工具审批",
+  "layout.progress.question": "等待你的回答",
+  "layout.progress.plan": "等待计划审批",
+  "layout.progress.tasks": "任务 {done}/{total}",
+  "layout.progress.drag": "拖动调整位置",
+  "layout.progress.next": "切换运行中的聊天（共 {count} 个）",
+  "layout.progress.open": "返回这条聊天",
   /* ── left bar / brand ── */
   "layout.about": "关于 MarioCode",
   "layout.tagline": "智能编码工作台",

@@ -1,6 +1,6 @@
 {
   "name": "@mariocode/desktop",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "private": true,
   "description": "MarioCode - Desktop GUI for Claude Code",
   "author": "huangbh",
@@ -17,6 +17,7 @@
     "test:runtime-selection": "node scripts/runtime-selection-smoke/run.mjs",
     "test:session-store": "node scripts/session-store-smoke/run.mjs",
     "test:ideas": "node scripts/ideas-smoke/run.mjs",
+    "test:progress-capsule": "node scripts/progress-capsule-smoke/run.mjs",
     "test:models": "node scripts/session-store-smoke/run.mjs --models",
     "test:pi-host": "node build/build-pi-host.mjs && node scripts/test-pi-host.mjs",
     "test:runtime-electron": "node scripts/test-runtime-electron.mjs",

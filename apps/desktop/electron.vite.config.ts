@@ -125,7 +125,7 @@ export default defineConfig({
       //    WebContentsView, exposing only `window.mariocodeBridge.pickElement`
       //    so the picker script (injected into the page's main world) can
       //    forward clicked elements to main without leaking any Node API.
-      lib: { entry: { index: "src/preload/index.ts", browserPicker: "src/preload/browserPicker.ts" } },
+      lib: { entry: { index: "src/preload/index.ts", browserPicker: "src/preload/browserPicker.ts", progressCapsule: "src/preload/progressCapsule.ts" } },
       rollupOptions: { external: ["electron"] },
     },
     resolve: {
@@ -153,6 +153,7 @@ export default defineConfig({
         input: {
           index: resolve("src/renderer/index.html"),
           pair: resolve("src/renderer/pair.html"),
+          capsule: resolve("src/renderer/capsule.html"),
         },
       },
     },

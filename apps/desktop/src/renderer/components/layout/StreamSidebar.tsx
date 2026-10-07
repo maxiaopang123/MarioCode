@@ -49,6 +49,7 @@ import {
 import { cn } from "@renderer/lib/cn.js";
 import { isMac } from "@renderer/lib/platform.js";
 import { getProviderIcon } from "@renderer/lib/providerIcon.js";
+import { modelDisplayName } from "@renderer/lib/modelAvatar.js";
 import { projectDisplayColor } from "@renderer/lib/projectAvatar.js";
 import { formatRelativeTime, formatFullTime } from "@renderer/lib/time.js";
 import { normWorktreeKey, worktreeDisplayName } from "@renderer/lib/worktree.js";
@@ -842,6 +843,7 @@ function StreamSidebarBase() {
                       return <Icon size={14} className={cn("opacity-60", color)} />;
                     })()}
                     title={s.title}
+                    subtitle={modelDisplayName(s.lastUsedModel) ?? undefined}
                     onRestore={() => void archiveSession(s.id, false)}
                     onDelete={() => setConfirmDelete({ kind: "session", id: s.id, title: s.title })}
                   />
@@ -1057,7 +1059,8 @@ function StreamRow({
       <span className="min-w-0 truncate font-mono text-[11px]">{localBranch}</span>
     </span>
   ) : null;
-  const hasSub = showProject || branchNode != null;
+  const lastModel = modelDisplayName(session.lastUsedModel);
+  const hasSub = showProject || branchNode != null || lastModel != null;
 
   return (
     <li
@@ -1068,7 +1071,7 @@ function StreamRow({
         e.preventDefault();
         onContext(e.clientX, e.clientY);
       }}
-      title={`${session.title}\n${formatFullTime(session.updatedAt)}`}
+      title={`${session.title}\n${lastModel ? `${t("layout.lastUsedModel", { model: lastModel })}\n` : ""}${formatFullTime(session.updatedAt)}`}
       className={cn(
         "group relative grid cursor-pointer grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-[3px] rounded-[10px] px-2.5 py-[9px] transition-colors",
         active ? "srow-active" : "hover:bg-surface-hover",
@@ -1109,6 +1112,14 @@ function StreamRow({
             </>
           )}
           {branchNode}
+          {lastModel && (
+            <>
+              {(showProject || branchNode) && <span className="shrink-0 text-content-subtle/60">·</span>}
+              <span className="min-w-0 truncate" title={t("layout.lastUsedModel", { model: lastModel })}>
+                {lastModel}
+              </span>
+            </>
+          )}
           {pinned && <span className="sr-only">{t("layout.pinned")}</span>}
         </span>
       )}

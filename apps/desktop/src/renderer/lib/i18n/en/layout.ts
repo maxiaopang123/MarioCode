@@ -11,6 +11,7 @@ export const en = {
   "layout.ungrouped": "Ungrouped",
   "layout.archived": "Archived",
   "layout.archivedCount": "Archived ({n})",
+  "layout.lastUsedModel": "Last used: {model}",
   "layout.newWorktreeTask": "New worktree task…",
   "layout.newSessionInWorktree": "New session in this worktree (shares the same checkout)",
   "layout.mergeWorktreeBack": "Merge back into local branch (all unmerged changes)",

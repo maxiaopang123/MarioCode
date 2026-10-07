@@ -248,6 +248,7 @@ interface SessionRow {
   title: string;
   status: string;
   model: string;
+  last_used_model: string | null;
   effort: string;
   permission_mode: string;
   custom_model_id: string | null;
@@ -279,6 +280,7 @@ function rowToSession(r: SessionRow): Session {
     title: r.title,
     status: r.status as Session["status"],
     model: r.model,
+    lastUsedModel: r.last_used_model ?? null,
     effort: r.effort as Session["effort"],
     permissionMode: r.permission_mode as Session["permissionMode"],
     customModelId: r.custom_model_id ?? null,
@@ -943,6 +945,16 @@ export const SessionRepo = {
     vals.push(v(Date.now()), v(id));
     run(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`, ...vals);
     persist();
+  },
+
+  recordUsedModel(id: string, model: string | undefined): boolean {
+    const name = model?.trim();
+    if (!name || name === "default") return false;
+    const session = this.get(id);
+    if (!session || session.lastUsedModel === name) return false;
+    run("UPDATE sessions SET last_used_model = ? WHERE id = ?", v(name), v(id));
+    persist();
+    return true;
   },
 };
 

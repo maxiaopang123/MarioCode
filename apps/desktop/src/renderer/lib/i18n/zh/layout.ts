@@ -14,6 +14,7 @@ export const zh = {
   "layout.ungrouped": "未分组",
   "layout.archived": "已归档",
   "layout.archivedCount": "已归档 ({n})",
+  "layout.lastUsedModel": "最近使用：{model}",
   "layout.newWorktreeTask": "新建工作树任务…",
   "layout.newSessionInWorktree": "在此工作树中新建会话(共享同一隔离目录)",
   "layout.mergeWorktreeBack": "合并回本地分支(该工作树全部未合并改动)",

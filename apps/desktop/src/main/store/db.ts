@@ -261,6 +261,13 @@ function migrate(database: Database.Database): void {
   // Per-turn token/cost history. JSON array of TurnUsageRecord; appended at
   // each turn-end so the context-stats history popover survives restart.
   addColumnIfMissing(database, "sessions", "usage_history", "TEXT");
+  addColumnIfMissing(database, "sessions", "last_used_model", "TEXT");
+  // Backfill legacy sessions from persisted runtime data, never the model
+  // selection (which may have changed without a turn being sent).
+  database.exec(`UPDATE sessions SET last_used_model = COALESCE(
+    CASE WHEN json_valid(context_snapshot) THEN NULLIF(NULLIF(json_extract(context_snapshot, '$.model'), ''), 'default') END,
+    CASE WHEN json_valid(usage_history) THEN NULLIF(NULLIF(json_extract(usage_history, '$[#-1].model'), ''), 'default') END
+  ) WHERE last_used_model IS NULL`);
   // Side-chat Q&A sessions (right-panel ask tab): role discriminator + the
   // owning main session. 'chat' is the default so pre-migration rows and all
   // existing creation paths stay main sessions. parent_session_id carries no

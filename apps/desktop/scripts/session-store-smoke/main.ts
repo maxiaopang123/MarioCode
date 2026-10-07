@@ -228,6 +228,16 @@ console.log("\n[8] unloaded project");
   check("p1 untouched", cache().length === 1);
 }
 
+{
+  const used = mkSession("model-history", { model: "next-model", lastUsedModel: "claude-sonnet-4-6" });
+  seed([used]);
+  ingest(toListEntry({ ...used, model: "gpt-5.4" }));
+  check("changing next model preserves last used model", rowsOf(used.id)[0]?.lastUsedModel === "claude-sonnet-4-6");
+  useSessionStore.setState({ archivedSessionsByProject: { [PROJECT]: [{ ...used, archived: true, lastUsedModel: null }] } });
+  ingest(toListEntry({ ...used, archived: true }));
+  check("archived row retains last used model", useSessionStore.getState().archivedSessionsByProject[PROJECT]?.find(s => s.id === used.id)?.lastUsedModel === used.lastUsedModel);
+}
+
 await runRegressionChecks(check, mkSession);
 
 console.log(`\n${checks - failures}/${checks} checks passed`);

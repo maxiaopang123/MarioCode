@@ -95,6 +95,8 @@ export interface Session {
   status: SessionStatus;
   /** Model alias or full name ("default" = let claude pick). → --model. */
   model: string;
+  /** Most recently used model, separate from the next-turn selection. */
+  lastUsedModel?: string | null;
   /** Reasoning effort ("default" = don't pass --effort). → --effort. */
   effort: EffortLevel;
   permissionMode: PermissionMode;

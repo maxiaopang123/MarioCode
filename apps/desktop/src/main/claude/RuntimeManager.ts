@@ -18,7 +18,7 @@ import { getFileSnapshot, dropFileSnapshot } from "@main/lib/fileSnapshotRegistr
 import { restoreFiles } from "@main/lib/fileSnapshot.js";
 import { BridgeRegistry } from "@main/providers/bridge/bridgeRegistry.js";
 import { mobileEventBus } from "@main/mobile/MobileEventBus.js";
-import { broadcastRuntimeEvent } from "@main/lib/sessionSync.js";
+import { broadcastRuntimeEvent, broadcastSessionChanged } from "@main/lib/sessionSync.js";
 import { invalidateUsageStats } from "@main/lib/usageStats.js";
 import { log } from "@main/lib/logger.js";
 import { isRuntimeMutationActive } from "@main/runtimes/runtimeMutation.js";
@@ -38,6 +38,7 @@ interface SessionRuntime {
   /** Wall-clock ms when the current turn started (Date.now()). Used to
    *  compute `durationMs` in the per-turn usage history. */
   turnStartedAt: number;
+  turnReportedModel?: string;
   /** Set at `turn.done` with the turn's endedAt/durationMs; consumed by the
    *  next `token-usage.updated` (the turn-end context snapshot, which the
    *  adapter fires asynchronously OFF the turn's critical path, so it lands
@@ -156,6 +157,10 @@ class RuntimeManager {
       if (e.type === "token-usage.updated") {
         try {
           SessionRepo.updateSnapshot(session.id, e.snapshot);
+          if (SessionRepo.recordUsedModel(session.id, e.snapshot.model)) {
+            const updated = SessionRepo.get(session.id);
+            if (updated) broadcastSessionChanged(updated);
+          }
         } catch (err) {
           log.error(`failed to persist context snapshot: ${(err as Error).message}`);
         }
@@ -165,6 +170,7 @@ class RuntimeManager {
         const rt = this.sessions.get(session.id);
         if (rt) {
           rt.lastContextSnapshot = e.snapshot;
+          if (e.snapshot.model && e.snapshot.model !== "default") rt.turnReportedModel = e.snapshot.model;
           this.settlePendingTurnEnd(session.id, rt);
         }
       } else if (e.type === "turn.done") {
@@ -508,6 +514,7 @@ class RuntimeManager {
 
     // Record turn start time for per-turn usage history persistence.
     rt.turnStartedAt = Date.now();
+    rt.turnReportedModel = undefined;
     // 1-based turn counter for per-turn artifacts (browser screenshot dirs).
     rt.turnCount++;
 
@@ -681,6 +688,10 @@ class RuntimeManager {
       () => approvalBridge.rejectAll(session.id),
     )) return;
     rt.handle = handle;
+    if (SessionRepo.recordUsedModel(session.id, rt.turnReportedModel ?? apiConfig?.selectedModel ?? modelForReq)) {
+      const updated = SessionRepo.get(session.id);
+      if (updated) broadcastSessionChanged(updated);
+    }
     // Remember the cwd for the rewind path (see rewindTurn below).
     rt.lastCwd = input.cwd;
 

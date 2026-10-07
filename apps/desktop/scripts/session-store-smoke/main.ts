@@ -19,6 +19,8 @@ import { normWorktreeKey } from "@renderer/lib/worktree.js";
 import type { ContextSnapshot, Session } from "@contracts/session";
 import type { SessionListEntry } from "@contracts/runtime";
 import { runRegressionChecks } from "./regressions.js";
+import { selectArchiveShelf } from "@renderer/lib/archiveScope.js";
+import type { Project } from "@contracts/session";
 
 const PROJECT = "p1";
 const WT_OLD = "D:\\proj\\.worktrees\\wt-1";
@@ -239,6 +241,26 @@ console.log("\n[8] unloaded project");
 }
 
 await runRegressionChecks(check, mkSession);
+
+{
+  const project = (id: string, group: string | null, archived = false): Project => ({ id, name: id, path: `D:/${id}`, group, archived, pinnedAt: null, sortOrder: 0, createdAt: 1, updatedAt: 1 });
+  const projects = [project("p1", "Team"), project("p2", "Team", true), project("p3", null)];
+  const a = mkSession("a", { archived: true });
+  const b = mkSession("b", { projectId: "p2", archived: true, worktreePath: WT_OLD });
+  const c = mkSession("c", { projectId: "p3", archived: true });
+  const buckets = { p1: [a, a], p2: [b], p3: [c] };
+  for (const [scope, count] of [[null, 4], ["p1", 1], ["g:Team", 3], [`wt:${normWorktreeKey(WT_OLD)}`, 1], ["p3", 1], ["missing", 0]] as const) {
+    const shelf = selectArchiveShelf(projects, buckets, scope);
+    check(`archive scope ${scope} matches count and rows`, shelf.count === count && shelf.count === shelf.sessions.length + shelf.projects.length);
+  }
+  seed([mkSession("a")]);
+  ingest(toListEntry(a));
+  check("remote archive immediately enters unloaded archive shelf", useSessionStore.getState().archivedSessionsByProject[PROJECT]?.[0]?.id === "a");
+  ingest(toListEntry(a));
+  check("repeated archive event does not duplicate row", useSessionStore.getState().archivedSessionsByProject[PROJECT]?.length === 1);
+  ingest(toListEntry({ ...a, archived: false }));
+  check("remote restore removes archived row", (useSessionStore.getState().archivedSessionsByProject[PROJECT]?.length ?? 0) === 0);
+}
 
 console.log(`\n${checks - failures}/${checks} checks passed`);
 if (failures > 0) {

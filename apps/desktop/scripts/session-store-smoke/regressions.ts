@@ -79,6 +79,17 @@ export async function runRegressionChecks(
     requests[5]!.resolve({ sessions: [], hasMore: false, total: 0 });
     await worktree;
     check("empty scope settles cleanly", !useSessionStore.getState().streamDirty && useSessionStore.getState().streamSessions.length === 0);
+    useSessionStore.setState({ projects: [{ ...projects[0]!, archived: true, group: "archived-team" }] });
+    useSessionStore.getState().setStreamScope("a");
+    const archivedProject = useSessionStore.getState().loadStreamSessions();
+    check("archiving selected project never widens to all projects", requests[6]!.input.projectIds?.join() === "a");
+    requests[6]!.resolve({ sessions: [], hasMore: false, total: 0 });
+    await archivedProject;
+    useSessionStore.getState().setStreamScope("g:archived-team");
+    const archivedGroup = useSessionStore.getState().loadStreamSessions();
+    check("archived-only group retains its project filter", requests[7]!.input.projectIds?.join() === "a");
+    requests[7]!.resolve({ sessions: [], hasMore: false, total: 0 });
+    await archivedGroup;
   } finally {
     Object.defineProperty(api, "session", { configurable: true, value: originalSession });
   }

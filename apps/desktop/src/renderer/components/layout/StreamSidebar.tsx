@@ -50,6 +50,7 @@ import { cn } from "@renderer/lib/cn.js";
 import { isMac } from "@renderer/lib/platform.js";
 import { getProviderIcon } from "@renderer/lib/providerIcon.js";
 import { modelDisplayName } from "@renderer/lib/modelAvatar.js";
+import { selectArchiveShelf } from "@renderer/lib/archiveScope.js";
 import { projectDisplayColor } from "@renderer/lib/projectAvatar.js";
 import { formatRelativeTime, formatFullTime } from "@renderer/lib/time.js";
 import { normWorktreeKey, worktreeDisplayName } from "@renderer/lib/worktree.js";
@@ -210,11 +211,11 @@ function StreamSidebarBase() {
     if (streamScope == null) return null;
     if (streamScope.startsWith("g:")) {
       const name = streamScope.slice(2);
-      return projects.some((p) => !p.archived && p.group === name) ? streamScope : null;
+      return projects.some((p) => p.group === name) ? streamScope : null;
     }
     if (streamScope.startsWith("wt:")) return streamScope;
     const project = projectById.get(streamScope);
-    return project && !project.archived ? streamScope : null;
+    return project ? streamScope : null;
   }, [streamScope, projectById]);
   const scopeMatches = useCallback(
     (s: Session) => {
@@ -361,13 +362,10 @@ function StreamSidebarBase() {
 
   // ── Archive shelf content: archived projects + archived sessions
   // (flattened across projects, newest first), matching the tree's bin.
-  const archivedProjects = useMemo(() => projects.filter((p) => p.archived), [projects]);
-  const archivedList = useMemo(() => {
-    const out: Session[] = [];
-    for (const list of Object.values(archivedSessionsByProject)) out.push(...list);
-    return out.sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [archivedSessionsByProject]);
-  const archivedCount = archivedProjects.length + archivedList.length;
+  const { projects: archivedProjects, sessions: archivedList, count: archivedCount } = useMemo(
+    () => selectArchiveShelf(projects, archivedSessionsByProject, scope),
+    [projects, archivedSessionsByProject, scope],
+  );
   const [archiveOpen, setArchiveOpen] = useState(false);
 
   // ── Dialogs / menus (same wiring as the tree view).

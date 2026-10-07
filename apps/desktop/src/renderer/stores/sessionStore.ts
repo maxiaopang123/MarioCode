@@ -2517,12 +2517,12 @@ function streamScopeQuery(
   if (scope == null) return {};
   if (scope.startsWith("g:")) {
     const name = scope.slice(2);
-    const ids = projects.filter((p) => !p.archived && p.group === name).map((p) => p.id);
+    const ids = projects.filter((p) => p.group === name).map((p) => p.id);
     return ids.length > 0 ? { projectIds: ids } : {};
   }
   if (scope.startsWith("wt:")) return { worktreeKey: scope.slice(3) };
   const project = projects.find((p) => p.id === scope);
-  return project && !project.archived ? { projectIds: [scope] } : {};
+  return project ? { projectIds: [scope] } : {};
 }
 
 /** Messages per page when lazily loading session history. Large enough that a
@@ -7436,8 +7436,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           patch.sessionsByProject = { ...s.sessionsByProject, [entry.projectId]: next };
           touched = true;
         }
-        const archivedList = s.archivedSessionsByProject[entry.projectId];
-        if (archivedList) {
+        const archivedList = s.archivedSessionsByProject[entry.projectId] ?? [];
+        {
           const exists = archivedList.some((x) => x.id === entry.id);
           if (!entry.archived) {
             // Restored from the bin — drop it from the archived window.
@@ -7458,9 +7458,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
               [entry.projectId]: archivedList.map((x) => (x.id === entry.id ? { ...x, ...entry } : x)),
             };
             touched = true;
+          } else if (entry.archived && entry.kind === "chat") {
+            patch.archivedSessionsByProject = {
+              ...s.archivedSessionsByProject,
+              [entry.projectId]: [materializeSessionEntry(entry), ...archivedList],
+            };
+            touched = true;
           }
-          // else: archived remotely but outside the loaded bin page — the
-          // refresh path will pick it up.
         }
         // Cached pre-change row (same id) — the gain/loss probes below
         // compare it against the incoming entry.

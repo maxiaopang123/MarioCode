@@ -16,7 +16,7 @@
  */
 import "../session-store-smoke/prelude.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
-import { modelInitial, modelDisplayName, modelAvatarColor } from "@renderer/lib/modelAvatar.js";
+import { modelInitial, modelDisplayName, modelAvatarColor, modelFamily } from "@renderer/lib/modelAvatar.js";
 import { turnTokenUsage, CUMULATIVE_USAGE_PROVIDER_IDS } from "@renderer/lib/turnTokens.js";
 import type { ChatMessage } from "@renderer/stores/sessionStore.js";
 
@@ -72,6 +72,13 @@ console.log("[1] model id parsing");
     ["deepseek-flash", "claude-sonnet-4-5", "gpt-5.6-sol", "glm-4.6"].map(modelAvatarColor),
   ).size;
   check("different models use different colors", distinct >= 3, { distinct });
+  for (const [id, family] of Object.entries({ "custom/claude-opus-4-6": "claude", "gateway/gpt-5.4": "openai", "deepseek-v3": "deepseek", "gemini-2.5-pro": "gemini", "qwen3-coder": "qwen", "kimi-k2": "kimi", "mistral-large": "mistral", "private/company-model": "unknown" })) {
+    check(`${id} resolves model family`, modelFamily(id) === family);
+  }
+  check("unknown hierarchical name is preserved", modelDisplayName("private/company/model-v2") === "private/company/model-v2");
+  check("unknown bracket text is preserved", modelDisplayName("private-model[preview]") === "private-model[preview]");
+  check("default selection has no misleading model badge", modelDisplayName("default") === null);
+  check("Claude alias has a readable name", modelDisplayName("sonnet") === "Claude Sonnet");
 }
 
 // ── 2. 发送锚点 → turnMeta.model ─────────────────────────────────────────

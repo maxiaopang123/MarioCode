@@ -34,8 +34,28 @@ export function modelAvatarColor(name: string): string {
  *  when nothing is left, i.e. the caller should render no badge at all. */
 export function modelDisplayName(model: string | undefined | null): string | null {
   if (!model) return null;
-  const name = (model.split("/").pop() ?? model).replace(/\[[^\]]*\]/g, "").trim();
+  const cleaned = model.replace(/\[(?:\d+(?:\.\d+)?[km])\]$/i, "").trim();
+  if (!cleaned || /^[\s/]*$/.test(cleaned)) return null;
+  const last = cleaned.split("/").pop() ?? cleaned;
+  const name = modelFamily(last) !== "unknown" || /^(glm|grok|doubao|ernie)(?:[- .]|$)/i.test(last) ? last : cleaned;
+  if (name === "default") return null;
+  if (/^(sonnet|opus|haiku)$/i.test(name)) return `Claude ${name[0]!.toUpperCase()}${name.slice(1)}`;
   return name || null;
+}
+
+export type ModelFamily = "claude" | "openai" | "gemini" | "deepseek" | "qwen" | "kimi" | "mistral" | "unknown";
+
+/** Resolve from the model id, never from its execution engine or endpoint. */
+export function modelFamily(model: string | null | undefined): ModelFamily {
+  const name = (model?.split("/").pop() ?? "").trim().toLowerCase();
+  if (/^(claude(?:[- .]|$)|sonnet(?:[- .]|$)|opus(?:[- .]|$)|haiku(?:[- .]|$))/.test(name)) return "claude";
+  if (/^(gpt(?:[- .]|$)|chatgpt(?:[- .]|$)|o[134](?:[- .]|$)|codex(?:[- .]|$))/.test(name)) return "openai";
+  if (/^gemini(?:[- .]|$)/.test(name)) return "gemini";
+  if (/^deepseek(?:[- .]|$)/.test(name)) return "deepseek";
+  if (/^(qwen|qwq)(?:[- .\d]|$)/.test(name)) return "qwen";
+  if (/^(kimi|moonshot)(?:[- .]|$)/.test(name)) return "kimi";
+  if (/^(mistral|mixtral|codestral|ministral|devstral)(?:[- .]|$)/.test(name)) return "mistral";
+  return "unknown";
 }
 
 /** The avatar glyph: the first alphanumeric character of the model's name,

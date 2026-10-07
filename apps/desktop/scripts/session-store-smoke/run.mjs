@@ -12,7 +12,7 @@ const { build } = createRequire(require.resolve("vite/package.json"))("esbuild")
 const out = await mkdtemp(join(tmpdir(), "mariocode-session-store-smoke-"));
 try {
   await build({
-    entryPoints: [join(desktop, "scripts/session-store-smoke/main.ts")],
+    entryPoints: [join(desktop, process.argv.includes("--models") ? "scripts/model-anchor-smoke/main.ts" : "scripts/session-store-smoke/main.ts")],
     outfile: join(out, "smoke.mjs"), bundle: true, platform: "node", format: "esm",
     target: "node22.19", tsconfig: join(desktop, "tsconfig.json"),
     external: ["@renderer/lib/monacoSetup.js"],

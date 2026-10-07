@@ -1,7 +1,7 @@
 /**
  * SessionFloat — 「本会话」 the session overview floating at the chat stream's
- * top-right corner (prototypes/ui-refresh-v3.html). Replaces the old
- * ActivityCluster pill + ActivityConsole dropdown pair on desktop.
+ * top-right corner (prototypes/ui-refresh-v3.html). Desktop activity, plans,
+ * bookmarks and usage share this card; mobile uses ActivitySheet.
  *
  * One card, two states:
  *   folded   → a pill showing the summary that matters while work runs

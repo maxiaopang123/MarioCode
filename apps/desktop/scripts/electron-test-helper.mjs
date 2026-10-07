@@ -18,7 +18,7 @@ export async function electronTest(name, seed, verify) {
   });
   let log = ""; let ws;
   child.stdout.on("data", c => { log += c; }); child.stderr.on("data", c => { log += c; });
-  let id = 0; const pending = new Map();
+  let id = 0; const pending = new Map(); const errors = [];
   try {
     const deadline = Date.now() + 60000;
     let port;
@@ -36,6 +36,7 @@ export async function electronTest(name, seed, verify) {
     await new Promise((r,j) => { ws.addEventListener("open",r,{once:true}); ws.addEventListener("error",j,{once:true}); });
     ws.addEventListener("message", e => {
       const msg = JSON.parse(e.data); const p = pending.get(msg.id);
+      if (msg.method === "Runtime.exceptionThrown") errors.push(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text);
       if (p) { pending.delete(msg.id); clearTimeout(p.timer); msg.error ? p.reject(Error(msg.error.message)) : p.resolve(msg.result); }
     });
     const command = (method, params = {}, timeout = 20000) => new Promise((resolve, reject) => {
@@ -53,7 +54,8 @@ export async function electronTest(name, seed, verify) {
       while (!await evaluate(expression)) { if (Date.now()>until) throw Error(`UI assertion timed out: ${expression}`); await delay(100); }
     };
     await wait("Boolean(window.api && document.querySelector('button .tabler-icon-settings'))");
-    await verify({data,command,evaluate,wait});
+    await command("Runtime.enable");
+    await verify({data,command,evaluate,wait,errors});
     await writeFile(join(data,"result.json"),JSON.stringify({result:"passed",name},null,2));
     console.log(`PASS: ${name}; artifacts ${data}`);
   } finally {

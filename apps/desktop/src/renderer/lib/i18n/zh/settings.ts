@@ -3,6 +3,18 @@
  * Keys: `settings.*`. Owned by the settings/* migration batch.
  */
 export const zh = {
+  "settings.appearance.replyDisplay": "回复显示",
+  "settings.appearance.prosePaths": "识别正文文件路径",
+  "settings.appearance.prosePathsDesc": "将正文中明确的路径显示为可打开标签；行内代码中的路径仍可打开。",
+  "settings.appearance.remoteImages": "自动加载网络图片",
+  "settings.appearance.remoteImagesDesc": "图片通过应用加载，不携带网站登录信息；默认需要点击加载。",
+  "settings.appearance.remoteNever": "从不（点击加载）",
+  "settings.appearance.remoteTrusted": "仅信任的域名",
+  "settings.appearance.remoteAlways": "总是",
+  "settings.appearance.trustedDomains": "信任的图片域名",
+  "settings.appearance.trustedDomainsDesc": "用逗号分隔；仅匹配完整域名，不自动信任子域名。",
+  "settings.appearance.domainError": "请输入有效域名，最多 100 个。",
+  "settings.appearance.displaySaveError": "显示设置保存失败，请重试。",
   "settings.nav.context": "上下文与压缩",
   "settings.context.title": "上下文与压缩",
   "settings.context.section": "自动压缩",

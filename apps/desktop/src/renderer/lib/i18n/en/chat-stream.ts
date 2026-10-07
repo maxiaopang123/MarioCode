@@ -1,5 +1,6 @@
 /** English mirror of `zh/chat-stream.ts`. */
 export const en = {
+  "chatStream.image.shownInReply": "Image shown in reply · expand tool preview",
   // ── MessageTimeline ──
   "chatStream.timeline.current": "Current",
   "chatStream.timeline.noText": "(no text)",

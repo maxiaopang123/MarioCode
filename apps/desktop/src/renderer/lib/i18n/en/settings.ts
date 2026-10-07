@@ -1,5 +1,17 @@
 /** English mirror of `zh/settings.ts`. */
 export const en = {
+  "settings.appearance.replyDisplay": "Reply display",
+  "settings.appearance.prosePaths": "Recognize file paths in prose",
+  "settings.appearance.prosePathsDesc": "Show clear paths as file chips. Paths inside inline code remain available.",
+  "settings.appearance.remoteImages": "Automatically load remote images",
+  "settings.appearance.remoteImagesDesc": "Images load through the app without website credentials. Click to load by default.",
+  "settings.appearance.remoteNever": "Never (click to load)",
+  "settings.appearance.remoteTrusted": "Trusted domains only",
+  "settings.appearance.remoteAlways": "Always",
+  "settings.appearance.trustedDomains": "Trusted image domains",
+  "settings.appearance.trustedDomainsDesc": "Separate with commas. Exact domains only; subdomains are not trusted automatically.",
+  "settings.appearance.domainError": "Enter valid domains, up to 100.",
+  "settings.appearance.displaySaveError": "Could not save display settings. Please retry.",
   "settings.nav.context": "Context & compaction",
   "settings.context.title": "Context & compaction",
   "settings.context.section": "Automatic compaction",

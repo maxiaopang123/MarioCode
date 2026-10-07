@@ -22,7 +22,8 @@
  *  - `file:copy`      — copy a file into a dir, auto-rename on clash (file-tree 复制/粘贴)
  */
 import type { IpcMain } from "electron";
-import { app, clipboard, nativeImage, net, shell } from "electron";
+import { app, clipboard, nativeImage, shell } from "electron";
+import { engineFetch } from "@main/network/engineProxy.js";
 import { readFile, writeFile, readdir, mkdir, rename, copyFile, access, stat } from "node:fs/promises";
 import { TextDecoder } from "node:util";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
@@ -689,7 +690,7 @@ export async function grepFilesGuarded(input: FileGrepInput): Promise<FileGrepRe
  * and hands back a data URL. This runs only on an explicit user click, never
  * while a reply renders.
  *
- * Electron's `net.fetch` is used rather than Node's global fetch so the request
+ * The engine network route is used so the request follows saved proxy settings.
  * goes through the default session — i.e. it follows the OS proxy, like the
  * embedded browser does. (The 设置 → 网络 routing deliberately governs ENGINE
  * traffic only; a user-initiated picture load is in the same bucket as the
@@ -715,7 +716,7 @@ async function fetchRemoteImage(url: string): Promise<{ dataUrl: string; error?:
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), REMOTE_IMAGE_TIMEOUT_MS);
   try {
-    const res = await net.fetch(parsed.toString(), {
+    const res = await engineFetch(parsed.toString(), {
       signal: ctl.signal,
       // No credentials and no referrer: this is a bystander fetch of a URL the
       // model happened to emit, not a request on the user's behalf.
@@ -729,8 +730,23 @@ async function fetchRemoteImage(url: string): Promise<{ dataUrl: string; error?:
     }
     const declared = Number(res.headers.get("content-length") ?? "0");
     if (declared > REMOTE_IMAGE_MAX_BYTES) return { dataUrl: "", error: "too-large" };
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength > REMOTE_IMAGE_MAX_BYTES) return { dataUrl: "", error: "too-large" };
+    const reader = res.body?.getReader();
+    if (!reader) return { dataUrl: "", error: "empty" };
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > REMOTE_IMAGE_MAX_BYTES) {
+          await reader.cancel();
+          return { dataUrl: "", error: "too-large" };
+        }
+        chunks.push(Buffer.from(value));
+      }
+    } finally { reader.releaseLock(); }
+    const buf = Buffer.concat(chunks);
     if (buf.byteLength === 0) return { dataUrl: "", error: "empty" };
     return { dataUrl: `data:${type};base64,${buf.toString("base64")}` };
   } catch (err) {

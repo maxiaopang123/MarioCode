@@ -4,7 +4,8 @@ import { useTheme } from "@renderer/lib/theme.js";
 import { api } from "@renderer/lib/api.js";
 import { hexToTriplet, tripletToHex } from "@renderer/lib/colorUtils.js";
 import { useSessionStore, CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZE_MAX, RIGHT_PANEL_FONT_SIZE_MIN, RIGHT_PANEL_FONT_SIZE_MAX } from "@renderer/stores/sessionStore.js";
-import { Button, Select } from "@renderer/components/ui/index.js";
+import { normalizeImageDomain } from "@renderer/lib/chatDisplay.js";
+import { Button, Select, Input, Switch } from "@renderer/components/ui/index.js";
 import { IconRefresh, IconSun, IconMoon, IconDeviceDesktop, IconSquare, IconBrush, IconChevronDown, IconTypography } from "@renderer/lib/icons.js";
 import { useI18n, type MessageId } from "@renderer/lib/i18n/index.js";
 import { editorThemePresetsForMode } from "@renderer/lib/editorThemes.js";
@@ -271,6 +272,15 @@ export function AppearancePanel() {
     tripletToHex(accentColor) ||
     DEFAULT_ACCENT_HEX;
 
+  const chatDisplay = useSessionStore(s => s.chatDisplay);
+  const setChatDisplay = useSessionStore(s => s.setChatDisplay);
+  const [domains, setDomains] = useState(chatDisplay.trustedDomains.join(", "));
+  const [domainError, setDomainError] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const saveDisplay = (next: typeof chatDisplay) => {
+    setSaveError(false);
+    void setChatDisplay(next).catch(() => setSaveError(true));
+  };
   const effectiveLabel = t(effective === "dark" ? "settings.appearance.themeDark" : "settings.appearance.themeLight");
 
   return (
@@ -573,6 +583,29 @@ export function AppearancePanel() {
             onChange={(px) => void setChatFontSize(px)}
           />
         </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.appearance.replyDisplay")}>
+        <SettingRow title={t("settings.appearance.prosePaths")} desc={t("settings.appearance.prosePathsDesc")} htmlFor="setting-prose-paths">
+          <Switch id="setting-prose-paths" label={t("settings.appearance.prosePaths")} checked={chatDisplay.prosePaths} onCheckedChange={prosePaths => saveDisplay({ ...chatDisplay, prosePaths })} />
+        </SettingRow>
+        <SettingRow title={t("settings.appearance.remoteImages")} desc={t("settings.appearance.remoteImagesDesc")} htmlFor="setting-remote-images">
+          <select id="setting-remote-images" className="w-full rounded border border-edge bg-surface px-2 py-1.5" value={chatDisplay.remoteImages} onChange={e => saveDisplay({ ...chatDisplay, remoteImages: e.target.value as typeof chatDisplay.remoteImages })}>
+            <option value="never">{t("settings.appearance.remoteNever")}</option>
+            <option value="trusted">{t("settings.appearance.remoteTrusted")}</option>
+            <option value="always">{t("settings.appearance.remoteAlways")}</option>
+          </select>
+        </SettingRow>
+        {chatDisplay.remoteImages === "trusted" && <SettingRow title={t("settings.appearance.trustedDomains")} desc={t("settings.appearance.trustedDomainsDesc")} htmlFor="setting-image-domains">
+          <Input id="setting-image-domains" value={domains} onChange={e => setDomains(e.target.value)} onBlur={() => {
+            const values = domains.split(/[,，\s]+/).filter(Boolean).map(normalizeImageDomain);
+            const invalid = values.some(v => v === null) || values.length > 100;
+            setDomainError(invalid);
+            if (!invalid) saveDisplay({ ...chatDisplay, trustedDomains: [...new Set(values.filter((v): v is string => v !== null))] });
+          }} />
+        </SettingRow>}
+        {domainError && <p role="alert" className="text-danger text-xs">{t("settings.appearance.domainError")}</p>}
+        {saveError && <p role="alert" className="text-danger text-xs">{t("settings.appearance.displaySaveError")}</p>}
       </SettingsSection>
 
       <p className="pt-1 text-[0.7143em] text-content-subtle">

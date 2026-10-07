@@ -1,4 +1,5 @@
 import { memo, useState, useMemo, useEffect, useRef, useDeferredValue, type ReactNode, type ComponentType } from "react";
+import { useReplyImages } from "./ReplyImageContext.js";
 import { createPortal } from "react-dom";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n, translate, type MessageId } from "@renderer/lib/i18n/index.js";
@@ -454,15 +455,28 @@ function Chevron({ open, className }: { open: boolean; className?: string }) {
  *
  *  Single images never reach here — `groupBlocks` renders a lone image via the
  *  normal BlockView image case. This component only assembles runs of 2+. */
+function ToolProducedImage({ block }: { block: Extract<Block, { kind: "image" }> }) {
+  const { t } = useI18n();
+  const context = useReplyImages();
+  const path = block.toolCallId ? context?.toolPaths.get(block.toolCallId) : undefined;
+  const image = <ImageWithPreview src={`data:${block.mimeType};base64,${block.data}`} alt={t(block.toolCallId ? "chatStream.image.browserScreenshot" : "chatStream.image.userImage")} className="my-1" maxThumbnailWidth={300} maxThumbnailHeight={200} />;
+  return path && context?.loaded.has(path)
+    ? <details className="my-1 text-content-subtle text-xs"><summary className="cursor-pointer">{t("chatStream.image.shownInReply")}</summary>{image}</details>
+    : image;
+}
+
 function ImageGallery({ blocks }: { blocks: Extract<Block, { kind: "image" }>[] }) {
   const [idx, setIdx] = useState(0);
   const { t } = useI18n();
+  const context = useReplyImages();
+  const repeated = blocks.some(b => b.toolCallId && context?.loaded.has(context.toolPaths.get(b.toolCallId) ?? ""));
   const count = blocks.length;
   const cur = blocks[Math.min(idx, count - 1)];
   const go = (delta: number) => setIdx((i) => Math.max(0, Math.min(count - 1, i + delta)));
   // All images of this gallery as data URLs — passed to the lightbox so it can
   // navigate prev/next inside the fullscreen preview too.
   const allSrcs = blocks.map((b) => `data:${b.mimeType};base64,${b.data}`);
+  if (repeated) return <>{blocks.map((b, i) => <ToolProducedImage key={i} block={b} />)}</>;
   return (
     <div className="my-1 flex flex-col items-start gap-1">
       <div className="relative">
@@ -1201,15 +1215,7 @@ const BlockView = memo(function BlockView({
       // floating inside a wide 420px card, leaving a large empty area. We also
       // raise the thumbnail ceiling so portrait screenshots stay legible
       // without dominating the stream.
-      return (
-        <ImageWithPreview
-          src={`data:${block.mimeType};base64,${block.data}`}
-          alt={block.toolCallId ? t("chatStream.image.browserScreenshot") : t("chatStream.image.userImage")}
-          className="my-1"
-          maxThumbnailWidth={300}
-          maxThumbnailHeight={200}
-        />
-      );
+      return <ToolProducedImage block={block} />;
   }
 });
 export { BlockView };

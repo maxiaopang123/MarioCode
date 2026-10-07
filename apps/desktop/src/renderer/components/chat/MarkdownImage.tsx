@@ -34,6 +34,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { shouldAutoLoadImage } from "@renderer/lib/chatDisplay.js";
+import { useReplyImages } from "./ReplyImageContext.js";
 import { api } from "@renderer/lib/api.js";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
@@ -238,12 +240,15 @@ export function MarkdownLocalImage({
   useEffect(() => () => window.clearTimeout(resetTimer.current), []);
 
   const report = gallery?.report;
+  const loadedPath = useRef<string | null>(null);
   useEffect(() => {
     let cancelled = false;
+    loadedPath.current = null;
     setDataUrl(null);
     setDims(null);
     void loadMarkdownImageDataUrl(filePath).then((url) => {
       if (cancelled) return;
+      loadedPath.current = filePath;
       setDataUrl(url);
       report?.(filePath, url);
     });
@@ -251,6 +256,12 @@ export function MarkdownLocalImage({
       cancelled = true;
     };
   }, [filePath, report]);
+
+  const replyImages = useReplyImages();
+  const register = replyImages?.register;
+  useEffect(() => {
+    if (dataUrl && dims && loadedPath.current === filePath && register) return register(filePath);
+  }, [dataUrl, dims, filePath, register]);
 
   const name = basename(filePath) || filePath;
 
@@ -303,7 +314,9 @@ export function MarkdownLocalImage({
         className="md-cell"
         thumb={
           <>
-            <img src={dataUrl} alt={alt || name} draggable={false} className="md-cell-img" />
+            <img src={dataUrl} alt={alt || name} draggable={false} className="md-cell-img"
+              onLoad={e => { const el = e.currentTarget; if (el.naturalWidth) setDims({ w: el.naturalWidth, h: el.naturalHeight }); }}
+              onError={() => setDataUrl("")} />
             <span className="md-cell-cap">{name}</span>
           </>
         }
@@ -337,6 +350,7 @@ export function MarkdownLocalImage({
             src={dataUrl}
             alt={alt || name}
             draggable={false}
+            onError={() => setDataUrl("")}
             onLoad={(e) => {
               const el = e.currentTarget;
               if (el.naturalWidth) setDims({ w: el.naturalWidth, h: el.naturalHeight });
@@ -398,12 +412,12 @@ export function MarkdownLocalImage({
 /* ── remote image ─────────────────────────────────────────────────────── */
 
 /**
- * A remote `http(s)` image. Never auto-loaded: the placeholder shows the host
+ * A remote `http(s)` image. Manual by default: the placeholder shows the host
  * and a 「加载图片」 button, and the bytes are fetched by the MAIN process
  * (`net.fetchImage`) and handed back as a data URL. Two reasons it works this
  * way instead of just letting the `<img>` load:
  *  - reading a reply must not silently ping a third-party host (a model-quoted
- *    URL can be a tracker);
+ *    URL can be a tracker); automatic loading follows the saved preference;
  *  - the renderer's CSP stays `img-src 'self' data:` — no remote origin is
  *    ever allowed to load into the app.
  */
@@ -423,12 +437,16 @@ export function MarkdownRemoteImage({ src, alt }: { src: string; alt: string }) 
     }
   })();
 
-  const load = () => {
-    if (state === "loading") return;
+  const config = useSessionStore(s => s.chatDisplay);
+  const automatic = shouldAutoLoadImage(src, config);
+  const request = useRef(0);
+  const load = useCallback(() => {
+    const id = ++request.current;
     setState("loading");
     void api.net
       .fetchImage({ url: src })
       .then((res) => {
+        if (id !== request.current) return;
         if (res.dataUrl) {
           setDataUrl(res.dataUrl);
           setState("idle");
@@ -437,8 +455,13 @@ export function MarkdownRemoteImage({ src, alt }: { src: string; alt: string }) 
           setState("error");
         }
       })
-      .catch(() => setState("error"));
-  };
+      .catch(() => { if (id === request.current) setState("error"); });
+  }, [src]);
+  useEffect(() => {
+    setDataUrl(""); setError(""); setState("idle");
+    return () => { request.current++; };
+  }, [src]);
+  useEffect(() => { if (automatic) load(); }, [automatic, load]);
 
   if (dataUrl) {
     return (

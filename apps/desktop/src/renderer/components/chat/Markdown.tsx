@@ -32,6 +32,7 @@ import {
   isLocalFileHref,
   splitProsePaths,
 } from "@renderer/lib/fileLink.js";
+import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { FileChip } from "./FileChip.js";
 import { resolveRelativePath } from "@renderer/lib/path.js";
 import { FileLink } from "./FileLink.js";
@@ -804,7 +805,8 @@ export const Markdown = memo(function Markdown({
   // Path chips run BEFORE the skill highlighter (so a path's `/segment` is
   // never mistaken for a skill) and only in chat — the .md preview (baseDir
   // set) is a document whose prose should stay prose.
-  const chatChips = !baseDir;
+  const prosePaths = useSessionStore(s => s.chatDisplay.prosePaths);
+  const chatChips = !baseDir && prosePaths;
   const normalizedChildren = useMemo(() => normalizeMathDelimiters(children), [children]);
   const rehypePlugins = useMemo(() => {
     const list: NonNullable<Parameters<typeof ReactMarkdown>[0]["rehypePlugins"]> = [rehypeKatex, rehypeImageGallery];

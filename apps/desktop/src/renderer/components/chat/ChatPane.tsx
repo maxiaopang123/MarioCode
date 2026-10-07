@@ -61,6 +61,7 @@ import {
 
 /** Stable empty array for the per-turn generation-time selector. */
 const EMPTY_TURN_GENS: TurnGenRecord[] = [];
+import { ReplyImageProvider } from "./ReplyImageContext.js";
 import type { TurnUsageRecord } from "@contracts/runtime";
 import { RenderErrorBoundary } from "./RenderErrorBoundary.js";
 import { MicButton } from "./MicButton.js";
@@ -3213,7 +3214,7 @@ function ChatPaneForSession({
             }
           : undefined;
       const body = (
-        <>
+        <ReplyImageProvider blocks={[...item.panelBlocks, ...item.textMsgs.flatMap(m => m.blocks)]}>
           {/* The process panel renders for EVERY turn — turns with no process
               data (pure-text replies) show the header line only (model ·
               clock · duration, chevron at the right), keeping the same
@@ -3280,7 +3281,7 @@ function ChatPaneForSession({
               {upstreamIssue && <UpstreamRetryHint issue={upstreamIssue} />}
             </div>
           )}
-        </>
+        </ReplyImageProvider>
       );
       // 每个回合现在都渲染过程面板（无过程数据的回合只剩台头行），因此统一
       // 走生命线结构：卡片与回复挂同一根 .chat-turn 上（方案A 的识别骨架）。

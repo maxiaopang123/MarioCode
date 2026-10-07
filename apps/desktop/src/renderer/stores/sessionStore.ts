@@ -18,6 +18,7 @@ import type {
 import type { TurnFileEntry } from "@renderer/lib/turnFiles.js";
 import type { ContentTag } from "@renderer/lib/contentTag.js";
 import { isValidSnapshot } from "@renderer/lib/contextWindow.js";
+import { CHAT_DISPLAY_SETTING_KEY, DEFAULT_CHAT_DISPLAY, ChatDisplaySchema, parseChatDisplay, type ChatDisplay } from "@contracts/chatDisplay";
 import { dropGenTimer, finishTurn, noteDelta, noteToolUse } from "@renderer/lib/genTimer.js";
 import type { TurnGenRecord } from "@renderer/lib/sessionMetrics.js";
 import { getLastCursor, type NavEntry } from "@renderer/lib/editorNav.js";
@@ -690,6 +691,8 @@ export interface SessionState {
    *  shapes, styles.css `html.sketch` section). Persisted under
    *  `ui.themeStyle`; applied to <html> as a `.sketch` class next to `.dark`
    *  (lib/theme.ts applyThemeStyle via useThemeStyle in lib/appearance.ts). */
+  chatDisplay: ChatDisplay;
+  setChatDisplay: (config: ChatDisplay) => Promise<void>;
   themeStyle: ThemeStyle;
   /** Custom UI font family ("" = stylesheet default system stack). Persisted
    *  under `ui.uiFontFamily`; applied to <html> as the `--app-font` CSS var
@@ -4502,6 +4505,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   leftBarMode: "stream",
   // UI theme style (orthogonal to light/dark). Default "classic"; init()
   // overwrites from the persisted ui.themeStyle preference.
+  chatDisplay: DEFAULT_CHAT_DISPLAY,
+  setChatDisplay: async (config) => {
+    const next = ChatDisplaySchema.parse(config);
+    await api.setting.set({ key: CHAT_DISPLAY_SETTING_KEY, value: JSON.stringify(next) });
+    set({ chatDisplay: next });
+  },
   themeStyle: "classic",
   // Custom UI font family ("" = stylesheet default). Persisted under
   // ui.uiFontFamily; init() overwrites from the DB.
@@ -4721,6 +4730,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           THEME_STYLE_SETTING_KEY,
           UI_FONT_FAMILY_SETTING_KEY,
           UI_LOCALE_SETTING_KEY,
+          CHAT_DISPLAY_SETTING_KEY,
           UI_CHAT_DENSITY_SETTING_KEY,
           UI_PROJECT_VIEW_SETTING_KEY,
           UI_PROJECT_GROUPS_SETTING_KEY,
@@ -4830,6 +4840,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     } catch (err) {
       console.error("apply(streamScope) failed:", err);
     }
+
+    set({ chatDisplay: parseChatDisplay(fp[CHAT_DISPLAY_SETTING_KEY]) });
 
     // locale drives every translated string — must land before first paint so
     // the UI never flashes the wrong language. Also mirror onto <html lang>.

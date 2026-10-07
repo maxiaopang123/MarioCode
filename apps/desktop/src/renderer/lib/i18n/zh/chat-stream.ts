@@ -3,6 +3,7 @@
  * zh is the source of truth for `MessageId`.
  */
 export const zh = {
+  "chatStream.image.shownInReply": "图片已在回复中显示 · 展开工具预览",
   // ── MessageTimeline ──
   "chatStream.timeline.current": "当前",
   "chatStream.timeline.noText": "(无文本内容)",

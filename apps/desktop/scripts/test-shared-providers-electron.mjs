@@ -259,6 +259,8 @@ try {
       assert.ok(!events.some((e) => e.type === "error"), `${turn.engine} errors: ${JSON.stringify(events)}`);
       assert.ok(events.filter((e) => e.type === "text.delta").map((e) => e.text).join("").includes(`fixture-ok:${turn.id}`), `${turn.engine} streaming answer missing: ${JSON.stringify(events)}`);
       assert.ok(fixtureRequests.slice(requestCount).some((r) => r.path === turn.path && r.body.model === turn.id && (r.authorization === `Bearer ${fixtureKey}` || r.apiKey === fixtureKey)), `${turn.engine} request did not use its model endpoint and stored key`);
+      // turn.done is streamed before native app-server/state-DB teardown finishes.
+      if (turn.engine === "codex-sdk") await delay(750);
     } finally { await evaluate("globalThis.__stopWireEvents()"); }
   }
   if (process.argv.includes("--ideas")) {
@@ -294,8 +296,75 @@ try {
         assert.ok(!wire.includes("must-exclude-later"), `${engine} must respect the selected message boundary`);
         assert.deepEqual((await evaluate(`window.api.session.messages({sessionId:${JSON.stringify(source.id)}})`)).messages, messages);
         console.log(`Fork context verified with real engine: ${engine}`);
+        if (engine === "codex-sdk") await delay(750);
       } finally { await evaluate("globalThis.__stopWireEvents()"); }
     }
+
+    // The actual composer: @ folder with spaces, keyboard confirmation,
+    // draft switching, removal, send and persisted history type.
+    const folder = join(cwd, "素材 文件夹");
+    await mkdir(folder);
+    await writeFile(join(folder, "说明 文件.md"), "directory-content-must-not-be-eagerly-injected");
+    const { session: mentionChat } = await evaluate(`window.api.claude.startSession(${JSON.stringify({ projectId: project.id, title: "Folder mention verification", providerId: "pi-sdk", model: `${runtimeId}/vendor/chat-model`, permissionMode: "bypassPermissions" })})`);
+    await evaluate(`window.api.claude.startSession(${JSON.stringify({ projectId: project.id, title: "Folder draft switch", providerId: "pi-sdk", model: `${runtimeId}/vendor/chat-model` })})`);
+    await command("Page.reload");
+    const waitUi = async (expression) => {
+      const deadline = Date.now() + 15000;
+      while (true) {
+        try { if (await evaluate(expression)) return; } catch { /* Page reload can replace the execution context. */ }
+        if (Date.now() > deadline) throw new Error(`UI condition timed out: ${expression}\n${await evaluate("document.body.innerText")}`);
+        await delay(100);
+      }
+    };
+    await waitUi("Boolean(window.api && [...document.querySelectorAll('li[title]')].some(b=>b.title.startsWith('Folder mention verification\\n')))");
+    const selectChat = async title => {
+      await evaluate(`[...document.querySelectorAll('li[title]')].find(b=>b.title.startsWith(${JSON.stringify(title + "\n")})).click()`);
+      await waitUi("[...document.querySelectorAll('.composer-prose[contenteditable=true]')].some(e=>e.getClientRects().length>0)");
+      await delay(150);
+    };
+    const focusComposer = () => evaluate("[...document.querySelectorAll('.composer-prose[contenteditable=true]')].find(e=>e.getClientRects().length>0).focus()");
+    const pickFolder = async key => {
+      await focusComposer();
+      await command("Input.insertText", { text: "@" });
+      await waitUi("document.body.innerText.includes('引用文件或文件夹')");
+      await command("Input.insertText", { text: "素材 文件夹" });
+      await waitUi("[...document.querySelectorAll('button[data-idx]')].some(b=>!b.disabled && b.innerText.includes('素材 文件夹') && b.innerText.includes('文件夹'))");
+      await command("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, windowsVirtualKeyCode: key === "Tab" ? 9 : 13 });
+      await command("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: key === "Tab" ? 9 : 13 });
+      await waitUi("Boolean(document.querySelector('.composer-tag-in .tabler-icon-folder'))");
+    };
+    await selectChat("Folder mention verification");
+    const beforePick = fixtureRequests.length;
+    await pickFolder("Tab");
+    assert.equal(fixtureRequests.length, beforePick, "Tab confirms a directory without sending a turn");
+    assert.ok(await evaluate(`[...document.querySelectorAll('.composer-tag-in button')].some(b=>b.title===${JSON.stringify(folder)})`));
+    await selectChat("Folder draft switch");
+    await selectChat("Folder mention verification");
+    assert.ok(await evaluate("Boolean(document.querySelector('.composer-tag-in .tabler-icon-folder'))"), "folder type survives draft restoration");
+    await evaluate("document.querySelector('.composer-tag-in button:last-child').click()");
+    await waitUi("!document.querySelector('.composer-tag-in .tabler-icon-folder')");
+    await pickFolder("Enter");
+    assert.equal(fixtureRequests.length, beforePick, "Enter confirms a directory without sending a turn");
+    await focusComposer();
+    await command("Input.insertText", { text: "请检查引用目录" });
+    await evaluate("globalThis.__wireEvents=[];globalThis.__stopWireEvents=window.api.on.claudeEvent(msg=>globalThis.__wireEvents.push(msg.event))");
+    try {
+      await evaluate("[...document.querySelectorAll('button[aria-label=发送]')].find(b=>b.getClientRects().length>0).click()");
+      await waitUi(`globalThis.__wireEvents.some(e=>e.type==='turn.done' && e.sessionId===${JSON.stringify(mentionChat.id)})`);
+      const texts = value => typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value).flatMap(texts) : [];
+      const sent = fixtureRequests.slice(beforePick).flatMap(request => texts(request.body));
+      assert.ok(sent.some(text=>text.includes(`Directory reference: ${JSON.stringify(folder)}`)), "the real engine receives the full quoted folder path");
+      assert.ok(!sent.some(text=>text.includes("directory-content-must-not-be-eagerly-injected")), "directory contents are not injected automatically");
+      await waitUi(`window.api.session.messages({sessionId:${JSON.stringify(mentionChat.id)}}).then(r=>r.messages.some(m=>(Array.isArray(m.content)?m.content:m.content?.blocks)?.some(b=>b.kind==='attachment'&&b.isDirectory===true&&b.filePath===${JSON.stringify(folder)})))`);
+      await evaluate("globalThis.__stopWireEvents?.()");
+      await command("Page.reload");
+      await waitUi("Boolean(window.api && [...document.querySelectorAll('li[title]')].some(b=>b.title.startsWith('Folder mention verification\\n')))");
+      await selectChat("Folder mention verification");
+      await waitUi(`[...document.querySelectorAll('button')].some(b=>!b.closest('.composer-tag-in') && b.title===${JSON.stringify(folder)})`);
+      await evaluate(`[...document.querySelectorAll('button')].find(b=>!b.closest('.composer-tag-in') && b.title===${JSON.stringify(folder)}).click()`);
+      await waitUi("document.body.innerText.includes('文件夹引用 · 按需读取')");
+      console.log("Folder mention verified in real composer: Chinese/spaces, Tab/Enter, draft switch, removal, real Pi send and persisted directory card");
+    } finally { await evaluate("globalThis.__stopWireEvents?.()"); }
   }
   if (process.argv.includes("--context")) {
     await access(claudePath);
@@ -371,7 +440,7 @@ try {
   await writeFile(join(data, "verification.json"), JSON.stringify({
     result: "passed", providerId: provider.id,
     fixtureBaseUrl,
-    checks: ["real shared provider form save", "three agent projections", "Pi SDK in-memory registration", "encrypted key at rest", "no key disclosure via legacy IPC", "local Pi models unchanged", "reopened form does not reveal key", "real HTTP model discovery with draft key", "cancel discovery preserves form", "real HTTP model discovery with stored key", "discovered model selection and save", "discovery does not invent interfaces", "interface edits preserve engine choices", "three engines real Chat/Messages/Responses turns", "Codex model switch on resume", ...(process.argv.includes("--context") ? ["context settings persistence and main-process validation", "three-engine compaction thresholds at 1M and 200K", "Codex known-model catalog capacity"] : [])],
+    checks: ["real shared provider form save", "three agent projections", "Pi SDK in-memory registration", "encrypted key at rest", "no key disclosure via legacy IPC", "local Pi models unchanged", "reopened form does not reveal key", "real HTTP model discovery with draft key", "cancel discovery preserves form", "real HTTP model discovery with stored key", "discovered model selection and save", "discovery does not invent interfaces", "interface edits preserve engine choices", "three engines real Chat/Messages/Responses turns", "Codex model switch on resume", ...(process.argv.includes("--ideas") ? ["three-engine fork history and selected message boundary", "real composer folder mention with Chinese/spaces and Tab/Enter", "folder draft switch/removal and persisted directory card", "real Pi request includes directory path without eager content"] : []), ...(process.argv.includes("--context") ? ["context settings persistence and main-process validation", "three-engine compaction thresholds at 1M and 200K", "Codex known-model catalog capacity"] : [])],
   }, null, 2));
   console.log(`Electron shared-provider verification passed. Artifacts: ${data}`);
 } finally {

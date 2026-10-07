@@ -12,6 +12,7 @@ import {
   IconClipboard,
   IconCheck,
   IconFile,
+  IconFolder,
   IconPhoto,
   // Tool-kind icons (left glyph of each action card).
   IconBulb,
@@ -1081,6 +1082,7 @@ const BlockView = memo(function BlockView({
           attachmentKind={block.attachmentKind}
           filePath={block.filePath}
           contextSource={block.contextSource}
+          isDirectory={block.isDirectory}
         />
       );;
 
@@ -1240,6 +1242,7 @@ function AttachmentCard({
   attachmentKind,
   filePath,
   contextSource,
+  isDirectory,
 }: {
   preview: string;
   content: string;
@@ -1248,13 +1251,14 @@ function AttachmentCard({
   attachmentKind?: "paste" | "file" | "quote";
   filePath?: string;
   contextSource?: { sessionId: string; messageId?: string | null; truncated?: boolean };
+  isDirectory?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const { t } = useI18n();
   const isFile = attachmentKind === "file";
-  const isImage = isFile && !!filePath && isImageFilePath(filePath);
+  const isImage = isFile && !isDirectory && !!filePath && isImageFilePath(filePath);
 
   // Non-image file cards open the file in the IDE editor (per-type view
   // handled by the editor: markdown rendered, text edited). Paste cards AND
@@ -1262,7 +1266,7 @@ function AttachmentCard({
   // preview (loaded via api.file.readBinary), same UX as the composer chip;
   // legacy path-less file cards fall back to the popover too.
   const handleClick = () => {
-    if (isFile && filePath && !isImage) {
+    if (isFile && !isDirectory && filePath && !isImage) {
       useSessionStore.getState().openFileInIde(filePath);
       return;
     }
@@ -1288,6 +1292,7 @@ function AttachmentCard({
     preview,
     content,
     filePath,
+    isDirectory,
     sourceSessionId: contextSource?.sessionId,
     sourceMessageId: contextSource?.messageId,
     contextTruncated: contextSource?.truncated,
@@ -1317,7 +1322,9 @@ function AttachmentCard({
         )}
       >
         {isFile ? (
-          isImage ? (
+          isDirectory ? (
+            <IconFolder size={12} className="opacity-80" />
+          ) : isImage ? (
             <IconPhoto size={12} className="opacity-80" />
           ) : (
             <IconFile size={12} className="opacity-80" />
@@ -1326,7 +1333,7 @@ function AttachmentCard({
           <IconClipboard size={12} className="opacity-80" />
         )}
         <span className="max-w-[220px] truncate">{preview}</span>
-        {(!isFile || isImage) && (
+        {(!isFile || isImage || isDirectory) && (
           <IconChevronDown
             size={11}
             className={cn("shrink-0 opacity-70 transition-transform", !open && "-rotate-90")}

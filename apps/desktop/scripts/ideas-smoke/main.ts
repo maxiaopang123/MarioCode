@@ -4,6 +4,11 @@ import { initDb, closeDb } from "@main/store/db.js";
 import { ProjectRepo, SessionRepo, MessageRepo } from "@main/store/repositories.js";
 import { forkConversation, readConversationContext } from "@main/lib/sessionBranch.js";
 import type { Session } from "@contracts/session";
+import { mkdir, writeFile, symlink } from "node:fs/promises";
+import { join } from "node:path";
+import { FileSearchSchema } from "@contracts/ipc";
+import { searchFilesGuarded } from "@main/ipc/files.js";
+import { cachedTreeFiles } from "@main/lib/walkCache.js";
 
 async function main(): Promise<void> {
 app.setPath("userData", process.env.MARIOCODE_SMOKE_DATA!);
@@ -58,6 +63,42 @@ try {
   assert.equal(SessionRepo.forkSeed(fork.id), undefined);
   assert.equal(MessageRepo.listBySession(session.id).messages.length, 3);
   console.log("PASS: fork range, independent ids, immutable source, bounded references and cascade cleanup");
+
+  const root = join(app.getPath("userData"), "中文 项目");
+  const folder = join(root, "素材 文件夹");
+  const empty = join(root, "空目录.png");
+  const outside = join(app.getPath("userData"), "outside");
+  await mkdir(folder, { recursive: true }); await mkdir(empty); await mkdir(outside);
+  await mkdir(join(root, "node_modules", "ignored-folder"), { recursive: true });
+  await writeFile(join(folder, "说明 文件.md"), "file-content-must-not-be-injected");
+  await writeFile(join(outside, "outside-secret.txt"), "outside");
+  await symlink(outside, join(root, "linked-outside"), process.platform === "win32" ? "junction" : "dir");
+  ProjectRepo.create({ id: "mentions", name: "中文 项目", path: root, archived: false, group: null, sortOrder: 0, pinnedAt: null, createdAt: 1, updatedAt: 1 });
+  const initial = await searchFilesGuarded(FileSearchSchema.parse({ projectPath: root, includeDirectories: true, limit: 100 }));
+  assert.ok(initial.files.some(f => f.path === root && f.isDirectory));
+  assert.ok(initial.files.some(f => f.path === empty && f.isDirectory));
+  assert.ok(initial.files.some(f => f.name === "说明 文件.md" && !f.isDirectory));
+  assert.ok(!initial.files.some(f => /node_modules|linked-outside|outside-secret/.test(f.path)));
+  const match = await searchFilesGuarded(FileSearchSchema.parse({ projectPath: root, query: "素材 文件夹", includeDirectories: true }));
+  assert.equal(match.files[0]?.path, folder); assert.ok(match.files[0]?.isDirectory);
+  assert.ok(match.files.every(f => !JSON.stringify(f).includes("file-content-must-not-be-injected")));
+  const old = await searchFilesGuarded(FileSearchSchema.parse({ projectPath: root, query: "素材" }));
+  assert.ok(old.files.every(f => !f.isDirectory)); assert.ok(old.files.some(f => f.name === "说明 文件.md"));
+  const limited = await searchFilesGuarded({ projectPath: root, includeDirectories: true, limit: 1 });
+  assert.equal(limited.files.length, 1); assert.ok(limited.truncated);
+  assert.equal((await searchFilesGuarded({ projectPath: outside, includeDirectories: true })).files.length, 0);
+  const keyCache1 = await cachedTreeFiles(root, new Set(["node_modules"]), true);
+  const keyCache2 = await cachedTreeFiles(root, new Set(["node_modules"]), true);
+  assert.strictEqual(keyCache1.files, keyCache2.files, "directory metadata is cached across queries");
+  await mkdir(join(root, "新建 文件夹"));
+  await new Promise(r => setTimeout(r, 150));
+  const refreshed = await searchFilesGuarded({ projectPath: root, query: "新建", includeDirectories: true });
+  assert.ok(refreshed.files.some(f => f.name === "新建 文件夹" && f.isDirectory), "filesystem changes invalidate cached folder results");
+  const worktree = join(app.getPath("userData"), "工作树 路径");
+  await mkdir(join(worktree, "树内 文件夹"), { recursive: true });
+  SessionRepo.create({ ...session, id: "worktree", worktreePath: worktree });
+  assert.ok((await searchFilesGuarded({ projectPath: worktree, query: "树内", includeDirectories: true })).files[0]?.isDirectory);
+  console.log("PASS: files/folders/root, Chinese/spaces, empty image-suffix folder, legacy file search, bounded results, ignored/link guards, cache invalidation and registered worktree");
 } catch (error) {
   console.error(error);
   process.exitCode = 1;

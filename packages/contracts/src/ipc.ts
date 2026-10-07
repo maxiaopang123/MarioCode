@@ -2170,14 +2170,16 @@ export interface FileSearchEntry {
   path: string;
   /** Path relative to the project root (forward-slash separated). */
   relativePath: string;
+  /** Absent/false for legacy file-only callers. */
+  isDirectory?: boolean;
 }
 
 /**
  * Recursive file search under a project root for composer @-mention and
  * "add context" pickers. Main walks the tree (skipping the same ignored
  * dirs as listDir), optionally filters by case-insensitive substring on
- * name/relativePath, and returns at most `limit` files. Directories are
- * never returned — only files. Empty query returns a truncated breadth-
+ * name/relativePath, and returns at most `limit` entries. Directories are
+ * included only when requested. Empty query returns a truncated breadth-
  * first sample so the picker has something to show immediately.
  */
 export const FileSearchSchema = z.object({
@@ -2188,6 +2190,7 @@ export const FileSearchSchema = z.object({
   /** Optional file-extension allow-list (no dots, lowercased). Empty or
    *  absent means no filter; name search drops files outside the list. */
   includeExts: z.array(z.string().min(1).max(32)).max(50).optional(),
+  includeDirectories: z.boolean().optional(),
   /** Max files to return. Defaults to 80 on the main side. */
   limit: z.number().int().positive().max(2000).optional(),
 });

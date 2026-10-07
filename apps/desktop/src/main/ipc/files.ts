@@ -403,14 +403,14 @@ function rankFileMatch(name: string, relPath: string, query: string): number {
   if (bn === query) return 0;
   if (bn.startsWith(query)) return 1;
   if (bn.includes(query)) return 2;
-  return relPath.includes(query) ? 3 : 4;
+  return relPath.toLowerCase().includes(query) ? 3 : 4;
 }
 
 /** Match + relevance-rank a flat file list against `query` (already trimmed
  *  + lowercased), optionally restricted to `includeExts`. Shared by the rg
  *  fast path and the cached JS walk so both produce identical results. */
 function rankNameMatches(
-  files: ReadonlyArray<{ name: string; abs: string; relPath: string }>,
+  files: ReadonlyArray<{ name: string; abs: string; relPath: string; isDirectory?: boolean }>,
   query: string,
   includeExts?: ReadonlySet<string>,
 ): FileSearchEntry[] {
@@ -418,10 +418,10 @@ function rankNameMatches(
   for (const f of files) {
     // An empty set means "no filter" (the renderer omits includeExts when the
     // file-type box is blank) — a bare truthiness check would drop every file.
-    if (includeExts && includeExts.size > 0 && !includeExts.has(extOf(f.name))) continue;
+    if (!f.isDirectory && includeExts && includeExts.size > 0 && !includeExts.has(extOf(f.name))) continue;
     const hay = `${f.name}\n${f.relPath}`.toLowerCase();
     if (!hay.includes(query)) continue;
-    hits.push({ name: f.name, path: f.abs, relativePath: f.relPath });
+    hits.push({ name: f.name, path: f.abs, relativePath: f.relPath, isDirectory: f.isDirectory });
   }
   hits.sort((a, b) => {
     const ra = rankFileMatch(a.name, a.relativePath, query);
@@ -454,15 +454,25 @@ export async function searchFilesGuarded(
   const query = (input.query ?? "").trim().toLowerCase();
   const includeExts = new Set((input.includeExts ?? []).map((e) => e.toLowerCase()));
 
+  if (input.includeDirectories && query) {
+    // Cached metadata walk also finds empty directories; no file bytes are read.
+    const { files, incompleteScan } = await cachedTreeFiles(root, IGNORED_ENTRIES, true);
+    const hits = rankNameMatches([{ name: basename(root), abs: root, relPath: ".", isDirectory: true }, ...files], query, includeExts);
+    return { files: hits.slice(0, limit), truncated: hits.length > limit, incompleteScan };
+  }
+
   // Empty query: keep the legacy shallow BFS sample (stops at `limit`) — the
   // @-mention picker wants an instant initial list, and walking 50k entries
   // just to show a sample would be a regression. A sample is the contract
   // here, so neither truncation flag is meaningful for it.
   if (!query) {
     const files: FileSearchEntry[] = [];
+    const sampleLimit = limit + (input.includeDirectories ? 1 : 0);
+    if (input.includeDirectories) files.push({ name: basename(root), path: root, relativePath: ".", isDirectory: true });
     let visited = 0;
+    let incompleteScan = false;
     const queue: Array<{ abs: string; depth: number }> = [{ abs: root, depth: 0 }];
-    while (queue.length > 0 && files.length < limit && visited < SEARCH_MAX_VISIT) {
+    while (queue.length > 0 && files.length < sampleLimit && visited < SEARCH_MAX_VISIT) {
       const { abs, depth } = queue.shift()!;
       let dirents;
       try {
@@ -472,8 +482,8 @@ export async function searchFilesGuarded(
       }
       sortDirents(dirents);
       for (const d of dirents) {
-        if (files.length >= limit || visited >= SEARCH_MAX_VISIT) break;
-        if (IGNORED_ENTRIES.has(d.name)) continue;
+        if (files.length >= sampleLimit || visited >= SEARCH_MAX_VISIT) break;
+        if (IGNORED_ENTRIES.has(d.name) || (input.includeDirectories && d.isSymbolicLink())) continue;
         let isDir: boolean;
         try {
           isDir = d.isDirectory();
@@ -485,6 +495,8 @@ export async function searchFilesGuarded(
         visited += 1;
         if (isDir) {
           if (depth + 1 <= SEARCH_MAX_DEPTH) queue.push({ abs: fullPath, depth: depth + 1 });
+          else incompleteScan = true;
+          if (input.includeDirectories) files.push({ name: d.name, path: fullPath, relativePath: relative(root, fullPath).split(/[/\\]/).join("/"), isDirectory: true });
           continue;
         }
         let rel: string;
@@ -493,10 +505,11 @@ export async function searchFilesGuarded(
         } catch {
           rel = d.name;
         }
+        if (input.includeDirectories && includeExts.size && !includeExts.has(extOf(d.name))) continue;
         files.push({ name: d.name, path: fullPath, relativePath: rel });
       }
     }
-    return { files, truncated: false, incompleteScan: false };
+    return { files: files.slice(0, limit), truncated: files.length > limit, incompleteScan: Boolean(input.includeDirectories && (incompleteScan || visited >= SEARCH_MAX_VISIT)) };
   }
 
   // Query path. Prefer ripgrep for the tree walk (C-fast, complete), then the

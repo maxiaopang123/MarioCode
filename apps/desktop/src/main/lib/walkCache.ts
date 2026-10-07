@@ -33,6 +33,7 @@ export interface WalkFile {
   abs: string;
   /** Project-relative path with forward slashes. */
   relPath: string;
+  isDirectory?: boolean;
 }
 
 /** Stable per-level ordering for the recursive walks: directories first, then
@@ -61,6 +62,7 @@ interface CacheEntry {
   watchOk: boolean;
   watchAttempted: boolean;
   builtAt: number;
+  building: Promise<{ files: WalkFile[]; incompleteScan: boolean }> | null;
 }
 
 const caches = new Map<string, CacheEntry>();
@@ -71,6 +73,7 @@ const caches = new Map<string, CacheEntry>();
 async function collectTreeFilesUncached(
   root: string,
   ignored: ReadonlySet<string>,
+  includeDirectories = false,
 ): Promise<{ files: WalkFile[]; incompleteScan: boolean }> {
   const files: WalkFile[] = [];
   let visited = 0;
@@ -90,7 +93,7 @@ async function collectTreeFilesUncached(
         incompleteScan = true;
         break;
       }
-      if (ignored.has(d.name)) continue;
+      if (ignored.has(d.name) || (includeDirectories && d.isSymbolicLink())) continue;
       let isDir: boolean;
       try {
         isDir = d.isDirectory();
@@ -101,6 +104,7 @@ async function collectTreeFilesUncached(
       if (!fullPath.startsWith(root + "\\") && !fullPath.startsWith(root + "/")) continue;
       visited += 1;
       if (isDir) {
+        if (includeDirectories) files.push({ name: d.name, abs: fullPath, relPath: relative(root, fullPath).split(/[/\\]/).join("/"), isDirectory: true });
         if (depth + 1 <= SEARCH_MAX_DEPTH) {
           queue.push({ abs: fullPath, depth: depth + 1 });
         } else {
@@ -126,11 +130,13 @@ async function collectTreeFilesUncached(
 export async function cachedTreeFiles(
   root: string,
   ignored: ReadonlySet<string>,
+  includeDirectories = false,
 ): Promise<{ files: WalkFile[]; incompleteScan: boolean }> {
-  const key = resolve(root);
+  const resolvedRoot = resolve(root);
+  const key = includeDirectories ? `${resolvedRoot}\0directories` : resolvedRoot;
   let entry = caches.get(key);
   if (!entry) {
-    entry = { files: null, incompleteScan: false, dirty: false, watcher: null, watchOk: false, watchAttempted: false, builtAt: 0 };
+    entry = { files: null, incompleteScan: false, dirty: false, watcher: null, watchOk: false, watchAttempted: false, builtAt: 0, building: null };
     caches.set(key, entry);
     if (caches.size > MAX_CACHED_ROOTS) {
       const keys = [...caches.keys()];
@@ -155,7 +161,7 @@ export async function cachedTreeFiles(
     entry.watchOk = process.platform === "win32" || process.platform === "darwin";
     if (entry.watchOk) {
       try {
-        entry.watcher = watch(key, { recursive: true }, () => {
+        entry.watcher = watch(resolvedRoot, { recursive: true }, () => {
           entry.dirty = true;
         });
         entry.watcher.on("error", () => {
@@ -177,16 +183,16 @@ export async function cachedTreeFiles(
   if (entry.files != null && !entry.dirty && Date.now() - entry.builtAt < TTL_MS) {
     return { files: entry.files, incompleteScan: entry.incompleteScan };
   }
-
-  const { files, incompleteScan } = await collectTreeFilesUncached(key, ignored);
-  if (!entry.dirty) {
-    // Nothing changed while we walked — safe to cache.
-    entry.files = files;
-    entry.incompleteScan = incompleteScan;
-    entry.builtAt = Date.now();
-  } else {
-    // A change landed mid-walk; discard so the next search rebuilds.
-    entry.files = null;
-  }
-  return { files, incompleteScan };
+  if (entry.building) return entry.building;
+  const current = entry;
+  current.dirty = false;
+  current.building = collectTreeFilesUncached(resolvedRoot, ignored, includeDirectories).then(result => {
+    if (!current.dirty) {
+      current.files = result.files;
+      current.incompleteScan = result.incompleteScan;
+      current.builtAt = Date.now();
+    } else current.files = null;
+    return result;
+  }).finally(() => { current.building = null; });
+  return current.building;
 }

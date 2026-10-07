@@ -1,7 +1,7 @@
 import { forwardRef } from "react";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
-import { IconClipboard, IconFile, IconCode, IconPhoto, IconX, IconMessages } from "@renderer/lib/icons.js";
+import { IconClipboard, IconFile, IconFolder, IconCode, IconPhoto, IconX, IconMessages } from "@renderer/lib/icons.js";
 import { isImageFile, type ContentTag } from "@renderer/lib/contentTag.js";
 
 /**
@@ -56,7 +56,9 @@ export const ContentTagChip = forwardRef<
         className="flex items-center gap-1"
       >
         {isFile ? (
-          isImageFile(tag) ? (
+          tag.isDirectory ? (
+            <IconFolder size={12} className="opacity-80" />
+          ) : isImageFile(tag) ? (
             <IconPhoto size={12} className="opacity-80" />
           ) : (
             <IconFile size={12} className="opacity-80" />

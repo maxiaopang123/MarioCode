@@ -32,11 +32,13 @@ import { useComposerRowFit } from "@renderer/hooks/useComposerRowFit.js";
 import type { SubagentSnapshot } from "@contracts/runtime";
 import type { SessionBookmark } from "@contracts/session";
 import type { FileSearchEntry } from "@contracts/ipc";
+import { findComposerTrigger } from "@renderer/lib/composerTrigger.js";
 import { prepareImageForSend } from "@renderer/lib/imageResize.js";
 import type { PromptImage } from "@renderer/stores/sessionStore.js";
 import {
   type ContentTag,
   appendUniqueFileTags,
+  restoreAttachmentTag,
   composePromptWithTags,
   makeContentTag,
   makeFileTag,
@@ -109,17 +111,6 @@ function composerAgentForProvider(providerId: string | null): "claude" | "codex"
   if (providerId === "pi-sdk") return "pi";
   return "default";
 }
-
-/** Picker trigger chars → picker kind. CJK soft keyboards often emit
- *  full-width variants (／ U+FF0F, ＠ U+FF20) for the slash/at keys, so
- *  both forms trigger; the full-width char itself lands inside the replaced
- *  token range and is swallowed by the inserted pill. */
-const TRIGGER_CHARS: Record<string, "mention" | "slash"> = {
-  "@": "mention",
-  "＠": "mention",
-  "/": "slash",
-  "／": "slash",
-};
 
 /** Uint8Array → base64. Chunked so large pasted files don't blow the call
  *  stack (String.fromCharCode spread is limited to ~32K args per call). */
@@ -1103,6 +1094,7 @@ type SendAttachment = {
   content: string;
   attachmentKind?: "paste" | "file" | "quote";
   filePath?: string;
+  isDirectory?: boolean;
   contextSource?: { sessionId: string; messageId?: string | null; truncated?: boolean };
 };
 
@@ -1116,6 +1108,7 @@ function composeSendAttachments(tags: ReadonlyArray<ContentTag>): SendAttachment
     content: t.content,
     attachmentKind: t.kind === "file" ? "file" : "paste",
     filePath: t.filePath,
+    isDirectory: t.isDirectory,
     contextSource: t.sourceSessionId ? { sessionId: t.sourceSessionId, messageId: t.sourceMessageId, truncated: t.contextTruncated } : undefined,
   }));
 }
@@ -2004,9 +1997,8 @@ function ChatPaneForSession({
   /** Detect an @ or / trigger token at the caret and drive the inline picker.
    *  - `@` (mention): must be at line start or preceded by whitespace.
    *  - `/` (slash): same boundary rule. Query = chars after the trigger up to
-   *    the caret, stopping at whitespace.
-   *  Closing the picker happens when the token is broken (space / delete /
-   *  caret leaves).
+   *    the caret. Active @ queries allow spaces in file/folder names; slash
+   *    queries stop at whitespace. Newline, deletion or leaving the token closes it.
    *
    *  IMPORTANT: skill/command pills serialize as `/name` in the plain-text
    *  representation, so their leading `/` would be mistaken for a freshly-typed
@@ -2027,49 +2019,16 @@ function ChatPaneForSession({
       // Ranges [start, end) in `v` occupied by skill/command pills. A trigger
       // char found inside one of these is part of a pill, not user input.
       const pillRanges = editorRef.current?.getPillRanges() ?? [];
-      /** Is plain-text offset `pos` inside a pill? */
-      const inPill = (pos: number) =>
-        pillRanges.some(([s, e]) => pos >= s && pos < e);
-
-      // Walk back from the caret to find a trigger char at a valid position.
-      let i = caret;
-      while (i > 0) {
-        // If the char just before `i` sits inside a pill, skip the whole pill
-        // and continue backtracking from its start. This prevents the pill's
-        // leading `/` (from `/name`) from being treated as a slash trigger.
-        if (inPill(i - 1)) {
-          const range = pillRanges.find(([s, e]) => i - 1 >= s && i - 1 < e);
-          if (range) {
-            i = range[0]; // jump to the pill's start offset
-            continue;
-          }
+      const trigger = findComposerTrigger(v, caret, pillRanges, pickerKind === "mention" ? triggerStartRef.current : null);
+      if (trigger) {
+        triggerStartRef.current = trigger.start;
+        if (pickerKind !== trigger.kind) {
+          const rect = editorRef.current?.getRect();
+          if (rect) setPickerAnchor(rect);
+          setPickerKind(trigger.kind);
         }
-        const ch = v[i - 1];
-        const triggerKind = TRIGGER_CHARS[ch];
-        if (triggerKind) {
-          const atLineStart = i - 1 === 0 || /\s/.test(v[i - 2]);
-          if (!atLineStart) {
-            if (pickerKind !== null) setPickerKind(null);
-            return;
-          }
-          const token = v.slice(i, caret);
-          // A space within the token means the user moved past it - close.
-          if (/\s/.test(token)) {
-            if (pickerKind !== null) setPickerKind(null);
-            return;
-          }
-          const kind = triggerKind;
-          if (pickerKind !== kind) {
-            triggerStartRef.current = i - 1;
-            const rect = editorRef.current?.getRect();
-            if (rect) setPickerAnchor(rect);
-            setPickerKind(kind);
-          }
-          setPickerQuery(token);
-          return;
-        }
-        if (/\s/.test(ch)) break;
-        i -= 1;
+        setPickerQuery(trigger.query);
+        return;
       }
       if (pickerKind !== null) setPickerKind(null);
     },
@@ -2210,7 +2169,7 @@ function ChatPaneForSession({
   const addFileTags = useCallback(
     (files: FileSearchEntry[]) => {
       if (files.length > 0) {
-        setTags((prev) => appendUniqueFileTags(prev, files.map((f) => f.path)));
+        setTags((prev) => appendUniqueFileTags(prev, files));
       }
     },
     [],
@@ -2771,13 +2730,7 @@ function ChatPaneForSession({
   const handleEditQueuedPrompt = (item: QueuedPrompt) => {
     editorRef.current?.setText(item.displayText);
     if (item.attachments && item.attachments.length > 0) {
-      const restored: ContentTag[] = item.attachments.map((a, i) => ({
-        id: `reedit-${item.id}-${i}`,
-        kind: a.attachmentKind === "file" ? "file" : "paste",
-        preview: a.preview,
-        content: a.content,
-        filePath: a.filePath,
-      }));
+      const restored = item.attachments.map((a, i) => restoreAttachmentTag(`reedit-${item.id}-${i}`, a));
       setTags(restored);
     } else {
       setTags([]);
@@ -2835,19 +2788,7 @@ function ChatPaneForSession({
     const attachmentBlocks = msg.blocks.filter((b) => b.kind === "attachment");
     const tags: ContentTag[] = attachmentBlocks.map((b, i) => {
       const ab = b as Extract<Block, { kind: "attachment" }>;
-      return {
-        id: `edit-tag-${i}`,
-        // "quote" (side-chat reference) re-inlines as a paste block — only
-        // the composer's ContentTag has no quote kind; the persisted record
-        // keeps it for display.
-        kind: ab.contextSource ? "conversation" : ab.attachmentKind === "file" ? "file" : "paste",
-        preview: ab.preview,
-        content: ab.content,
-        filePath: ab.filePath,
-        sourceSessionId: ab.contextSource?.sessionId,
-        sourceMessageId: ab.contextSource?.messageId,
-        contextTruncated: ab.contextSource?.truncated,
-      };
+      return restoreAttachmentTag(`edit-tag-${i}`, ab);
     });
     const prompt = composePromptWithTags(text, tags);
     const attachments = composeSendAttachments(tags);
@@ -4117,7 +4058,7 @@ function ChatPaneForSession({
               `@query` token from the input. */}
           <FileMentionPicker
             open={pickerKind === "mention"}
-            projectPath={projectPath}
+            projectPath={renderRoot}
             query={pickerQuery}
             anchorRect={pickerAnchor}
             mode="mention"
@@ -4143,7 +4084,7 @@ function ChatPaneForSession({
               Multi-select; same project file source as @-mention. */}
           <FileMentionPicker
             open={attachPickerOpen}
-            projectPath={projectPath}
+            projectPath={renderRoot}
             query={attachPickerQuery}
             anchorRect={attachAnchor}
             mode="attach"

@@ -9,7 +9,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { api } from "@renderer/lib/api.js";
-import { IconFile, IconLoader2, IconPaperclip, IconSearch, IconUpload } from "@renderer/lib/icons.js";
+import { IconFile, IconFolder, IconLoader2, IconPaperclip, IconSearch, IconUpload } from "@renderer/lib/icons.js";
+import { fileReferenceKey } from "@renderer/lib/contentTag.js";
 import type { FileSearchEntry } from "@contracts/ipc";
 
 export type FileMentionPickerMode = "mention" | "attach";
@@ -46,6 +47,7 @@ export function FileMentionPicker({
   const { t } = useI18n();
   const [files, setFiles] = useState<FileSearchEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [partial, setPartial] = useState<"more" | "incomplete" | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   // attach mode owns a local search input (no textarea to drive it).
@@ -54,13 +56,15 @@ export function FileMentionPicker({
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const reqIdRef = useRef(0);
-  const exclude = new Set(excludePaths);
+  const exclude = new Set(excludePaths.map(fileReferenceKey));
 
   const effectiveQuery = mode === "attach" ? localQuery : query ?? "";
 
   // Reset transient state when reopened.
   useEffect(() => {
     if (open) {
+      setFiles([]);
+      setPartial(null);
       setSelected(new Set());
       setLocalQuery("");
       setActiveIdx(0);
@@ -95,10 +99,12 @@ export function FileMentionPicker({
           projectPath,
           query: effectiveQuery.trim() || undefined,
           limit: LIMIT,
+          includeDirectories: true,
         })
         .then((res) => {
           if (reqIdRef.current !== myId) return;
           setFiles(res.files ?? []);
+          setPartial(res.incompleteScan ? "incomplete" : res.truncated ? "more" : null);
           setActiveIdx(0);
           setLoading(false);
         })
@@ -108,7 +114,7 @@ export function FileMentionPicker({
           setLoading(false);
         });
     }, DEBOUNCE_MS);
-    return () => window.clearTimeout(t);
+    return () => { window.clearTimeout(t); if (reqIdRef.current === myId) reqIdRef.current++; };
   }, [open, projectPath, effectiveQuery]);
 
   // Keep active row in view.
@@ -122,13 +128,14 @@ export function FileMentionPicker({
 
   const confirmMention = useCallback(
     (file: FileSearchEntry) => {
+      if (loading || exclude.has(fileReferenceKey(file.path))) return;
       onPick([file]);
     },
-    [onPick],
+    [onPick, loading, exclude],
   );
 
   const toggleAttach = useCallback((file: FileSearchEntry) => {
-    if (exclude.has(file.path)) return;
+    if (exclude.has(fileReferenceKey(file.path))) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(file.path)) next.delete(file.path);
@@ -138,13 +145,14 @@ export function FileMentionPicker({
   }, [exclude]);
 
   const confirmAttach = useCallback(() => {
-    const picked = files.filter((f) => selected.has(f.path) && !exclude.has(f.path));
-    if (picked.length === 0 && files[activeIdx] && !exclude.has(files[activeIdx].path)) {
+    if (loading) return;
+    const picked = files.filter((f) => selected.has(f.path) && !exclude.has(fileReferenceKey(f.path)));
+    if (picked.length === 0 && files[activeIdx] && !exclude.has(fileReferenceKey(files[activeIdx].path))) {
       onPick([files[activeIdx]]);
       return;
     }
     if (picked.length > 0) onPick(picked);
-  }, [files, selected, exclude, activeIdx, onPick]);
+  }, [files, selected, exclude, activeIdx, onPick, loading]);
 
   /** Open the native OS file picker so the user can attach files from OUTSIDE
    *  the project root (unlike `file.search`, which main scopes to known
@@ -173,6 +181,7 @@ export function FileMentionPicker({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
@@ -182,7 +191,7 @@ export function FileMentionPicker({
       if (e.key === "ArrowDown") {
         e.preventDefault();
         e.stopPropagation();
-        setActiveIdx((i) => Math.min(files.length - 1, i + 1));
+        setActiveIdx((i) => Math.max(0, Math.min(files.length - 1, i + 1)));
         return;
       }
       if (e.key === "ArrowUp") {
@@ -192,9 +201,9 @@ export function FileMentionPicker({
         return;
       }
       if (e.key === "Enter" || e.key === "Tab") {
-        if (files.length === 0) return;
         e.preventDefault();
         e.stopPropagation();
+        if (loading || files.length === 0) return;
         if (mode === "mention") {
           const f = files[activeIdx];
           if (f) confirmMention(f);
@@ -206,7 +215,7 @@ export function FileMentionPicker({
     // Capture so we beat textarea Enter-to-send.
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [open, files, activeIdx, mode, confirmMention, confirmAttach, onClose]);
+  }, [open, files, activeIdx, mode, confirmMention, confirmAttach, onClose, loading]);
 
   // Click outside the picker to close. Mirrors the ModelDropdown / TagPopover
   // pattern (document mousedown + ref.contains). Escape is already handled by
@@ -261,6 +270,7 @@ export function FileMentionPicker({
               type="button"
               className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[11px] font-medium text-surface hover:brightness-110"
               onClick={confirmAttach}
+              disabled={loading}
             >
               {t("chat.mention.addN", { n: selected.size })}
             </button>
@@ -307,7 +317,7 @@ export function FileMentionPicker({
           </div>
         ) : (
           files.map((f, idx) => {
-            const already = exclude.has(f.path);
+            const already = exclude.has(fileReferenceKey(f.path));
             const isActive = idx === activeIdx;
             const isSel = selected.has(f.path);
             return (
@@ -315,7 +325,7 @@ export function FileMentionPicker({
                 key={f.path}
                 type="button"
                 data-idx={idx}
-                disabled={already && mode === "mention"}
+                disabled={loading || (already && mode === "mention")}
                 onMouseEnter={() => setActiveIdx(idx)}
                 onClick={() => {
                   if (mode === "mention") {
@@ -344,13 +354,14 @@ export function FileMentionPicker({
                     ✓
                   </span>
                 )}
-                <IconFile size={14} className="shrink-0 text-content-muted" />
+                {f.isDirectory ? <IconFolder size={14} className="shrink-0 text-accent" /> : <IconFile size={14} className="shrink-0 text-content-muted" />}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{f.name}</span>
                   <span className="block truncate text-[11px] text-content-subtle">
                     {f.relativePath}
                   </span>
                 </span>
+                {f.isDirectory && <span className="shrink-0 text-[11px] text-content-subtle">{t("chat.mention.directory")}</span>}
                 {already && (
                   <span className="shrink-0 text-[11px] text-content-subtle">{t("chat.mention.added")}</span>
                 )}
@@ -369,7 +380,7 @@ export function FileMentionPicker({
           {" "}
           {mode === "attach" ? t("chat.mention.confirm") : t("chat.mention.select")}
         </span>
-        <span>{t("chat.mention.count", { n: files.length })}</span>
+        <span>{partial === "incomplete" ? t("chat.mention.incomplete") : partial === "more" ? t("chat.mention.moreResults") : t("chat.mention.count", { n: files.length })}</span>
       </div>
     </div>
   );

@@ -75,9 +75,21 @@ export interface ContentTag {
   content: string;
   /** Absolute path of the dragged file. Only set when kind === "file". */
   filePath?: string;
+  isDirectory?: boolean;
   sourceSessionId?: string;
   sourceMessageId?: string | null;
   contextTruncated?: boolean;
+}
+
+/** Rebuild the same reference when editing a queue item or a saved user message. */
+export function restoreAttachmentTag(id: string, attachment: {
+  preview: string; content: string; attachmentKind?: "paste" | "file" | "quote";
+  filePath?: string; isDirectory?: boolean;
+  contextSource?: { sessionId: string; messageId?: string | null; truncated?: boolean };
+}): ContentTag {
+  return { id, kind: attachment.contextSource ? "conversation" : attachment.attachmentKind === "file" ? "file" : "paste",
+    preview: attachment.preview, content: attachment.content, filePath: attachment.filePath, isDirectory: attachment.isDirectory,
+    sourceSessionId: attachment.contextSource?.sessionId, sourceMessageId: attachment.contextSource?.messageId, contextTruncated: attachment.contextSource?.truncated };
 }
 
 /** Decide whether a pasted string should become a tag rather than be
@@ -123,10 +135,10 @@ export function makeContentTag(text: string): ContentTag {
  *  `displayName` overrides the preview when the path's basename isn't
  *  user-meaningful — clipboard-pasted external files are materialized to a
  *  random temp path by main, so the card must show the ORIGINAL file name. */
-export function makeFileTag(filePath: string, displayName?: string): ContentTag {
+export function makeFileTag(filePath: string, displayName?: string, isDirectory = false): ContentTag {
   // Derive a short display name from the last path segment (handles both /
   // and \ separators for cross-platform paths).
-  const segs = (displayName ?? filePath).split(/[/\\]/);
+  const segs = (displayName ?? filePath.replace(/[/\\]+$/, "")).split(/[/\\]/);
   const name = segs[segs.length - 1] || filePath;
   const preview =
     name.length > TAG_PREVIEW_CHARS ? name.slice(0, TAG_PREVIEW_CHARS) + "…" : name;
@@ -134,8 +146,9 @@ export function makeFileTag(filePath: string, displayName?: string): ContentTag 
     id: cryptoRandomId(),
     kind: "file",
     preview,
-    content: `@${filePath}`,
+    content: isDirectory ? `Directory reference: ${JSON.stringify(filePath)}\nRead relevant files from this directory as needed.` : `@${filePath}`,
     filePath,
+    isDirectory,
   };
 }
 
@@ -143,7 +156,7 @@ export function makeFileTag(filePath: string, displayName?: string): ContentTag 
  *  to render an `<img>` instead of the raw `@path` text, and by the chip to
  *  swap in a photo icon. */
 export function isImageFile(tag: ContentTag): boolean {
-  return tag.kind === "file" && !!tag.filePath && isImageFilePath(tag.filePath);
+  return tag.kind === "file" && !tag.isDirectory && !!tag.filePath && isImageFilePath(tag.filePath);
 }
 
 /** Build a ContentTag for a DOM element picked from the embedded browser. The
@@ -213,16 +226,24 @@ export function composePromptWithTags(
 /** Append file tags, skipping paths already present (by absolute filePath). */
 export function appendUniqueFileTags(
   prev: ReadonlyArray<ContentTag>,
-  filePaths: ReadonlyArray<string>,
+  filePaths: ReadonlyArray<string | { path: string; name?: string; isDirectory?: boolean }>,
 ): ContentTag[] {
   const seen = new Set(
-    prev.filter((t) => t.kind === "file" && t.filePath).map((t) => t.filePath as string),
+    prev.filter((t) => t.kind === "file" && t.filePath).map((t) => fileReferenceKey(t.filePath!)),
   );
   const next = [...prev];
-  for (const p of filePaths) {
-    if (!p || seen.has(p)) continue;
-    seen.add(p);
-    next.push(makeFileTag(p));
+  for (const entry of filePaths) {
+    const p = typeof entry === "string" ? entry : entry.path;
+    const key = fileReferenceKey(p);
+    if (!p || seen.has(key)) continue;
+    seen.add(key);
+    next.push(typeof entry === "string" ? makeFileTag(p) : makeFileTag(p, entry.name, entry.isDirectory));
   }
   return next;
+}
+
+/** Match Windows references across drive casing and slash/trailing separator variations. */
+export function fileReferenceKey(path: string): string {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  return /^(?:[a-z]:(?:\/|$)|\/\/)/i.test(normalized) ? normalized.toLowerCase() : normalized;
 }

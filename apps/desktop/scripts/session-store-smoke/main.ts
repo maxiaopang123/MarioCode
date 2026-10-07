@@ -280,6 +280,31 @@ await runRegressionChecks(check, mkSession);
   } finally { Object.defineProperty(api, "session", { configurable: true, value: originalSessionApi }); }
 }
 
+{
+  const { appendUniqueFileTags, makeFileTag, isImageFile, composePromptWithTags, restoreAttachmentTag } = await import("@renderer/lib/contentTag.js");
+  const { findComposerTrigger } = await import("@renderer/lib/composerTrigger.js");
+  const folder = makeFileTag("C:\\中文 项目\\空目录.png", undefined, true);
+  check("image-suffix folders never load an image preview", !isImageFile(folder));
+  const restoredFolder = restoreAttachmentTag("queued", { ...folder, attachmentKind: "file" });
+  check("queue/history editing restores a folder without reading image bytes", restoredFolder.isDirectory === true && !isImageFile(restoredFolder));
+  const reference = restoreAttachmentTag("ref", { preview: "source", content: "historical-context", contextSource: { sessionId: "source", messageId: "boundary" } });
+  check("queue/history editing preserves context source and its reference format", reference.sourceMessageId === "boundary" && composePromptWithTags("", [reference]) === "historical-context");
+  const tags = appendUniqueFileTags([folder], [{ path: "c:/中文 项目/空目录.png/", isDirectory: true }, { path: "C:\\中文 项目\\说明 文件.md", isDirectory: false }]);
+  check("folder references deduplicate Windows slash and casing variants", tags.length === 2);
+  const prompt = composePromptWithTags("请检查", tags);
+  check("directory prompt preserves quoted Chinese/spaces and requests only relevant files", prompt.includes(JSON.stringify(folder.filePath)) && prompt.includes("Read relevant files") && prompt.includes("@C:\\中文 项目\\说明 文件.md"));
+  useSessionStore.getState().saveComposerDraft("mention-draft", { text: "draft", html: "", tags });
+  check("draft retains directory type and reference after switching chats", useSessionStore.getState().composerDraftBySession["mention-draft"]?.tags[0]?.isDirectory === true);
+  useSessionStore.getState().clearComposerDraft("mention-draft");
+  check("removing the draft clears directory references", !useSessionStore.getState().composerDraftBySession["mention-draft"]);
+  check("active mention searches spaces in folder names", findComposerTrigger("@素材 文件夹", 7, [], 0)?.query === "素材 文件夹");
+  check("fullwidth at sign opens the file/folder picker", findComposerTrigger("＠素材", 3, [], null)?.kind === "mention");
+  check("email addresses do not open the picker", findComposerTrigger("name@example.com", 16, [], null) === null);
+  check("newline closes an active mention", findComposerTrigger("@素材\n文本", 6, [], 0) === null);
+  check("slash commands keep their token boundary", findComposerTrigger("/skill next", 11, [], null) === null);
+  check("atomic command pills cannot open another picker", findComposerTrigger("/skill", 6, [[0, 6]], null) === null);
+}
+
 console.log(`\n${checks - failures}/${checks} checks passed`);
 if (failures > 0) {
   console.error(`${failures} check(s) failed`);

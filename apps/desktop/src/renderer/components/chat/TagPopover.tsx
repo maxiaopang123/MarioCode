@@ -130,7 +130,7 @@ export function TagPopover({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(tag.content);
+      await navigator.clipboard.writeText(tag.isDirectory ? tag.filePath ?? tag.content : tag.content);
       setCopyState("copied");
     } catch {
       setCopyState("failed");
@@ -207,7 +207,7 @@ export function TagPopover({
       )}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-edge bg-surface-muted px-2 py-1">
         <span className="text-[11px] text-content-muted">
-          {t("chat.tagPopover.charCount", { n: tag.content.length.toLocaleString() })}
+          {tag.isDirectory ? t("chat.mention.directoryReference") : t("chat.tagPopover.charCount", { n: tag.content.length.toLocaleString() })}
         </span>
         <div className="flex shrink-0 items-center gap-1">
           <button
@@ -255,7 +255,7 @@ export function TagPopover({
       {/* Content: scrollable, preserves whitespace, monospace so code/log
           pastes keep their original column alignment. */}
       <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono [font-size:var(--chat-fs-xs)] leading-relaxed text-content">
-        {tag.content}
+        {tag.isDirectory ? tag.filePath : tag.content}
       </pre>
     </div>
   );

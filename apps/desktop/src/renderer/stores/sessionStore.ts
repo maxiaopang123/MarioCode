@@ -277,7 +277,7 @@ export type Block =
     /** Display names of the tool calls that never got a result
      *  ("dangling-tools" only). */
     pendingToolNames: string[] }
-  | { kind: "attachment"; preview: string; content: string; attachmentKind?: "paste" | "file" | "quote"; filePath?: string; contextSource?: { sessionId: string; messageId?: string | null; truncated?: boolean } }
+  | { kind: "attachment"; preview: string; content: string; attachmentKind?: "paste" | "file" | "quote"; filePath?: string; isDirectory?: boolean; contextSource?: { sessionId: string; messageId?: string | null; truncated?: boolean } }
   | {
       kind: "plan";
       /** Stable id for the in-turn live plan block — "current" while the turn
@@ -465,6 +465,7 @@ export interface PromptAttachment {
   content: string;
   attachmentKind?: "paste" | "file" | "quote";
   filePath?: string;
+  isDirectory?: boolean;
   contextSource?: { sessionId: string; messageId?: string | null; truncated?: boolean };
 }
 
@@ -6678,6 +6679,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           content: a.content,
           attachmentKind: a.attachmentKind,
           filePath: a.filePath,
+          isDirectory: a.isDirectory,
           contextSource: a.contextSource,
         });
       }
@@ -6902,6 +6904,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           content: a.content,
           attachmentKind: a.attachmentKind,
           filePath: a.filePath,
+          isDirectory: a.isDirectory,
           contextSource: a.contextSource,
         });
       }

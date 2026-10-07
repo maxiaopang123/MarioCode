@@ -6,6 +6,9 @@
  * The SDK bundles its own claude binary, so ClaudePathResolver is no longer needed.
  */
 import { randomUUID } from "node:crypto";
+import { bindSshTurn } from "@main/mcp/sshBroker.js";
+import { sshMcpConfig } from "@main/mcp/sshCatalog.js";
+import { SSH_MCP_SERVER_NAME, isSshMcpTool } from "@contracts/ssh";
 import { z } from "zod";
 import { is } from "@main/utils.js";
 import type { Options, CanUseTool, OnUserDialog, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -756,6 +759,7 @@ function isReadOnlyBrowserTool(toolName: string): boolean {
  *  - acceptEdits                  → file-editing tools auto-approved
  *  - default / plan / auto        → prompt the user (return false) */
 function shouldAutoApprove(mode: PermissionMode | undefined, toolName: string): boolean {
+  if (isSshMcpTool(toolName)) return true;
   if (!mode) return false;
   if (mode === "bypassPermissions" || mode === "dontAsk") return true;
   // Read-only browser tools never need approval — they can't change anything.
@@ -1477,6 +1481,11 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
       }));
     }
 
+    const ssh = await bindSshTurn(req.sessionId, ctx);
+    if (ssh.env.MARIOCODE_MCP_SESSION_TOKEN) {
+      const config = sshMcpConfig();
+      options.mcpServers = { ...options.mcpServers, [SSH_MCP_SERVER_NAME]: { command: config.command, args: config.args, env: { ...config.env, ...ssh.env } } };
+    }
     const gate = makeSettleGate();
     // Fallback cap for the stdin hold: if the settle signal never arrives
     // (CLI stops emitting task edges, unexpected states), release anyway so
@@ -1488,7 +1497,9 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     ctx.log.info(
       `claude turn start: session=${req.sessionId} uiMode=${req.permissionMode} sdkMode=${(typeof options.permissionMode === "string" ? options.permissionMode : "default")} settleGate=on`,
     );
-    const q = (await loadQuery())({ prompt: buildPromptInput(req, gate, ac.signal), options });
+    const q = await loadQuery().then(query => query({ prompt: buildPromptInput(req, gate, ac.signal), options })).catch(error => {
+      ssh.dispose(); for (const timer of settleTimers) clearTimeout(timer); throw error;
+    });
 
     // The adapter displays the same numeric budget passed to the worker.
     const configured = contextWindow;
@@ -1608,6 +1619,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
           }
         }
       } finally {
+        ssh.dispose();
         finished = true;
         // Defensive release: if the CLI process already exited (error path,
         // clean close) while the prompt iterable was still holding, unblock
@@ -1620,7 +1632,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
 
     return {
       done,
-      interrupt: () => ac.abort(),
+      interrupt: () => { ssh.dispose(); ac.abort(); },
       isRunning: () => !finished && !ac.signal.aborted,
     };
   }

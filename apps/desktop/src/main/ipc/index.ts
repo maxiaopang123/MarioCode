@@ -2,6 +2,7 @@ import { ipcMain, type IpcMain } from "electron";
 import { IPC } from "@contracts/ipc";
 import { awaitDb } from "@main/store/db.js";
 import { registerProjectHandlers } from "./projects.js";
+import { registerSshCatalogHandlers } from "./sshCatalog.js";
 import { registerClaudeHandlers } from "./claude.js";
 import { registerDialogHandlers } from "./dialog.js";
 import { registerCustomModelHandlers } from "./customModel.js";
@@ -61,6 +62,7 @@ function createDbGuardedIpc(target: IpcMain): IpcMain {
 export function registerIpcHandlers(): void {
   const ipc = createDbGuardedIpc(ipcMain);
   registerProjectHandlers(ipc);
+  registerSshCatalogHandlers(ipc);
   registerClaudeHandlers(ipc);
   registerDialogHandlers(ipc);
   registerCustomModelHandlers(ipc);

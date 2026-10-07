@@ -678,6 +678,13 @@ const api = {
     remove: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_REMOVE, input)) as RpcMap["sharedProviders.remove"],
     discoverModels: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_DISCOVER_MODELS, input)) as RpcMap["sharedProviders.discoverModels"],
   },
+  sshCatalog: {
+    get:(()=>ipcRenderer.invoke(IPC.SSH_CATALOG_GET)) as RpcMap["sshCatalog.get"],
+    setEnabled:((input)=>ipcRenderer.invoke(IPC.SSH_CATALOG_SET_ENABLED,input)) as RpcMap["sshCatalog.setEnabled"],
+    saveHost:((input)=>ipcRenderer.invoke(IPC.SSH_CATALOG_SAVE_HOST,input)) as RpcMap["sshCatalog.saveHost"],
+    removeHost:((input)=>ipcRenderer.invoke(IPC.SSH_CATALOG_REMOVE_HOST,input)) as RpcMap["sshCatalog.removeHost"],
+    fingerprint:((input)=>ipcRenderer.invoke(IPC.SSH_CATALOG_FINGERPRINT,input)) as RpcMap["sshCatalog.fingerprint"],
+  },
 
   // ── Push events (main → renderer) ──
   on: {

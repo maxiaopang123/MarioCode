@@ -129,6 +129,7 @@ export interface ToolResultEvent {
 
 /** The agent is requesting permission to run a tool (awaiting user decision). */
 export interface ApprovalRequestEvent {
+  oneShotOnly?: boolean;
   type: "approval.request";
   sessionId: string;
   requestId: string;

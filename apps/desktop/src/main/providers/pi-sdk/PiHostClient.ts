@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { invokeMcpTurn } from "@main/mcp/McpToolSession.js";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { ProviderContext } from "@contracts/provider";
@@ -130,6 +131,10 @@ export class PiHostClient {
         value = { mode: ctx.getPermissionMode?.(), alwaysAllowed: ctx.isToolAlwaysAllowed?.(toolName) === true };
       }
       else if (message.method === "builtinTool") value = await this.invokeBuiltin(message.params as { name: string; args: unknown; meta?: unknown }, ctx, message.turnId);
+      else if (message.method === "mcpTool") {
+        const call = message.params as { name: string; args: unknown };
+        value = await invokeMcpTurn(message.turnId, call.name, call.args);
+      }
       else value = await this.invokeBrowser(message.params as { name: string; args: unknown; meta?: unknown }, ctx, message.turnId);
       this.write({ type: "reverseResult", id: message.id, ok: true, value });
     } catch (err) {

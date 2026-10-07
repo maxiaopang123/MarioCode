@@ -163,6 +163,11 @@ function mcpServerToml(name: string, raw: unknown): string | null {
   // stdio (absent type = stdio, same default as the Claude SDK)
   if (typeof cfg.command !== "string" || !cfg.command) return null;
   lines.push(`command = ${tomlStr(cfg.command)}`);
+  if (Array.isArray(cfg.env_vars)) {
+    const names = cfg.env_vars.filter((v): v is string => typeof v === "string").map(tomlStr);
+    if (names.length) lines.push(`env_vars = [${names.join(", ")}]`);
+  }
+  if (typeof cfg.tool_timeout_sec === "number" && cfg.tool_timeout_sec > 0) lines.push(`tool_timeout_sec = ${cfg.tool_timeout_sec}`);
   if (Array.isArray(cfg.args) && cfg.args.length > 0) {
     const args = cfg.args.filter((a): a is string => typeof a === "string").map(tomlStr);
     lines.push(`args = [${args.join(", ")}]`);

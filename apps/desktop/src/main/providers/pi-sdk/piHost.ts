@@ -34,7 +34,7 @@ function validateReverseResult(method: PiHostReverseMethod, value: unknown): unk
   if (method === "requestUserInput" && (!v.answers || typeof v.answers !== "object" || Array.isArray(v.answers))) throw new Error("Invalid user-input response");
   if (method === "requestPlanApproval" && typeof v.approved !== "boolean") throw new Error("Invalid plan-approval response");
   if (method === "permissionState" && (typeof v.alwaysAllowed !== "boolean" || (v.mode !== undefined && typeof v.mode !== "string"))) throw new Error("Invalid permission-state response");
-  if ((method === "browser" || method === "builtinTool") && !Array.isArray(v.content)) throw new Error(`Invalid ${method} response`);
+  if ((method === "browser" || method === "builtinTool" || method === "mcpTool") && !Array.isArray(v.content)) throw new Error(`Invalid ${method} response`);
   return value;
 }
 function reverse(turnId: string, method: PiHostReverseMethod, params: never): Promise<unknown> {
@@ -146,6 +146,7 @@ async function startTurn(config: PiHostTurnConfig): Promise<void> {
     builtinTools: { web: config.webToolsEnabled === true, image: config.imageToolEnabled === true, schedule: config.scheduleToolsEnabled === true, wechat: config.wechatToolEnabled === true },
     unattended: config.unattended === true,
     builtinBridge: { invoke: (name, args, meta) => reverse(turnId, "builtinTool", { name, args, meta } as never) as never },
+    mcpBridge: { specs: config.mcpToolSpecs ?? [], invoke: (name, args) => reverse(turnId, "mcpTool", { name, args } as never) as Promise<import("@contracts/mcpTool").McpToolResult> },
     permissionState: (toolName) => reverse(turnId, "permissionState", { toolName } as never) as never });
   const loader = await buildPiSkillLoader({ sdk, cwd: req.cwd, agentDir: config.agentDir, allowNames: req.skills?.length ? req.skills : undefined, extraSkillPaths: config.extraSkillPaths, extensionFactories: [extension] });
   const customTools = process.platform === "win32" ? [

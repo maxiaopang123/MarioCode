@@ -8,6 +8,7 @@
  * own keys in that file always survive; project .mcp.json is never written.
  */
 import type { IpcMain } from "electron";
+import { SSH_MCP_SERVER_NAME } from "@contracts/ssh";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -472,6 +473,7 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
     const cfg = await readUserClaudeJson();
     const fileServers = mcpServersOf(cfg);
     for (const [name, rawConfig] of Object.entries(fileServers)) {
+      if (name === SSH_MCP_SERVER_NAME) continue;
       const config = parseMcpConfig(rawConfig);
       if (!config) continue;
       const { kind, detail } = describeMcpConfig(config);
@@ -479,6 +481,7 @@ export function registerMcpHandlers(ipcMain: IpcMain): void {
       servers.push({ name, scope: "user", kind, detail, enabled: true });
     }
     for (const [name, config] of Object.entries(state.userDisabled ?? {})) {
+      if (name === SSH_MCP_SERVER_NAME) continue;
       if (name in fileServers) continue;
       const { kind, detail } = describeMcpConfig(config);
       rememberRemote("user", name, config);

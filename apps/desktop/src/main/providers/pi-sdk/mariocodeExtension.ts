@@ -41,6 +41,8 @@
  */
 import { randomUUID } from "node:crypto";
 import { Type } from "typebox";
+import type { McpToolSpec, McpToolResult } from "@contracts/mcpTool";
+import { isSshMcpTool } from "@contracts/ssh";
 import type {
   InlineExtension,
   ExtensionAPI,
@@ -188,6 +190,7 @@ export interface CreateMarioCodeExtensionOptions {
   /** Built-in web / image tools registered this turn (resolved main-side). */
   builtinTools?: BuiltinToolFlags;
   builtinBridge?: PiBuiltinBridge;
+  mcpBridge?: { specs: McpToolSpec[]; invoke(name: string, args: unknown): Promise<McpToolResult> };
   /** Unattended run (scheduled task / ClawBot turn), resolved main-side —
    *  input to builtinToolNeedsApproval in the tool_call guard. */
   unattended?: boolean;
@@ -227,6 +230,18 @@ export function createMarioCodeExtension(opts: CreateMarioCodeExtensionOptions):
     factory: (pi: ExtensionAPI) => {
       registerToolCallGuard(pi, { ctx, cwd, strict, sessionId, planMode, snapshot, permissionState, unattended });
       registerAskUserQuestionTool(pi, ctx);
+      for (const spec of opts.mcpBridge?.specs ?? []) {
+        pi.registerTool({ name: spec.name, label: spec.label, description: spec.description,
+          parameters: Type.Unsafe<Record<string, unknown>>(spec.inputSchema),
+          async execute(_id, params) {
+            const result = await opts.mcpBridge!.invoke(spec.name, params);
+            // Pi extension results do not expose isError to the agent loop;
+            // throwing preserves error status and still returns text to it.
+            if (result.isError) throw new Error(result.content.filter(b => b.type === "text").map(b => b.text).join("\n") || "MCP tool failed");
+            return { content: result.content, details: {} };
+          },
+        });
+      }
       // Browser tools + their usage prompt ride the same switch: when the
       // built-in server is disabled in the MCP panel, the model must neither
       // see the tools nor the prompt section advertising them.
@@ -279,6 +294,9 @@ function registerToolCallGuard(
 
   pi.on("tool_call", async (event: ToolCallEvent): Promise<ToolCallEventResult | void> => {
     const { toolName } = event;
+    // SSH execution always requests a one-shot approval in the main broker.
+    // Never add a second generic approval (nor bypass the broker).
+    if (isSshMcpTool(toolName)) return;
 
     // ① Path guard for write/edit.
     //    `event.input` is a shared reference with the args the agent will pass

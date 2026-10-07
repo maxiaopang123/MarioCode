@@ -1,6 +1,7 @@
 import type { RuntimeEvent, PermissionMode } from "@contracts/runtime";
 import type { StartTurnRequest, ApprovalRequest, ProviderApprovalDecision, UserInputRequest, UserInputDecision, PlanApprovalRequest, PlanApprovalDecision } from "@contracts/provider";
 import type { PiProviderPublic } from "@contracts/piModel";
+import type { McpToolSpec } from "@contracts/mcpTool";
 import { ContextPolicySchema, type ContextPolicy } from "@contracts/contextPolicy";
 
 export const PI_HOST_PROTOCOL_VERSION = 1 as const;
@@ -39,11 +40,12 @@ export interface PiHostTurnConfig {
    *  Resolved main-side (settings DB + project file) because the host
    *  process has neither. */
   userSystemPrompt: string;
+  mcpToolSpecs?: McpToolSpec[];
   agentDir: string;
   contextPolicy?: ContextPolicy;
 }
 
-export type PiHostReverseMethod = "requestApproval" | "requestUserInput" | "requestPlanApproval" | "permissionState" | "browser" | "builtinTool";
+export type PiHostReverseMethod = "requestApproval" | "requestUserInput" | "requestPlanApproval" | "permissionState" | "browser" | "builtinTool" | "mcpTool";
 export type PiHostReverseParams = ApprovalRequest | UserInputRequest | PlanApprovalRequest | { toolName: string } | { name: string; args: unknown; meta?: unknown };
 export type PiHostReverseResult = ProviderApprovalDecision | UserInputDecision | PlanApprovalDecision | unknown;
 
@@ -89,6 +91,7 @@ export function isMainToPiHost(value: unknown): value is MainToPiHost {
     && (p.scheduleToolsEnabled === undefined || typeof p.scheduleToolsEnabled === "boolean")
     && (p.wechatToolEnabled === undefined || typeof p.wechatToolEnabled === "boolean")
     && (p.unattended === undefined || typeof p.unattended === "boolean")
+    && (p.mcpToolSpecs === undefined || (Array.isArray(p.mcpToolSpecs) && p.mcpToolSpecs.every(x => isRecord(x) && typeof x.name === "string" && typeof x.label === "string" && typeof x.description === "string" && isRecord(x.inputSchema) && x.inputSchema.type === "object")))
     && (p.contextPolicy === undefined || ContextPolicySchema.safeParse(p.contextPolicy).success)
     && typeof p.agentDir === "string" && p.agentDir.length > 0
     && isRecord(p.browserToolSpecs) && typeof p.browserUsagePrompt === "string"

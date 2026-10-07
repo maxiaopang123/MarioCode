@@ -1,4 +1,5 @@
 import { app, Menu, session } from "electron";
+import { stopSshBroker } from "@main/mcp/sshBroker.js";
 import { createMainWindow, getMainWindow, sendToRenderer } from "@main/window.js";
 import { initTray, destroyTray } from "@main/tray.js";
 import { isQuitting, markQuitting } from "@main/lib/quitState.js";
@@ -327,6 +328,7 @@ async function maybeAutoStartRelay(): Promise<void> {
 let sessionCookiesFlushed = false;
 let clawBotStoppedForQuit = false;
 app.on("before-quit", (event) => {
+  stopSshBroker();
   // A real quit (tray ▸ 退出, updater install, OS session end): from here on
   // the window's close must go through instead of hiding to the tray.
   markQuitting();

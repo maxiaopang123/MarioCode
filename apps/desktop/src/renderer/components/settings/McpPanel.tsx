@@ -9,8 +9,7 @@
  *    传 enabled/disabledMcpjsonServers。
  *  - 内置:进程内 mariocode-browser server(应用内浏览器工具)。
  *
- * 改动自下一轮对话起生效(startTurn 每轮重建 options);仅 Claude 会话生效,
- * Pi 会话使用扩展机制,不受此面板影响。
+ * 改动自下一轮对话起生效,三个引擎共用启停配置。
  */
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@renderer/lib/cn.js";
@@ -28,6 +27,7 @@ import { PanelHeader } from "./PanelHeader.js";
 import { SettingsSection } from "./SettingsSection.js";
 import { SettingRow } from "./SettingRow.js";
 import { McpMarketPanel } from "./McpMarketPanel.js";
+import { SshCatalogPanel } from "./SshCatalogPanel.js";
 import { ExtensionTabs, ExtensionSearch, OriginBadge, matchesOrigin, type ExtensionView, type OriginFilter } from "./ExtensionManagement.js";
 import {
   McpIcon,
@@ -412,6 +412,7 @@ export function McpPanel() {
       )}
       {view === "market" ? <McpMarketPanel servers={servers} onManage={() => { setOriginFilter("all"); setQuery(""); setView("mine"); }} onAdded={async (oauthName) => { setView("mine"); setOriginFilter("all"); setQuery(""); await load(); if (oauthName) await authorize({ name: oauthName, scope: "user", kind: "http", detail: "https://mcp.notion.com/mcp", enabled: true }); }} /> : <>
       <ExtensionSearch query={query} onQuery={setQuery} filter={originFilter} onFilter={setOriginFilter} />
+      <SshCatalogPanel />
 
       {/* ───────── 外部配置源同步 (TODO-004) ───────── */}
       {/* Watch external tool config files (~/.claude.json, ~/.codex/config.toml,

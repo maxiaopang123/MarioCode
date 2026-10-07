@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { bindSshTurn } from "@main/mcp/sshBroker.js";
+import { McpToolSession, registerMcpTurn, closeMcpTurn } from "@main/mcp/McpToolSession.js";
 import { join } from "node:path";
 import { app } from "electron";
 import type { AgentProvider, StartTurnRequest, ProviderContext, TurnHandle, ProviderCapabilities } from "@contracts/provider";
@@ -48,7 +50,7 @@ export class PiAgentSdkProvider implements AgentProvider {
   readonly id = "pi-sdk";
   readonly displayName = "Pi";
   readonly capabilities: ProviderCapabilities = {
-    supportsApproval: true, supportsResume: true, supportsStreaming: true, supportsMcp: false, supportsAskUserQuestion: true,
+    supportsApproval: true, supportsResume: true, supportsStreaming: true, supportsMcp: true, supportsAskUserQuestion: true,
     thinkingLevels: [
       { value: "default", label: "Auto", hint: "让 Pi 自选" }, { value: "off", label: "Off", hint: "关闭思考" },
       { value: "minimal", label: "Minimal", hint: "极少思考" }, { value: "low", label: "Low", hint: "快速" },
@@ -86,15 +88,20 @@ export class PiAgentSdkProvider implements AgentProvider {
     // because the host process has no DB and no project lookup; the
     // extension's before_agent_start injector appends it after the identity.
     const userSystemPrompt = joinPromptSections(...userSystemPromptSections(await loadUserSystemPrompt({ cwd: req.cwd, sessionId: req.sessionId })));
+    const ssh = await bindSshTurn(req.sessionId, ctx);
+    let mcp: McpToolSession;
+    try { mcp = await McpToolSession.connect(req.cwd, ctx, ssh.env); }
+    catch (error) { ssh.dispose(); throw error; }
+    registerMcpTurn(turnId, mcp);
     let running = true;
-    const done = piHostClient.call({ method: "startTurn", params: { turnId, request: req, ...config, browserToolSpecs: BROWSER_TOOL_SPECS, browserUsagePrompt: browserToolsUsagePrompt(), userSystemPrompt } }, ctx, turnId, 24 * 60 * 60_000)
+    const done = piHostClient.call({ method: "startTurn", params: { turnId, request: req, ...config, mcpToolSpecs: mcp.specs, browserToolSpecs: BROWSER_TOOL_SPECS, browserUsagePrompt: browserToolsUsagePrompt(), userSystemPrompt } }, ctx, turnId, 24 * 60 * 60_000)
       .then(() => {}, (err) => {
         const message = err instanceof Error ? err.message : String(err);
         ctx.log.error(`pi host error: ${message}`);
         ctx.emit({ type: "error", sessionId: req.sessionId, message, code: "PI_HOST_ERROR" });
         ctx.emit({ type: "turn.done", sessionId: req.sessionId, reason: "error" });
-      }).finally(() => { running = false; });
-    return { done, interrupt: () => { if (running) void piHostClient.call({ method: "abort", params: { turnId } }).catch(() => {}); }, isRunning: () => running };
+      }).finally(async () => { running = false; ssh.dispose(); await closeMcpTurn(turnId); });
+    return { done, interrupt: () => { ssh.dispose(); void closeMcpTurn(turnId); if (running) void piHostClient.call({ method: "abort", params: { turnId } }).catch(() => {}); }, isRunning: () => running };
   }
 
   async healthCheck(): Promise<{ ok: boolean; version?: string; error?: string }> {

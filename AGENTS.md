@@ -205,6 +205,14 @@ pnpm build
 - **Skills**:`SkillMarketDialog` 支持内嵌市场;安装仍走原有 `skillMarket.ts`。设置面板分别加载全局与项目技能,保留两个范围内的同名项;对话 `/` 菜单原有项目优先规则不变。
 - **验证**:类型检查、构建、45 项离线技能市场检查与 `pnpm --filter @mariocode/desktop test:extension-market-electron` 的 8 组隔离真应用检查(安装/导入/去重/来源筛选/关闭项编辑/技能编辑/落盘)通过。尚未验证真实第三方 OAuth 与模型调用市场 MCP / Skills。
 
+### 可选 SSH MCP 与 Pi 通用 MCP(TODO-026,2026-10-07,v0.2.24)
+- **首期范围**:设置 → MCP → 我的扩展 → 内置 MCP 目录,SSH 默认关闭;主机别名列表 `ssh_hosts` 与远程命令 `ssh_exec`,不含 SFTP。`packages/contracts/src/ssh.ts` 是参数与保留名 `mariocode-mcp-ssh` 的唯一来源,IPC 经契约 / preload / main 校验。下方历史记录里 Pi 不支持用户 / 项目 MCP 的描述由本节覆盖。
+- **隔离与打包**:`build/build-mcp.mjs` 生成独立 stdio server `out/mcp/mariocode-mcp-ssh/stdio.mjs`,打包复制到 `resources/mcp/`;以 Electron 的 `ELECTRON_RUN_AS_NODE=1` 启动。server 只访问主进程回环 broker,不读 DB 或 SSH 凭据。`sshCatalog.ts` 串行同步用户 `.claude.json`,只增删带本应用归属标记的条目,同名外部配置拒绝覆盖;配置文件只存命令、环境变量名,不存 token 或密钥。
+- **凭据与指纹**:`sshStore.ts` 把密码 / 私钥 / 私钥口令用 `safeStorage` 加密存 settings `mcp.catalog.ssh.keys`,metadata 单独存 `mcp.catalog.ssh`;renderer 只收到 `hasCredential`。首次保存须在设置页探测并确认 SHA256 主机指纹,连接时先校验再认证;指纹变化拒绝,更换地址 / 用户 / 认证方式须重填凭据。编辑同一身份可留空保留,删除主机同时删 ciphertext。不读取或自动迁移用户原有 SSH 技能、`~/.ssh/config`。
+- **审批不得绕过**:`sshBroker.ts` 每轮签发内存 token,仅给本目录的 SSH server;`ssh_exec` 在 broker 直接请求 `oneShotOnly: true` 的审批,Full Access 与已存「始终允许」均无效,ApprovalBridge 禁止持久化且 UI 隐藏勾选。三个引擎只跳过自己的重复 SSH 审批,实际连接必须经 broker。无人值守命令在审批前拒绝;关闭、停止 / 结束回合撤销 token 并取消连接。每条命令 1–120 秒,输出合计 64 KiB 后截断,最多三个并发。
+- **三引擎**:Claude 必须在 `query()` 前绑定并注入 SSH MCP 的 env;Codex 在生成 `config.toml` 前同步目录,只写 `env_vars`,原生 MCP 工具审批事件 `mcpServer/elicitation/request` 回 `{action, content:null}`,SSH 的强制审批仍由 broker 完成。Pi `supportsMcp:true`:主进程 `McpToolSession.ts` 逐轮读取用户 `.claude.json` 与已启用的项目 `.mcp.json`,连接 stdio / Streamable HTTP / SSE,再把工具 schema 交给 host 注册;host 反向调用只接受该轮已列出的工具,取消时关闭客户端。普通 MCP 仍走现有权限守卫,HTTP/SSE 支持配置 headers,Pi OAuth 登录与交互式 elicitation 不在首期。
+- **验证**:先类型检查与构建。`pnpm test:ssh-mcp` 隔离 Electron / SQLite / SSH fixture 的 16 项检查覆盖默认关闭、加密、指纹、双次审批、拒绝、无人值守、私钥、输出上限、取消、token 撤销,以及 Pi 的 `.cmd` / HTTP / SSE / 项目启停与 env 隔离。先构建再 `pnpm test:ssh-catalog-electron`,真实 UI 保存 / 重开 / 删除及 Pi SDK、Claude CLI、Codex app-server 各连续执行两条命令、每条独立审批通过;三引擎九条协议加 Codex 续聊、81 项 store 与 179 项共享提供商回归通过。上游和 SSH 都是本地测试服务,未连接用户生产服务器,本轮未打包或安装。
+
 ### 公共提供商与模型接口(2026-10-03,0.2.3)
 - **兼容与路由唯一来源**:`contracts/sharedProvider.ts` 的 `resolveSharedModelProtocol`。Claude = Chat → Messages → Responses;Pi = Chat → Messages → Responses;Codex = Responses → Chat → Messages(后两者走每轮本地 Responses 桥)。按每个模型的接口与提供商协议交集选择,与复选框的点击顺序无关。模型 ID 中的 `/` 保留,只按首个 `/` 拆运行时提供商。
 - **界面与保存**:编辑旧配置时将继承接口显式化,保存时也冻结继承值;新增提供商协议不自动赋给已有模型。模型列表不证明能力,发现弹窗仅默认选择查询协议,不自动启用其它协议;已有模型选项保留。接口变化保留用户的引擎勾选,没有兼容模型时提示并阻止保存,不要静默关闭引擎。每个模型展示实际引擎接口。

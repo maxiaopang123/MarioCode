@@ -132,6 +132,8 @@ export interface StartTurnRequest {
 
 /** Approval request passed from provider → host (for canUseTool-style callbacks). */
 export interface ApprovalRequest {
+  /** Per-call approvals (SSH) cannot grant a persistent permission. */
+  oneShotOnly?: boolean;
   requestId: string;
   toolName: string;
   input: unknown;

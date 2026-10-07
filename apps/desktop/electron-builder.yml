@@ -85,6 +85,8 @@ asarUnpack:
 # a NativeImage, so copy the icon next to app.asar. .ico on Windows (multi-
 # size, crisp at every DPI), .png for Linux.
 extraResources:
+  - from: out/mcp
+    to: mcp
   - from: build/icon.ico
     to: tray-icon.ico
   - from: build/icon.png

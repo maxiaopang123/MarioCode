@@ -49,6 +49,7 @@ export function ApprovalPrompt({
   toolName,
   input,
   description,
+  oneShotOnly,
   queuePosition,
   queueTotal,
   onDecide,
@@ -56,6 +57,7 @@ export function ApprovalPrompt({
   toolName: string;
   input: unknown;
   description?: string;
+  oneShotOnly?: boolean;
   /** 1-based index of this card in the queue. */
   queuePosition: number;
   /** Total cards in the queue; 1 means "no queue" (chip stays quiet). */
@@ -96,7 +98,7 @@ export function ApprovalPrompt({
   }, [onDecide]);
 
   const decide = (granted: boolean) => {
-    onDecide(granted, granted ? always : undefined);
+    onDecide(granted, granted && !oneShotOnly ? always : undefined);
   };
 
   // Rendered in-flow above the composer (see ChatPane).
@@ -154,7 +156,7 @@ export function ApprovalPrompt({
 
       {/* Footer: always-allow check + the decision pair, one row. */}
       <div className={DOCK_FOOT}>
-        <label className="flex min-w-0 cursor-pointer items-center gap-2 text-xs text-content-muted">
+        {!oneShotOnly && <label className="flex min-w-0 cursor-pointer items-center gap-2 text-xs text-content-muted">
           <input
             type="checkbox"
             checked={always}
@@ -162,7 +164,7 @@ export function ApprovalPrompt({
             className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-accent"
           />
           <span className="truncate">{t("chat.approval.alwaysAllow", { tool: toolName })}</span>
-        </label>
+        </label>}
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <Button
             onClick={() => decide(false)}

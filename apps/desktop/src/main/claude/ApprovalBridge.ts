@@ -18,6 +18,7 @@ import type {
 } from "@contracts/provider";
 
 interface PendingApproval {
+  oneShotOnly?: boolean;
   resolve: (v: ProviderApprovalDecision) => void;
   reject: (e: Error) => void;
   /** Session the approval belongs to — needed so resolveApproval can
@@ -68,7 +69,7 @@ export class ApprovalBridge {
   ): (req: ApprovalRequest) => Promise<ProviderApprovalDecision> {
     return (req) =>
       new Promise<ProviderApprovalDecision>((resolve, reject) => {
-        this.pendingApprovals.set(req.requestId, { resolve, reject, sessionId, toolName: req.toolName });
+        this.pendingApprovals.set(req.requestId, { resolve, reject, sessionId, toolName: req.toolName, oneShotOnly:req.oneShotOnly });
         emit({
           type: "approval.request",
           sessionId,
@@ -77,6 +78,7 @@ export class ApprovalBridge {
           toolName: req.toolName,
           input: req.input,
           description: req.description,
+          oneShotOnly: req.oneShotOnly,
         });
       });
   }
@@ -92,10 +94,10 @@ export class ApprovalBridge {
     // Surface the "always allow" intent on the decision itself so providers
     // with a server-side session grant (codex acceptForSession) can scope
     // their grant accordingly (one-shot "accept" vs session-wide).
-    p.resolve(decision.allow && always ? { ...decision, persist: true } : decision);
+    p.resolve(p.oneShotOnly ? {...decision,persist:false} : decision.allow && always ? { ...decision, persist: true } : decision);
     this.pendingApprovals.delete(requestId);
     // Record "always allow" so canUseTool auto-approves this tool next time.
-    if (decision.allow && always) {
+    if (decision.allow && always && !p.oneShotOnly) {
       let set = this.alwaysAllowedTools.get(p.sessionId);
       if (!set) {
         set = new Set();

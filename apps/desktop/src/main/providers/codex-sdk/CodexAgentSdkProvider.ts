@@ -37,6 +37,9 @@
  *     restored with thread/resume on subsequent turns.
  */
 import { randomUUID } from "node:crypto";
+import { bindSshTurn } from "@main/mcp/sshBroker.js";
+import { syncSshCatalog } from "@main/mcp/sshCatalog.js";
+import { SSH_MCP_SERVER_NAME } from "@contracts/ssh";
 import { resolveContextPolicy } from "@contracts/contextPolicy";
 import { readContextPolicy } from "@main/lib/contextPolicy.js";
 import { tmpdir } from "node:os";
@@ -312,6 +315,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
     /* ── 4. Spawn app-server (env carries CODEX_HOME + provider keys) ── */
     const protocol = selectedModel?.protocol ?? "responses";
     const upstreamBaseUrl = selectedModel?.baseUrl ?? selectedProvider?.baseUrl;
+    await syncSshCatalog();
     const env = await buildCodexEnv(ctx);
     let bridge: CodexResponsesBridgeHandle | undefined;
     const endpointArgs: string[] = [];
@@ -365,6 +369,8 @@ export class CodexAgentSdkProvider implements AgentProvider {
     // Set once the onExit handler has surfaced an unexpected process death,
     // so the done() catch doesn't emit a second (duplicate) error card.
     let crashEmitted = false;
+    const ssh = await bindSshTurn(req.sessionId, ctx);
+    Object.assign(env, ssh.env);
     // Late-bound client handle for the adapter's thread/read bootstrap (the
     // client is constructed below, after the adapter).
     let clientRef: CodexAppServerClient | null = null;
@@ -577,6 +583,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
           await adapter.flushFinal();
         }
       } finally {
+        ssh.dispose();
         bridge?.close();
         unsubscribe();
         finished = true;
@@ -609,6 +616,7 @@ export class CodexAgentSdkProvider implements AgentProvider {
     return {
       done,
       interrupt: () => {
+        ssh.dispose();
         ac.abort();
         bridge?.close();
         adapter.markAborted();
@@ -750,6 +758,21 @@ async function handleServerRequest(
 ): Promise<unknown> {
   const { method, params } = frame;
   const p = (params ?? {}) as Record<string, unknown>;
+
+  // Codex 0.153.4 routes MCP tool consent through form elicitation, even
+  // under approvalPolicy=never. Answer its real schema (action, not decision).
+  // Our SSH broker performs the mandatory one-shot approval itself.
+  if (method === "mcpServer/elicitation/request") {
+    const meta = p._meta && typeof p._meta === "object" ? p._meta as Record<string, unknown> : {};
+    if (meta.codex_approval_kind !== "mcp_tool_call") {
+      deps.ctx.log.warn("codex: unsupported MCP elicitation form");
+      return { action: "cancel", content: null };
+    }
+    if (p.serverName === SSH_MCP_SERVER_NAME) return { action: "accept", content: null };
+    const name = `mcp__${String(p.serverName ?? "unknown")}__${String(meta.tool_name ?? "unknown")}`;
+    const denied = await approveHostTool(deps, name, meta.tool_params ?? {});
+    return { action: denied ? "decline" : "accept", content: null };
+  }
 
   // ── Approvals (v2 item/* + legacy aliases) ──
   if (

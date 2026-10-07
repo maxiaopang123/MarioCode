@@ -3603,6 +3603,7 @@ function ChatPaneForSession({
               toolName={headApproval.toolName}
               input={headApproval.input}
               description={headApproval.description}
+              oneShotOnly={headApproval.oneShotOnly}
               queuePosition={
                 pendingApprovals.filter((p) => p.sessionId === sessionId).findIndex(
                   (p) => p.requestId === headApproval.requestId,

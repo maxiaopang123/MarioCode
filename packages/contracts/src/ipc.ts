@@ -5,6 +5,8 @@
  */
 import { z } from "zod";
 import { MCP_MARKET_IDS } from "./mcpMarket.js";
+import { SSH_MCP_SERVER_NAME, type SshCatalogState, type SshHostSaveInput, type SshAddress } from "./ssh.js";
+export { SshHostSaveSchema, SshAddressSchema, SshHostIdSchema, SshEnabledSchema } from "./ssh.js";
 import { LegacyProviderImportSchema, type LegacyProviderEntry, type LegacyProviderImportInput } from "./legacyProvider.js";
 export { LegacyProviderImportSchema };
 import type { RuntimeEvent } from "./runtime.js";
@@ -3538,6 +3540,7 @@ export const MCP_SCHEDULE_SERVER_NAME = "mariocode-schedule";
 export const MCP_WECHAT_SERVER_NAME = "mariocode-wechat";
 /** Every built-in server name; user servers may not take one. */
 export const MCP_RESERVED_NAMES: readonly string[] = [
+  SSH_MCP_SERVER_NAME,
   MCP_RESERVED_NAME,
   MCP_WEB_SERVER_NAME,
   MCP_IMAGE_SERVER_NAME,
@@ -5204,6 +5207,11 @@ export interface RpcMap {
   "runtimes.select": (input: RuntimesSelectInput) => Promise<{ ok: boolean; error?: string }>;
   "runtimes.discover": (input: RuntimesDiscoverInput) => Promise<{ candidates: RuntimeCandidate[] }>;
   "sharedProviders.list": () => Promise<{ providers: SharedProviderPublic[] }>;
+  "sshCatalog.get": () => Promise<SshCatalogState>;
+  "sshCatalog.setEnabled": (input:{enabled:boolean}) => Promise<SshCatalogState>;
+  "sshCatalog.saveHost": (input:SshHostSaveInput) => Promise<SshCatalogState>;
+  "sshCatalog.removeHost": (input:{id:string}) => Promise<SshCatalogState>;
+  "sshCatalog.fingerprint": (input:SshAddress) => Promise<{fingerprint:string}>;
   "sharedProviders.listLegacy": () => Promise<{ entries: LegacyProviderEntry[] }>;
   "sharedProviders.importLegacy": (input: LegacyProviderImportInput) => Promise<{ providers: SharedProviderPublic[]; providerId: string }>;
   "sharedProviders.save": (input: SharedProviderSaveInput) => Promise<{ providers: SharedProviderPublic[] }>;
@@ -5537,6 +5545,11 @@ export const IPC = {
   RUNTIMES_DISCOVER: "runtimes:discover",
   RUNTIMES_EVENT: "runtimes:event",
   SHARED_PROVIDERS_LIST: "sharedProviders:list",
+  SSH_CATALOG_GET:"sshCatalog:get",
+  SSH_CATALOG_SET_ENABLED:"sshCatalog:setEnabled",
+  SSH_CATALOG_SAVE_HOST:"sshCatalog:saveHost",
+  SSH_CATALOG_REMOVE_HOST:"sshCatalog:removeHost",
+  SSH_CATALOG_FINGERPRINT:"sshCatalog:fingerprint",
   SHARED_PROVIDERS_LIST_LEGACY: "sharedProviders:listLegacy",
   SHARED_PROVIDERS_IMPORT_LEGACY: "sharedProviders:importLegacy",
   SHARED_PROVIDERS_SAVE: "sharedProviders:save",

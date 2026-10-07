@@ -19,6 +19,8 @@ import {
   IconBolt,
   IconChevronRight,
   IconGripVertical,
+  IconGitFork,
+  IconMessages,
 } from "@renderer/lib/icons.js";
 import { useSessionStore, EMPTY_MESSAGES, EMPTY_TODOS, EMPTY_SUBAGENTS, EMPTY_CHAT_QUEUE, EMPTY_ELEMENT_QUEUE, EMPTY_PROMPT_QUEUE, EMPTY_BOOKMARKS, EMPTY_USAGE, type Block, type ChatMessage, type TodoItem, type TurnMeta, type QueuedPrompt } from "@renderer/stores/sessionStore.js";
 import { useToastStore } from "@renderer/stores/toastStore.js";
@@ -1101,6 +1103,7 @@ type SendAttachment = {
   content: string;
   attachmentKind?: "paste" | "file" | "quote";
   filePath?: string;
+  contextSource?: { sessionId: string; messageId?: string | null; truncated?: boolean };
 };
 
 /** Stream-facing attachment records from the composer tags. Element tags fold
@@ -1113,6 +1116,7 @@ function composeSendAttachments(tags: ReadonlyArray<ContentTag>): SendAttachment
     content: t.content,
     attachmentKind: t.kind === "file" ? "file" : "paste",
     filePath: t.filePath,
+    contextSource: t.sourceSessionId ? { sessionId: t.sourceSessionId, messageId: t.sourceMessageId, truncated: t.contextTruncated } : undefined,
   }));
 }
 
@@ -1370,6 +1374,13 @@ function ChatPaneForSession({
     const pinned = s.pinnedSessions.find((x) => x.id === sessionId);
     if (pinned) return pinned.providerId;
     return s.streamSessions.find((x) => x.id === sessionId)?.providerId ?? null;
+  });
+  const forkOrigin = useSessionStore(s => {
+    for (const rows of Object.values(s.sessionsByProject)) {
+      const session = rows.find(row => row.id === sessionId);
+      if (session) return session.forkedFrom;
+    }
+    return s.streamSessions.find(row => row.id === sessionId)?.forkedFrom ?? s.pinnedSessions.find(row => row.id === sessionId)?.forkedFrom;
   });
   // Project root absolute path for this session (used by the @ / add-context
   // file pickers). Resolved through the session's projectId → projects[].
@@ -2220,6 +2231,19 @@ function ChatPaneForSession({
   // (initDeferred + selectProject); read here as a stable reference.
   const skills = useSessionStore((s) => s.skills);
   const drainChatFileQueue = useSessionStore((s) => s.drainChatFileQueue);
+  const contextQueue = useSessionStore(s => s.chatContextQueueBySession[sessionId ?? ""]);
+  const drainContextQueue = useSessionStore(s => s.drainChatContextQueue);
+  useEffect(() => {
+    if (!sessionId || !contextQueue?.length) return;
+    const incoming = drainContextQueue(sessionId);
+    setTags(previous => [
+      ...previous,
+      ...incoming.filter(tag => !previous.some(old =>
+        old.kind === "conversation" && old.sourceSessionId === tag.sourceSessionId &&
+        old.sourceMessageId === tag.sourceMessageId && old.content === tag.content,
+      )),
+    ]);
+  }, [sessionId, contextQueue, drainContextQueue]);
   useEffect(() => {
     if (chatFileQueue.length === 0) return;
     const paths = drainChatFileQueue(sessionId);
@@ -2816,19 +2840,17 @@ function ChatPaneForSession({
         // "quote" (side-chat reference) re-inlines as a paste block — only
         // the composer's ContentTag has no quote kind; the persisted record
         // keeps it for display.
-        kind: ab.attachmentKind === "file" ? "file" : "paste",
+        kind: ab.contextSource ? "conversation" : ab.attachmentKind === "file" ? "file" : "paste",
         preview: ab.preview,
         content: ab.content,
         filePath: ab.filePath,
+        sourceSessionId: ab.contextSource?.sessionId,
+        sourceMessageId: ab.contextSource?.messageId,
+        contextTruncated: ab.contextSource?.truncated,
       };
     });
     const prompt = composePromptWithTags(text, tags);
-    const attachments = tags.map((t) => ({
-      preview: t.preview,
-      content: t.content,
-      attachmentKind: t.kind === "file" ? ("file" as const) : ("paste" as const),
-      filePath: t.filePath,
-    }));
+    const attachments = composeSendAttachments(tags);
     // Preserve the original message's skill pills (if any) so the edited
     // message keeps rendering them as inline pills after resend. The text
     // editor only edits prose; skills survive as /name text + this list.
@@ -3417,6 +3439,7 @@ function ChatPaneForSession({
 
   return (
     <div className="relative flex h-full flex-col" data-chat-root>
+      {forkOrigin && <button className="shrink-0 truncate border-b border-edge px-4 py-1.5 text-left text-xs text-content-subtle hover:text-accent" onClick={() => void useSessionStore.getState().openTab(forkOrigin.sessionId)}>{t("layout.contextSource", { title: forkOrigin.title })} · {t("layout.forkSuffix")}</button>}
       {/* Message stream area */}
       <div
         ref={streamAreaRef}
@@ -4212,6 +4235,8 @@ const MessageRow = memo(function MessageRow({
 }) {
   const { t } = useI18n();
   const isUser = msg.role === "user";
+  const busy = useSessionStore(s => !!s.runningBySession[msg.sessionId]);
+  const openConversationAction = useSessionStore(s => s.openConversationAction);
   // 方案A: only a JUST-SENT user bubble plays the slide-in-from-right
   // entrance. The freshness gate keeps the animation off history hydration
   // and LegendList scroll remounts (an old bubble re-mounting mid-scroll
@@ -4430,7 +4455,7 @@ const MessageRow = memo(function MessageRow({
             buttons (under the right-aligned bubble); assistant messages
             left-align. For user messages the copy + edit buttons sit
             side-by-side; for assistant messages only copy is shown. */}
-        {(showCopy || showEdit) && (
+        {(showCopy || showEdit || (hasTextContent && !busy)) && (
           <div
             className={cn(
               "mt-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100",
@@ -4438,6 +4463,10 @@ const MessageRow = memo(function MessageRow({
             )}
           >
             {showCopy && <CopyButton text={copyText} />}
+            {hasTextContent && !busy && <>
+              <button type="button" title={t("layout.forkFromMessage")} aria-label={t("layout.forkFromMessage")} className="rounded px-1 py-0.5 text-content-subtle hover:bg-surface-hover" onClick={() => openConversationAction({ sessionId: msg.sessionId, messageId: msg.id, mode: "fork" })}><IconGitFork size={13} /></button>
+              <button type="button" title={t("layout.referenceThroughMessage")} aria-label={t("layout.referenceThroughMessage")} className="rounded px-1 py-0.5 text-content-subtle hover:bg-surface-hover" onClick={() => openConversationAction({ sessionId: msg.sessionId, messageId: msg.id, mode: "reference" })}><IconMessages size={13} /></button>
+            </>}
             {showEdit && (
               <button
                 type="button"

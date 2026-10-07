@@ -261,6 +261,42 @@ try {
       assert.ok(fixtureRequests.slice(requestCount).some((r) => r.path === turn.path && r.body.model === turn.id && (r.authorization === `Bearer ${fixtureKey}` || r.apiKey === fixtureKey)), `${turn.engine} request did not use its model endpoint and stored key`);
     } finally { await evaluate("globalThis.__stopWireEvents()"); }
   }
+  if (process.argv.includes("--ideas")) {
+    for (const engine of ["pi-sdk", "claude-sdk", "codex-sdk"]) {
+      const model = "vendor/chat-model";
+      const { session: source } = await evaluate(`window.api.claude.startSession(${JSON.stringify({ projectId: project.id, title: `Fork source ${engine}`, providerId: engine, model: engine === "claude-sdk" ? model : `${runtimeId}/${model}`, customModelId: engine === "claude-sdk" ? runtimeId : undefined, permissionMode: "bypassPermissions" })})`);
+      const marker = `fork-history-marker-${engine}`;
+      const messages = [
+        { id: `${source.id}-1`, sessionId: source.id, role: "user", content: { blocks: [{ kind: "text", text: marker }] }, createdAt: 1 },
+        { id: `${source.id}-2`, sessionId: source.id, role: "assistant", content: { blocks: [{ kind: "text", text: "Earlier answer" }] }, createdAt: 2 },
+        { id: `${source.id}-3`, sessionId: source.id, role: "user", content: { blocks: [{ kind: "text", text: "must-exclude-later" }] }, createdAt: 3 },
+      ];
+      await evaluate(`window.api.session.saveMessages(${JSON.stringify({ sessionId: source.id, messages })})`);
+      const { session: fork } = await evaluate(`window.api.session.fork(${JSON.stringify({ sessionId: source.id, messageId: messages[1].id, title: `Fork ${engine}` })})`);
+      assert.notEqual(fork.id, source.id);
+      assert.equal(fork.claudeSessionId, null);
+      assert.equal((await evaluate(`window.api.session.messages({sessionId:${JSON.stringify(fork.id)}})`)).messages.length, 2);
+      const requestCount = fixtureRequests.length;
+      await evaluate("globalThis.__wireEvents=[];globalThis.__stopWireEvents=window.api.on.claudeEvent(msg=>globalThis.__wireEvents.push(msg.event))");
+      try {
+        await evaluate(`window.api.claude.sendTurn(${JSON.stringify({ sessionId: fork.id, prompt: "Continue briefly" })})`);
+        const until = Date.now() + 45000;
+        let events;
+        do {
+          events = await evaluate("globalThis.__wireEvents");
+          if (events.some(e => e.type === "turn.done" && e.sessionId === fork.id)) break;
+          if (Date.now() > until) throw new Error(`Fork timed out: ${engine}: ${JSON.stringify(events)}`);
+          await delay(100);
+        } while (true);
+        assert.ok(!events.some(e => e.type === "error"), JSON.stringify(events));
+        const wire = JSON.stringify(fixtureRequests.slice(requestCount).map(request => request.body));
+        assert.ok(wire.includes(marker), `${engine} must receive copied history`);
+        assert.ok(!wire.includes("must-exclude-later"), `${engine} must respect the selected message boundary`);
+        assert.deepEqual((await evaluate(`window.api.session.messages({sessionId:${JSON.stringify(source.id)}})`)).messages, messages);
+        console.log(`Fork context verified with real engine: ${engine}`);
+      } finally { await evaluate("globalThis.__stopWireEvents()"); }
+    }
+  }
   if (process.argv.includes("--context")) {
     await access(claudePath);
     const claudeSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "claude", mode: "external", path: claudePath })})`);

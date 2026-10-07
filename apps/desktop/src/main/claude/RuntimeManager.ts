@@ -661,7 +661,9 @@ class RuntimeManager {
 
     const req: StartTurnRequest = {
       sessionId: session.id,
-      prompt: input.prompt,
+      prompt: !rt.providerSessionId && SessionRepo.forkSeed(session.id)
+        ? `${SessionRepo.forkSeed(session.id)}\n\nCurrent user request:\n${input.prompt}`
+        : input.prompt,
       cwd: input.cwd,
       model: modelForReq,
       effort: session.effort !== "default" ? session.effort : undefined,

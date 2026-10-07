@@ -421,6 +421,8 @@ const project: Api["project"] = {
 };
 
 const session: Api["session"] = {
+  fork: (input) => rpc("session:fork", input),
+  context: (input) => rpc("session:context", input),
   search: (input) => rpc("session:search", input),
   searchBookmarks: (input) => rpc("session:searchBookmarks", input),
   messages: (input) => rpc("session:messages", input),

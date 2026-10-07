@@ -1,7 +1,7 @@
 import { forwardRef } from "react";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
-import { IconClipboard, IconFile, IconCode, IconPhoto, IconX } from "@renderer/lib/icons.js";
+import { IconClipboard, IconFile, IconCode, IconPhoto, IconX, IconMessages } from "@renderer/lib/icons.js";
 import { isImageFile, type ContentTag } from "@renderer/lib/contentTag.js";
 
 /**
@@ -61,6 +61,8 @@ export const ContentTagChip = forwardRef<
           ) : (
             <IconFile size={12} className="opacity-80" />
           )
+        ) : tag.kind === "conversation" ? (
+          <IconMessages size={12} className="opacity-80" />
         ) : isElement ? (
           <IconCode size={12} className="opacity-80" />
         ) : (

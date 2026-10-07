@@ -17,6 +17,7 @@ import {
   SessionSearchSchema,
   BookmarkSearchSchema,
   UpdateBookmarksSchema,
+  SessionBranchSchema,
 } from "@contracts/ipc";
 import type { Project } from "@contracts/session";
 import { uid } from "@main/utils.js";
@@ -24,8 +25,19 @@ import { ProjectRepo, SessionRepo } from "@main/store/repositories.js";
 import { runtimeManager } from "@main/claude/RuntimeManager.js";
 import { broadcastSessionChanged, broadcastSessionDeleted } from "@main/lib/sessionSync.js";
 import { log } from "@main/lib/logger.js";
+import { forkConversation, readConversationContext } from "@main/lib/sessionBranch.js";
 
 export function registerProjectHandlers(ipcMain: IpcMain): void {
+  ipcMain.handle(IPC.SESSION_FORK, (_evt, raw) => {
+    const input = SessionBranchSchema.parse(raw);
+    const session = forkConversation(input, runtimeManager.runningSessionIds().includes(input.sessionId));
+    broadcastSessionChanged(session);
+    return { session };
+  });
+  ipcMain.handle(IPC.SESSION_CONTEXT, (_evt, raw) => {
+    const input = SessionBranchSchema.parse(raw);
+    return readConversationContext(input, runtimeManager.runningSessionIds().includes(input.sessionId));
+  });
   ipcMain.handle(IPC.PROJECT_CREATE, (_evt, raw) => {
     const input = CreateProjectSchema.parse(raw);
     const now = Date.now();

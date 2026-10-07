@@ -47,6 +47,8 @@ const api = {
       ipcRenderer.invoke(IPC.PROJECT_RENAME, input)) as RpcMap["project.rename"],
   },
   session: {
+    fork: ((input) => ipcRenderer.invoke(IPC.SESSION_FORK, input)) as RpcMap["session.fork"],
+    context: ((input) => ipcRenderer.invoke(IPC.SESSION_CONTEXT, input)) as RpcMap["session.context"],
     /** Cross-project session title search (Ctrl+K unified search). */
     search: ((input) =>
       ipcRenderer.invoke(IPC.SESSION_SEARCH, input)) as RpcMap["session.search"],

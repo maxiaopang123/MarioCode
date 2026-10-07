@@ -262,6 +262,11 @@ function migrate(database: Database.Database): void {
   // each turn-end so the context-stats history popover survives restart.
   addColumnIfMissing(database, "sessions", "usage_history", "TEXT");
   addColumnIfMissing(database, "sessions", "last_used_model", "TEXT");
+  addColumnIfMissing(database, "sessions", "fork_source", "TEXT");
+  database.exec(`CREATE TABLE IF NOT EXISTS session_fork_context (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    seed TEXT NOT NULL
+  )`);
   // Backfill legacy sessions from persisted runtime data, never the model
   // selection (which may have changed without a turn being sent).
   database.exec(`UPDATE sessions SET last_used_model = COALESCE(

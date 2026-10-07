@@ -17,6 +17,7 @@ import { SearchDialog } from "./components/ide/SearchDialog.js";
 import { ModelConfigPrompt } from "./components/chat/ModelConfigPrompt.js";
 import { BrowserPanel } from "./components/browser/BrowserPanel.js";
 import { Toaster } from "./components/layout/Toaster.js";
+import { ConversationActionDialog } from "./components/chat/ConversationActionDialog.js";
 import { UpdateNotification } from "./components/layout/UpdateNotification.js";
 import { VoiceListeningOverlay } from "./components/layout/VoiceListeningOverlay.js";
 import { useClaudeEvents } from "./hooks/useClaudeEvents.js";
@@ -378,6 +379,7 @@ export function App() {
       <div className="pointer-events-none fixed bottom-4 right-4 z-[9999] flex flex-col items-end gap-2">
         <UpdateNotification />
         <Toaster />
+        <ConversationActionDialog />
       </div>
       {/* Global voice-dictation indicator - floats top-center while any
           composer is listening. Renders null when idle. */}

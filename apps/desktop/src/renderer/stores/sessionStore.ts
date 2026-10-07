@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { browserUuid } from "@renderer/lib/uuid.js";
 import type { Project, Session, MessageRecord, SessionTodoItem, SessionPlanDraft, SessionBookmark } from "@contracts/session";
 import type {
   RuntimeEvent,
@@ -276,7 +277,7 @@ export type Block =
     /** Display names of the tool calls that never got a result
      *  ("dangling-tools" only). */
     pendingToolNames: string[] }
-  | { kind: "attachment"; preview: string; content: string; attachmentKind?: "paste" | "file" | "quote"; filePath?: string }
+  | { kind: "attachment"; preview: string; content: string; attachmentKind?: "paste" | "file" | "quote"; filePath?: string; contextSource?: { sessionId: string; messageId?: string | null; truncated?: boolean } }
   | {
       kind: "plan";
       /** Stable id for the in-turn live plan block — "current" while the turn
@@ -464,6 +465,7 @@ export interface PromptAttachment {
   content: string;
   attachmentKind?: "paste" | "file" | "quote";
   filePath?: string;
+  contextSource?: { sessionId: string; messageId?: string | null; truncated?: boolean };
 }
 
 /** Execution target picked in the plan-approval sheet's 执行方式 row.
@@ -1154,6 +1156,8 @@ export interface SessionState {
    *  queue via {@link drainChatFileQueue} and converts the paths to tags.
    *  NOT persisted - it's a one-shot hand-off channel, not session data. */
   chatFileQueueBySession: Record<string, string[]>;
+  conversationAction: { sessionId: string; messageId?: string; mode: "fork" | "reference" } | null;
+  chatContextQueueBySession: Record<string, ContentTag[]>;
 
   /** Per-session ephemeral queue of DOM elements picked from the embedded
    *  browser panel. The owning ChatPane drains its session's queue via
@@ -1489,7 +1493,7 @@ export interface SessionState {
   applySessionTitleUpdate: (sessionId: string, title: string) => void;
   sendPrompt: (
     prompt: string,
-    attachments?: { preview: string; content: string; attachmentKind?: "paste" | "file" | "quote"; filePath?: string }[],
+    attachments?: PromptAttachment[],
     /** Text shown in the user message's text block. Defaults to `prompt`,
      *  but when attachments are present the caller passes just the typed
      *  text (without the inlined attachment content) so the card + text
@@ -1534,7 +1538,7 @@ export interface SessionState {
     sessionId: string,
     messageId: string,
     newPrompt: string,
-    attachments?: { preview: string; content: string; attachmentKind?: "paste" | "file" | "quote"; filePath?: string }[],
+    attachments?: PromptAttachment[],
     displayText?: string,
     skillsUsed?: string[],
     images?: PromptImage[],
@@ -1877,6 +1881,10 @@ export interface SessionState {
    *  active session. Duplicate paths within the queue are kept; the composer
    *  dedups by absolute path when materializing tags. */
   enqueueChatFile: (filePath: string) => void;
+  openConversationAction: (action: { sessionId: string; messageId?: string; mode: "fork" | "reference" } | null) => void;
+  forkConversation: (sessionId: string, messageId?: string, title?: string) => Promise<void>;
+  referenceConversation: (sourceSessionId: string, target: Session, messageId?: string) => Promise<void>;
+  drainChatContextQueue: (sessionId: string) => ContentTag[];
   /** Read and clear the active session's pending chat-file queue, returning
    *  the paths so the caller can turn them into tags. Returns an empty array
    *  if no active session or queue is empty. */
@@ -2788,6 +2796,8 @@ function dropSessionBuckets(s: SessionState, id: string) {
   delete planApprovalDraftBySession[id];
   const composerDraftBySession = { ...s.composerDraftBySession };
   delete composerDraftBySession[id];
+  const chatContextQueueBySession = { ...s.chatContextQueueBySession };
+  delete chatContextQueueBySession[id];
   const sideChatSeedBySession = { ...s.sideChatSeedBySession };
   delete sideChatSeedBySession[id];
   const pendingApprovals = s.pendingApprovals.filter((p) => p.sessionId !== id);
@@ -2821,6 +2831,8 @@ function dropSessionBuckets(s: SessionState, id: string) {
     planTabActiveBySession,
     planApprovalDraftBySession,
     composerDraftBySession,
+    chatContextQueueBySession,
+    conversationAction: s.conversationAction?.sessionId === id ? null : s.conversationAction,
     sideChatSeedBySession,
     pendingApprovals,
   };
@@ -4627,6 +4639,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   turnFilesBySession: {},
   bookmarksBySession: {},
   chatFileQueueBySession: {},
+  conversationAction: null,
+  chatContextQueueBySession: {},
   chatElementQueueBySession: {},
   promptQueueBySession: {},
   composerDraftBySession: {},
@@ -6664,6 +6678,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           content: a.content,
           attachmentKind: a.attachmentKind,
           filePath: a.filePath,
+          contextSource: a.contextSource,
         });
       }
     }
@@ -6887,6 +6902,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           content: a.content,
           attachmentKind: a.attachmentKind,
           filePath: a.filePath,
+          contextSource: a.contextSource,
         });
       }
     }
@@ -9951,6 +9967,35 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ claudeInstalled: health.installed });
   },
 
+  openConversationAction: (conversationAction) => set({ conversationAction }),
+  forkConversation: async (sessionId, messageId, title) => {
+    const { session } = await api.session.fork({ sessionId, messageId, title });
+    if (get().activeProjectId !== session.projectId) await get().selectProject(session.projectId);
+    get().ingestEvent({ type: "session.changed", sessionId: session.id, session });
+    await get().openTab(session.id);
+    set({ conversationAction: null });
+  },
+  referenceConversation: async (sourceSessionId, target, messageId) => {
+    if (sourceSessionId === target.id) throw new Error(translate(get().locale, "layout.referenceSelf"));
+    const context = await api.session.context({ sessionId: sourceSessionId, messageId });
+    const tag: ContentTag = {
+      id: browserUuid(), kind: "conversation", preview: context.sourceTitle, content: context.content,
+      sourceSessionId: context.sourceSessionId, sourceMessageId: context.throughMessageId, contextTruncated: context.truncated,
+    };
+    if (get().activeProjectId !== target.projectId) await get().selectProject(target.projectId);
+    set(s => {
+      const rows = s.sessionsByProject[target.projectId] ?? [];
+      const sessions = rows.some(row => row.id === target.id) ? rows : [target, ...rows];
+      return { sessionsByProject: { ...s.sessionsByProject, [target.projectId]: sessions }, sessions,
+        chatContextQueueBySession: { ...s.chatContextQueueBySession, [target.id]: [...(s.chatContextQueueBySession[target.id] ?? []), tag] }, conversationAction: null };
+    });
+    await get().openTab(target.id);
+  },
+  drainChatContextQueue: (sessionId) => {
+    const tags = get().chatContextQueueBySession[sessionId] ?? [];
+    set(s => { const next = { ...s.chatContextQueueBySession }; delete next[sessionId]; return { chatContextQueueBySession: next }; });
+    return tags;
+  },
   enqueueChatFile: (filePath) => {
     const sessionId = get().activeSessionId;
     if (!sessionId) return;

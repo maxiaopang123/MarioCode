@@ -860,6 +860,8 @@ function StreamSidebarBase() {
         onClose={() => setCtxMenu(null)}
         onRename={(s) => { setCtxMenu(null); setRenaming({ id: s.id, title: s.title, kind: "session" }); }}
         onCopyTitle={(s) => { void navigator.clipboard.writeText(s.title); setCtxMenu(null); }}
+        onFork={(s) => { setCtxMenu(null); useSessionStore.getState().openConversationAction({ sessionId: s.id, mode: "fork" }); }}
+        onReference={(s) => { setCtxMenu(null); useSessionStore.getState().openConversationAction({ sessionId: s.id, mode: "reference" }); }}
         onOpenFolder={(s) => {
           setCtxMenu(null);
           const proj = projectById.get(s.projectId);

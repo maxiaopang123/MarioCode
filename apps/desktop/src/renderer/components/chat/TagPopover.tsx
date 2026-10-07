@@ -199,6 +199,12 @@ export function TagPopover({
       className="z-30 flex max-h-60 w-[min(28rem,calc(100vw-16px))] flex-col overflow-hidden rounded-md border border-edge bg-surface shadow-2xl"
     >
       {/* Header: char count + copy/close */}
+      {tag.kind === "conversation" && tag.sourceSessionId && (
+        <div className="flex items-center justify-between gap-2 border-b border-edge px-2 py-1 text-xs">
+          <button className="truncate text-accent" onClick={() => void import("@renderer/stores/sessionStore.js").then(({ useSessionStore }) => useSessionStore.getState().openTab(tag.sourceSessionId!))}>{t("layout.contextSource", { title: tag.preview })}</button>
+          {tag.contextTruncated && <span className="text-content-subtle">{t("layout.contextTruncated")}</span>}
+        </div>
+      )}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-edge bg-surface-muted px-2 py-1">
         <span className="text-[11px] text-content-muted">
           {t("chat.tagPopover.charCount", { n: tag.content.length.toLocaleString() })}

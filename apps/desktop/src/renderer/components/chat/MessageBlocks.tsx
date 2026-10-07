@@ -1080,6 +1080,7 @@ const BlockView = memo(function BlockView({
           content={block.content}
           attachmentKind={block.attachmentKind}
           filePath={block.filePath}
+          contextSource={block.contextSource}
         />
       );;
 
@@ -1238,6 +1239,7 @@ function AttachmentCard({
   content,
   attachmentKind,
   filePath,
+  contextSource,
 }: {
   preview: string;
   content: string;
@@ -1245,6 +1247,7 @@ function AttachmentCard({
    *  — rendered like a paste (inline content block, popover to expand). */
   attachmentKind?: "paste" | "file" | "quote";
   filePath?: string;
+  contextSource?: { sessionId: string; messageId?: string | null; truncated?: boolean };
 }) {
   const [open, setOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -1281,10 +1284,13 @@ function AttachmentCard({
   // TagPopover expects a ContentTag; build a minimal one from the attachment.
   const tag: ContentTag = {
     id: "attachment",
-    kind: attachmentKind === "file" ? "file" : "paste",
+    kind: contextSource ? "conversation" : attachmentKind === "file" ? "file" : "paste",
     preview,
     content,
     filePath,
+    sourceSessionId: contextSource?.sessionId,
+    sourceMessageId: contextSource?.messageId,
+    contextTruncated: contextSource?.truncated,
   };
 
   return (

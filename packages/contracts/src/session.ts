@@ -97,6 +97,7 @@ export interface Session {
   model: string;
   /** Most recently used model, separate from the next-turn selection. */
   lastUsedModel?: string | null;
+  forkedFrom?: { sessionId: string; title: string; messageId: string | null } | null;
   /** Reasoning effort ("default" = don't pass --effort). → --effort. */
   effort: EffortLevel;
   permissionMode: PermissionMode;
@@ -167,6 +168,16 @@ export interface MessageRecord {
   /** Content stored as JSON: text blocks, tool_use, tool_result, etc. */
   content: unknown;
   createdAt: number;
+}
+
+export interface ConversationContext {
+  sourceSessionId: string;
+  sourceTitle: string;
+  throughMessageId: string | null;
+  messageCount: number;
+  createdAt: number;
+  content: string;
+  truncated: boolean;
 }
 
 /** Input to start a new session turn. */

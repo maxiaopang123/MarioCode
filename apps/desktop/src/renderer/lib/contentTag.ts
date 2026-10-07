@@ -62,7 +62,7 @@ export const TAG_THRESHOLD_LINES = 3;
  *  file dragged in from the file tree (path reference only - no content
  *  is read), "element" for a DOM element picked from the embedded browser
  *  (selector + outerHTML inlined so the model can see it). */
-export type ContentTagKind = "paste" | "file" | "element";
+export type ContentTagKind = "paste" | "file" | "element" | "conversation";
 
 /** One content tag. `id` is the React key + removal handle. `content` is the
  *  full pasted text (for paste) or the `@path` reference string (for file),
@@ -75,6 +75,9 @@ export interface ContentTag {
   content: string;
   /** Absolute path of the dragged file. Only set when kind === "file". */
   filePath?: string;
+  sourceSessionId?: string;
+  sourceMessageId?: string | null;
+  contextTruncated?: boolean;
 }
 
 /** Decide whether a pasted string should become a tag rather than be
@@ -193,7 +196,7 @@ export function composePromptWithTags(
   for (const tag of tags) {
     if (tag.kind === "file") {
       parts.push(tag.content); // already "@path"
-    } else if (tag.kind === "element") {
+    } else if (tag.kind === "element" || tag.kind === "conversation") {
       // Element content is already a fully-formatted delimited block.
       parts.push(tag.content);
     } else {

@@ -33,6 +33,7 @@ import {
   SessionSearchSchema,
   BookmarkSearchSchema,
   SessionMessagesSchema,
+  SessionBranchSchema,
   SaveMessagesSchema,
   UpsertMessagesSchema,
   TruncateAndInsertMessagesSchema,
@@ -60,6 +61,7 @@ import {
   UI_LOCALE_SETTING_KEY,
 } from "@contracts/ipc";
 import { refreshTrayMenu } from "@main/tray.js";
+import { forkConversation, readConversationContext } from "@main/lib/sessionBranch.js";
 import type {
   SaveMessagesInput,
   UpsertMessagesInput,
@@ -100,6 +102,16 @@ export class RpcError extends Error {
 }
 
 const HANDLERS: Record<string, RpcHandler> = {
+  "session:fork": (raw) => {
+    const input = SessionBranchSchema.parse(raw);
+    const session = forkConversation(input, runtimeManager.runningSessionIds().includes(input.sessionId));
+    broadcastSessionChanged(session);
+    return { session };
+  },
+  "session:context": (raw) => {
+    const input = SessionBranchSchema.parse(raw);
+    return readConversationContext(input, runtimeManager.runningSessionIds().includes(input.sessionId));
+  },
   // ── Reads ───────────────────────────────────────────────────────────────
   "project:list": () => ({ projects: ProjectRepo.list() }),
 

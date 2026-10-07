@@ -21,6 +21,7 @@ import type { SessionListEntry } from "@contracts/runtime";
 import { runRegressionChecks } from "./regressions.js";
 import { selectArchiveShelf } from "@renderer/lib/archiveScope.js";
 import type { Project } from "@contracts/session";
+import { api } from "@renderer/lib/api.js";
 
 const PROJECT = "p1";
 const WT_OLD = "D:\\proj\\.worktrees\\wt-1";
@@ -260,6 +261,23 @@ await runRegressionChecks(check, mkSession);
   check("repeated archive event does not duplicate row", useSessionStore.getState().archivedSessionsByProject[PROJECT]?.length === 1);
   ingest(toListEntry({ ...a, archived: false }));
   check("remote restore removes archived row", (useSessionStore.getState().archivedSessionsByProject[PROJECT]?.length ?? 0) === 0);
+}
+
+{
+  const source = mkSession("reference-source");
+  const target = mkSession("reference-target");
+  seed([source, target]);
+  useSessionStore.setState({ historyLoadedBySession: { [target.id]: true }, chatContextQueueBySession: {}, activeSessionId: source.id });
+  const originalSessionApi = api.session;
+  Object.defineProperty(api, "session", { configurable: true, value: { context: async () => ({ sourceSessionId: source.id, sourceTitle: "Source", throughMessageId: "boundary", messageCount: 2, createdAt: 1, content: "historical-context", truncated: false }) } });
+  try {
+    await useSessionStore.getState().referenceConversation(source.id, target, "boundary");
+    check("reference navigates to target without sending a turn", useSessionStore.getState().activeSessionId === target.id && !useSessionStore.getState().runningBySession[target.id]);
+    const tags = useSessionStore.getState().drainChatContextQueue(target.id);
+    check("reference carries source and selected boundary", tags[0]?.kind === "conversation" && tags[0]?.sourceSessionId === source.id && tags[0]?.sourceMessageId === "boundary");
+    check("context queue is consumed once", useSessionStore.getState().drainChatContextQueue(target.id).length === 0);
+    check("referencing a conversation into itself is rejected", await useSessionStore.getState().referenceConversation(source.id, source).then(() => false, () => true));
+  } finally { Object.defineProperty(api, "session", { configurable: true, value: originalSessionApi }); }
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`);

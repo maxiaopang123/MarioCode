@@ -26,6 +26,7 @@ import { Button, Dialog, Input } from "@renderer/components/ui/index.js";
 import { useCursorAnchor } from "@renderer/hooks/useCursorAnchor.js";
 import type { Session } from "@contracts/session";
 import { useI18n } from "@renderer/lib/i18n/index.js";
+import { useSessionStore } from "@renderer/stores/sessionStore.js";
 
 /** Row shape for sidebar nav rows (连接手机's row variant): 30px rows,
  *  regular weight, neutral hover. */
@@ -68,6 +69,8 @@ export interface SessionContextMenuProps {
   onCopyTitle: (session: Session) => void;
   onOpenFolder: (session: Session) => void;
   onTogglePin: (session: Session) => void;
+  onFork?: (session: Session) => void;
+  onReference?: (session: Session) => void;
   /** "New session in this worktree" — present only for materialized
    *  worktree sessions; spawns a sibling thread on the same checkout. */
   onNewWorktreeSession?: (session: Session) => void;
@@ -83,6 +86,7 @@ export interface SessionContextMenuProps {
 
 export function SessionContextMenu({
   ctxMenu, onClose, onRename, onCopyTitle, onOpenFolder, onTogglePin,
+  onFork, onReference,
   onNewWorktreeSession, onMergeWorktree, onRenameWorktree, onRemoveWorktree,
 }: SessionContextMenuProps) {
   const { t } = useI18n();
@@ -91,6 +95,7 @@ export function SessionContextMenu({
   const anchor = useCursorAnchor(ctxMenu);
 
   const session = ctxMenu?.session;
+  const sessionRunning = useSessionStore(s => session ? !!s.runningBySession[session.id] : false);
   const isPinned = !!session?.pinnedAt;
   const isWorktree = !!session?.worktreePath;
   const itemClass = cn(
@@ -135,6 +140,8 @@ export function SessionContextMenu({
               <IconCopy size={14} className="shrink-0" />
               {t("layout.copySessionTitle")}
             </Menu.Item>
+            {onFork && <Menu.Item disabled={sessionRunning} onClick={() => session && onFork(session)} className={itemClass}><IconGitFork size={14} />{t("layout.forkConversation")}</Menu.Item>}
+            {onReference && <Menu.Item disabled={sessionRunning} onClick={() => session && onReference(session)} className={itemClass}><IconCopy size={14} />{t("layout.referenceConversation")}</Menu.Item>}
             {session?.worktreePath && onNewWorktreeSession && (
               <Menu.Item
                 onClick={() => onNewWorktreeSession(session)}

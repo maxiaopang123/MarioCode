@@ -1354,6 +1354,13 @@ export const RenameSessionSchema = z.object({
 });
 export type RenameSessionInput = z.infer<typeof RenameSessionSchema>;
 
+export const SessionBranchSchema = z.object({
+  sessionId: z.string().min(1),
+  messageId: z.string().min(1).optional(),
+  title: z.string().trim().min(1).max(200).optional(),
+});
+export type SessionBranchInput = z.infer<typeof SessionBranchSchema>;
+
 /* Open a path in the OS file manager. The main handler refuses any path that
  * isn't an exact match for a known project root, so the renderer can't ask it
  * to open arbitrary locations. */
@@ -4710,6 +4717,8 @@ export interface RpcMap {
   "session.messages": (
     input: SessionMessagesInput,
   ) => Promise<{ messages: MessageRecord[]; hasMore: boolean }>;
+  "session.fork": (input: SessionBranchInput) => Promise<{ session: Session }>;
+  "session.context": (input: SessionBranchInput) => Promise<import("./session.js").ConversationContext>;
   "session.saveMessages": (input: SaveMessagesInput) => Promise<void>;
   "session.upsertMessages": (input: UpsertMessagesInput) => Promise<void>;
   "session.truncateAndInsertMessages": (
@@ -5254,6 +5263,8 @@ export const IPC = {
   SESSION_SEARCH: "session:search",
   SESSION_SEARCH_BOOKMARKS: "session:searchBookmarks",
   SESSION_MESSAGES: "session:messages",
+  SESSION_FORK: "session:fork",
+  SESSION_CONTEXT: "session:context",
   SESSION_SAVE_MESSAGES: "session:saveMessages",
   SESSION_UPSERT_MESSAGES: "session:upsertMessages",
   SESSION_TRUNCATE_AND_INSERT_MESSAGES: "session:truncateAndInsertMessages",

@@ -249,6 +249,7 @@ interface SessionRow {
   status: string;
   model: string;
   last_used_model: string | null;
+  fork_source: string | null;
   effort: string;
   permission_mode: string;
   custom_model_id: string | null;
@@ -281,6 +282,7 @@ function rowToSession(r: SessionRow): Session {
     status: r.status as Session["status"],
     model: r.model,
     lastUsedModel: r.last_used_model ?? null,
+    forkedFrom: r.fork_source ? safeJson(r.fork_source) as Session["forkedFrom"] : null,
     effort: r.effort as Session["effort"],
     permissionMode: r.permission_mode as Session["permissionMode"],
     customModelId: r.custom_model_id ?? null,
@@ -955,6 +957,10 @@ export const SessionRepo = {
     run("UPDATE sessions SET last_used_model = ? WHERE id = ?", v(name), v(id));
     persist();
     return true;
+  },
+  forkSeed(id: string): string | undefined {
+    const row = getDb().prepare("SELECT seed FROM session_fork_context WHERE session_id = ?").get(id) as { seed: string } | undefined;
+    return row?.seed;
   },
 };
 

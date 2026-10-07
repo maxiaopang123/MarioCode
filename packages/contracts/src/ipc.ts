@@ -1747,23 +1747,28 @@ export type FocusSessionInput = z.infer<typeof FocusSessionSchema>;
 // Private bridge for the desktop progress window; not exposed to web/mobile clients.
 export const ProgressCapsuleReadSchema = z.object({}).strict();
 export const ProgressCapsuleOpenSchema = z.object({ sessionId: z.string().min(1) }).strict();
+export const ProgressCapsuleViewSchema = z.object({ expanded: z.boolean() }).strict();
 export interface ProgressCapsuleSession {
   sessionId: string;
   title: string;
   model: string | null;
   startedAt: number;
-  phase: "running" | "approval" | "question" | "plan";
+  phase: "running" | "thinking" | "output" | "executing" | "approval" | "question" | "plan";
+  toolName: string | null;
+  toolCount: number;
   completed: number;
   total: number;
   task: string | null;
 }
 export interface ProgressCapsuleState {
   locale: Locale;
+  expanded: boolean;
   sessions: ProgressCapsuleSession[];
 }
 export interface ProgressCapsuleApi {
   getState(): Promise<ProgressCapsuleState>;
   openSession(sessionId: string): Promise<void>;
+  setExpanded(expanded: boolean): Promise<void>;
   onState(fn: (state: ProgressCapsuleState) => void): () => void;
 }
 
@@ -5341,6 +5346,7 @@ export const IPC = {
   NOTIFICATION_FOCUS_SESSION: "notification:focusSession",
   PROGRESS_CAPSULE_READ: "progressCapsule:read",
   PROGRESS_CAPSULE_OPEN: "progressCapsule:open",
+  PROGRESS_CAPSULE_VIEW: "progressCapsule:view",
   PROGRESS_CAPSULE_STATE: "progressCapsule:state",
   // Custom models (user-defined Anthropic-compatible endpoints)
   CUSTOM_MODEL_LIST: "customModel:list",

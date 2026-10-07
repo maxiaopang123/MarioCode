@@ -4,6 +4,7 @@ import { IPC, type ProgressCapsuleApi, type ProgressCapsuleState } from "@contra
 const api: ProgressCapsuleApi = {
   getState: () => ipcRenderer.invoke(IPC.PROGRESS_CAPSULE_READ, {}),
   openSession: (sessionId) => ipcRenderer.invoke(IPC.PROGRESS_CAPSULE_OPEN, { sessionId }),
+  setExpanded: (expanded) => ipcRenderer.invoke(IPC.PROGRESS_CAPSULE_VIEW, { expanded }),
   onState: (fn) => {
     const listener = (_event: Electron.IpcRendererEvent, state: ProgressCapsuleState) => fn(state);
     ipcRenderer.on(IPC.PROGRESS_CAPSULE_STATE, listener);

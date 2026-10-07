@@ -87,6 +87,10 @@ await electronTest("startup-recovery", async data => {
   }
 
   // Normal automatic location still pages to and mounts an older chat.
+  // This navigation uses animation frames; make the isolated window visible
+  // in front after reloads instead of depending on desktop focus from another test.
+  await command("Page.bringToFront");
+  await command("Emulation.setFocusEmulationEnabled", { enabled: true });
   await evaluate(`window.startupTestStore.getState().openTab(${JSON.stringify(fixture.ids[0])})`);
   await wait(`(()=>{const s=window.startupTestStore.getState();return s.streamSessions.some(x=>x.id===${JSON.stringify(fixture.ids[0])}) && [...document.querySelectorAll('li')].some(n=>n.textContent.includes('Page fixture 0'));})()`).catch(async error => {
     console.log(await evaluate("(()=>{const s=window.startupTestStore.getState();return {active:s.activeSessionId,scope:s.streamScope,dirty:s.streamDirty,hasMore:s.streamHasMore,loaded:s.streamSessions.length,total:s.streamTotal,text:document.body.textContent.slice(0,220)};})()"));

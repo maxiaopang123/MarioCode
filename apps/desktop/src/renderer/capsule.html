@@ -7,11 +7,14 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws:;" />
   </head>
   <body>
+    <button id="peek" class="peek"><span class="peek-flow" aria-hidden="true"></span><span id="peek-phase"></span><span id="peek-count"></span></button>
     <main class="capsule" id="capsule">
-      <div class="orb" aria-hidden="true"><i></i><i></i><i></i></div>
-      <div class="copy"><div class="heading"><strong id="title"></strong><span id="elapsed"></span></div><div class="detail"><span id="phase"></span><span id="progress"></span></div></div>
-      <button class="others" id="others" hidden></button>
-      <button class="open" id="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10" /></svg></button>
+      <div id="grip" class="grip"><span></span></div>
+      <button id="open" class="task">
+        <span class="orb" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="copy"><span class="heading"><strong id="title"></strong><span id="elapsed"></span></span><span class="detail"><span id="phase"></span><span id="tool"></span></span></span>
+      </button>
+      <div class="footer"><span id="progress"></span><nav id="navigation" hidden><button id="previous"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10 4-4 4 4 4" /></svg></button><span id="position"></span><button id="next"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg></button></nav></div>
       <div class="track" id="track" hidden><div id="fill"></div></div>
     </main>
     <script type="module" src="/capsule.ts"></script>

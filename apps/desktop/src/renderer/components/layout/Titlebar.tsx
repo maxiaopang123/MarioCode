@@ -28,7 +28,6 @@ interface Props {
   leftOpen: boolean;
   /** 界面焕新 v3: the project rail is mounted at the window's left edge (it
    *  carries the brand mark and, on macOS, sits under the traffic lights). */
-  railVisible?: boolean;
   onToggleLeft?: () => void;
   /** Settings mode: returns to the workspace view. */
   onBack?: () => void;
@@ -77,7 +76,6 @@ const BACK_BUTTON =
 export function Titlebar({
   mode,
   leftOpen,
-  railVisible = false,
   onToggleLeft,
   onBack,
 }: Props) {
@@ -129,8 +127,7 @@ export function Titlebar({
           // lead repeats SidebarTopStrip's offset (sidebar px-2 + strip
           // pl-0.5) — or, on macOS, clears the traffic lights, which now sit
           // over this bar instead of the sidebar.
-          // v3 rail: the traffic lights sit over the rail, so no reservation.
-          sidebarVisible || railVisible ? "pl-2" : isMac ? "pl-[78px]" : "pl-2.5",
+          sidebarVisible ? "pl-2" : isMac ? "pl-[78px]" : "pl-2.5",
         )}
       >
         {isSettings ? (
@@ -178,7 +175,7 @@ export function Titlebar({
                 <CollapsedSidebarLead
                   label={t("layout.showLeftPanel") + hintFor("layout.toggle-left")}
                   onExpand={onToggleLeft}
-                  showBrand={!railVisible}
+                  showBrand
                 />
               )
             )}

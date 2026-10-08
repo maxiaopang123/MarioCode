@@ -2127,7 +2127,7 @@ body:has(.lightbox-root[data-chrome="hidden"]) .lightbox-scrim {
 }
 
 /* ───────────── 界面焕新 v3 (prototypes/ui-refresh-v3.html) ─────────────
- * Project rail, tinted project avatars, session-column rows, tool strip.
+ * Tinted project avatars, session-column rows, tool strip.
  * Kept here (not in Tailwind utilities) where a rule needs --av / color-mix
  * or a theme-scoped variant. */
 
@@ -2143,96 +2143,6 @@ body:has(.lightbox-root[data-chrome="hidden"]) .lightbox-scrim {
   background: color-mix(in srgb, var(--av) 28%, transparent);
   color: color-mix(in srgb, var(--av) 45%, white);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--av) 36%, transparent);
-}
-
-/* Rail cells: every cell 36×36 r10; content is a ~28px visual block
- * (logo 28, avatar 28, line icons 18px / stroke 1.6). */
-.rail-btn {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  flex: none;
-  border-radius: 10px;
-  color: rgb(var(--content-subtle));
-  transition: background-color 120ms ease, color 120ms ease;
-}
-.rail-btn:hover {
-  background: rgb(var(--surface-hover));
-  color: rgb(var(--content));
-}
-.rail-btn svg {
-  stroke-width: 1.6;
-}
-.rail-btn[data-on="true"] {
-  background: rgb(var(--surface));
-  color: rgb(var(--content));
-  box-shadow: var(--shadow-1), inset 0 0 0 1px rgb(var(--edge));
-}
-.dark .rail-btn[data-on="true"] {
-  background: rgb(var(--surface-hover));
-  box-shadow: inset 0 0 0 1px rgb(var(--primary) / 0.35);
-}
-/* Selected indicator bar hugging the rail's left edge. */
-.rail-btn[data-on="true"]::before {
-  content: "";
-  position: absolute;
-  left: -12px;
-  top: 10px;
-  bottom: 10px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: rgb(var(--content));
-}
-.dark .rail-btn[data-on="true"]::before {
-  background: rgb(var(--primary));
-}
-.rail-btn:hover .proj-av {
-  background: color-mix(in srgb, var(--av) 22%, transparent);
-}
-.rail-btn[data-on="true"] .proj-av {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--av) 38%, transparent);
-}
-/* Status pip (top-right): unread = accent dot, running = spinning ring. */
-.rail-pip {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 9px;
-  height: 9px;
-  border-radius: 9999px;
-  background: rgb(var(--accent));
-  box-shadow: 0 0 0 2px rgb(var(--rail));
-}
-.rail-btn[data-on="true"] .rail-pip {
-  box-shadow: 0 0 0 2px rgb(var(--surface));
-}
-.rail-pip[data-run="true"] {
-  background: rgb(var(--rail));
-  border: 1.75px solid rgb(var(--accent) / 0.25);
-  border-top-color: rgb(var(--accent));
-  animation: spin 0.9s linear infinite;
-}
-/* Waiting-on-you count (bottom-right). */
-.rail-cnt {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3.5px;
-  border-radius: 9999px;
-  background: rgb(var(--warning));
-  color: #fff;
-  font-size: 9.5px;
-  font-weight: 700;
-  line-height: 15px;
-  text-align: center;
-  box-shadow: 0 0 0 2px rgb(var(--rail));
-}
-.dark .rail-cnt {
-  color: rgb(var(--surface-base));
 }
 
 /* Session-column row: active = raised card in light, filled in dark. */

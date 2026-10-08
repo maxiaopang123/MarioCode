@@ -25,8 +25,8 @@ await electronTest("canvas-check", async () => {}, async ({ data, command, evalu
   const genWithoutConfig = await evaluate("window.api.canvas.generate({scope:'global',prompt:'x'})");
   if (genWithoutConfig.ok !== false) throw Error("generate without image endpoint should fail");
 
-  // 打开画布(rail 上的 palette 按钮)。
-  await evaluate(`document.querySelector('nav[aria-label] button:has(.tabler-icon-palette)').click()`);
+  // 打开画布(侧栏工具卡里的画布行)。
+  await evaluate(`document.querySelector('[data-nav=canvas]').click()`);
   await wait(`document.querySelector('[data-canvas-view="t2i"]') != null`);
   // 未配置图片模型 → 引导条可见,生成按钮禁用。
   await wait(`document.body.textContent.includes("还没有配置图片模型")`);

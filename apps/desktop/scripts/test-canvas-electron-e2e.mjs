@@ -104,7 +104,7 @@ try {
     if (!tools.ok || tools.state.imageIssue) throw Error(`image endpoint not ready: ${tools.state?.imageIssue}`);
 
     // ② 打开画布 → 文生图 2 张。
-    await evaluate(`document.querySelector('nav[aria-label] button:has(.tabler-icon-palette)').click()`);
+    await evaluate(`document.querySelector('[data-nav=canvas]').click()`);
     await wait(`document.querySelector('[data-canvas-view="t2i"]') != null`);
     await wait(`!document.body.textContent.includes("还没有配置图片模型")`); // 配置后引导条消失
     await evaluate(`(() => {

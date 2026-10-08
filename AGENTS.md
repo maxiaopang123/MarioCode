@@ -267,6 +267,16 @@ pnpm build
 - **UI**:`TurnFilesCard` 每个**未撤销**的卡片都显示「撤销本轮」(历史卡片点击前 `confirm` 警告可能影响后续轮次);`rewound` block 的 `rewound` 字段在 `turn-files` case 上(block 联合类型新增,向后兼容)。`store.rewindTurn(files, targetFiles)` 由调用方显式传 files + targetFiles(必填),不乐观清状态(等 `turn.rewound` 事件)。
 - **契约**:`RewindTurnSchema` 含 `files`(内联 zod)+ 必填 `targetFiles`;`TurnRewoundEvent` 带必填 `targetFiles`。
 
+### V4 侧栏:ProjectSidebar(TODO-044 第二步,2026-10-09,v0.2.38;**本节覆盖下方 v3 布局节里 ProjectRail / StreamSidebar / 会话列的全部描述**)
+
+- **一栏取代两栏**:`components/layout/ProjectSidebar.tsx` 替换 V3 的 ProjectRail(60px 项目栏)+ StreamSidebar(范围菜单 + 时间混排会话流),二者文件已删。`App.tsx` 不再有 `railVisible`,`Titlebar` 的 `railVisible` 参数同步删除(侧栏收起时恢复显示品牌 + 展开钮)。
+- **结构**(自上而下):品牌 + 收起钮(拖拽区,mac 先留红绿灯条)→「新会话」白底描边卡片按钮(`startSession()` = 当前项目,无当前项目退回第一个未归档项目)→ 「N 个会话等你处理」琥珀文字行(`useAttention` + `jumpToNextAttention`,与 V3 同一定义)→ **「项目」卡片**:每个项目 = 彩色字母方块(`ProjectAvatar` 的 `proj-av` 着色,颜色走 `projectDisplayColor`)+ 名称 + 会话总数,展开后线程挂在 `border-edge-input` 引导线上,**当前线程在引导线上亮 2px 强调色刻度**;分组(`project.group`)只作为小标题分段,管理菜单里的加入 / 移出分组保留 → 折叠的「已归档 N」→ **「工具」卡片**:技能与 MCP(`setSettingsOpen(true,"skills")`)/ 画布(`setCanvasOpen`)/ 定时任务(`setSettingsOpen(true,"scheduled-tasks")`)/ 连接手机(`MobileConnectButton`,原 rail 变体已删)→ 底部「设置」+ 浅 / 深色快捷钮。
+- **数据 = 旧项目树的那套,store 零改动**:每项目首页(`SESSION_PAGE_SIZE`=5 条本地会话)+ 工作树分区 + 置顶块 + 归档;`toggleProjectExpanded` / `loadMoreSessions(projectId)`(「显示更多」)/ `expandedWorktrees`(工作树组默认折叠,激活其中会话时 store 自动展开)。工作树组头显示分支名 + 琥珀色「未合并」(来自 `worktreeInfoByRepo`,与 V3 同一判据 dirty || !merged);组头右键 = 该目录的会话菜单(合并回 / 重命名 / 移除)。置顶会话显示在各自项目列表最前面并带图钉。折叠的项目在头部保留 运行中转圈 / 等你处理计数 / 未读点(原 rail 角标的职责)。
+- **状态仍在行内右侧、不改变行序**:运行中 + 时长 / 待审批 / 在提问 / 出错 / 未读点 + 时间 / 相对时间;hover 把状态换成归档钮(运行中行不给)。**行首不再画模型品牌图标**(V4 原型取舍,TODO-045 的模型信息改在 tooltip:`lastUsedModel`),右键菜单沿用 `SessionContextMenu`。
+- **V3 遗留的 `streamScope` / `streamSessions` 机制保留但不再渲染**:`loadStreamSessions()` 仍在侧栏挂载 / `streamDirty` 时刷新首页,作为「第一页之外的会话」的查找兜底(`findSession` 第 4 参);侧栏挂载时把 V3 持久化的 `ui.streamScope` 一次性清成全部,否则兜底缓存会被旧范围缩窄。`--rail` token、`bg-rail` 等已无引用,暂留。
+- **「无项目聊天」(TODO-042)的「聊天」卡片未做**:没有项目外会话的数据,待 TODO-042。
+- **验证**:类型检查、完整构建、隔离真实桌面多项目 / 加载更多 / 折叠展开截图(浅 / 深色)。**未验证**:真实待审批 / 出错 / 工作树组 / 归档 / 右键菜单的真机交互(待截图脚本补测,见版本记录)。
+
 ### 界面焕新 v3 布局(2026-09-28,原型 `prototypes/ui-refresh-v3.html`;**本节覆盖下方「左栏双模式」中与之冲突的描述**)
 - **加载模型的地址规则**(2026-10-02):`sharedProviderDiscovery.ts` 接受与提供商配置一致的 HTTP(S) 地址,包括局域网与用户指定的 HTTP 网关;不要再加「HTTP 仅限 loopback」限制。仍拒绝 URL 内嵌凭据 / query / fragment、链路本地与云元数据地址,跳转仅同源,未保存的地址修改不能复用旧密钥。回归:`test:shared-providers` 58 项;`test:shared-providers-electron` 用隔离配置和本地 HTTP 服务验证临时 / 已保存密钥加载、取消保留表单、合并与保存模型(优先用本机非 loopback IPv4)。
 - **五段布局**:`ProjectRail`(60px 项目栏)+ 会话列(`StreamSidebar`)+ 主区 + `ToolStrip`(右缘竖向工具条)+ `StatusBar`(底部全局状态栏)。**项目树视图已删除**(`LeftBar.tsx` / `SidebarQuickActions.tsx` / `SidebarTopStrip` / `LeftBarModeSwitch` / `SidebarFooter` 均已移除);store 的 `leftBarMode` 字段与 `ui.leftBarMode` 设置键仅为兼容保留,App 不再读取。项目管理(重命名 / 分组 / 颜色 / 打开文件夹 / 归档 / 删除)改为**项目栏头像右键**(`ProjectManageMenuPopup` 新增可选 `onOpenFolder/onArchive/onDelete`);归档项目在会话列底部归档区恢复;拖拽排序随树视图一起取消。

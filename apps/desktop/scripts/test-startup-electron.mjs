@@ -1,6 +1,8 @@
-/** Restore an existing profile whose active chat is outside the saved sidebar
- * scope. The first page has more results while startup re-dirties it: automatic
- * row location must allow IPC, React commits and the scoped refresh to finish. */
+/** Restore an existing profile in the V4 project sidebar (TODO-044 step 2).
+ * The saved chat lives in a project that is not the first one, a stale V3
+ * `ui.streamScope` is persisted, and another project holds 31 chats: startup
+ * must restore the chat + history, clear the stale scope, expand only the
+ * active project, and "显示更多" must page to the oldest row without errors. */
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
@@ -17,15 +19,15 @@ await electronTest("startup-recovery", async data => {
     "network.proxy": JSON.stringify({ mode: "direct", customUrl: "" }),
   })) db.prepare("INSERT INTO settings VALUES (?,?)").run(key, value);
   db.close();
-  await mkdir(join(data, "scope"));
+  await mkdir(join(data, "many"));
   await mkdir(join(data, "active"));
 }, async ({ data, evaluate, wait, command, errors }) => {
   const fixture = await evaluate(`(async()=>{
-    const {project:scope}=await window.api.project.create({name:"Sidebar fixture",path:${JSON.stringify(join(data, "scope"))}});
+    const {project:many}=await window.api.project.create({name:"Many chats",path:${JSON.stringify(join(data, "many"))}});
     const {project:active}=await window.api.project.create({name:"Restored project",path:${JSON.stringify(join(data, "active"))}});
     const ids=[];
     for(let i=0;i<31;i++){
-      const {session}=await window.api.claude.startSession({projectId:scope.id,title:"Page fixture "+i});
+      const {session}=await window.api.claude.startSession({projectId:many.id,title:"Page fixture "+i});
       ids.push(session.id);
     }
     const {session}=await window.api.claude.startSession({projectId:active.id,title:"Restored chat"});
@@ -33,23 +35,19 @@ await electronTest("startup-recovery", async data => {
       {id:"restore-user",sessionId:session.id,role:"user",content:[{kind:"text",text:"Existing profile"}],createdAt:1},
       {id:"restore-assistant",sessionId:session.id,role:"assistant",content:{blocks:[{kind:"text",text:"Restored history is intact."}]},createdAt:2}
     ]});
-    await window.api.setting.set({key:"ui.streamScope",value:scope.id});
+    // A scope persisted by the removed V3 rail must not narrow anything now.
+    await window.api.setting.set({key:"ui.streamScope",value:many.id});
     await window.api.setting.set({key:"ui.lastProjectId",value:active.id});
     await window.api.setting.set({key:"ui.lastSessionId",value:session.id});
-    return {scope:scope.id,active:active.id,session:session.id,ids};
+    return {many:many.id,active:active.id,session:session.id,ids};
   })()`);
-  // Leave the restored chat beyond the initial unfiltered page, exactly as
-  // a real profile with many newer chats in another project does.
   const db = new DatabaseSync(join(data, "claude-gui.db"));
-  db.prepare("UPDATE sessions SET updated_at=1 WHERE id=?").run(fixture.session);
   for (let i=0; i<fixture.ids.length; i++) {
     db.prepare("UPDATE sessions SET updated_at=? WHERE id=?").run(100+i, fixture.ids[i]);
   }
   db.close();
 
-  // Locate the real store export in the built app. This allows assertions on
-  // its hydrated state and exercising normal navigation without depending
-  // on a particular hashed chunk filename or adding a production debug API.
+  // Locate the real store export in the built app (no production debug API).
   const require = createRequire(join(desktop, "package.json"));
   let storeUrl, storeExport;
   const asar = process.env.MARIOCODE_TEST_ASAR;
@@ -65,59 +63,48 @@ await electronTest("startup-recovery", async data => {
   }
   assert.ok(storeUrl && storeExport, "Built renderer exports its store");
   const attachStore = () => evaluate(`import(${JSON.stringify(storeUrl)}).then(m=>{window.startupTestStore=m[${JSON.stringify(storeExport)}];return true;})`);
+
   for (let i=0; i<2; i++) {
     await command("Page.reload");
     await delay(150);
     await wait("Boolean(document.body?.textContent.includes('Restored history is intact.'))");
     await attachStore();
-    await wait("!window.startupTestStore.getState().streamDirty");
+    await wait("window.startupTestStore.getState().streamScope===null");
     const state = await evaluate(`(()=>{const s=window.startupTestStore.getState();return {
       projects:s.projects.length,active:s.activeSessionId,scope:s.streamScope,
-      rows:s.streamSessions.map(x=>x.projectId),loaded:s.streamSessions.length,total:s.streamTotal,
-      ready:s.claudeInstalled!==null,composer:Boolean(document.querySelector('[contenteditable=true]'))
+      expanded:Object.keys(s.expandedProjects).filter(k=>s.expandedProjects[k]),
+      manyLoaded:(s.sessionsByProject[${JSON.stringify(fixture.many)}]||[]).length,
+      manyTotal:s.sessionsTotalByProject[${JSON.stringify(fixture.many)}],
+      composer:Boolean(document.querySelector('[contenteditable=true]')),
+      headers:[...document.querySelectorAll('section button[aria-expanded]')].map(b=>({t:b.textContent,open:b.getAttribute('aria-expanded')})),
+      restoredRow:[...document.querySelectorAll('[role=button]')].some(n=>n.textContent.includes('Restored chat'))
     };})()`);
     assert.equal(state.projects, 2, "Existing projects hydrate");
-    assert.equal(state.active, fixture.session, "Last chat restores outside the sidebar filter");
-    assert.equal(state.scope, fixture.scope);
-    assert.ok(state.rows.every(id => id === fixture.scope), "Sidebar refreshes to the saved scope");
-    assert.equal(state.loaded, 10, "Locating an out-of-scope chat does not fetch every page");
-    assert.equal(state.total, 31);
+    assert.equal(state.active, fixture.session, "Last chat restores");
+    assert.equal(state.scope, null, "Stale V3 scope is cleared");
+    assert.deepEqual(state.expanded, [fixture.active], "Only the active project starts expanded");
+    assert.equal(state.headers.length, 2, "Both projects render a header");
+    assert.ok(state.restoredRow, "Active chat row is visible in its project");
+    assert.equal(state.manyLoaded, 5, "A busy project loads only its first page");
+    assert.equal(state.manyTotal, 31);
     assert.ok(state.composer, "Chat pane mounts");
-    await wait("window.startupTestStore.getState().claudeInstalled!==null");
   }
 
-  // Normal automatic location still pages to and mounts an older chat.
-  // This navigation uses animation frames; make the isolated window visible
-  // in front after reloads instead of depending on desktop focus from another test.
-  await command("Page.bringToFront");
-  await command("Emulation.setFocusEmulationEnabled", { enabled: true });
-  await evaluate(`window.startupTestStore.getState().openTab(${JSON.stringify(fixture.ids[0])})`);
-  await wait(`(()=>{const s=window.startupTestStore.getState();return s.streamSessions.some(x=>x.id===${JSON.stringify(fixture.ids[0])}) && [...document.querySelectorAll('li')].some(n=>n.textContent.includes('Page fixture 0'));})()`).catch(async error => {
-    console.log(await evaluate("(()=>{const s=window.startupTestStore.getState();return {active:s.activeSessionId,scope:s.streamScope,dirty:s.streamDirty,hasMore:s.streamHasMore,loaded:s.streamSessions.length,total:s.streamTotal,text:document.body.textContent.slice(0,220)};})()"));
-    throw error;
-  });
-  assert.equal(await evaluate("window.startupTestStore.getState().streamSessions.length"), 31);
+  // Expand the busy project and page to its oldest row with 显示更多.
+  await evaluate(`[...document.querySelectorAll('section button[aria-expanded]')].find(b=>b.textContent.includes('Many chats')).click()`);
+  await wait("[...document.querySelectorAll('[role=button]')].some(n=>n.textContent.includes('Page fixture 30'))");
+  for (let i=0; i<8; i++) {
+    if (await evaluate(`(window.startupTestStore.getState().sessionsByProject[${JSON.stringify(fixture.many)}]||[]).length>=31`)) break;
+    const clicked = await evaluate("(()=>{const b=[...document.querySelectorAll('button')].find(n=>n.textContent.includes('显示更多'));if(!b)return false;b.click();return true})()");
+    if (!clicked) break;
+    await delay(400);
+  }
+  assert.equal(await evaluate(`(window.startupTestStore.getState().sessionsByProject[${JSON.stringify(fixture.many)}]||[]).length`), 31, "Paging reaches every chat");
+  await wait("![...document.querySelectorAll('button')].some(n=>n.textContent.includes('显示更多'))");
 
-  // A no-progress page (failed/superseded request) must end the locator even
-  // if the previous page still has hasMore=true. Assert responsiveness and
-  // request count rather than duplicating the locator implementation.
-  await evaluate(`(async()=>{
-    const store=window.startupTestStore;await store.getState().openTab(${JSON.stringify(fixture.ids[30])});
-    await store.getState().loadStreamSessions(true);
-  })()`);
-  await wait("window.startupTestStore.getState().streamSessions.length===10 && ![...document.querySelectorAll('li')].some(n=>n.textContent.includes('Page fixture 0'))");
-  await evaluate(`(async()=>{
-    const store=window.startupTestStore;
-    window.realStartupLoadMore=store.getState().loadMoreStreamSessions;
-    window.startupLoadMoreCalls=0;
-    store.setState({loadMoreStreamSessions:async()=>{window.startupLoadMoreCalls++;}});
-    await store.getState().openTab(${JSON.stringify(fixture.ids[0])});
-  })()`);
-  await delay(200);
-  assert.equal(await evaluate("window.startupLoadMoreCalls"), 1, "No-progress paging ends after one attempt");
-  await evaluate("window.startupTestStore.setState({loadMoreStreamSessions:window.realStartupLoadMore})");
-  await evaluate(`window.startupTestStore.getState().setStreamScope(${JSON.stringify(fixture.active)})`);
-  await wait(`(()=>{const s=window.startupTestStore.getState();return !s.streamDirty && s.streamSessions.length===1 && s.streamSessions[0].id===${JSON.stringify(fixture.session)};})()`);
+  // Opening the oldest chat works and keeps the restored history readable.
+  await evaluate(`window.startupTestStore.getState().openTab(${JSON.stringify(fixture.ids[0])})`);
+  await wait(`window.startupTestStore.getState().activeSessionId===${JSON.stringify(fixture.ids[0])}`);
   await evaluate(`window.startupTestStore.getState().openTab(${JSON.stringify(fixture.session)})`);
   await wait("document.body.textContent.includes('Restored history is intact.')");
   assert.equal((await evaluate(`window.api.session.messages({sessionId:${JSON.stringify(fixture.session)}})`)).messages.length, 2);

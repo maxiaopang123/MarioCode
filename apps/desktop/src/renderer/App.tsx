@@ -3,11 +3,10 @@ import { cn } from "@renderer/lib/cn.js";
 import { ThreePaneLayout } from "./components/layout/ThreePaneLayout.js";
 import { Divider } from "./components/layout/Divider.js";
 import { Titlebar } from "./components/layout/Titlebar.js";
-import { StreamSidebar } from "./components/layout/StreamSidebar.js";
+import { ProjectSidebar } from "./components/layout/ProjectSidebar.js";
 import { ChatPane } from "./components/chat/ChatPane.js";
 import { UnifiedTabsBar } from "./components/layout/UnifiedTabsBar.js";
 import { RightPanel } from "./components/layout/RightPanel.js";
-import { ProjectRail } from "./components/layout/ProjectRail.js";
 import { ToolStrip } from "./components/layout/ToolStrip.js";
 import { StatusBar } from "./components/layout/StatusBar.js";
 import { BottomTerminalBar } from "./components/layout/BottomTerminalBar.js";
@@ -146,9 +145,6 @@ export function App() {
    *  can toggle them. Workspace-only — the settings view pins leftOpen=true /
    *  rightOpen=false. NOT persisted (matches original behavior). */
   const leftOpen = useSessionStore((s) => s.leftOpen);
-  // The project tree view was removed (2026-09-28): the rail + session
-  // column is the only left bar.
-  const railVisible = true;
   const setLeftOpen = useSessionStore((s) => s.setLeftOpen);
   const rightOpen = useSessionStore((s) => s.rightOpen);
   const setRightOpen = useSessionStore((s) => s.setRightOpen);
@@ -237,11 +233,6 @@ export function App() {
           beside the browser overlay so it covers both the chat and right
           columns. Renders null when not applicable. */}
       <WidePlanDialog />
-      {/* 界面焕新 v3 ① — the project rail (stream left-bar mode only; the
-          classic tree keeps its own header/footer as the fallback view).
-          Always visible, including while the session column is collapsed
-          and while settings is open (its ⚙ cell toggles settings). */}
-      {railVisible && <ProjectRail />}
       {/*
         Left sidebar — spans the FULL window height. Its share of the width
         is a persisted percentage (default 12 ≈ a compact ~259px sidebar on a
@@ -267,7 +258,7 @@ export function App() {
           // min-content) propped the aside open no matter how small
           // leftWidthPct got.
           "flex h-full min-w-0 shrink-0 flex-col bg-surface-base",
-          railVisible ? "border-r border-edge" : "rounded-tl-3xl",
+          "rounded-tl-3xl",
           !leftOpen && "hidden",
         )}
         style={{ flexGrow: 0, flexBasis: `${leftWidthPct}%` }}
@@ -276,7 +267,7 @@ export function App() {
           {/* Left-bar view preference: classic project tree or the
               session-first stream. Both are pure renderers over the same
               store; switching keeps running turns untouched. */}
-          <StreamSidebar />
+          <ProjectSidebar />
         </div>
       </aside>
       {leftOpen && (
@@ -315,7 +306,6 @@ export function App() {
         <Titlebar
           mode="workspace"
           leftOpen={leftOpen}
-          railVisible={railVisible}
           onBack={() => setSettingsOpen(false)}
           onToggleLeft={() => setLeftOpen(!leftOpen)}
         />

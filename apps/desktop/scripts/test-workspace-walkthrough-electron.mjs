@@ -27,7 +27,7 @@ await electronTest("todo025-walkthrough",async data=>{
     await window.api.setting.set({key:'ui.lastSessionId',value:session.id});
   })()`);
   await command('Page.reload'); await wait("Boolean(window.api && document.querySelector('button .tabler-icon-settings'))");
-  await evaluate("[...document.querySelectorAll('li')].find(n=>n.textContent.includes('UI walkthrough'))?.click()");
+  await evaluate("[...document.querySelectorAll('[role=button]')].find(n=>n.textContent.includes('UI walkthrough'))?.click()");
   await wait("document.body.textContent.includes('Workspace UI verification')");
   const pointer=async selector=>{
     const point=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing target '+${JSON.stringify(selector)});e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))}})()`);

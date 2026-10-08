@@ -32,7 +32,7 @@ import { useI18n } from "@renderer/lib/i18n/index.js";
  *  shape; renders its own Dialog.Root so the sidebar only needs
  *  `<MobileConnectButton />`. When remote access (relay) is connected, an
  *  enabled indicator is shown on the right. */
-export function MobileConnectButton({ variant = "row" }: { variant?: "row" | "rail" } = {}) {
+export function MobileConnectButton() {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   // Live relay status, so the button can show an "enabled" indicator when
@@ -89,31 +89,6 @@ export function MobileConnectButton({ variant = "row" }: { variant?: "row" | "ra
       </Dialog.Portal>
     </Dialog.Root>
   );
-
-  // Project-rail cell (界面焕新 v3): icon only; live activity shows as the
-  // rail's accent pip instead of the row's trailing chips.
-  if (variant === "rail") {
-    const hint =
-      t("layout.connectPhone") +
-      (activeCount > 0 ? ` · ${t("layout.activeDevices", { n: activeCount })}` : "") +
-      (relayConnected ? ` · ${t("layout.relayConnected")}` : "");
-    return (
-      <>
-        <Hint label={hint} side="right">
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            data-on={open ? "true" : undefined}
-            className="rail-btn grid place-items-center"
-          >
-            <IconDeviceMobile size={19} />
-            {(activeCount > 0 || relayConnected) && <i className="rail-pip" aria-hidden />}
-          </button>
-        </Hint>
-        {dialog}
-      </>
-    );
-  }
 
   return (
     <>

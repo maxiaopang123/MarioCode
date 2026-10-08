@@ -25,7 +25,7 @@ await electronTest("todo023-reload",async data=>{
   for(let i=0;i<2;i++) {
     await command("Page.reload");
     await wait("Boolean(window.api && document.querySelector('button .tabler-icon-settings'))");
-    await evaluate("[...document.querySelectorAll('li')].find(n=>n.textContent.includes('metric-reload'))?.click()");
+    await evaluate("[...document.querySelectorAll('[role=button]')].find(n=>n.textContent.includes('metric-reload'))?.click()");
     await wait("document.body.textContent.includes('Timing survives reopening')");
     await wait("Boolean(document.querySelector('.sess-metrics-chips'))");
     assert.ok(await evaluate("document.querySelector('.sess-metrics-chips').textContent.includes('20')"),"reopened speed comes from disk");

@@ -42,7 +42,7 @@ try {
     })()`);
     const reopen = async () => {
       await command("Page.reload"); await wait("Boolean(window.api && document.querySelector('button .tabler-icon-settings'))");
-      await evaluate(`(()=>{const n=[...document.querySelectorAll('li')].find(n=>n.textContent.includes('display-check'));n?.click()})()`);
+      await evaluate(`(()=>{const n=[...document.querySelectorAll('[role=button]')].find(n=>n.textContent.includes('display-check'));n?.click()})()`);
       await wait("Boolean(document.querySelector('.md-figure-img'))");
       await evaluate("document.querySelector('.chat-ledger[data-open=false] .chat-ledger-head')?.click()");
     };

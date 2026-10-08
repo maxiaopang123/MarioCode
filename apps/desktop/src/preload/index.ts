@@ -326,6 +326,8 @@ const api = {
     /** Read a binary file as a base64 data URL (image preview). */
     readBinary: ((input) =>
       ipcRenderer.invoke(IPC.FILE_READ_BINARY, input)) as RpcMap["file.readBinary"],
+    readDocument: ((input) =>
+      ipcRenderer.invoke(IPC.FILE_READ_DOCUMENT, input)) as RpcMap["file.readDocument"],
     /** OS dialog image picker → base64 images (composer 图片 button). */
     pickImages: ((input) =>
       ipcRenderer.invoke(IPC.FILE_PICK_IMAGES, input)) as RpcMap["file.pickImages"],

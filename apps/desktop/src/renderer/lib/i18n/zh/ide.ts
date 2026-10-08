@@ -3,6 +3,27 @@
  * zh is the source of truth for `MessageId`.
  */
 export const zh = {
+  "ide.document.readOnly": "只读预览",
+  "ide.document.openExternal": "用默认应用打开",
+  "ide.document.readingLayout": "阅读视图保留文字、表格与图片；复杂排版请查看原文件。",
+  "ide.document.sheet": "工作表",
+  "ide.document.row": "行号",
+  "ide.document.previous": "上一页",
+  "ide.document.next": "下一页",
+  "ide.document.page": "第 {n} / {total} 页",
+  "ide.document.slideImage": "幻灯片图片",
+  "ide.document.emptySlide": "这一页没有可读取的文字、表格或图片。",
+  "ide.document.previousColumns": "上一组列",
+  "ide.document.nextColumns": "下一组列",
+  "ide.document.columnPage": "第 {n} / {total} 组列",
+  "ide.document.zoomIn": "放大",
+  "ide.document.zoomOut": "缩小",
+  "ide.document.pageText": "本页文字（可复制）",
+  "ide.document.error.outside": "文件不在当前已登记的项目或工作树中，无法读取。",
+  "ide.document.error.large": "文件超过 32 MB 或正在变化，请用默认应用打开。",
+  "ide.document.error.format": "暂不支持这个文件格式，请用默认应用打开。",
+  "ide.document.error.read": "无法读取文件，请检查文件是否仍存在或被占用。",
+  "ide.document.error.parse": "无法预览此文件。它可能已损坏、受密码保护或包含不支持的内容。",
   /* ── files panel / file tree ── */
   "ide.files.noProjectTitle": "还没有项目",
   "ide.files.noProjectDesc": "在左侧栏添加一个项目文件夹后,即可在此浏览文件",

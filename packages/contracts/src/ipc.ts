@@ -2069,6 +2069,14 @@ export const FileReadBinarySchema = z.object({
 });
 export type FileReadBinaryInput = z.infer<typeof FileReadBinarySchema>;
 
+/** Local read-only document preview, scoped to a registered workspace. */
+export const FileReadDocumentSchema = z.object({ filePath: z.string().min(1) });
+export type FileReadDocumentInput = z.infer<typeof FileReadDocumentSchema>;
+export type FileReadDocumentResult =
+  | { ok: true; data: string }
+  | { ok: false; code: "outside" | "large" | "format" | "read" };
+export const DOCUMENT_PREVIEW_MAX_BYTES = 32 * 1024 * 1024;
+
 /** Fetch a REMOTE image (http/https) in the main process and return it as a
  *  `data:` URL (TODO-022, 回复里的网络图片).
  *
@@ -4965,6 +4973,7 @@ export interface RpcMap {
   "file.readFile": (input: FileReadInput) => Promise<{ content: string }>;
   /** Read a binary file as a base64 data URL (image preview). Same path guard. */
   "file.readBinary": (input: FileReadBinaryInput) => Promise<{ dataUrl: string }>;
+  "file.readDocument": (input: FileReadDocumentInput) => Promise<FileReadDocumentResult>;
   /** Fetch a remote image as a data URL (reply 「加载图片」). Never throws:
    *  a refusal comes back as `{ dataUrl: "", error }`. */
   "net.fetchImage": (input: NetFetchImageInput) => Promise<{ dataUrl: string; error?: string }>;
@@ -5505,6 +5514,7 @@ export const IPC = {
   FILE_READ: "file:readFile",
   // File read as base64 data URL (image preview)
   FILE_READ_BINARY: "file:readBinary",
+  FILE_READ_DOCUMENT: "file:readDocument",
   // Remote image fetched by main and returned as a data URL (reply 加载图片)
   NET_FETCH_IMAGE: "net:fetchImage",
   // OS dialog image picker → base64 images (composer 图片 button)

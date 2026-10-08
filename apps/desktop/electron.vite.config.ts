@@ -136,6 +136,7 @@ export default defineConfig({
   },
   // Runtime-only verification can reuse the last renderer build.
   renderer: process.env.MARIOCODE_RUNTIME_BUILD_ONLY === "1" ? undefined : {
+    assetsInclude: ["**/*.bcmap", "**/*.pfb"],
     root: "src/renderer",
     build: {
       // Standard app mode (NOT lib mode): the renderer is loaded via

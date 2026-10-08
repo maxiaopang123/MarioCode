@@ -11,6 +11,8 @@ import { ideDirtyTracker } from "./OpenTabsBar.js";
 import { IconEye, IconEdit, IconLoader2, IconAlertTriangle, IconSquare, IconColumns3, IconPhotoOff, IconArrowLeft, IconArrowRight } from "@renderer/lib/icons.js";
 import { FileTypeIcon } from "@renderer/lib/fileIcon.js";
 import { Markdown } from "../chat/Markdown.js";
+import { DocumentPreview } from "./DocumentPreview.js";
+import { isDocumentPath } from "@renderer/lib/documentTypes.js";
 // LSP provider bridge: registers definition/references/hover providers, syncs
 // documents, and applies diagnostics markers to the model.
 import {
@@ -106,7 +108,7 @@ export function FileEditor({
   //  - preview: explicitly requested (Markdown rendered read-only).
   //  - edit: the normal editable Monaco instance (default for non-md files).
   const effectiveMode: "edit" | "diff" | "preview" =
-    historyOnly || (viewMode === "diff" && diffBefore != null)
+    isDocumentPath(filePath) ? "preview" : historyOnly || (viewMode === "diff" && diffBefore != null)
       ? "diff"
       : viewMode === "preview"
         ? "preview"
@@ -115,6 +117,7 @@ export function FileEditor({
   const markdown = isMarkdown(filePath);
   const image = isImage(filePath);
   const unsupported = isUnsupported(filePath);
+  const document = isDocumentPath(filePath);
 
   return (
     <div className="flex h-full flex-col">
@@ -122,11 +125,12 @@ export function FileEditor({
         filePath={filePath}
         projectPath={projectPath}
         mode={effectiveMode}
-        canDiff={diffBefore != null && !historyOnly}
+        canDiff={!document && diffBefore != null && !historyOnly}
         onToggleMode={() => setViewMode(filePath, effectiveMode === "edit" ? "diff" : "edit")}
         isMarkdown={markdown}
         isImage={image}
         isUnsupported={unsupported}
+        isDocument={document}
         onTogglePreview={() =>
           setViewMode(filePath, effectiveMode === "preview" ? "edit" : "preview")
         }
@@ -137,7 +141,9 @@ export function FileEditor({
         {effectiveMode === "diff" && diffBefore != null ? (
           <DiffPane filePath={filePath} before={diffBefore} after={diffAfter} />
         ) : effectiveMode === "preview" ? (
-          image ? (
+          document ? (
+            <DocumentPreview key={filePath} filePath={filePath} />
+          ) : image ? (
             <ImagePreviewPane filePath={filePath} />
           ) : unsupported ? (
             <UnsupportedPane filePath={filePath} />
@@ -166,6 +172,7 @@ function EditorToolbar({
   isMarkdown,
   isImage,
   isUnsupported,
+  isDocument,
   onTogglePreview,
   editorMode,
   onToggleEditorMode,
@@ -178,6 +185,7 @@ function EditorToolbar({
   isMarkdown: boolean;
   isImage: boolean;
   isUnsupported: boolean;
+  isDocument: boolean;
   onTogglePreview: () => void;
   editorMode: "tabs" | "replace";
   onToggleEditorMode: () => void;
@@ -249,7 +257,7 @@ function EditorToolbar({
   // Files that default to a read-only preview pane (markdown rendered, image
   // displayed, or an unsupported-type notice). These get a Preview/Edit toggle
   // so the user can still drop into the raw Monaco editor if they want.
-  const hasPreviewToggle = isMarkdown || isImage || isUnsupported;
+  const hasPreviewToggle = !isDocument && (isMarkdown || isImage || isUnsupported);
   // Show the path relative to the project root when possible (cleaner in the
   // narrow toolbar); fall back to the full path. Case-insensitive on Windows/
   // macOS so a lowercased drive letter from LSP (`d:\foo`) still matches a

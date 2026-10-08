@@ -86,6 +86,9 @@
 | **react-icons** | ^5.6 | 辅助图标库(Phosphor/Remix/VS Code/SI 等) |
 | **class-variance-authority** | ^0.7 | `cva()` variant 管理 |
 | **tailwind-merge** / **clsx** | ^3.6 / ^2.1 | 合并 Tailwind class 的 `cn()` 工具 |
+| **pdfjs-dist** | 5.4.624 | 本地 PDF 阅读；Electron 33 使用 legacy 主文件 / worker，CMap 与字体内联打包 |
+| **mammoth** / **xlsx** | 1.13.0 / 0.20.3 | Office worker 内 DOCX 转阅读 HTML、Excel 格式化读取；SheetJS 使用官方 CDN tarball |
+| **fflate** / **dompurify** | 0.8.3 / 3.3.3 | Office 压缩包展开上限、PPTX 部件读取与 Word 阅读 HTML 清洗 |
 
 > **TanStack Router / Query、Lexical** 等在总体方案中规划,但**当前尚未安装**。Monaco / xterm / react-markdown / node-pty 已随 P4 引入。组件库(`@base-ui/react`)和图标库(`@tabler/icons-react`)已安装可用。
 

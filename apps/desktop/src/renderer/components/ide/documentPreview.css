@@ -1,0 +1,13 @@
+.document-reading { max-width: 52rem; min-height: 20rem; padding: 2rem; color: #17221b; background: white; font: 15px/1.8 system-ui, sans-serif; overflow-wrap: anywhere; }
+.document-reading h1 { font-size: 1.8rem; font-weight: 650; margin: 0 0 1rem; }
+.document-reading h2, .document-reading h3 { font-size: 1.3rem; font-weight: 600; margin: 1.25rem 0 .5rem; }
+.document-reading p { margin: .5rem 0; white-space: pre-wrap; }
+.document-reading ul, .document-reading ol { padding-left: 1.5rem; }
+.document-reading ul { list-style: disc; } .document-reading ol { list-style: decimal; }
+.document-reading img { max-width: 100%; height: auto; margin: 1rem auto; }
+.document-reading table { width: 100%; margin: 1rem 0; border-collapse: collapse; }
+.document-reading td, .document-reading th { border: 1px solid #d7ded9; padding: .4rem .6rem; }
+.document-sheet { border-collapse: separate; border-spacing: 0; }
+.document-sheet td, .document-sheet th { border-right: 1px solid rgb(var(--edge)); border-bottom: 1px solid rgb(var(--edge)); padding: .4rem .6rem; min-width: 5rem; white-space: pre-wrap; }
+.document-sheet th { background: rgb(var(--surface-muted)); color: rgb(var(--content-muted)); position: sticky; left: 0; }
+.document-sheet thead th { top: 0; z-index: 1; }

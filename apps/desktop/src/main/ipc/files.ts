@@ -31,6 +31,7 @@ import {
   IPC,
   FileReadSchema,
   FileReadBinarySchema,
+  FileReadDocumentSchema,
   FileListDirSchema,
   FileSearchSchema,
   FileWriteSchema,
@@ -54,6 +55,7 @@ import type {
   FileGrepResult,
 } from "@contracts/ipc";
 import { log } from "@main/lib/logger.js";
+import { readDocumentPreview } from "@main/lib/documentPreview.js";
 import { SettingRepo } from "@main/store/repositories.js";
 import { resolveRg, rgListFiles, rgGrep } from "@main/lib/rgSearch.js";
 import {
@@ -768,6 +770,10 @@ export function registerFileHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(IPC.FILE_READ_BINARY, async (_evt, raw) => {
     const input = FileReadBinarySchema.parse(raw);
     return readBinaryGuarded(input.filePath);
+  });
+  ipcMain.handle(IPC.FILE_READ_DOCUMENT, async (_evt, raw) => {
+    const input = FileReadDocumentSchema.parse(raw);
+    return readDocumentPreview(input.filePath);
   });
 
   /* ── net:fetchImage — remote image → data URL (reply 「加载图片」) ── */

@@ -521,6 +521,7 @@ const net: Api["net"] = {
 const file: Api["file"] = {
   readFile: (input) => rpc("file:readFile", input),
   readBinary: (input) => rpc("file:readBinary", input),
+  readDocument: () => Promise.resolve({ ok: false, code: "format" }),
   pickImages: () => pickImagesWeb(),
   listDir: (input) => rpc("file:listDir", input),
   search: (input) => rpc("file:search", input),

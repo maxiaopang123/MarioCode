@@ -16,6 +16,7 @@ import { app, nativeImage } from "electron";
 import { BROWSER_SCREENSHOT_DIR_SETTING_KEY, IMAGE_SIZE_RE } from "@contracts/ipc";
 import { engineFetch } from "@main/network/engineProxy.js";
 import { registerImageArtifact } from "@main/lib/imageArtifacts.js";
+import { registerSessionImage } from "@main/canvas/canvasStore.js";
 import { log } from "@main/lib/logger.js";
 import { SettingRepo } from "@main/store/repositories.js";
 import { resolveImageEndpoint } from "./builtinToolsConfig.js";
@@ -128,6 +129,8 @@ export async function imageGenerate(
   if (savedPath) {
     registerImageArtifact(original, savedPath);
     registerImageArtifact(display.data, savedPath);
+    // TODO-033/041:会话里生成的图自动进入对应项目图库(画布工作台)。
+    if (ctx.sessionId) registerSessionImage(ctx.sessionId, savedPath, prompt);
   }
   ctx.onImage?.({ toolCallId: ctx.toolCallId, data: display.data, mimeType: display.mimeType });
   log.info(`mario_image_generate: ${endpoint.model} ${size} → ${savedPath ?? "(not saved)"}`);

@@ -2,9 +2,11 @@
 
 > 记录完成结果、验证与 Git 版本。新想法和未完成事项统一维护在 [MarioCode 想法与待办](MarioCode-TODO.md)。
 
-最后更新：2026-10-07
+最后更新：2026-10-08
 
-## 当前进度（2026-10-07）
+## 当前进度（2026-10-08）
+
+**10/8 更新（v0.2.28 · TODO-033/041 + TODO-049）**：绘画画布与图库。项目栏（rail）底部新增「画布」入口（palette 图标，用户明确要求把原「暂缓（大版本）」的 TODO-033/041 与切图 TODO-049 合并为一个版本交付）。主区三视图：**文生图**——提示词、风格 chips（多选，以文本追加进提示词）、负面提示词（文本并入，images API 无独立参数，高级选项种子/引导强度刻意不做以免 UI 说谎）、画幅（自动/1:1/3:2/9:16）、数量 1/2/4（逐张调用，部分成功保留已出图并报原因）；**画布编辑**——真实蒙版画布（画笔/橡皮/笔刷大小/[/] 快捷键/撤销/重做/清空，笔画像素坐标随窗口缩放换算回原图），三种编辑方式：局部重绘（蒙版透明区=重绘区，POST images/edits multipart 手工编码，engineFetch 同 设置→网络 路由）、整图变换（不带 mask）、扩图（渲染端把原图贴进 1.5 倍画布居中、边区造蒙版，imageBase64 覆盖编辑输入）；**切图（TODO-049）为真实裁剪**——选框整体拖动 + 四角手柄缩放 + 比例约束，应用后 nativeImage 按原图像素裁出并另存为派生新版本（原图保留），Esc 退出；**图库**——卡片网格 + 搜索 + 最近/最早/派生链分组排序 + 导入本地图片 + 删除（连带派生链后代，文件移入 `<图库>/.trash/`，跨卷 rename 退回复制）+ 在文件夹中显示 + 复制提示词 + 打开图库文件夹。派生链（chainId=链根 id，parentId 指来源）串联原图与各版本，编辑视图底部派生链可切换编辑对象。图库分独立/项目两范围：文件默认落「图片/MarioCode-Gallery/{shared|projects/<pid>}」（known-folder 解析失败退 userData/gallery；画布内可改目录，settings `canvas.galleryDir`，只影响之后），元数据入新表 `canvas_images`（软删除 deleted_at）。会话里 mario_image_generate 生成的图自动登记进对应项目图库（不复制文件，行指向截图目录原图）。图片端点复用 设置→内置工具 的图片配置（resolveImageEndpoint），未配置时画布头部显示引导条且生成/编辑按钮禁用；真实编辑接口与模型兼容性按原 TODO 备注留待用户配置后人工验证。挂载方式：store `canvasOpen`，打开时 ThreePaneLayout CSS 隐藏保活（终端 PTY/聊天不断），CanvasWorkbench 懒加载作为兄弟节点占满面版行；切范围/切会话（App 根订阅 activeSessionId 变化）自动退出画布。验证：类型检查与完整构建通过；`test:canvas`（canvas-smoke）30 项——表迁移、仓储 CRUD、范围过滤、派生链递归、越界选区钳制、导入过滤、会话图登记、连带删除进 .trash、images API 请求体字段/multipart mask 有无/上游 400 中文错误；`test:canvas-electron` 隔离真应用三视图切换、未配置引导条、生成按钮禁用、返回会话卸载；`test:canvas-e2e-electron` 本地 mock 图片接口（纯 JS PNG 编码）走通配置 → 文生图 ×2 → 真实鼠标涂抹蒙版（已涂抹 1 处）→ 蒙版重绘 → 真实裁剪（256×160 → 179×112，显示坐标换算正确）→ 派生链同链 → 图库删除确认对话框，截图已逐张检查。未验证：真实收费图片端点出图与 edits 兼容性、macOS；未打包、安装或上传。
 
 **10/7 本地安装包交付（v0.2.27）**：沿用功能提交 `0e21efa` 与本地标签 `v0.2.27`，不因打包增加版本。Windows 安装包 `apps/desktop/release/MarioCode-0.2.27-x64.exe` 已生成（203,422,277 字节，约 194.0 MiB），大小、SHA512 与 `latest.yml` 一致，blockmap 已生成。包内版本、主进程、胶囊 HTML / JS / CSS 与预加载及其共享资源逐字节匹配最终构建，SSH stdio 与自动更新地址正确。从打包 ASAR 启动隔离桌面，项目 / 原聊天恢复、重复重开、跨筛选、正常自动分页与无进展退出回归通过，已检查截图；测试记录 `.turbo/startup-recovery/run-7K1nrZ`，完整性记录 `.turbo/installer-v0.2.27-verification.json`。本轮未安装、上传或主动关闭用户的应用；安装时需从托盘退出旧版。
 

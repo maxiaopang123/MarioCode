@@ -49,6 +49,10 @@ const GitDiffDialog = lazy(() =>
 const PlanViewer = lazy(() =>
   import("./components/chat/PlanViewer.js").then((m) => ({ default: m.PlanViewer })),
 );
+// 画布工作台自身体积不小(蒙版画布 / 切图交互),懒加载保持首屏轻量。
+const CanvasWorkbench = lazy(() =>
+  import("./components/canvas/CanvasWorkbench.js").then((m) => ({ default: m.CanvasWorkbench })),
+);
 
 export function App() {
   // Subscribe to the claude event stream for the app's whole lifetime.
@@ -125,6 +129,20 @@ export function App() {
    *  a sibling view (not a modal) sharing the same titlebar + pane shell. */
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
   const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
+  const canvasOpen = useSessionStore((s) => s.canvasOpen);
+
+  // 画布工作台打开时,切换会话(任何入口:会话列 / 命令面板 / 快捷键)自动
+  // 退出画布回到聊天 —— 否则点了会话行界面毫无反应。订阅而不挂在
+  // selectSession/openTab/startSession 的多分支 set() 上:一处覆盖全部路径。
+  useEffect(() => {
+    let prevActive = useSessionStore.getState().activeSessionId;
+    return useSessionStore.subscribe((s) => {
+      if (s.canvasOpen && s.activeSessionId !== prevActive) {
+        useSessionStore.getState().setCanvasOpen(false);
+      }
+      prevActive = s.activeSessionId;
+    });
+  }, []);
 
   /** Left / right sidebar + bottom terminal visibility. Lifted from local
    *  useState into the store so the command palette (and any other consumer)
@@ -321,26 +339,35 @@ export function App() {
             restores the snapshot on exit), so RightPanel — file tree, git
             scan, browser view ownership — is never torn down.
           */}
-          <ThreePaneLayout
-            left={null}
-            center={<CenterPane wide={widePanelOpen} />}
-            right={<RightPanel />}
-            leftOpen={false}
-            rightOpen={rightOpen}
-            bottomTerminal={<BottomTerminalBar active={bottomTerminalOpen} />}
-            bottomTerminalOpen={bottomTerminalOpen}
-            rightWidth={rightWidth}
-            rightWidthPct={widePanelOpen ? widePanelPct : undefined}
-            bottomTerminalHeight={bottomTerminalHeight}
-            onResizeRight={widePanelOpen ? handleWidePanelResize : adjustRightWidth}
-            onResizeBottomTerminal={adjustBottomTerminalHeight}
-            onResetRight={widePanelOpen ? resetWidePanelPct : resetRightWidth}
-            onResetBottomTerminal={resetBottomTerminalHeight}
-          />
-          {/* 界面焕新 v3 — vertical tool strip: pane switcher + terminal +
-              panel toggle (replaces the right panel's top tabs and the
-              titlebar's terminal / right-panel toggles). */}
-          <ToolStrip />
+          <div className={cn("flex min-h-0 min-w-0 flex-1", canvasOpen && "hidden")}>
+            <ThreePaneLayout
+              left={null}
+              center={<CenterPane wide={widePanelOpen} />}
+              right={<RightPanel />}
+              leftOpen={false}
+              rightOpen={rightOpen}
+              bottomTerminal={<BottomTerminalBar active={bottomTerminalOpen} />}
+              bottomTerminalOpen={bottomTerminalOpen}
+              rightWidth={rightWidth}
+              rightWidthPct={widePanelOpen ? widePanelPct : undefined}
+              bottomTerminalHeight={bottomTerminalHeight}
+              onResizeRight={widePanelOpen ? handleWidePanelResize : adjustRightWidth}
+              onResizeBottomTerminal={adjustBottomTerminalHeight}
+              onResetRight={widePanelOpen ? resetWidePanelPct : resetRightWidth}
+              onResetBottomTerminal={resetBottomTerminalHeight}
+            />
+            {/* 界面焕新 v3 — vertical tool strip: pane switcher + terminal +
+                panel toggle (replaces the right panel's top tabs and the
+                titlebar's terminal / right-panel toggles). */}
+            <ToolStrip />
+          </div>
+          {/* 画布工作台(TODO-033/041 + TODO-049):占满面版行的兄弟节点;
+              打开时上方工作区 CSS 隐藏保活(终端 PTY / 聊天不打断)。 */}
+          {canvasOpen && (
+            <Suspense fallback={null}>
+              <CanvasWorkbench />
+            </Suspense>
+          )}
           {/* Git diff dialog (the "dialog" open-mode). Portaled to <body>;
               renders nothing when closed or empty. Mounted at the workspace
               level so it overlays the editor while staying app-scoped.

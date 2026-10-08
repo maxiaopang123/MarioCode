@@ -889,6 +889,11 @@ export interface SessionState {
   claudeInstalled: boolean | null;
   /** Settings modal visibility (opened from the LeftBar ⚙ footer and the CLI-missing CTA). */
   settingsOpen: boolean;
+  /** 画布工作台(TODO-033/041 + TODO-049)占据主区:打开时工作区 ThreePaneLayout
+   *  CSS 隐藏保活(终端/聊天不断),CanvasWorkbench 作为兄弟节点占满面版行。
+   *  切换会话(selectSession/openTab 改 activeSessionId)时由 App 根的订阅关闭。
+   *  NOT persisted. */
+  canvasOpen: boolean;
   /** Initial settings section to land on when the modal opens. Callers that
    *  know which section the user wants (e.g. the composer's "管理模型…"
    *  entry → "custom-models" / "pi-models") pass it to setSettingsOpen; null
@@ -1557,6 +1562,8 @@ export interface SessionState {
    *  is looking at it now). */
   setWindowFocused: (focused: boolean) => void;
   setSettingsOpen: (open: boolean, section?: string) => void;
+  /** 打开/关闭画布工作台(打开时顺带收起设置浮窗,避免两层覆盖)。 */
+  setCanvasOpen: (open: boolean) => void;
   /** Toggle the "尚未配置模型" dialog open/closed (send-time guard). */
   setModelConfigPromptOpen: (open: boolean) => void;
   /** Toggle the Cmd/Ctrl+K command palette open/closed. */
@@ -4584,6 +4591,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   isWindowFocused: true,
   claudeInstalled: null,
   settingsOpen: false,
+  canvasOpen: false,
   settingsSection: null,
   modelConfigPromptOpen: false,
   modelGuardPulse: 0,
@@ -8436,6 +8444,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   setModelConfigPromptOpen: (open) => set({ modelConfigPromptOpen: open }),
+
+  setCanvasOpen: (open) =>
+    set(open ? { canvasOpen: true, settingsOpen: false, settingsSection: null } : { canvasOpen: false }),
 
   setWindowFocused: (focused) => {
     set({ isWindowFocused: focused });

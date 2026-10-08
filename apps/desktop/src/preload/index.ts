@@ -261,6 +261,25 @@ const api = {
       ipcRenderer.invoke(IPC.BUILTIN_TOOLS_TEST_SEARCH, input)) as RpcMap["builtinTools.testSearch"],
   },
 
+  /** 画布工作台(TODO-033/041 + TODO-049):图库列表 / 文生图 / 编辑 / 切图 /
+   *  导入 / 删除 / 重命名 / 在文件夹中显示。图片内容经 imageData 按张取。 */
+  canvas: {
+    home: (() => ipcRenderer.invoke(IPC.CANVAS_HOME)) as RpcMap["canvas.home"],
+    list: ((input) => ipcRenderer.invoke(IPC.CANVAS_LIST, input)) as RpcMap["canvas.list"],
+    imageData: ((input) =>
+      ipcRenderer.invoke(IPC.CANVAS_IMAGE_DATA, input)) as RpcMap["canvas.imageData"],
+    generate: ((input) =>
+      ipcRenderer.invoke(IPC.CANVAS_GENERATE, input)) as RpcMap["canvas.generate"],
+    edit: ((input) => ipcRenderer.invoke(IPC.CANVAS_EDIT, input)) as RpcMap["canvas.edit"],
+    crop: ((input) => ipcRenderer.invoke(IPC.CANVAS_CROP, input)) as RpcMap["canvas.crop"],
+    import: ((input) => ipcRenderer.invoke(IPC.CANVAS_IMPORT, input)) as RpcMap["canvas.import"],
+    delete: ((input) => ipcRenderer.invoke(IPC.CANVAS_DELETE, input)) as RpcMap["canvas.delete"],
+    rename: ((input) => ipcRenderer.invoke(IPC.CANVAS_RENAME, input)) as RpcMap["canvas.rename"],
+    showInFolder: ((input) =>
+      ipcRenderer.invoke(IPC.CANVAS_SHOW_IN_FOLDER, input)) as RpcMap["canvas.showInFolder"],
+    openFolder: (() => ipcRenderer.invoke(IPC.CANVAS_OPEN_FOLDER)) as RpcMap["canvas.openFolder"],
+  },
+
   /** Open a project root in the OS file manager. Main refuses any path that
    *  isn't an exact match for a known project root, so only directories the
    *  user has added as projects can be opened. */

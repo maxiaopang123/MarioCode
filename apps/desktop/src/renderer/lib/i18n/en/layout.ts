@@ -134,6 +134,7 @@ export const en = {
   "layout.rail.running": "running",
   "layout.rail.waiting": "{n} waiting on you",
   "layout.rail.unread": "new replies",
+  "layout.rail.canvas": "Canvas · paint & gallery",
   "layout.strip.aria": "Tools",
   "layout.status.aria": "Status bar",
   "layout.status.claudeReady": "Claude ready",

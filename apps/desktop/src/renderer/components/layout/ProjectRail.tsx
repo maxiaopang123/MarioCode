@@ -24,6 +24,7 @@ import {
   IconCalendar,
   IconMessages,
   IconMoon,
+  IconPalette,
   IconPlus,
   IconSettings,
   IconSun,
@@ -56,6 +57,8 @@ function ProjectRailBase() {
   const setStreamScope = useSessionStore((s) => s.setStreamScope);
   const setLeftOpen = useSessionStore((s) => s.setLeftOpen);
   const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
+  const canvasOpen = useSessionStore((s) => s.canvasOpen);
+  const setCanvasOpen = useSessionStore((s) => s.setCanvasOpen);
   const addProject = useSessionStore((s) => s.addProjectFromFolder);
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
   const runningBySession = useSessionStore((s) => s.runningBySession);
@@ -142,6 +145,8 @@ function ProjectRailBase() {
   const pick = (next: string | null) => {
     setStreamScope(next);
     setLeftOpen(true);
+    // 画布打开时切范围 = 回到会话视图。
+    setCanvasOpen(false);
   };
 
   const { effective: effectiveTheme } = useTheme();
@@ -230,6 +235,16 @@ function ProjectRailBase() {
       <span className="min-h-2 flex-1" aria-hidden />
 
       <div className="flex flex-col items-center gap-1" style={noDrag}>
+        <Hint label={t("layout.rail.canvas")} side="right">
+          <button
+            type="button"
+            onClick={() => setCanvasOpen(!canvasOpen)}
+            data-on={canvasOpen ? "true" : undefined}
+            className="rail-btn grid place-items-center"
+          >
+            <IconPalette size={18} />
+          </button>
+        </Hint>
         <Hint label={t("layout.scheduledTasks")} side="right">
           <button
             type="button"

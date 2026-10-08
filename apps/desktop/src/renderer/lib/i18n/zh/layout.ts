@@ -137,6 +137,7 @@ export const zh = {
   "layout.rail.running": "运行中",
   "layout.rail.waiting": "{n} 个在等你",
   "layout.rail.unread": "有新回复",
+  "layout.rail.canvas": "画布 · 绘画与图库",
   "layout.strip.aria": "工具",
   "layout.status.aria": "状态栏",
   "layout.status.claudeReady": "Claude 就绪",

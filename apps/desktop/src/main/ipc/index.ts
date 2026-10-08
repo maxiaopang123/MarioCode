@@ -34,6 +34,7 @@ import { registerSchedulerHandlers } from "./scheduler.js";
 import { registerClawBotHandlers } from "./clawbot.js";
 import { registerNetworkHandlers } from "./network.js";
 import { registerBuiltinToolsHandlers } from "./builtinTools.js";
+import { registerCanvasHandlers } from "./canvas.js";
 
 /**
  * Wrap `ipcMain` so every `handle()` registration automatically awaits DB
@@ -94,6 +95,7 @@ export function registerIpcHandlers(): void {
   registerClawBotHandlers(ipc);
   registerNetworkHandlers(ipc);
   registerBuiltinToolsHandlers(ipc);
+  registerCanvasHandlers(ipc);
 }
 
 // Re-export channel constants so handlers stay aligned with the contract.

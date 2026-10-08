@@ -1,0 +1,1766 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" href="../apps/desktop/src/renderer/favicon.png">
+<title>MarioCode · 绘画画布与图库工作台原型（TODO-033 / TODO-041）</title>
+<style>
+  /* =========================================================================
+   * 绘画画布与图库工作台 · 交互原型（TODO-033 / TODO-041，「暂缓（大版本）」）
+   *
+   * 用法:直接双击在浏览器里打开,或 `node prototypes/.serve.mjs` 后访问
+   *   http://127.0.0.1:8899/canvas-workbench.html
+   * 地址栏 hash 可直接定位(& 或 , 分隔):
+   *   #t2i | #canvas | #gallery   —— 三个工作台视图(默认 t2i)
+   *   #dark                        —— 深色
+   *   #proj                        —— 图库范围切到「项目图库」
+   *   #crop                        —— 画布编辑直接进切图模式(演示/截图)
+   *   #cropdone                    —— 进切图并直接应用一次 16:9 裁剪(演示/截图)
+   *
+   * 原型里可真实操作的点:
+   *  - 画布编辑视图的画笔 / 橡皮是真的 HTML5 Canvas,可在图上涂抹蒙版,
+   *    支持笔刷大小([ / ] 快捷键)、撤销、重做、清空;
+   *  - 切图(TODO-049)是真裁剪:选框整体拖动 + 四角手柄缩放,支持
+   *    自由 / 1:1 / 3:2 / 16:9 比例约束;「应用切图」按选区从位图裁出
+   *    新图,另存为派生新版本进底部派生链与图库(原图保留),Esc 退出;
+   *  - 底部版本派生链可点击切换正在编辑的版本(蒙版随版本清空);
+   *  - 顶栏视图 / 图库范围 / 主题切换都会写回地址栏 hash,刷新后保留。
+   * 设计语言与 tokens 完全复用 ui-refresh-v3.html(暖灰底 + 石墨 + 薄荷)。
+   * ========================================================================= */
+
+  :root{
+    --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","PingFang SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+    --font-mono:"JetBrains Mono","Cascadia Code","SF Mono",ui-monospace,Consolas,monospace;
+    --r-sm:6px;   /* 徽标、行内代码、树行、菜单项 */
+    --r-md:8px;   /* 按钮、输入框、列表行、胶囊 */
+    --r-lg:12px;  /* 卡片、代码块、步骤容器、停靠卡片 */
+    --r-xl:14px;  /* 工作区卡片、输入框 */
+    --dur-1:120ms;
+    --dur-2:220ms;
+    --ease:cubic-bezier(.22,1,.36,1);
+  }
+
+  /* ===== 浅色:暖中性灰(与 v3 原型同一组 token) ===== */
+  [data-theme]{
+    --bg:239 241 239;
+    --surface:255 255 255;
+    --surface-2:247 249 247;
+    --hover:240 243 241;
+    --active:231 236 233;
+    --edge:228 233 230;
+    --edge-strong:208 215 211;
+    --content:26 34 31;
+    --content-2:78 89 84;
+    --content-3:108 119 114;
+    --primary:40 56 51;
+    --primary-hover:28 41 37;
+    --on-primary:255 255 255;
+    --accent:92 160 128;
+    --accent-strong:44 112 83;
+    --on-accent:255 255 255;
+    --mint:139 192 163;
+    --danger:220 38 38;
+    --warning:180 83 9;
+    --e1:0 1px 2px rgb(28 25 23 / .05);
+    --e2:0 8px 20px -10px rgb(28 25 23 / .16), 0 2px 4px -2px rgb(28 25 23 / .05);
+    --stage-bg:236 239 237;
+    color-scheme:light;
+  }
+  /* ===== 深色 ===== */
+  [data-theme="dark"]{
+    --bg:23 26 25;
+    --surface:31 35 33;
+    --surface-2:36 41 38;
+    --hover:44 50 46;
+    --active:52 59 54;
+    --edge:52 58 54;
+    --edge-strong:74 82 76;
+    --content:233 237 234;
+    --content-2:178 188 182;
+    --content-3:138 148 142;
+    --primary:139 192 163;
+    --primary-hover:160 207 181;
+    --on-primary:16 28 22;
+    --accent:96 186 143;
+    --accent-strong:116 204 159;
+    --on-accent:16 28 22;
+    --danger:248 113 113;
+    --warning:251 191 36;
+    --e1:0 1px 2px rgb(0 0 0 / .3);
+    --e2:0 10px 24px -10px rgb(0 0 0 / .5);
+    --stage-bg:18 21 19;
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  [hidden]{display:none!important}
+  html,body{height:100%}
+  body{
+    font:14px/1.55 var(--font-ui);
+    color:rgb(var(--content));
+    background:rgb(var(--bg));
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  input,textarea,select{font:inherit;color:inherit}
+  ::selection{background:rgb(var(--accent) / .25)}
+  .mono{font-family:var(--font-mono);font-size:.86em}
+
+  /* ============ 原型控制条(仅原型,不属于产品界面) ============ */
+  .proto-bar{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:8px 16px;
+    background:#1d2a26;color:#cfe0d7;
+    border-bottom:1px solid #000;
+  }
+  .pb-title{display:flex;align-items:baseline;gap:10px;min-width:0}
+  .pb-title b{font-size:13px;color:#fff;white-space:nowrap}
+  .pb-title span{font-size:11.5px;color:#8fa79c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pb-ctrls{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .pseg{display:flex;background:#131e1b;border:1px solid #2c3d37;border-radius:8px;padding:2px;gap:2px}
+  .pseg button{padding:3px 10px;border-radius:6px;font-size:11.5px;color:#9db4aa}
+  .pseg button.on{background:rgb(var(--accent));color:#0f1a15;font-weight:600}
+
+  /* ============ 应用骨架 ============ */
+  .app{
+    display:flex;flex-direction:column;
+    height:calc(100vh - 38px);
+    padding:10px;gap:10px;
+  }
+  .app-main{flex:1;min-height:0;display:flex;gap:10px}
+
+  /* --- 项目栏(60px) --- */
+  .rail{
+    width:60px;flex:none;
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    padding:8px 0;
+    background:rgb(var(--surface));
+    border:1px solid rgb(var(--edge));
+    border-radius:var(--r-xl);
+    box-shadow:var(--e1);
+  }
+  .rail-logo{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;margin-bottom:2px}
+  .rail-logo svg{width:28px;height:28px}
+  .rail-sep{width:28px;height:1px;background:rgb(var(--edge));margin:4px 0}
+  .rail-btn{
+    width:36px;height:36px;border-radius:10px;
+    display:grid;place-items:center;
+    color:rgb(var(--content-3));
+    transition:background var(--dur-1) var(--ease),color var(--dur-1) var(--ease);
+    position:relative;
+  }
+  .rail-btn:hover{background:rgb(var(--hover));color:rgb(var(--content-2))}
+  .rail-btn.on{background:rgb(var(--accent) / .14);color:rgb(var(--accent-strong))}
+  .rail-btn.on::before{
+    content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:3px;border-radius:99px;
+    background:rgb(var(--accent));
+  }
+  .rail .spring{flex:1}
+  .rail .only-dark{display:none}
+  .app[data-theme="dark"] .rail .only-dark{display:block}
+  .app[data-theme="dark"] .rail .only-light{display:none}
+
+  /* --- 会话列(原型静态展示) --- */
+  .slist{
+    width:264px;flex:none;
+    display:flex;flex-direction:column;
+    background:rgb(var(--surface));
+    border:1px solid rgb(var(--edge));
+    border-radius:var(--r-xl);
+    box-shadow:var(--e1);
+    overflow:hidden;
+  }
+  .sl-head{display:flex;align-items:center;gap:8px;padding:12px 12px 10px}
+  .sl-scope{
+    flex:1;min-width:0;display:flex;align-items:center;gap:8px;
+    padding:6px 8px;border-radius:var(--r-md);
+    transition:background var(--dur-1);
+  }
+  .sl-scope:hover{background:rgb(var(--hover))}
+  .sl-scope .pav{width:22px;height:22px;flex:none;border-radius:7px;background:rgb(var(--mint) / .35);color:rgb(var(--accent-strong));display:grid;place-items:center;font-size:11px;font-weight:700}
+  .sl-scope b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .new-btn{
+    display:inline-flex;align-items:center;gap:5px;
+    height:30px;padding:0 12px;border-radius:var(--r-md);
+    background:rgb(var(--primary));color:rgb(var(--on-primary));
+    font-size:12.5px;font-weight:600;
+    transition:background var(--dur-1);
+  }
+  .new-btn:hover{background:rgb(var(--primary-hover))}
+  .sl-rows{flex:1;min-height:0;padding:2px 8px;display:flex;flex-direction:column;gap:2px}
+  .srow{
+    display:flex;align-items:center;gap:9px;
+    padding:8px 9px;border-radius:var(--r-md);
+    font-size:12.5px;color:rgb(var(--content-2));
+  }
+  .srow.on{background:rgb(var(--active));color:rgb(var(--content))}
+  .srow .pv{width:22px;height:22px;flex:none;border-radius:7px;display:grid;place-items:center}
+  .srow .pv.cl{background:rgb(var(--mint) / .3);color:rgb(var(--accent-strong))}
+  .srow .pv.pi{background:rgb(90 120 200 / .18);color:rgb(90 120 200)}
+  .srow .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .srow .tm{flex:none;font-size:11px;color:rgb(var(--content-3))}
+  .sl-foot{
+    display:flex;align-items:center;gap:6px;
+    padding:9px 12px;border-top:1px solid rgb(var(--edge));
+    font-size:11.5px;color:rgb(var(--content-3));
+  }
+
+  /* --- 工作区卡片 --- */
+  .ws{
+    flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;
+    background:rgb(var(--surface));
+    border:1px solid rgb(var(--edge));
+    border-radius:var(--r-xl);
+    box-shadow:var(--e1);
+  }
+  .ws-head{
+    height:52px;flex:none;display:flex;align-items:center;gap:12px;
+    padding:0 12px 0 16px;
+    border-bottom:1px solid rgb(var(--edge));
+  }
+  .ws-brand{display:flex;align-items:center;gap:9px;min-width:0}
+  .ws-brand .ic{color:rgb(var(--accent-strong))}
+  .ws-brand b{font-size:14px;font-weight:600;letter-spacing:-.005em;white-space:nowrap}
+  .scope-sw{
+    display:inline-flex;align-items:center;gap:6px;
+    height:28px;padding:0 10px;
+    border:1px solid rgb(var(--edge));border-radius:999px;
+    background:rgb(var(--surface-2));
+    font-size:12px;color:rgb(var(--content-2));
+    white-space:nowrap;
+  }
+  .mode-seg{
+    position:absolute;left:50%;transform:translateX(-50%);
+    display:flex;gap:2px;padding:2px;
+    background:rgb(var(--surface-2));
+    border:1px solid rgb(var(--edge));
+    border-radius:10px;
+  }
+  .ws-head{position:relative}
+  .mode-seg button{
+    display:inline-flex;align-items:center;gap:6px;
+    height:28px;padding:0 13px;border-radius:8px;
+    font-size:12.5px;color:rgb(var(--content-2));
+    transition:background var(--dur-1),color var(--dur-1);
+    white-space:nowrap;
+  }
+  .mode-seg button:hover{color:rgb(var(--content))}
+  .mode-seg button.on{background:rgb(var(--surface));color:rgb(var(--content));font-weight:600;box-shadow:var(--e1)}
+  .ws-actions{margin-left:auto;display:flex;align-items:center;gap:4px}
+  .win-fake{display:flex;align-items:center;gap:2px;margin-left:6px;color:rgb(var(--content-3))}
+  .win-fake span{width:30px;height:24px;display:grid;place-items:center;border-radius:6px}
+
+  .ws-main{flex:1;min-height:0;overflow:hidden}
+  .cv-view{height:100%;min-height:0;display:none}
+  .cv-view.on{display:flex}
+
+  /* --- 右缘工具条 + 状态栏 --- */
+  .tstrip{
+    width:44px;flex:none;
+    display:flex;flex-direction:column;align-items:center;gap:4px;
+    padding:8px 0;
+    background:rgb(var(--surface));
+    border:1px solid rgb(var(--edge));
+    border-radius:var(--r-xl);
+    box-shadow:var(--e1);
+  }
+  .statusbar{
+    height:28px;flex:none;
+    display:flex;align-items:center;gap:14px;
+    padding:0 12px;
+    font-size:11.5px;color:rgb(var(--content-3));
+    background:rgb(var(--surface));
+    border:1px solid rgb(var(--edge));
+    border-radius:var(--r-md);
+  }
+  .statusbar .dot{width:7px;height:7px;border-radius:50%;background:rgb(var(--accent));display:inline-block;margin-right:5px;vertical-align:1px}
+  .statusbar .right{margin-left:auto}
+
+  /* ============ 通用控件 ============ */
+  .ic{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .ic.sm{width:15px;height:15px}
+  .ic.xs{width:12px;height:12px}
+  .ic.lg{width:22px;height:22px}
+  .ic.fill{fill:currentColor;stroke:none}
+  .icon-btn{
+    width:30px;height:30px;border-radius:var(--r-md);
+    display:grid;place-items:center;
+    color:rgb(var(--content-3));
+    transition:background var(--dur-1),color var(--dur-1);
+  }
+  .icon-btn:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;
+    height:32px;padding:0 14px;border-radius:var(--r-md);
+    font-size:12.5px;font-weight:600;
+    transition:background var(--dur-1) var(--ease),border-color var(--dur-1),color var(--dur-1);
+    white-space:nowrap;
+  }
+  .btn.sm{height:28px;padding:0 10px;font-size:12px}
+  .btn-primary{background:rgb(var(--primary));color:rgb(var(--on-primary))}
+  .btn-primary:hover{background:rgb(var(--primary-hover))}
+  .btn-secondary{background:rgb(var(--surface-2));border:1px solid rgb(var(--edge));color:rgb(var(--content-2))}
+  .btn-secondary:hover{color:rgb(var(--content));border-color:rgb(var(--edge-strong))}
+  .btn-ghost{color:rgb(var(--content-2))}
+  .btn-ghost:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .fld-label{display:block;font-size:12px;font-weight:600;color:rgb(var(--content-2));margin-bottom:7px}
+  .fld-label small{font-weight:400;color:rgb(var(--content-3));margin-left:6px}
+  .textinput{
+    width:100%;padding:9px 11px;
+    background:rgb(var(--surface-2));
+    border:1px solid rgb(var(--edge));
+    border-radius:var(--r-md);
+    font-size:13px;line-height:1.55;
+    resize:none;
+    transition:border-color var(--dur-1),background var(--dur-1);
+  }
+  .textinput:focus{outline:none;border-color:rgb(var(--accent) / .6);background:rgb(var(--surface))}
+  .textinput::placeholder{color:rgb(var(--content-3))}
+  .sel-wrap{position:relative}
+  .sel-wrap select{
+    width:100%;appearance:none;
+    height:32px;padding:0 28px 0 10px;
+    background:rgb(var(--surface-2));
+    border:1px solid rgb(var(--edge));
+    border-radius:var(--r-md);
+    font-size:12.5px;
+    cursor:pointer;
+  }
+  .sel-wrap .ic.xs{position:absolute;right:9px;top:10px;pointer-events:none;color:rgb(var(--content-3))}
+  .seg{display:flex;gap:2px;padding:2px;background:rgb(var(--surface-2));border:1px solid rgb(var(--edge));border-radius:var(--r-md)}
+  .seg button{flex:1;height:26px;padding:0 8px;border-radius:6px;font-size:11.5px;color:rgb(var(--content-3));white-space:nowrap;transition:all var(--dur-1)}
+  .seg button.on{background:rgb(var(--surface));color:rgb(var(--content));font-weight:600;box-shadow:var(--e1)}
+  .chip{
+    display:inline-flex;align-items:center;gap:5px;
+    height:26px;padding:0 10px;
+    border:1px solid rgb(var(--edge));border-radius:999px;
+    background:rgb(var(--surface));
+    font-size:11.5px;color:rgb(var(--content-2));
+    transition:all var(--dur-1);
+  }
+  .chip:hover{border-color:rgb(var(--edge-strong));color:rgb(var(--content))}
+  .chip.on{background:rgb(var(--accent) / .13);border-color:rgb(var(--accent) / .45);color:rgb(var(--accent-strong));font-weight:600}
+  .tag{
+    display:inline-flex;align-items:center;gap:4px;
+    height:20px;padding:0 7px;border-radius:var(--r-sm);
+    font-size:10.5px;font-weight:600;letter-spacing:.01em;
+    background:rgb(var(--surface-2));color:rgb(var(--content-3));
+    border:1px solid rgb(var(--edge));
+  }
+  .tag.ver{background:rgb(var(--accent) / .13);border-color:transparent;color:rgb(var(--accent-strong))}
+  .tag.imp{background:rgb(120 113 108 / .12);border-color:transparent;color:rgb(var(--content-2))}
+  .tag.gen{background:rgb(var(--accent) / .13);border-color:transparent;color:rgb(var(--accent-strong))}
+  .tag.proj{background:rgb(217 119 6 / .13);border-color:transparent;color:rgb(var(--warning))}
+  .range{
+    -webkit-appearance:none;appearance:none;
+    flex:1;height:4px;border-radius:99px;
+    background:linear-gradient(to right,rgb(var(--accent)) var(--fill,50%),rgb(var(--edge-strong) / .7) var(--fill,50%));
+    outline:none;cursor:pointer;
+  }
+  .range::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;
+    background:rgb(var(--surface));
+    border:2px solid rgb(var(--accent));
+    box-shadow:var(--e1);
+  }
+  .kbd{padding:1px 5px;border:1px solid rgb(var(--edge));border-bottom-width:2px;border-radius:5px;background:rgb(var(--surface-2));font-family:var(--font-mono);font-size:10.5px;color:rgb(var(--content-3))}
+  .hint{font-size:11.5px;color:rgb(var(--content-3));line-height:1.5}
+  details.adv{border:1px solid rgb(var(--edge));border-radius:var(--r-md);background:rgb(var(--surface-2));overflow:hidden}
+  details.adv summary{
+    list-style:none;cursor:pointer;user-select:none;
+    display:flex;align-items:center;gap:7px;
+    padding:8px 11px;font-size:12px;color:rgb(var(--content-2));
+  }
+  details.adv summary::-webkit-details-marker{display:none}
+  details.adv summary .chev{transition:transform var(--dur-2) var(--ease);color:rgb(var(--content-3))}
+  details.adv[open] summary .chev{transform:rotate(180deg)}
+  details.adv .adv-body{padding:2px 11px 11px;display:grid;gap:9px}
+
+  /* ============ 占位图(渐变艺术) ============ */
+  .art{position:relative;overflow:hidden;display:grid;place-items:center}
+  .art .ic{color:rgb(255 255 255 / .8)}
+  .art-ember{background:linear-gradient(160deg,#ff9966 0%,#ff5e62 48%,#7a2e5e 100%)}
+  .art-mist{background:linear-gradient(200deg,#e0eafc 0%,#cfdef3 55%,#a8b8d8 100%)}
+  .art-mist .ic{color:rgb(90 110 150 / .8)}
+  .art-verdant{background:linear-gradient(150deg,#134e5e 0%,#3a7d5d 55%,#71b280 100%)}
+  .art-aurora{background:linear-gradient(135deg,#0f2027 0%,#2c5364 45%,#43c6ac 100%)}
+  .art-canyon{background:linear-gradient(165deg,#c76b45 0%,#8a3b4a 55%,#3e2b4f 100%)}
+  .art-sakura{background:linear-gradient(150deg,#fbc2eb 0%,#e6a4d8 45%,#8e9ee6 100%)}
+  .art-dune{background:linear-gradient(170deg,#e8c07a 0%,#c99058 55%,#6e4b3a 100%)}
+  .art-tide{background:linear-gradient(195deg,#43cea2 0%,#2b8fb8 55%,#185a9d 100%)}
+  .art-noir{background:linear-gradient(160deg,#232526 0%,#3a3f42 60%,#57606b 100%)}
+  .art-iris{background:linear-gradient(150deg,#5b49b8 0%,#7b5fc0 50%,#c86dd7 100%)}
+  .art-forest{background:linear-gradient(200deg,#f5f7fa 0%,#c3cfe2 100%)}
+  .art-forest .ic{color:rgb(110 125 155 / .8)}
+  .art-orchid{background:linear-gradient(155deg,#e96443 0%,#904e95 100%)}
+  .art-brush{background:linear-gradient(150deg,#e0c3fc 0%,#8ec5fc 100%)}
+  .art-brush .ic{color:rgb(120 110 190 / .75)}
+  .art-dusk{background:linear-gradient(170deg,#2b5876 0%,#4e4376 100%)}
+  .art-grove{background:linear-gradient(160deg,#c1dfc4 0%,#8fbf9f 55%,#4b6f63 100%)}
+  .art-grove .ic{color:rgb(255 255 255 / .85)}
+  .art-cosmos{background:radial-gradient(circle at 30% 25%,#3b2e63 0%,#17102e 55%,#0a0618 100%)}
+  .art-field{background:linear-gradient(165deg,#f7b733 0%,#e0884e 55%,#97421f 100%)}
+
+  /* ============ 视图一:文生图 ============ */
+  .cv-view.on.cv-t2i{display:grid;grid-template-columns:400px minmax(0,1fr)}
+  .t2i-form{
+    padding:20px 20px 16px;
+    border-right:1px solid rgb(var(--edge));
+    overflow:auto;
+    display:flex;flex-direction:column;gap:15px;
+  }
+  .prompt-wrap{position:relative}
+  .prompt-wrap textarea{min-height:118px;padding-bottom:24px}
+  .char-count{position:absolute;right:9px;bottom:7px;font-size:10.5px;color:rgb(var(--content-3));pointer-events:none}
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px}
+  .ctrl-row{display:grid;grid-template-columns:1.2fr 1fr .8fr;gap:10px}
+  .gen-btn{width:100%;height:42px;font-size:14px;border-radius:var(--r-lg)}
+  .gen-meta{display:flex;justify-content:space-between;font-size:11px;color:rgb(var(--content-3));margin-top:-6px}
+
+  .t2i-result{min-width:0;overflow:auto;padding:22px 24px;display:flex;flex-direction:column;gap:12px}
+  .result-main{
+    border:1px solid rgb(var(--edge));border-radius:var(--r-lg);
+    overflow:hidden;background:rgb(var(--surface));
+    box-shadow:var(--e1);
+  }
+  .result-main .art{height:min(46vh,460px)}
+  .result-cap{display:flex;align-items:center;gap:10px;padding:9px 13px;border-top:1px solid rgb(var(--edge));font-size:12px}
+  .result-cap .mono{color:rgb(var(--content-2))}
+  .result-cap .hint{margin-left:auto}
+  .result-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .variant{
+    position:relative;border:1px solid rgb(var(--edge));border-radius:var(--r-md);
+    overflow:hidden;cursor:pointer;background:rgb(var(--surface));
+    transition:border-color var(--dur-1),transform var(--dur-1) var(--ease);
+  }
+  .variant:hover{border-color:rgb(var(--accent) / .5);transform:translateY(-1px)}
+  .variant .art{height:108px}
+  .variant .cap{display:flex;align-items:center;gap:6px;padding:6px 9px;font-size:11px;color:rgb(var(--content-3));border-top:1px solid rgb(var(--edge))}
+  .variant .cap .mono{color:rgb(var(--content-2))}
+  .hint-bar{
+    display:flex;align-items:center;gap:8px;
+    padding:9px 12px;border:1px dashed rgb(var(--edge-strong) / .8);border-radius:var(--r-md);
+    background:rgb(var(--surface-2));
+    font-size:12px;color:rgb(var(--content-3));
+  }
+  .hint-bar .ic{color:rgb(var(--accent-strong))}
+  .hint-bar b{color:rgb(var(--content-2));font-weight:600}
+
+  /* ============ 视图二:画布编辑 ============ */
+  .cv-canvas{min-width:0}
+  .cv-stage-wrap{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
+  .cv-stage{
+    flex:1;min-height:0;position:relative;
+    display:grid;place-items:center;
+    background:rgb(var(--stage-bg));
+    overflow:hidden;
+  }
+  .cv-empty{
+    display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;
+    color:rgb(var(--content-3));
+  }
+  .cv-empty .ic{width:40px;height:40px;color:rgb(var(--content-3) / .7)}
+  .cv-empty p{font-size:13px;max-width:380px;line-height:1.7}
+  .cv-empty .btn{margin-top:4px}
+  .frame{
+    position:relative;border-radius:10px;overflow:hidden;
+    box-shadow:var(--e2);
+    background:
+      repeating-conic-gradient(rgb(var(--edge)) 0% 25%, rgb(var(--surface)) 0% 50%) 0 0 / 16px 16px;
+    cursor:crosshair;
+    touch-action:none;
+  }
+  .frame .art{position:absolute;inset:0}
+  .frame canvas{position:absolute;inset:0;display:block;cursor:crosshair}
+  .cv-toolbar{
+    position:absolute;left:10px;top:50%;transform:translateY(-50%);
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:7px 6px;
+    background:rgb(var(--surface));
+    border:1px solid rgb(var(--edge));
+    border-radius:12px;
+    box-shadow:var(--e2);
+    z-index:3;
+  }
+  /* 留白不够时收进画框内侧:半透明 + 模糊,减轻对画面的压迫 */
+  .cv-toolbar.inset{
+    background:rgb(var(--surface) / .82);
+    backdrop-filter:blur(8px);
+    box-shadow:var(--e1);
+  }
+  .tool-btn{
+    width:32px;height:32px;border-radius:8px;
+    display:grid;place-items:center;
+    color:rgb(var(--content-3));
+    transition:all var(--dur-1);
+  }
+  .tool-btn:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .tool-btn.on{background:rgb(var(--accent) / .15);color:rgb(var(--accent-strong))}
+  .tool-sep{width:20px;height:1px;background:rgb(var(--edge));margin:4px 0}
+  .brush-ctl{display:flex;flex-direction:column;align-items:center;gap:5px;padding:5px 0 3px}
+  .brush-dot{border-radius:50%;background:rgb(var(--content-2));opacity:.75}
+  .cv-toolbar .range{flex:none;width:74px}
+  .brush-val{font-size:10px;color:rgb(var(--content-3));font-family:var(--font-mono)}
+  /* 切图模式:选框 + 四角手柄 + 外部压暗 + 底部确认条 */
+  .crop-box{
+    position:absolute;left:10%;top:10%;width:80%;height:80%;
+    border:1.5px dashed rgb(var(--accent));
+    border-radius:6px;
+    box-shadow:0 0 0 9999px rgb(0 0 0 / .38);
+    cursor:move;z-index:2;touch-action:none;
+  }
+  .crop-box .hd{
+    position:absolute;width:12px;height:12px;border-radius:3px;
+    background:rgb(var(--surface));
+    border:2px solid rgb(var(--accent-strong));
+    box-shadow:var(--e1);
+  }
+  .crop-box .hd.tl{left:-7px;top:-7px;cursor:nwse-resize}
+  .crop-box .hd.tr{right:-7px;top:-7px;cursor:nesw-resize}
+  .crop-box .hd.bl{left:-7px;bottom:-7px;cursor:nesw-resize}
+  .crop-box .hd.br{right:-7px;bottom:-7px;cursor:nwse-resize}
+  .crop-bar{
+    position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+    display:flex;align-items:center;gap:8px;
+    padding:6px 8px 6px 14px;border-radius:999px;
+    background:rgb(var(--surface) / .94);
+    border:1px solid rgb(var(--edge));
+    box-shadow:var(--e2);
+    backdrop-filter:blur(6px);
+    z-index:3;font-size:12px;color:rgb(var(--content-2));
+  }
+  .crop-bar .btn{height:26px;padding:0 13px;font-size:12px;border-radius:999px}
+  .crop-bar .ic{color:rgb(var(--accent-strong))}
+  .crop-bar .seg{background:rgb(var(--surface-2) / .7);box-shadow:none}
+  .crop-bar .seg button{flex:none;width:auto;padding:0 9px;height:24px}
+  /* 真实位图:画布主图与各处缩略图 */
+  .frame-img{position:absolute;inset:0;width:100%;height:100%;display:block;user-select:none}
+  .ln-thumb{overflow:hidden;background:rgb(var(--active))}
+  .ln-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .gcard-img>img.gimg{width:100%;display:block;object-fit:cover}
+  .cv-toast{
+    position:absolute;top:14px;left:50%;transform:translateX(-50%);
+    padding:7px 14px;border-radius:999px;
+    background:rgb(var(--surface) / .95);
+    border:1px solid rgb(var(--edge));
+    box-shadow:var(--e2);
+    font-size:12px;color:rgb(var(--content-2));
+    opacity:0;pointer-events:none;transition:opacity var(--dur-1);
+    z-index:4;white-space:nowrap;
+  }
+  .cv-toast.show{opacity:1}
+  .stage-corner{
+    position:absolute;top:12px;right:12px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .stage-corner .seg{background:rgb(var(--surface));box-shadow:var(--e1)}
+  .stage-corner .seg button{flex:none;width:44px}
+  .stage-chip{
+    position:absolute;bottom:12px;
+    display:inline-flex;align-items:center;gap:6px;
+    height:26px;padding:0 11px;border-radius:999px;
+    background:rgb(var(--surface) / .92);
+    border:1px solid rgb(var(--edge));
+    box-shadow:var(--e1);
+    font-size:11px;color:rgb(var(--content-2));
+    backdrop-filter:blur(4px);
+    pointer-events:none;
+  }
+  .stage-chip.l{left:14px}
+  .stage-chip.r{right:14px}
+  .stage-chip .ic{color:rgb(var(--accent-strong))}
+  .stage-chip .mono{color:rgb(var(--content-3))}
+
+  .cv-side{
+    width:308px;flex:none;
+    display:flex;flex-direction:column;gap:14px;
+    padding:16px;
+    border-left:1px solid rgb(var(--edge));
+    background:rgb(var(--surface));
+    overflow:auto;
+  }
+  .cv-side-head{display:flex;flex-direction:column;gap:6px}
+  .cv-side-head .row{display:flex;align-items:center;gap:8px}
+  .cv-side-head b{font-size:13px;font-weight:600}
+  .mini-ic{
+    width:18px;height:18px;border-radius:5px;
+    display:grid;place-items:center;color:rgb(var(--content-3));
+  }
+  .mini-ic:hover{background:rgb(var(--hover));color:rgb(var(--content))}
+  .cv-side-head .prompt-peek{
+    font-size:11.5px;color:rgb(var(--content-3));line-height:1.55;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .side-sect{display:flex;flex-direction:column;gap:8px}
+  .mask-note{display:flex;align-items:center;gap:8px;font-size:11.5px;color:rgb(var(--content-3))}
+  .mask-note b{color:rgb(var(--accent-strong));font-weight:600}
+  .mask-note .link{margin-left:auto;font-size:11px;color:rgb(var(--accent-strong));cursor:pointer;border-bottom:1px solid rgb(var(--accent) / .35)}
+  .slider-row{display:flex;align-items:center;gap:9px}
+  .slider-row .lab{font-size:11.5px;color:rgb(var(--content-3));flex:none;width:52px}
+  .slider-row .val{font-size:11px;color:rgb(var(--content-2));font-family:var(--font-mono);flex:none;width:38px;text-align:right}
+  .side-divider{height:1px;background:rgb(var(--edge));margin:2px 0}
+
+  .cv-lineage{
+    flex:none;height:88px;
+    display:flex;align-items:center;gap:2px;
+    padding:0 14px;
+    border-top:1px solid rgb(var(--edge));
+    background:rgb(var(--surface));
+    overflow-x:auto;
+  }
+  .lineage-label{flex:none;font-size:11px;color:rgb(var(--content-3));margin-right:10px;display:flex;align-items:center;gap:6px}
+  .ln-node{
+    flex:none;display:flex;align-items:center;gap:7px;
+    padding:5px 9px 5px 5px;border-radius:10px;
+    border:1px solid transparent;
+    transition:all var(--dur-1);
+  }
+  .ln-node:hover{background:rgb(var(--hover))}
+  .ln-node.on{border-color:rgb(var(--accent) / .55);background:rgb(var(--accent) / .09)}
+  .ln-thumb{width:46px;height:46px;flex:none;border-radius:8px}
+  .ln-thumb .ic{width:16px;height:16px}
+  .ln-meta{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+  .ln-meta .mono{font-size:10px;color:rgb(var(--content-3))}
+  .ln-arrow{flex:none;color:rgb(var(--content-3));display:flex;align-items:center;gap:3px;padding:0 3px;font-size:9.5px;letter-spacing:.02em}
+  .ln-arrow span{white-space:nowrap}
+  .ln-new{
+    flex:none;width:46px;height:46px;border-radius:8px;
+    border:1.5px dashed rgb(var(--edge-strong));
+    display:grid;place-items:center;
+    color:rgb(var(--content-3));
+    margin-left:4px;
+  }
+  .ln-new:hover{border-color:rgb(var(--accent) / .6);color:rgb(var(--accent-strong))}
+
+  /* ============ 视图三:图库 ============ */
+  .cv-gallery{flex-direction:column}
+  .gal-bar{
+    flex:none;display:flex;align-items:center;gap:9px;
+    padding:11px 16px;
+    border-bottom:1px solid rgb(var(--edge));
+  }
+  .gal-search{
+    display:flex;align-items:center;gap:7px;
+    width:230px;height:32px;padding:0 11px;
+    background:rgb(var(--surface-2));
+    border:1px solid rgb(var(--edge));
+    border-radius:var(--r-md);
+    color:rgb(var(--content-3));
+    font-size:12.5px;
+    cursor:text;
+  }
+  .gal-search .kbd{margin-left:auto}
+  .gal-grid{
+    flex:1;min-height:0;overflow:auto;
+    padding:16px;
+    columns:4 228px;column-gap:12px;
+  }
+  .gcard{
+    break-inside:avoid;margin-bottom:12px;
+    background:rgb(var(--surface));
+    border:1px solid rgb(var(--edge));
+    border-radius:var(--r-lg);
+    overflow:hidden;
+    box-shadow:var(--e1);
+    transition:border-color var(--dur-1),box-shadow var(--dur-2) var(--ease);
+  }
+  .gcard:hover{border-color:rgb(var(--edge-strong));box-shadow:var(--e2)}
+  .gcard-img{position:relative;cursor:pointer}
+  .gcard-img .art{width:100%}
+  .gcard-img .badges{position:absolute;left:8px;top:8px;display:flex;gap:5px}
+  .gcard-img .badges .tag{backdrop-filter:blur(6px);background:rgb(20 26 23 / .55);border-color:transparent;color:#e8f0eb}
+  .gcard-img .zoom{
+    position:absolute;right:8px;top:8px;
+    width:28px;height:28px;border-radius:8px;
+    display:grid;place-items:center;
+    background:rgb(20 26 23 / .55);color:#e8f0eb;
+    opacity:0;transition:opacity var(--dur-1);
+  }
+  .gcard:hover .zoom{opacity:1}
+  .gcard-acts{
+    position:absolute;left:0;right:0;bottom:0;
+    display:flex;align-items:center;gap:5px;
+    padding:8px;
+    background:linear-gradient(transparent, rgb(10 14 12 / .72));
+    opacity:0;transform:translateY(4px);
+    transition:opacity var(--dur-1),transform var(--dur-1) var(--ease);
+  }
+  .gcard:hover .gcard-acts{opacity:1;transform:none}
+  .gcard-acts .btn{height:26px;padding:0 9px;font-size:11px}
+  .gcard-acts .btn-primary{background:rgb(var(--accent));color:#10241b}
+  .gcard-acts .gic{
+    width:26px;height:26px;border-radius:7px;
+    display:grid;place-items:center;
+    background:rgb(255 255 255 / .14);color:#eef4f0;
+  }
+  .gcard-acts .gic:hover{background:rgb(255 255 255 / .26)}
+  .gcard-info{padding:9px 12px 11px;display:flex;flex-direction:column;gap:6px}
+  .gcard-title{display:flex;align-items:baseline;gap:8px}
+  .gcard-title b{font-size:12.5px;font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gcard-title time{margin-left:auto;flex:none;font-size:10.5px;color:rgb(var(--content-3))}
+  .gcard-prompt{
+    font-size:11.5px;color:rgb(var(--content-3));line-height:1.5;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .gcard-foot{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+  .gcard-foot .lk{
+    margin-left:auto;font-size:11px;color:rgb(var(--accent-strong));cursor:pointer;
+    border-bottom:1px solid rgb(var(--accent) / .35);white-space:nowrap;
+  }
+
+  /* ============ 滚动条 ============ */
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:rgb(var(--edge-strong) / .65);border-radius:99px;border:3px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-thumb:hover{background:rgb(var(--content-3) / .8);border:3px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  @media (max-width:1180px){
+    .cv-t2i{grid-template-columns:340px minmax(0,1fr)}
+    .cv-side{width:272px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none !important;animation:none !important}
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v1.5M12 19.5V21M4.6 4.6l1.1 1.1M18.3 18.3l1.1 1.1M3 12h1.5M19.5 12H21M4.6 19.4l1.1-1.1M18.3 5.7l1.1-1.1"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+    <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7a2 2 0 0 1 2-2h3.6l2 2h7.4a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-msg" viewBox="0 0 24 24"><path d="M5.5 4.5h13a2 2 0 0 1 2 2V15a2 2 0 0 1-2 2H11l-4.5 3.5V17h-1a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2z"/></symbol>
+    <symbol id="i-min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+    <symbol id="i-max" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M17 7L7 17M7 7l10 10"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1 0 1.7-.7 1.7-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6h1.9a4.1 4.1 0 0 0 4.1-4.1c0-4.1-3.8-7.5-8.5-7.5z"/><circle cx="7.8" cy="11.2" r="1"/><circle cx="10.2" cy="7.6" r="1"/><circle cx="14.6" cy="7.8" r="1"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 4l1.8 4.6L18.5 10l-4.7 1.6L12 16l-1.8-4.4L5.5 10l4.7-1.4z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></symbol>
+    <symbol id="i-brush" viewBox="0 0 24 24"><path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></symbol>
+    <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M20 20H8.5l-4.2-4.3a2.4 2.4 0 0 1 0-3.4l9.9-9.9a2.4 2.4 0 0 1 3.4 0l2.1 2.1a2.4 2.4 0 0 1 0 3.4L13 14.5"/><path d="M7 11l6 6"/></symbol>
+    <symbol id="i-crop" viewBox="0 0 24 24"><path d="M8 5v11a1 1 0 0 0 1 1h11"/><path d="M5 8h11a1 1 0 0 1 1 1v11"/><path d="M8 2v3M16 19v3M2 8h3M19 16h3"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14l-4.5-4.5L9 5"/><path d="M4.5 9.5H14a5.5 5.5 0 0 1 0 11h-3"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="M15 14l4.5-4.5L15 5"/><path d="M19.5 9.5H10a5.5 5.5 0 0 0 0 11h3"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M5 7l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-5-5-8.5 8.5"/></symbol>
+    <symbol id="i-zoom" viewBox="0 0 24 24"><path d="M14 4.5h5.5V10M10 19.5H4.5V14M19.5 4.5l-6 6M4.5 19.5l6-6"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5V15"/><path d="M6.5 10.5L12 16l5.5-5.5"/><path d="M4.5 20.5h15"/></symbol>
+    <symbol id="i-arrow-r" viewBox="0 0 24 24"><path d="M5 12h13.5M12.5 6l6 6-6 6"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+    <symbol id="i-blocks" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><path d="M16.5 13.5v6M13.5 16.5h6"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="3" width="11" height="18" rx="2.5"/><path d="M11 17.5h2"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M7 10l3 2.5L7 15M12.5 15H17"/></symbol>
+    <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="7" cy="6" r="2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="8" r="2"/><path d="M7 8v8M17 10c0 4-4 4-8 6.5"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9.5 6.5H20M9.5 12H20M9.5 17.5H20M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4.5"/><path d="M6.5 10L12 4.5 17.5 10"/><path d="M4.5 20.5h15"/></symbol>
+    <symbol id="i-wand" viewBox="0 0 24 24"><path d="M15 4.5V2"/><path d="M15 10V8"/><path d="M11.5 6h-2"/><path d="M20.5 6h-2"/><path d="M17.8 3.2l1.4-1.4"/><path d="M17.8 8.8l1.4 1.4"/><path d="M12.2 3.2l-1.4-1.4"/><path d="M12.2 8.8l-1.4 1.4"/><path d="M13.5 7.5L3 18v3h3L16.5 10.5a2.12 2.12 0 0 0-3-3z"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 2.5L22 8.5l-10 6-10-6z"/><path d="M2 14.5l10 6 10-6"/></symbol>
+  </defs>
+</svg>
+
+<header class="proto-bar">
+  <div class="pb-title">
+    <b>MarioCode · 绘画画布与图库工作台原型</b>
+    <span>TODO-033 / TODO-041(暂缓 · 大版本) · 项目栏新增「画布」入口,主区三视图:文生图 / 画布编辑 / 图库</span>
+  </div>
+  <div class="pb-ctrls">
+    <div class="pseg" data-group="view" title="工作台视图">
+      <button data-v="t2i">文生图</button><button data-v="canvas">画布编辑</button><button data-v="gallery">图库</button>
+    </div>
+    <div class="pseg" data-group="scope" title="图库范围">
+      <button data-v="global">独立图库</button><button data-v="proj">项目图库</button>
+    </div>
+    <div class="pseg" data-group="theme" title="主题">
+      <button data-v="light">浅色</button><button data-v="dark">深色</button>
+    </div>
+  </div>
+</header>
+
+<div class="app" id="app" data-theme="light">
+  <div class="app-main">
+
+    <!-- 项目栏:「画布」入口高亮 -->
+    <nav class="rail">
+      <div class="rail-logo" title="MarioCode">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5" fill="#283833"/><path d="M8 15.5v-6l4 3.5 4-3.5v6" stroke="#8BC0A3" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <button class="rail-btn" title="全部会话"><svg class="ic"><use href="#i-msg"/></svg></button>
+      <div class="rail-sep"></div>
+      <button class="rail-btn" title="MarioCode(项目)"><svg class="ic"><use href="#i-blocks"/></svg></button>
+      <button class="rail-btn" title="减重实验报告(项目)"><svg class="ic"><use href="#i-list"/></svg></button>
+      <div class="rail-sep"></div>
+      <button class="rail-btn on" title="画布 · 绘画与图库(本次原型新增)"><svg class="ic"><use href="#i-palette"/></svg></button>
+      <div class="spring"></div>
+      <button class="rail-btn" title="定时任务"><svg class="ic"><use href="#i-clock"/></svg></button>
+      <button class="rail-btn" title="连接手机"><svg class="ic"><use href="#i-phone"/></svg></button>
+      <button class="rail-btn" data-act="theme" title="切换浅色 / 深色">
+        <svg class="ic only-light"><use href="#i-moon"/></svg>
+        <svg class="ic only-dark"><use href="#i-sun"/></svg>
+      </button>
+      <button class="rail-btn" title="设置"><svg class="ic"><use href="#i-settings"/></svg></button>
+    </nav>
+
+    <!-- 会话列(静态展示,标明与画布的关系) -->
+    <aside class="slist">
+      <div class="sl-head">
+        <button class="sl-scope">
+          <span class="pav">M</span><b>MarioCode</b>
+          <svg class="ic xs" style="margin-left:auto;color:rgb(var(--content-3))"><use href="#i-chev-d"/></svg>
+        </button>
+        <button class="new-btn"><svg class="ic sm"><use href="#i-plus"/></svg>新建</button>
+      </div>
+      <div class="sl-rows">
+        <a class="srow on"><span class="pv cl"><svg class="ic xs"><use href="#i-palette"/></svg></span><span class="t">画布 · 绘画与图库</span><span class="tm">现在</span></a>
+        <a class="srow"><span class="pv cl"><svg class="ic xs"><use href="#i-msg"/></svg></span><span class="t">生成应用图标四个方向</span><span class="tm">2 小时</span></a>
+        <a class="srow"><span class="pv pi"><svg class="ic xs"><use href="#i-msg"/></svg></span><span class="t">官网落地页主视觉</span><span class="tm">昨天</span></a>
+        <a class="srow"><span class="pv pi"><svg class="ic xs"><use href="#i-msg"/></svg></span><span class="t">设置页空状态插画</span><span class="tm">3 天</span></a>
+      </div>
+      <div class="sl-foot">
+        <svg class="ic sm"><use href="#i-palette"/></svg>
+        会话里生成的图片会自动进入对应项目图库
+      </div>
+    </aside>
+
+    <!-- 工作区卡片 -->
+    <section class="ws">
+      <div class="ws-head">
+        <div class="ws-brand">
+          <svg class="ic"><use href="#i-palette"/></svg>
+          <b>画布</b>
+          <button class="scope-sw" data-act="scope-toggle" title="切换图库范围:独立图库 / 项目图库">
+            <svg class="ic sm"><use href="#i-globe"/></svg>
+            <span data-scope-label>独立图库</span>
+            <svg class="ic xs" style="color:rgb(var(--content-3))"><use href="#i-chev-d"/></svg>
+          </button>
+        </div>
+        <div class="mode-seg" data-group="view">
+          <button data-v="t2i"><svg class="ic sm"><use href="#i-sparkle"/></svg>文生图</button>
+          <button data-v="canvas"><svg class="ic sm"><use href="#i-brush"/></svg>画布编辑</button>
+          <button data-v="gallery"><svg class="ic sm"><use href="#i-image"/></svg>图库</button>
+        </div>
+        <div class="ws-actions">
+          <button class="icon-btn" data-act="theme" title="切换主题">
+            <svg class="ic sm only-light"><use href="#i-moon"/></svg>
+            <svg class="ic sm only-dark" style="display:none"><use href="#i-sun"/></svg>
+          </button>
+          <button class="icon-btn" title="更多"><svg class="ic sm"><use href="#i-settings"/></svg></button>
+          <div class="win-fake">
+            <span><svg class="ic xs"><use href="#i-min"/></svg></span>
+            <span><svg class="ic xs"><use href="#i-max"/></svg></span>
+            <span><svg class="ic xs"><use href="#i-x"/></svg></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ws-main">
+
+        <!-- ============ 视图一:文生图 ============ -->
+        <div class="cv-view cv-t2i" data-view="t2i">
+          <div class="t2i-form">
+            <div>
+              <label class="fld-label" for="prompt">提示词<small>描述你想要的画面</small></label>
+              <div class="prompt-wrap">
+                <textarea class="textinput" id="prompt" maxlength="2000">黄昏的滨海公路，一位骑行者迎着夕阳，电影感，体积光，暖橙色主调，8k 超高清细节</textarea>
+                <span class="char-count">48 / 2000</span>
+              </div>
+            </div>
+
+            <div>
+              <label class="fld-label">风格预设<small>可多选,追加到提示词末尾</small></label>
+              <div class="chip-row" data-group="styles">
+                <button class="chip on">电影感</button>
+                <button class="chip">极简主义</button>
+                <button class="chip">水彩</button>
+                <button class="chip">像素艺术</button>
+                <button class="chip">等距 3D</button>
+                <button class="chip">赛博朋克</button>
+              </div>
+            </div>
+
+            <div>
+              <label class="fld-label" for="neg">负面提示词<small>可选</small></label>
+              <input class="textinput" id="neg" placeholder="低质量、模糊、文字水印、多余的手指…">
+            </div>
+
+            <div class="ctrl-row">
+              <div>
+                <label class="fld-label">模型</label>
+                <div class="sel-wrap">
+                  <select>
+                    <option>gpt-image-1 · 高质量</option>
+                    <option>doubao-seedream · 快速</option>
+                    <option>flux-schnell · 极速</option>
+                  </select>
+                  <svg class="ic xs"><use href="#i-chev-d"/></svg>
+                </div>
+              </div>
+              <div>
+                <label class="fld-label">画幅</label>
+                <div class="seg" data-group="ratio">
+                  <button data-v="1:1">1:1</button>
+                  <button class="on" data-v="3:2">3:2</button>
+                  <button data-v="16:9">16:9</button>
+                  <button data-v="9:16">9:16</button>
+                </div>
+              </div>
+              <div>
+                <label class="fld-label">数量</label>
+                <div class="seg" data-group="count">
+                  <button data-v="1">1</button>
+                  <button class="on" data-v="2">2</button>
+                  <button data-v="4">4</button>
+                </div>
+              </div>
+            </div>
+
+            <details class="adv">
+              <summary><svg class="ic xs chev"><use href="#i-chev-d"/></svg>高级选项 · 引导强度 7.5 · 随机种子 42(固定可复现)</summary>
+              <div class="adv-body">
+                <div class="slider-row"><span class="lab">引导强度</span><input type="range" class="range" min="1" max="20" value="7.5" step="0.5"><span class="val">7.5</span></div>
+                <div class="slider-row"><span class="lab">随机种子</span><input class="textinput mono" style="height:28px;padding:3px 9px" value="42"><button class="btn btn-ghost sm">随机</button></div>
+              </div>
+            </details>
+
+            <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+              <button class="btn btn-primary gen-btn" data-act="gen">
+                <svg class="ic"><use href="#i-sparkle"/></svg>生成图片
+              </button>
+              <div class="gen-meta"><span>预计 8–15 秒</span><span>经共享提供商 · gpt-image-1</span></div>
+            </div>
+          </div>
+
+          <div class="t2i-result">
+            <div class="result-main">
+              <div class="art art-tide"><svg class="ic lg"><use href="#i-image"/></svg></div>
+              <div class="result-cap">
+                <svg class="ic sm" style="color:rgb(var(--accent-strong))"><use href="#i-sparkle"/></svg>
+                <span class="mono">hero-coast-sunset.png</span>
+                <span class="tag gen">已生成</span>
+                <span class="hint">3:2 · 1536×1024 · 12 秒</span>
+              </div>
+            </div>
+            <div class="result-grid">
+              <button class="variant" data-act="edit-img" data-img="g2">
+                <div class="art art-cosmos"><svg class="ic"><use href="#i-image"/></svg></div>
+                <div class="cap"><span class="tag ver">v3</span><span class="mono">city-night.png</span></div>
+              </button>
+              <button class="variant" data-act="edit-img" data-img="g2">
+                <div class="art art-dusk"><svg class="ic"><use href="#i-image"/></svg></div>
+                <div class="cap"><span class="tag ver">v2</span><span class="mono">city-v2.png</span></div>
+              </button>
+              <button class="variant" data-act="edit-img" data-img="g2">
+                <div class="art art-ember"><svg class="ic"><use href="#i-image"/></svg></div>
+                <div class="cap"><span class="tag ver">v1</span><span class="mono">city-v1.png</span></div>
+              </button>
+            </div>
+            <div class="hint-bar">
+              <svg class="ic sm"><use href="#i-wand"/></svg>
+              <span>生成结果自动进入<b data-scope-label>独立图库</b>;点任意一张可送入「画布编辑」继续局部修改</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ 视图二:画布编辑 ============ -->
+        <div class="cv-view cv-canvas" data-view="canvas">
+          <div class="cv-stage-wrap">
+            <div class="cv-stage" id="cvStage">
+              <div class="frame" id="cvFrame" hidden>
+                <img class="frame-img" id="cvImg" alt="">
+                <canvas id="cvPaint"></canvas>
+                <div class="crop-box" id="cropBox" hidden>
+                  <span class="hd tl" data-hd="tl"></span><span class="hd tr" data-hd="tr"></span>
+                  <span class="hd bl" data-hd="bl"></span><span class="hd br" data-hd="br"></span>
+                </div>
+              </div>
+
+              <div class="cv-toolbar" id="cvToolbar" hidden>
+                <button class="tool-btn on" data-tool="brush" title="画笔(涂抹要重绘的区域)"><svg class="ic"><use href="#i-brush"/></svg></button>
+                <button class="tool-btn" data-tool="eraser" title="橡皮擦(擦除蒙版)"><svg class="ic"><use href="#i-eraser"/></svg></button>
+                <button class="tool-btn" data-tool="crop" title="切图(框选保留区域)"><svg class="ic"><use href="#i-crop"/></svg></button>
+                <div class="tool-sep"></div>
+                <div class="brush-ctl">
+                  <span class="brush-dot" id="brushDot" style="width:12px;height:12px"></span>
+                  <input type="range" class="range" id="brushRange" min="8" max="80" value="32" title="笔刷大小(快捷键 [ 和 ])">
+                  <span class="brush-val" id="brushVal">32px</span>
+                </div>
+                <div class="tool-sep"></div>
+                <button class="tool-btn" data-act="undo" id="btnUndo" title="撤销一笔" disabled><svg class="ic"><use href="#i-undo"/></svg></button>
+                <button class="tool-btn" data-act="redo" id="btnRedo" title="重做一笔" disabled><svg class="ic"><use href="#i-redo"/></svg></button>
+                <button class="tool-btn" data-act="clear" title="清空蒙版"><svg class="ic"><use href="#i-trash"/></svg></button>
+              </div>
+
+              <div class="stage-corner" id="cvZoom" hidden>
+                <div class="seg"><button>−</button><button class="on">100%</button><button>+</button></div>
+                <button class="chip" style="height:30px"><svg class="ic xs"><use href="#i-zoom"/></svg>适应窗口</button>
+              </div>
+
+              <span class="stage-chip l" id="chipName" hidden><svg class="ic xs"><use href="#i-palette"/></svg><span id="chipNameText"></span></span>
+              <span class="stage-chip r" id="chipSave" hidden><span class="mono" data-scope-path>~/Pictures/MarioCode 图库</span></span>
+
+              <div class="crop-bar" id="cropBar" hidden>
+                <svg class="ic sm"><use href="#i-crop"/></svg>
+                <span>拖动选框,四角手柄缩放</span>
+                <div class="seg" id="cropRatio" title="比例约束">
+                  <button data-ri="0" class="on">自由</button><button data-ri="1">1:1</button><button data-ri="2">3:2</button><button data-ri="3">16:9</button>
+                </div>
+                <button class="btn btn-primary" id="cropApply">应用切图</button>
+                <button class="btn" id="cropCancel">取消</button>
+              </div>
+              <div class="cv-toast" id="cvToast"></div>
+            </div>
+
+            <div class="cv-lineage" id="cvLineage" hidden></div>
+          </div>
+
+          <aside class="cv-side">
+            <div class="cv-side-head">
+              <div class="row">
+                <b>正在编辑</b>
+                <span id="sideImgName" style="font-size:12.5px;color:rgb(var(--content-2))">—</span>
+                <span class="tag ver" id="sideImgTag" style="margin-left:auto">v3</span>
+              </div>
+              <p class="prompt-peek" id="sideImgPrompt">从图库选一张图,或导入本地图片开始编辑。</p>
+            </div>
+
+            <div class="side-sect">
+              <label class="fld-label">编辑方式</label>
+              <div class="seg" data-group="editmode">
+                <button class="on" data-v="inpaint" title="只重绘涂抹的区域">局部重绘</button>
+                <button data-v="img2img" title="以整张图为参考重绘">整图变换</button>
+                <button data-v="outpaint" title="沿四边向外扩展画面">扩图</button>
+              </div>
+            </div>
+
+            <div class="side-sect" id="maskSect">
+              <div class="mask-note">
+                <svg class="ic sm" style="color:rgb(var(--accent-strong))"><use href="#i-brush"/></svg>
+                已涂抹 <b id="maskCount">0</b> 处
+                <span class="link" data-act="clear">清空蒙版</span>
+              </div>
+            </div>
+
+            <div class="side-sect">
+              <label class="fld-label" for="editPrompt">编辑提示词<small>描述要改成什么</small></label>
+              <textarea class="textinput" id="editPrompt" rows="3">把天空改成火烧云，加一轮落日，整体偏暖</textarea>
+            </div>
+
+            <div class="side-sect">
+              <div class="slider-row">
+                <span class="lab">变化程度</span>
+                <input type="range" class="range" id="strengthRange" min="5" max="95" value="45" step="5">
+                <span class="val" id="strengthVal">45%</span>
+              </div>
+              <p class="hint">数值越小越贴近原图;局部重绘只作用于涂抹区域。</p>
+            </div>
+
+            <div class="side-divider"></div>
+
+            <button class="btn btn-primary" style="width:100%" data-act="edit-gen">
+              <svg class="ic"><use href="#i-wand"/></svg>生成编辑结果
+            </button>
+            <p class="hint">
+              结果将<b style="color:rgb(var(--content-2))">另存为新版本</b>,原图保留;<br>
+              保存位置:<span class="mono" data-scope-path>~/Pictures/MarioCode 图库</span>
+              <span class="link" style="color:rgb(var(--accent-strong));cursor:pointer;border-bottom:1px solid rgb(var(--accent)/.35)">更改</span>
+            </p>
+
+            <div class="side-divider"></div>
+
+            <div class="side-sect">
+              <label class="fld-label">没有合适的原图?</label>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-secondary sm" style="flex:1" data-act="goto-gallery"><svg class="ic sm"><use href="#i-image"/></svg>从图库选择</button>
+                <button class="btn btn-secondary sm" style="flex:1" data-act="import"><svg class="ic sm"><use href="#i-upload"/></svg>导入本地图片</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <!-- ============ 视图三:图库 ============ -->
+        <div class="cv-view cv-gallery" data-view="gallery">
+          <div class="gal-bar">
+            <div class="gal-search">
+              <svg class="ic sm"><use href="#i-search"/></svg>
+              <span>搜索提示词、文件名…</span>
+              <span class="kbd">Ctrl K</span>
+            </div>
+            <div class="sel-wrap" style="width:150px">
+              <select><option>最近生成</option><option>最早生成</option><option>按派生链分组</option></select>
+              <svg class="ic xs"><use href="#i-chev-d"/></svg>
+            </div>
+            <span class="hint" data-gallery-count>12 张</span>
+            <span style="flex:1"></span>
+            <button class="btn btn-secondary sm"><svg class="ic sm"><use href="#i-folder"/></svg>打开图库文件夹</button>
+            <button class="btn btn-secondary sm" data-act="import"><svg class="ic sm"><use href="#i-upload"/></svg>导入图片</button>
+            <button class="btn btn-primary sm" data-act="goto-t2i"><svg class="ic sm"><use href="#i-sparkle"/></svg>文生图</button>
+          </div>
+          <div class="gal-grid" id="galGrid"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 右缘工具条(静态) -->
+    <nav class="tstrip">
+      <button class="rail-btn" title="文件"><svg class="ic"><use href="#i-folder"/></svg></button>
+      <button class="rail-btn" title="Git"><svg class="ic"><use href="#i-branch"/></svg></button>
+      <button class="rail-btn" title="浏览器"><svg class="ic"><use href="#i-globe"/></svg></button>
+      <button class="rail-btn" title="轮次"><svg class="ic"><use href="#i-clock"/></svg></button>
+      <div class="spring" style="flex:1"></div>
+      <button class="rail-btn" title="终端"><svg class="ic"><use href="#i-terminal"/></svg></button>
+    </nav>
+  </div>
+
+  <footer class="statusbar">
+    <span><span class="dot"></span>Claude 已就绪 · 3 引擎</span>
+    <span>今日 128.4k tokens · $1.24</span>
+    <span class="right">原型演示 · 画笔可真实涂抹,切图为真裁剪(另存派生版本);地址 hash:#t2i / #canvas / #gallery / #dark / #proj / #crop / #cropdone</span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- 状态(hash 驱动,刷新保留) ---------- */
+const state = { view: "t2i", theme: "light", scope: "global", editMode: "inpaint", cropDemo: false, cropDoneDemo: false };
+for (const tok of location.hash.slice(1).split(/[&,]/)) {
+  if (["t2i", "canvas", "gallery"].includes(tok)) state.view = tok;
+  if (["light", "dark"].includes(tok)) state.theme = tok;
+  if (tok === "proj") state.scope = "proj";
+  if (["inpaint", "img2img", "outpaint"].includes(tok)) state.editMode = tok;
+  if (tok === "crop") { state.view = "canvas"; state.cropDemo = true; } // 演示/截图:直接进入切图模式
+  if (tok === "cropdone") { state.view = "canvas"; state.cropDoneDemo = true; } // 演示/截图:直接应用一次 16:9 裁剪
+}
+function saveHash() {
+  const toks = [state.view];
+  if (state.theme === "dark") toks.push("dark");
+  if (state.scope === "proj") toks.push("proj");
+  const h = "#" + toks.join(",");
+  if (location.hash !== h) history.replaceState(null, "", h);
+}
+
+/* ---------- 图库假数据(渐变占位) ---------- */
+const IMAGES = [
+  { id: "g1",  name: "落日骑行·原图",     art: "art-ember",   scope: "global", time: "10-06 21:14", kind: "gen",    prompt: "黄昏的滨海公路，一位骑行者迎着夕阳，电影感，暖橙色主调" },
+  { id: "g2",  name: "幻夜之城 v1",       art: "art-ember",   scope: "proj",   time: "10-05 22:03", kind: "gen",    chain: "A", prompt: "黄昏的滨海公路，一位骑行者迎着夕阳" },
+  { id: "g3",  name: "幻夜之城 v2",       art: "art-dusk",    scope: "proj",   time: "10-05 22:31", kind: "edit",   chain: "A", prompt: "把天空改成火烧云，加一轮落日" },
+  { id: "g4",  name: "幻夜之城 v3",       art: "art-cosmos",  scope: "proj",   time: "10-05 23:12", kind: "edit",   chain: "A", prompt: "海面加一座发光的孤岛，远处有灯塔" },
+  { id: "g5",  name: "雾中群山",          art: "art-mist",    scope: "global", time: "10-04 09:40", kind: "gen",    prompt: "清晨雾气缭绕的群山，极简主义，大面积留白" },
+  { id: "g6",  name: "苔原小径",          art: "art-verdant", scope: "global", time: "10-03 16:22", kind: "gen",    prompt: "原始森林中的苔藓小径，晨雾，柔光" },
+  { id: "g7",  name: "极光观测站",        art: "art-aurora",  scope: "proj",   time: "10-03 00:18", kind: "gen",    prompt: "极地观测站与极光，长曝光摄影风格" },
+  { id: "g8",  name: "红岩峡谷",          art: "art-canyon",  scope: "global", time: "10-01 14:05", kind: "import", prompt: "本地导入 · D:/素材/canyon.jpg" },
+  { id: "g9",  name: "樱色铁道",          art: "art-sakura",  scope: "global", time: "09-30 19:51", kind: "gen",    prompt: "春日樱花铁道，吉卜力水彩风格" },
+  { id: "g10", name: "沙丘旅人",          art: "art-dune",    scope: "proj",   time: "09-28 11:27", kind: "import", prompt: "本地导入 · D:/素材/dune.png" },
+  { id: "g11", name: "晨光森林",          art: "art-forest",  scope: "global", time: "09-26 08:12", kind: "gen",    prompt: "晨光穿过针叶林，空气中有光尘" },
+  { id: "g12", name: "霓虹巷口",          art: "art-orchid",  scope: "proj",   time: "09-24 21:33", kind: "edit",   chain: "B", prompt: "雨夜霓虹巷口，赛博朋克，地面倒影" },
+  { id: "g13", name: "笔触感海报",        art: "art-brush",   scope: "global", time: "09-22 15:02", kind: "gen",    prompt: "抽象笔触感海报背景，低饱和" },
+  { id: "g14", name: "星轨营地",          art: "art-cosmos",  scope: "global", time: "09-20 23:45", kind: "gen",    prompt: "银河星轨下的露营帐篷，暖色营灯" },
+  { id: "g15", name: "麦田守望",          art: "art-field",   scope: "proj",   time: "09-18 17:26", kind: "edit",   chain: "B", prompt: "把天空改成黄昏，加飞鸟剪影" },
+];
+const CHAIN_A = ["g2", "g3", "g4"]; // 画布编辑视图演示的派生链
+
+/* ---------- 工具 ---------- */
+const $ = (sel, root) => (root || document).querySelector(sel);
+const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+const app = $("#app");
+
+function scopeLabel() { return state.scope === "proj" ? "项目图库 · MarioCode" : "独立图库"; }
+function scopePath() { return state.scope === "proj" ? "D:/Projects/MarioCode/.mariocode/images" : "~/Pictures/MarioCode 图库"; }
+
+function syncStaticBits() {
+  $$("[data-scope-label]").forEach((el) => (el.textContent = scopeLabel()));
+  $$("[data-scope-path]").forEach((el) => (el.textContent = scopePath()));
+  app.dataset.theme = state.theme;
+  $$(".app [data-act='theme'] .only-light").forEach((el) => (el.style.display = state.theme === "dark" ? "none" : ""));
+  $$(".app [data-act='theme'] .only-dark").forEach((el) => (el.style.display = state.theme === "dark" ? "" : "none"));
+}
+
+/* ---------- 视图切换 ---------- */
+function applyView() {
+  $$(".cv-view").forEach((v) => v.classList.toggle("on", v.dataset.view === state.view));
+  $$("[data-group='view'] button").forEach((b) => b.classList.toggle("on", b.dataset.v === state.view));
+  $$(".proto-bar [data-group='theme'] button").forEach((b) => b.classList.toggle("on", b.dataset.v === state.theme));
+  $$(".proto-bar [data-group='scope'] button").forEach((b) => b.classList.toggle("on", b.dataset.v === state.scope));
+  $$("[data-group='editmode'] button").forEach((b) => b.classList.toggle("on", b.dataset.v === state.editMode));
+  if (state.view === "canvas") renderCanvasView();
+  if (state.view === "gallery") renderGallery();
+  syncStaticBits();
+  saveHash();
+}
+
+/* ---------- 画布编辑:真实可涂抹的蒙版 ---------- */
+const stage = $("#cvStage");
+const frame = $("#cvFrame");
+const cvImg = $("#cvImg");
+const paint = $("#cvPaint");
+const pctx = paint.getContext("2d");
+const PAINT_COLOR = "rgba(255, 159, 67, 0.55)"; // 琥珀半透明蒙版
+
+let activeImgId = "g4";
+let brush = 32;
+let tool = "brush";
+let strokes = [];   // 已完成笔画 {tool, size, pts:[[x,y],...]}
+let redoStack = [];
+let drawing = null; // 进行中的笔画
+
+/* ---------- 演示位图:程序化生成占位图(渐变 + 装饰),裁剪按真实像素处理 ---------- */
+const STOCK_DIMS = { w: 1536, h: 1024 }; // 素材图统一 3:2
+/* 与 .art-* CSS 渐变同源的色标;angle 为 CSS 角度(0deg 朝上,顺时针) */
+const ART_DEFS = {
+  "art-ember":   { angle: 160, stops: [[0, "#ff9966"], [0.48, "#ff5e62"], [1, "#7a2e5e"]] },
+  "art-mist":    { angle: 200, stops: [[0, "#e0eafc"], [0.55, "#cfdef3"], [1, "#a8b8d8"]] },
+  "art-verdant": { angle: 150, stops: [[0, "#134e5e"], [0.55, "#3a7d5d"], [1, "#71b280"]] },
+  "art-aurora":  { angle: 135, stops: [[0, "#0f2027"], [0.45, "#2c5364"], [1, "#43c6ac"]] },
+  "art-canyon":  { angle: 165, stops: [[0, "#c76b45"], [0.55, "#8a3b4a"], [1, "#3e2b4f"]] },
+  "art-sakura":  { angle: 150, stops: [[0, "#fbc2eb"], [0.45, "#e6a4d8"], [1, "#8e9ee6"]] },
+  "art-dune":    { angle: 170, stops: [[0, "#e8c07a"], [0.55, "#c99058"], [1, "#6e4b3a"]] },
+  "art-tide":    { angle: 195, stops: [[0, "#43cea2"], [0.55, "#2b8fb8"], [1, "#185a9d"]] },
+  "art-noir":    { angle: 160, stops: [[0, "#232526"], [0.6, "#3a3f42"], [1, "#57606b"]] },
+  "art-iris":    { angle: 150, stops: [[0, "#5b49b8"], [0.5, "#7b5fc0"], [1, "#c86dd7"]] },
+  "art-forest":  { angle: 200, stops: [[0, "#f5f7fa"], [1, "#c3cfe2"]] },
+  "art-orchid":  { angle: 155, stops: [[0, "#e96443"], [1, "#904e95"]] },
+  "art-brush":   { angle: 150, stops: [[0, "#e0c3fc"], [1, "#8ec5fc"]] },
+  "art-dusk":    { angle: 170, stops: [[0, "#2b5876"], [1, "#4e4376"]] },
+  "art-grove":   { angle: 160, stops: [[0, "#c1dfc4"], [0.55, "#8fbf9f"], [1, "#4b6f63"]] },
+  "art-cosmos":  { radial: true, cx: 0.3, cy: 0.25, stops: [[0, "#3b2e63"], [0.55, "#17102e"], [1, "#0a0618"]] },
+  "art-field":   { angle: 165, stops: [[0, "#f7b733"], [0.55, "#e0884e"], [1, "#97421f"]] },
+};
+function hashSeed(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+/* 轻量装饰:光晕 + 山峦剪影 + 星点,让占位图有构图、裁切效果可感知 */
+function drawDecor(ctx, w, h, seed) {
+  let s = seed || 1;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 4294967296);
+  const sx = w * (0.22 + rnd() * 0.56), sy = h * (0.18 + rnd() * 0.3), sr = Math.min(w, h) * (0.05 + rnd() * 0.06);
+  const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr * 2.4);
+  glow.addColorStop(0, "rgba(255,255,255,.6)");
+  glow.addColorStop(0.45, "rgba(255,255,255,.18)");
+  glow.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(sx, sy, sr * 2.4, 0, 7); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.85)";
+  ctx.beginPath(); ctx.arc(sx, sy, sr, 0, 7); ctx.fill();
+  ctx.fillStyle = "rgba(12,18,15,.22)";
+  for (let m = 0; m < 2; m++) {
+    const base = h * (0.76 + m * 0.1);
+    ctx.beginPath(); ctx.moveTo(0, h);
+    let x = 0;
+    while (x < w) {
+      const pw = w * (0.12 + rnd() * 0.2), ph = h * (0.09 + rnd() * 0.17);
+      ctx.lineTo(x + pw / 2, base - ph); ctx.lineTo(x + pw, base);
+      x += pw;
+    }
+    ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = "rgba(255,255,255,.42)";
+  for (let i = 0; i < 14; i++) {
+    const r = Math.min(w, h) * (0.004 + rnd() * 0.008);
+    ctx.beginPath(); ctx.arc(rnd() * w, rnd() * h * 0.6, r, 0, 7); ctx.fill();
+  }
+}
+function bitmapFor(img) {
+  if (img._bmp) return img._bmp;
+  const dims = img.dims || STOCK_DIMS;
+  const cv = document.createElement("canvas");
+  cv.width = dims.w; cv.height = dims.h;
+  const ctx = cv.getContext("2d");
+  const def = ART_DEFS[img.art] || ART_DEFS["art-ember"];
+  let g;
+  if (def.radial) {
+    g = ctx.createRadialGradient(dims.w * def.cx, dims.h * def.cy, 0, dims.w * def.cx, dims.h * def.cy, Math.max(dims.w, dims.h) * 0.75);
+  } else {
+    const a = (def.angle * Math.PI) / 180; // CSS 角度:0deg 朝上,顺时针
+    const dx = Math.sin(a), dy = -Math.cos(a);
+    const L = (Math.abs(dims.w * dx) + Math.abs(dims.h * dy)) / 2;
+    g = ctx.createLinearGradient(dims.w / 2 - dx * L, dims.h / 2 - dy * L, dims.w / 2 + dx * L, dims.h / 2 + dy * L);
+  }
+  def.stops.forEach(([o, c]) => g.addColorStop(o, c));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, dims.w, dims.h);
+  drawDecor(ctx, dims.w, dims.h, hashSeed(img.id));
+  img._bmp = cv;
+  img._url = cv.toDataURL("image/jpeg", 0.9);
+  return cv;
+}
+function imageURL(img) { bitmapFor(img); return img._url; }
+function imageDims(img) { const b = bitmapFor(img); return { w: b.width, h: b.height }; }
+
+function activeImage() { return IMAGES.find((i) => i.id === activeImgId) || IMAGES[0]; }
+function activeChain() {
+  const img = activeImage();
+  return img.chain ? IMAGES.filter((i) => i.chain === img.chain) : [img];
+}
+
+function fitFrame() {
+  const padX = 64, padY = 56; // 横向留白给左侧工具条让位
+  const availW = Math.max(stage.clientWidth - padX * 2, 120);
+  const availH = Math.max(stage.clientHeight - padY * 2, 120);
+  const d = imageDims(activeImage());
+  let w = availW, h = (w * d.h) / d.w;
+  if (h > availH) { h = availH; w = (h * d.w) / d.h; }
+  frame.style.width = Math.round(w) + "px";
+  frame.style.height = Math.round(h) + "px";
+  placeToolbar();
+  resetCropBox();
+  redrawMask();
+}
+
+/* 工具条贴画框左缘的留白里;留白不够时收进画框内侧(半透明) */
+function placeToolbar() {
+  const tb = $("#cvToolbar");
+  if (frame.hidden || tb.hidden) return;
+  const fx = frame.offsetLeft, w = tb.offsetWidth;
+  if (fx - w - 10 >= 6) {
+    tb.classList.remove("inset");
+    tb.style.left = fx - w - 10 + "px";
+  } else if (fx - w >= 12) {
+    tb.classList.remove("inset");
+    tb.style.left = Math.max(4, Math.round((fx - w) / 2)) + "px";
+  } else {
+    tb.classList.add("inset");
+    tb.style.left = fx + 10 + "px";
+  }
+}
+
+function redrawMask() {
+  paint.width = frame.clientWidth;
+  paint.height = frame.clientHeight;
+  pctx.lineCap = "round";
+  pctx.lineJoin = "round";
+  for (const s of strokes) drawStroke(s);
+}
+
+function drawStroke(s) {
+  pctx.save();
+  if (s.tool === "eraser") {
+    pctx.globalCompositeOperation = "destination-out";
+    pctx.strokeStyle = "rgba(0,0,0,1)";
+  } else {
+    pctx.globalCompositeOperation = "source-over";
+    pctx.strokeStyle = PAINT_COLOR;
+  }
+  pctx.lineWidth = s.size;
+  pctx.beginPath();
+  s.pts.forEach(([x, y], i) => (i === 0 ? pctx.moveTo(x, y) : pctx.lineTo(x, y)));
+  if (s.pts.length === 1) pctx.lineTo(s.pts[0][0] + 0.01, s.pts[0][1]);
+  pctx.stroke();
+  pctx.restore();
+}
+
+function maskPoint(e) {
+  const r = paint.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+}
+
+frame.addEventListener("pointerdown", (e) => {
+  if (state.editMode === "img2img") return; // 整图变换不需要蒙版
+  if (tool === "crop") return; // 切图模式下不涂抹
+  frame.setPointerCapture(e.pointerId);
+  drawing = { tool, size: brush, pts: [maskPoint(e)] };
+  redoStack = [];
+  drawStroke({ ...drawing, pts: drawing.pts });
+});
+frame.addEventListener("pointermove", (e) => {
+  if (!drawing) return;
+  const p = maskPoint(e);
+  const last = drawing.pts[drawing.pts.length - 1];
+  const dist = Math.hypot(p[0] - last[0], p[1] - last[1]);
+  const step = Math.max(drawing.size / 4, 2);
+  if (dist >= step) {
+    const n = Math.floor(dist / step);
+    for (let i = 1; i <= n; i++) {
+      drawing.pts.push([last[0] + ((p[0] - last[0]) * i) / n, last[1] + ((p[1] - last[1]) * i) / n]);
+    }
+    drawStroke({ ...drawing, pts: drawing.pts.slice(-n - 1) });
+  }
+});
+function endStroke() {
+  if (!drawing) return;
+  strokes.push(drawing);
+  drawing = null;
+  syncMaskUI();
+}
+frame.addEventListener("pointerup", endStroke);
+frame.addEventListener("pointercancel", endStroke);
+
+function syncMaskUI() {
+  const n = strokes.length;
+  $("#maskCount").textContent = n;
+  $("#btnUndo").disabled = n === 0;
+  $("#btnRedo").disabled = redoStack.length === 0;
+}
+
+function clearMask() {
+  strokes = [];
+  redoStack = [];
+  redrawMask();
+  syncMaskUI();
+}
+
+/* ---------- 切图模式(TODO-049:真裁剪,按选区从位图裁出并另存为派生新版本) ---------- */
+const cropBox = $("#cropBox"), cropBar = $("#cropBar"), cvToast = $("#cvToast");
+const CROP_RATIOS = [
+  { label: "自由", r: 0 },
+  { label: "1:1", r: 1 },
+  { label: "3:2", r: 3 / 2 },
+  { label: "16:9", r: 16 / 9 },
+];
+let cropDrag = null, toastTimer = 0;
+let cropRatioIdx = 0; // CROP_RATIOS 下标,0 = 自由
+const cropRatioValue = () => CROP_RATIOS[cropRatioIdx].r;
+
+function syncCropMode() {
+  const on = tool === "crop" && !frame.hidden;
+  cropBox.hidden = !on;
+  cropBar.hidden = !on;
+  if (on) resetCropBox();
+}
+function setCropBox(l, t, w, h) {
+  const W = frame.clientWidth, H = frame.clientHeight;
+  w = Math.max(24, Math.min(w, W));
+  h = Math.max(24, Math.min(h, H));
+  l = Math.max(0, Math.min(l, W - w));
+  t = Math.max(0, Math.min(t, H - h));
+  cropBox.style.left = l + "px";
+  cropBox.style.top = t + "px";
+  cropBox.style.width = w + "px";
+  cropBox.style.height = h + "px";
+}
+function resetCropBox() {
+  if (cropBox.hidden) return;
+  const W = frame.clientWidth, H = frame.clientHeight, r = cropRatioValue();
+  let w = W * 0.8, h = H * 0.8;
+  if (r > 0) { if (w / h > r) w = h * r; else h = w / r; }
+  setCropBox((W - w) / 2, (H - h) / 2, w, h);
+}
+function setCropRatioIdx(i, keepCenter) {
+  cropRatioIdx = i;
+  $$("#cropRatio button").forEach((x) => x.classList.toggle("on", Number(x.dataset.ri) === i));
+  const r = cropRatioValue();
+  if (keepCenter && !cropBox.hidden && r > 0) {
+    // 保持中心,按新比例收拢现有选框
+    const cx = cropBox.offsetLeft + cropBox.offsetWidth / 2;
+    const cy = cropBox.offsetTop + cropBox.offsetHeight / 2;
+    let w = cropBox.offsetWidth, h = cropBox.offsetHeight;
+    if (w / h > r) w = h * r; else h = w / r;
+    setCropBox(cx - w / 2, cy - h / 2, w, h);
+  } else if (!cropBox.hidden) resetCropBox();
+}
+$$("#cropRatio button").forEach((b) =>
+  b.addEventListener("click", () => setCropRatioIdx(Number(b.dataset.ri), true))
+);
+function exitCropMode(backTo) {
+  if (backTo) {
+    tool = backTo;
+    $$("#cvToolbar [data-tool]").forEach((x) => x.classList.toggle("on", x.dataset.tool === tool));
+  }
+  syncCropMode();
+}
+function showToast(msg) {
+  cvToast.textContent = msg;
+  cvToast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => cvToast.classList.remove("show"), 2400);
+}
+
+/* 选框整体拖动 + 四角手柄缩放(比例约束时另一维按比例跟随,对边锚定) */
+cropBox.addEventListener("pointerdown", (e) => {
+  e.stopPropagation();
+  cropBox.setPointerCapture(e.pointerId);
+  cropDrag = {
+    hd: (e.target.dataset && e.target.dataset.hd) || "",
+    x: e.clientX, y: e.clientY,
+    l: cropBox.offsetLeft, t: cropBox.offsetTop,
+    w: cropBox.offsetWidth, h: cropBox.offsetHeight,
+  };
+});
+cropBox.addEventListener("pointermove", (e) => {
+  if (!cropDrag) return;
+  const dx = e.clientX - cropDrag.x, dy = e.clientY - cropDrag.y;
+  const { hd } = cropDrag;
+  let { l, t, w, h } = cropDrag;
+  if (!hd) { setCropBox(l + dx, t + dy, w, h); return; }
+  if (hd.includes("r")) w = cropDrag.w + dx;
+  if (hd.includes("l")) w = cropDrag.w - dx;
+  if (hd.includes("b")) h = cropDrag.h + dy;
+  if (hd.includes("t")) h = cropDrag.h - dy;
+  w = Math.max(24, w); h = Math.max(24, h);
+  const r = cropRatioValue();
+  if (r > 0) {
+    // 取变化幅度更大的轴为驱动轴,另一轴按比例跟随
+    const wFromH = h * r, hFromW = w / r;
+    if (Math.abs(wFromH - cropDrag.w) > Math.abs(w - cropDrag.w)) w = wFromH; else h = hFromW;
+  }
+  if (hd.includes("l")) l = cropDrag.l + cropDrag.w - w; // 拖动左/上手柄时锚定对边
+  if (hd.includes("t")) t = cropDrag.t + cropDrag.h - h;
+  setCropBox(l, t, w, h);
+});
+cropBox.addEventListener("pointerup", () => (cropDrag = null));
+cropBox.addEventListener("pointercancel", () => (cropDrag = null));
+
+/* 应用:把选框映射回位图像素,裁出新图并另存为派生新版本(原图保留) */
+function applyCrop() {
+  const img = activeImage();
+  const src = bitmapFor(img);
+  const sx = (cropBox.offsetLeft / frame.clientWidth) * src.width;
+  const sy = (cropBox.offsetTop / frame.clientHeight) * src.height;
+  const sw = (cropBox.offsetWidth / frame.clientWidth) * src.width;
+  const sh = (cropBox.offsetHeight / frame.clientHeight) * src.height;
+  const cw = Math.max(2, Math.round(sw)), ch = Math.max(2, Math.round(sh));
+  const cv = document.createElement("canvas");
+  cv.width = cw; cv.height = ch;
+  cv.getContext("2d").drawImage(src, sx, sy, sw, sh, 0, 0, cw, ch);
+  const chain = activeChain();
+  const now = new Date(), pad = (n) => String(n).padStart(2, "0");
+  const nu = {
+    id: "gc" + Date.now().toString(36) + IMAGES.length,
+    name: img.name.replace(/ v\d+$/, "") + " v" + (chain.length + 1),
+    art: img.art,
+    scope: img.scope,
+    time: pad(now.getMonth() + 1) + "-" + pad(now.getDate()) + " " + pad(now.getHours()) + ":" + pad(now.getMinutes()),
+    kind: "edit",
+    chain: img.chain || "C-" + img.id,
+    prompt: "切图 · 从「" + img.name + "」裁出 " + cw + "×" + ch,
+    dims: { w: cw, h: ch },
+    via: "crop",
+  };
+  nu._bmp = cv;
+  nu._url = cv.toDataURL("image/jpeg", 0.9);
+  IMAGES.push(nu);
+  activeImgId = nu.id;
+  exitCropMode("brush");
+  renderCanvasView();
+  showToast("已裁出「" + nu.name + "」(" + cw + "×" + ch + "),另存为派生新版本,原图保留");
+}
+$("#cropApply").addEventListener("click", applyCrop);
+$("#cropCancel").addEventListener("click", () => exitCropMode("brush"));
+
+function renderLineage() {
+  const box = $("#cvLineage");
+  const chain = activeChain();
+  const label = '<span class="lineage-label"><svg class="ic sm"><use href="#i-layers"/></svg>版本派生链</span>';
+  box.innerHTML = label + chain.map((img, i) => {
+    const tag = img.kind === "edit" ? "v" + (i + 1) : "原图";
+    const node =
+      '<button class="ln-node' + (img.id === activeImgId ? " on" : "") + '" data-ln="' + img.id + '" title="' + img.prompt + '">' +
+        '<span class="ln-thumb"><img src="' + imageURL(img) + '" alt=""></span>' +
+        '<span class="ln-meta"><span class="tag ' + (img.kind === "edit" ? "ver" : "gen") + '">' + tag + "</span>" +
+        '<span class="mono">' + img.time.slice(5) + "</span></span>" +
+      "</button>";
+    const arrow = i === 0 ? "" :
+      '<span class="ln-arrow"><svg class="ic xs"><use href="#i-arrow-r"/></svg><span>' + (img.via === "crop" ? "切图" : "编辑") + "</span></span>";
+    return arrow + node;
+  }).join("") +
+  '<button class="ln-new" title="基于当前版本再生成一个新版本"><svg class="ic"><use href="#i-plus"/></svg></button>';
+  $$("[data-ln]", box).forEach((b) =>
+    b.addEventListener("click", () => {
+      activeImgId = b.dataset.ln;
+      renderCanvasView();
+    })
+  );
+}
+
+function renderCanvasView() {
+  const img = activeImage();
+  const empty = !img;
+  frame.hidden = empty;
+  $("#cvToolbar").hidden = empty;
+  $("#cvZoom").hidden = empty;
+  $("#chipName").hidden = empty;
+  $("#chipSave").hidden = empty;
+  $("#cvLineage").hidden = empty;
+  if (empty) return;
+  cvImg.src = imageURL(img);
+  const d = imageDims(img);
+  $("#chipNameText").textContent = img.name + " · " + d.w + "×" + d.h;
+  const chain = activeChain();
+  const ver = img.kind === "edit" ? "v" + (chain.findIndex((x) => x.id === img.id) + 1) : "原图";
+  $("#sideImgName").textContent = img.name;
+  $("#sideImgTag").textContent = ver;
+  $("#sideImgPrompt").textContent = "提示词:" + img.prompt;
+  renderLineage();
+  requestAnimationFrame(() => {
+    fitFrame(); clearMask();
+    if (state.cropDoneDemo) {
+      state.cropDoneDemo = false;
+      state.cropDemo = false;
+      tool = "crop";
+      $$("#cvToolbar [data-tool]").forEach((x) => x.classList.toggle("on", x.dataset.tool === "crop"));
+      setCropRatioIdx(3, false); // 16:9
+      syncCropMode();
+      applyCrop();
+    } else if (state.cropDemo) {
+      tool = "crop";
+      $$("#cvToolbar [data-tool]").forEach((x) => x.classList.toggle("on", x.dataset.tool === "crop"));
+      syncCropMode();
+    } else exitCropMode("brush");
+  });
+}
+
+/* ---------- 图库 ---------- */
+function kindTag(img) {
+  if (img.kind === "import") return '<span class="tag imp">导入</span>';
+  if (img.kind === "edit") return '<span class="tag ver">派生</span>';
+  return '<span class="tag gen">生成</span>';
+}
+function chainTag(img) {
+  return img.chain ? '<span class="tag" title="同一条派生链上的版本">链 ' + img.chain + "</span>" : "";
+}
+function renderGallery() {
+  const grid = $("#galGrid");
+  const list = IMAGES.filter((i) => state.scope === "proj" ? i.scope === "proj" : true);
+  $("[data-gallery-count]").textContent = list.length + " 张";
+  const heights = [150, 190, 130, 210, 170, 145, 200, 160];
+  grid.innerHTML = list.map((img, i) => {
+    const h = heights[i % heights.length];
+    const scopeTag = state.scope === "global" && img.scope === "proj" ? '<span class="tag proj">MarioCode 项目</span>' : "";
+    return (
+      '<div class="gcard">' +
+        '<div class="gcard-img" data-act="preview" title="点击预览">' +
+          '<img class="gimg" src="' + imageURL(img) + '" style="height:' + h + 'px" alt="">' +
+          '<div class="badges">' + kindTag(img) + chainTag(img) + "</div>" +
+          '<span class="zoom"><svg class="ic sm"><use href="#i-zoom"/></svg></span>' +
+          '<div class="gcard-acts">' +
+            '<button class="btn btn-primary" data-act="edit-img" data-img="' + img.id + '">在画布中编辑</button>' +
+            '<button class="gic" title="在文件夹中显示"><svg class="ic sm"><use href="#i-folder"/></svg></button>' +
+            '<button class="gic" title="复制提示词"><svg class="ic sm"><use href="#i-copy"/></svg></button>' +
+            '<button class="gic" title="删除(原图保留在回收站)"><svg class="ic sm"><use href="#i-trash"/></svg></button>' +
+          "</div>" +
+        "</div>" +
+        '<div class="gcard-info">' +
+          '<div class="gcard-title"><b>' + img.name + "</b><time>" + img.time + "</time></div>" +
+          '<p class="gcard-prompt">' + img.prompt + "</p>" +
+          '<div class="gcard-foot">' + scopeTag +
+            '<span class="lk" data-act="edit-img" data-img="' + img.id + '">派生新版本</span>' +
+          "</div>" +
+        "</div>" +
+      "</div>"
+    );
+  }).join("");
+}
+
+/* ---------- 事件接线 ---------- */
+$$(".proto-bar .pseg").forEach((seg) => {
+  const group = seg.dataset.group;
+  $$("button", seg).forEach((b) =>
+    b.addEventListener("click", () => {
+      if (group === "view") state.view = b.dataset.v;
+      if (group === "theme") state.theme = b.dataset.v;
+      if (group === "scope") state.scope = b.dataset.v;
+      applyView();
+    })
+  );
+});
+$$(".mode-seg [data-v]").forEach((b) =>
+  b.addEventListener("click", () => { state.view = b.dataset.v; applyView(); })
+);
+
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-act]");
+  if (!el) return;
+  const act = el.dataset.act;
+  if (act === "theme") { state.theme = state.theme === "dark" ? "light" : "dark"; applyView(); }
+  if (act === "scope-toggle") { state.scope = state.scope === "proj" ? "global" : "proj"; applyView(); }
+  if (act === "goto-gallery") { state.view = "gallery"; applyView(); }
+  if (act === "goto-t2i") { state.view = "t2i"; applyView(); }
+  if (act === "edit-img") {
+    activeImgId = el.dataset.img || CHAIN_A[CHAIN_A.length - 1];
+    state.view = "canvas";
+    applyView();
+  }
+  if (act === "clear") clearMask();
+  if (act === "undo") {
+    const s = strokes.pop();
+    if (s) redoStack.push(s);
+    redrawMask(); syncMaskUI();
+  }
+  if (act === "redo") {
+    const s = redoStack.pop();
+    if (s) strokes.push(s);
+    redrawMask(); syncMaskUI();
+  }
+  if (act === "gen" || act === "edit-gen") {
+    const btn = el;
+    const old = btn.innerHTML;
+    btn.innerHTML = "生成中…";
+    btn.style.pointerEvents = "none";
+    setTimeout(() => { btn.innerHTML = old; btn.style.pointerEvents = ""; }, 1400);
+  }
+});
+
+/* 工具按钮 / 笔刷 / 滑杆 */
+$$("#cvToolbar [data-tool]").forEach((b) =>
+  b.addEventListener("click", () => {
+    tool = b.dataset.tool;
+    $$("#cvToolbar [data-tool]").forEach((x) => x.classList.toggle("on", x === b));
+    syncCropMode();
+  })
+);
+function syncBrush() {
+  $("#brushVal").textContent = brush + "px";
+  const dot = $("#brushDot");
+  const d = Math.max(6, Math.min(20, brush / 4));
+  dot.style.width = d + "px";
+  dot.style.height = d + "px";
+  $("#brushRange").value = brush;
+  $("#brushRange").style.setProperty("--fill", ((brush - 8) / 72) * 100 + "%");
+}
+$("#brushRange").addEventListener("input", (e) => { brush = Number(e.target.value); syncBrush(); });
+document.addEventListener("keydown", (e) => {
+  if (state.view !== "canvas") return;
+  if (e.key === "[") { brush = Math.max(8, brush - 4); syncBrush(); }
+  if (e.key === "]") { brush = Math.min(80, brush + 4); syncBrush(); }
+  if (e.key === "Escape" && tool === "crop") exitCropMode("brush");
+});
+const strengthRange = $("#strengthRange");
+strengthRange.addEventListener("input", () => {
+  $("#strengthVal").textContent = strengthRange.value + "%";
+  strengthRange.style.setProperty("--fill", ((strengthRange.value - 5) / 90) * 100 + "%");
+});
+
+/* 风格 chips / 画幅 / 数量 / 编辑方式 */
+$$("[data-group='styles'] .chip").forEach((c) =>
+  c.addEventListener("click", () => c.classList.toggle("on"))
+);
+$$("[data-group='ratio'] button, [data-group='count'] button").forEach((b) =>
+  b.addEventListener("click", () => {
+    $$("button", b.parentElement).forEach((x) => x.classList.toggle("on", x === b));
+  })
+);
+$$("[data-group='editmode'] button").forEach((b) =>
+  b.addEventListener("click", () => {
+    state.editMode = b.dataset.v;
+    $$("[data-group='editmode'] button").forEach((x) => x.classList.toggle("on", x === b));
+    $("#maskSect").style.display = state.editMode === "img2img" ? "none" : "";
+    saveHash();
+  })
+);
+
+/* 提示词字数 */
+const promptEl = $("#prompt");
+promptEl.addEventListener("input", () => {
+  $(".char-count").textContent = promptEl.value.length + " / 2000";
+});
+
+window.addEventListener("resize", () => {
+  if (state.view === "canvas" && !frame.hidden) fitFrame();
+});
+window.addEventListener("hashchange", () => { /* 外部改 hash 时暂不反向同步,原型从简 */ });
+
+/* ---------- 启动 ---------- */
+syncBrush();
+$("#strengthRange").dispatchEvent(new Event("input"));
+applyView();
+</script>
+</body>
+</html>

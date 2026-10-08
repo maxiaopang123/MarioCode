@@ -4702,6 +4702,114 @@ export const RevokeMobileDeviceSchema = z.object({ deviceId: z.string().min(1) }
 
 /** A typed map of all renderer→main RPC invocations. The preload exposes a
  * typed `window.api` matching this shape; the renderer imports it for safety. */
+// ── 画布工作台(canvas workbench,TODO-033/041 + TODO-049) ──
+//
+// 图库图片的领域类型与 RPC 契约。图片文件落在图库目录(默认系统「图片」/
+// MarioCode-Gallery,可用 `canvas.galleryDir` 设置改),元数据存 canvas_images
+// 表;派生链(chainId = 链根图片 id)把「原图 → edit → 再 edit」串起来。
+
+/** settings key:用户自选的图库根目录;空串 = 默认目录(main 侧解析)。 */
+export const CANVAS_GALLERY_DIR_SETTING_KEY = "canvas.galleryDir";
+
+/** 独立图库(不归属项目)或项目图库。 */
+export const CanvasImageScopeSchema = z.enum(["global", "project"]);
+export type CanvasImageScope = z.infer<typeof CanvasImageScopeSchema>;
+
+/** generated = 文生图;imported = 用户导入;derived = 从某张图派生(edit/切图)。 */
+export const CanvasImageKindSchema = z.enum(["generated", "imported", "derived"]);
+export type CanvasImageKind = z.infer<typeof CanvasImageKindSchema>;
+
+/** 图库条目(canvas_images 行)。`prompt` 对导入图可为空串。 */
+export interface CanvasImage {
+  id: string;
+  name: string;
+  kind: CanvasImageKind;
+  scope: CanvasImageScope;
+  /** scope = "project" 时的项目 id,否则 null。 */
+  projectId: string | null;
+  /** 派生来源图片 id(derived),否则 null。 */
+  parentId: string | null;
+  /** 派生链根 id(同一条链上的版本共享),首图为自身 id。 */
+  chainId: string;
+  prompt: string;
+  filePath: string;
+  width: number;
+  height: number;
+  createdAt: number;
+}
+
+export const CanvasListSchema = z.object({
+  scope: CanvasImageScopeSchema,
+  /** scope = "project" 时必填。 */
+  projectId: z.string().max(64).optional(),
+});
+export type CanvasListInput = z.infer<typeof CanvasListSchema>;
+
+export const CanvasImageDataSchema = z.object({
+  id: z.string().max(64),
+});
+
+export const CanvasGenerateSchema = z.object({
+  scope: CanvasImageScopeSchema,
+  projectId: z.string().max(64).optional(),
+  prompt: z.string().min(1).max(4000),
+  /** 尺寸,缺省用内置工具配置的图片默认尺寸。 */
+  size: z.string().regex(IMAGE_SIZE_RE).optional(),
+  /** 生成张数,1–4,逐张生成。 */
+  count: z.number().int().min(1).max(4).optional(),
+});
+export type CanvasGenerateInput = z.infer<typeof CanvasGenerateSchema>;
+
+/** 蒙版/整图编辑:以 parentId 的图作为输入,按提示词生成派生新版本。
+ *  maskBase64 存在 = 蒙版重绘(images/edits 带 mask),否则 = 整图变换。
+ *  imageBase64 存在时替代父图文件作为 image 输入(扩图:渲染端先把父图
+ *  贴进放大后的画布,mask 把新增边区标为编辑区)。 */
+export const CanvasEditSchema = z.object({
+  parentId: z.string().max(64),
+  prompt: z.string().min(1).max(4000),
+  /** PNG data URL 或裸 base64,尺寸与编辑输入图一致(不一致时 main 侧缩放)。 */
+  maskBase64: z.string().max(30_000_000).optional(),
+  /** PNG data URL 或裸 base64;缺省 = 读父图文件。 */
+  imageBase64: z.string().max(40_000_000).optional(),
+  size: z.string().regex(IMAGE_SIZE_RE).optional(),
+});
+export type CanvasEditInput = z.infer<typeof CanvasEditSchema>;
+
+/** 切图(TODO-049):按选区(父图像素坐标)裁出,另存为派生新版本。 */
+export const CanvasCropSchema = z.object({
+  parentId: z.string().max(64),
+  rect: z.object({
+    x: z.number().int().min(0),
+    y: z.number().int().min(0),
+    width: z.number().int().min(1),
+    height: z.number().int().min(1),
+  }),
+  name: z.string().max(200).optional(),
+});
+export type CanvasCropInput = z.infer<typeof CanvasCropSchema>;
+
+export const CanvasImportSchema = z.object({
+  scope: CanvasImageScopeSchema,
+  projectId: z.string().max(64).optional(),
+});
+export type CanvasImportInput = z.infer<typeof CanvasImportSchema>;
+
+export const CanvasDeleteSchema = z.object({
+  /** 删除该图及其派生链上的全部后续版本。 */
+  id: z.string().max(64),
+});
+
+export const CanvasRenameSchema = z.object({
+  id: z.string().max(64),
+  name: z.string().min(1).max(200),
+});
+
+export const CanvasMutationResultSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+});
+export type CanvasMutationResult = z.infer<typeof CanvasMutationResultSchema>;
+
 export interface RpcMap {
   // Claude
   "claude.startSession": (input: StartSessionInput) => Promise<{ session: Session }>;
@@ -5273,6 +5381,29 @@ export interface RpcMap {
   "relay.disconnect": () => Promise<{ ok: true }>;
   /** Read the current relay status. */
   "relay.status": () => Promise<RelayStatus>;
+  // ── 画布工作台(canvas workbench)──
+  /** 图库根目录:生效目录 + 默认目录(设置为空时的回退)。 */
+  "canvas.home": () => Promise<{ dir: string; defaultDir: string }>;
+  /** 列出某范围(独立 / 项目)的图库条目,按创建时间倒序。 */
+  "canvas.list": (input: CanvasListInput) => Promise<{ images: CanvasImage[] }>;
+  /** 读取单张图为 data URL(预览 / 进画布编辑用)。 */
+  "canvas.imageData": (input: { id: string }) => Promise<{ ok: boolean; error?: string; dataUrl?: string }>;
+  /** 文生图:生成 count 张、入库入图库,返回新条目。 */
+  "canvas.generate": (input: CanvasGenerateInput) => Promise<{ ok: boolean; error?: string; images?: CanvasImage[] }>;
+  /** 蒙版重绘 / 整图变换:以 parentId 为输入图生成派生新版本(原图保留)。 */
+  "canvas.edit": (input: CanvasEditInput) => Promise<{ ok: boolean; error?: string; image?: CanvasImage }>;
+  /** 切图:按选区裁出 parentId 的局部,另存为派生新版本(原图保留)。 */
+  "canvas.crop": (input: CanvasCropInput) => Promise<{ ok: boolean; error?: string; image?: CanvasImage }>;
+  /** 从系统文件选择器导入图片到图库(可多选)。 */
+  "canvas.import": (input: CanvasImportInput) => Promise<{ ok: boolean; error?: string; images?: CanvasImage[] }>;
+  /** 删除(含派生链后续版本);文件移入图库回收站目录。 */
+  "canvas.delete": (input: { id: string }) => Promise<CanvasMutationResult>;
+  "canvas.rename": (input: { id: string; name: string }) => Promise<CanvasMutationResult>;
+  /** 在系统文件管理器中显示图片文件。 */
+  "canvas.showInFolder": (input: { id: string }) => Promise<CanvasMutationResult>;
+  /** Open the gallery root directory itself in the OS file manager (main
+   *  resolves the managed dir; the renderer never supplies a path). */
+  "canvas.openFolder": () => Promise<CanvasMutationResult>;
 }
 
 /** The channel names used in invoke/handle and send/on. Keep these centralized
@@ -5593,6 +5724,18 @@ export const IPC = {
   RELAY_STATUS: "relay:status",
   // Relay push events (main → renderer).
   RELAY_EVENT: "relay:event",
+  // 画布工作台(canvas workbench)
+  CANVAS_HOME: "canvas:home",
+  CANVAS_LIST: "canvas:list",
+  CANVAS_IMAGE_DATA: "canvas:imageData",
+  CANVAS_GENERATE: "canvas:generate",
+  CANVAS_EDIT: "canvas:edit",
+  CANVAS_CROP: "canvas:crop",
+  CANVAS_IMPORT: "canvas:import",
+  CANVAS_DELETE: "canvas:delete",
+  CANVAS_RENAME: "canvas:rename",
+  CANVAS_SHOW_IN_FOLDER: "canvas:showInFolder",
+  CANVAS_OPEN_FOLDER: "canvas:openFolder",
   // send/on (push events)
   CLAUDE_EVENT: "claude:event",
   SESSION_TITLE_UPDATED: "session:titleUpdated",

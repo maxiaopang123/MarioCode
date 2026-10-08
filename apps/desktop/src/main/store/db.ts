@@ -230,6 +230,30 @@ function migrate(database: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_clawbot_outbox_status
       ON clawbot_outbox(status, created_at, id);
+
+    -- 画布工作台的图库(TODO-033/041):图片文件在图库目录,本表存元数据。
+    -- chain_id = 派生链根图片 id;deleted_at 非空 = 软删除(文件在 .trash/)。
+    CREATE TABLE IF NOT EXISTS canvas_images (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      kind        TEXT NOT NULL,
+      scope       TEXT NOT NULL,
+      project_id  TEXT,
+      parent_id   TEXT,
+      chain_id    TEXT NOT NULL,
+      prompt      TEXT NOT NULL DEFAULT '',
+      file_path   TEXT NOT NULL,
+      width       INTEGER NOT NULL DEFAULT 0,
+      height      INTEGER NOT NULL DEFAULT 0,
+      deleted_at  INTEGER,
+      created_at  INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_canvas_images_scope
+      ON canvas_images(scope, project_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_canvas_images_chain
+      ON canvas_images(chain_id);
+    CREATE INDEX IF NOT EXISTS idx_canvas_images_parent
+      ON canvas_images(parent_id);
   `);
   // Backward-compatible column adds for dbs created before these columns
   // existed (CREATE TABLE IF NOT EXISTS won't alter an existing table).

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "@renderer/lib/cn.js";
 import { api } from "@renderer/lib/api.js";
 import {
@@ -193,6 +193,19 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
    *  stale close-grace timer can't clear a newer freeze and a freeze that
    *  finished after its menu closed won't hide the view into the snapshot. */
   const freezeSeqRef = useRef(0);
+  const mountedRef = useRef(false);
+  const showRafRef = useRef(0);
+  const menuOpenRef = useRef(new Set<string>());
+  const authRequestRef = useRef(authRequest);
+  authRequestRef.current = authRequest;
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cancelAnimationFrame(showRafRef.current);
+      freezeSeqRef.current += 1;
+    };
+  }, []);
 
   /** Whether THIS container is currently the active one (owns the views). The
    *  overlay is active while `browserPanelOpen`; the sidebar is active while
@@ -204,7 +217,43 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
    *  clickable is to hide the view (hide() parks it offscreen, the session
    *  survives and re-shows on return). */
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
-  const isActive = settingsOpen ? false : mode === "overlay" ? open : !open;
+  const canvasOpen = useSessionStore((s) => s.canvasOpen);
+  const rightOpen = useSessionStore((s) => s.rightOpen);
+  const rightPanelTab = useSessionStore((s) => s.rightPanelTab);
+  const isActive = !settingsOpen && !canvasOpen && (mode === "overlay" ? open : !open && rightOpen && rightPanelTab === "browser");
+  // Delayed captures / animation frames must read CURRENT ownership, not
+  // the render that scheduled them. An unmounted or hidden panel owns no view.
+  const ownsSurface = useCallback(() => {
+    if (!mountedRef.current) return false;
+    const state = useSessionStore.getState();
+    return !state.settingsOpen && !state.canvasOpen && (mode === "overlay"
+      ? state.browserPanelOpen
+      : !state.browserPanelOpen && state.rightOpen && state.rightPanelTab === "browser");
+  }, [mode]);
+  const canDisplay = useCallback(() => ownsSurface() && !authRequestRef.current && menuOpenRef.current.size === 0
+    && !(useSessionStore.getState().browserViewSuppressed > 0 && shouldSuppressBrowserView()), [ownsSurface]);
+  const releaseSurface = useCallback(() => {
+    cancelAnimationFrame(showRafRef.current);
+    freezeSeqRef.current += 1;
+    menuOpenRef.current.clear();
+    deviceMenuOpenRef.current = false;
+    // On a container handover the new owner sets bounds + shows the SAME
+    // native view. The outgoing container must not hide it afterward.
+    const state = useSessionStore.getState();
+    const handedOver = !state.settingsOpen && !state.canvasOpen && (mode === "overlay"
+      ? !state.browserPanelOpen && state.rightOpen && state.rightPanelTab === "browser"
+      : state.browserPanelOpen);
+    if (handedOver) return;
+    setBrowserStageRect(null);
+    const tab = tabsRef.current.find((tab) => tab.id === activeTabIdRef.current);
+    if (tab) {
+      if (tab.pickMode) {
+        void api.browser.setPickMode({ browserId: tab.browserId, enabled: false });
+        patchTabInStore(tab.browserId, { pickMode: false });
+      }
+      void api.browser.hide({ browserId: tab.browserId });
+    }
+  }, [mode, patchTabInStore]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
@@ -227,6 +276,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
    *  follows the panel's real size. Mobile presets size the view to the
    *  emulated device (clamped to the stage when it doesn't fit). */
   const syncBounds = useCallback(() => {
+    if (!ownsSurface()) return;
     const id = activeTabIdRef.current;
     const tab = tabsRef.current.find((t) => t.id === id);
     const stage = stageRef.current;
@@ -234,6 +284,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
     const r = stage.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) {
       setBrowserStageRect(null);
+      void api.browser.hide({ browserId: tab.browserId });
       return;
     }
     // Publish the stage rect so the occlusion decision (hide the view only
@@ -298,7 +349,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
         viewportHeight: effH,
       });
     }
-  }, []);
+  }, [ownsSurface]);
 
   /** Re-show the active tab's view with fresh bounds. ORDERING IS THE FIX for
    *  the "browser view escapes the sidebar and covers other panels" bug: main's
@@ -309,7 +360,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
    *  floats above everything until some later resize happens to re-sync.
    *  Instead: (1) while the stage isn't measurable yet, DON'T show — retry on
    *  subsequent frames (bounded, so a never-measurable container can't spin
-   *  rAF forever; after ~1s fall back to a plain show); (2) syncBounds() FIRST
+   *  rAF forever; an unmeasurable stage stays hidden); (2) syncBounds() FIRST
    *  so main stores the true rect while the view is still hidden (setBounds on
    *  an invisible view only updates lastBounds); (3) only then show(), which
    *  applies exactly those bounds; (4) one more rAF sync in case layout moved.
@@ -320,13 +371,15 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
   const showActiveViewRef = useRef<(attempt?: number) => void>(() => {});
   const showActiveView = useCallback(
     (attempt = 0) => {
+      if (!canDisplay()) return;
+      cancelAnimationFrame(showRafRef.current);
       const stage = stageRef.current;
       const r = stage ? stage.getBoundingClientRect() : null;
       if (!r || r.width < 1 || r.height < 1) {
         if (attempt < 60) {
-          requestAnimationFrame(() => showActiveViewRef.current(attempt + 1));
-          return;
+          showRafRef.current = requestAnimationFrame(() => showActiveViewRef.current(attempt + 1));
         }
+        return;
       } else {
         // ALWAYS force the setBounds through: lastBoundsRef dedupes identical
         // rects, but a tab switch lands on a DIFFERENT view that never received
@@ -339,10 +392,10 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
       const tab = activeTabIdRef.current
         ? tabsRef.current.find((t) => t.id === activeTabIdRef.current)
         : null;
-      if (tab) void api.browser.show({ browserId: tab.browserId });
-      requestAnimationFrame(syncBounds);
+      if (tab && canDisplay()) void api.browser.show({ browserId: tab.browserId });
+      showRafRef.current = requestAnimationFrame(syncBounds);
     },
-    [syncBounds],
+    [syncBounds, canDisplay],
   );
   useEffect(() => {
     showActiveViewRef.current = (attempt?: number) => showActiveView(attempt ?? 0);
@@ -353,6 +406,8 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
    *  plain DOM floating over the snapshot instead of a white stage. Capture
    *  failure degrades to the old plain hide (menu over white). */
   const freezeViewForMenu = useCallback(async () => {
+    if (!ownsSurface()) return;
+    const seq = ++freezeSeqRef.current;
     const tab = activeTabIdRef.current
       ? tabsRef.current.find((t) => t.id === activeTabIdRef.current)
       : null;
@@ -377,10 +432,9 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
     const still = activeTabIdRef.current
       ? tabsRef.current.find((t) => t.id === activeTabIdRef.current)
       : null;
-    if (!still || still.browserId !== tab.browserId) return;
+    if (!ownsSurface() || freezeSeqRef.current !== seq || !still || still.browserId !== tab.browserId) return;
     if (cap?.ok && cap.data) {
       setFreezeFrame({ browserId: tab.browserId, data: cap.data, rect });
-      const seq = ++freezeSeqRef.current;
       // Double rAF: the first fires before the placeholder's paint, the
       // second after one committed paint — parking the view from here can't
       // flash white between hide and placeholder.
@@ -389,13 +443,10 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
       );
       // The menu closed while we were freezing (unfreeze bumped the seq):
       // keep the view up and drop our snapshot instead of hiding into it.
-      if (freezeSeqRef.current !== seq) {
-        setFreezeFrame(null);
-        return;
-      }
+      if (!ownsSurface() || freezeSeqRef.current !== seq || activeTabIdRef.current !== still.id) return;
     }
     void api.browser.hide({ browserId: tab.browserId });
-  }, []);
+  }, [ownsSurface]);
 
   /** Reverse of freezeViewForMenu: bring the live view back FIRST (the native
    *  surface paints over the snapshot the moment it's onscreen — it sits
@@ -404,17 +455,19 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
    *  stale grace timer from clearing a snapshot captured by a NEWER open
    *  (fast close→reopen). */
   const unfreezeViewForMenu = useCallback(() => {
+    const seq = ++freezeSeqRef.current;
+    if (!ownsSurface()) return;
     lastBoundsRef.current = null;
     showActiveView();
-    const seq = ++freezeSeqRef.current;
     window.setTimeout(() => {
       if (freezeSeqRef.current === seq) setFreezeFrame(null);
     }, 150);
-  }, [showActiveView]);
+  }, [showActiveView, ownsSurface]);
 
   // A frozen snapshot belongs to the tab it was captured from — drop it if
   // the active tab changes (menu mid-flight, tab switch via shortcut, …).
   useEffect(() => {
+    freezeSeqRef.current += 1;
     setFreezeFrame(null);
   }, [activeTabId]);
 
@@ -566,26 +619,15 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
   // state); the other container will re-show it when it activates.
   useEffect(() => {
     if (!isActive) {
-      // Container deactivating: hide the active tab's view + drop the stage
-      // rect (no active browser surface for the occlusion decision).
-      setBrowserStageRect(null);
-      const tab = activeTabIdRef.current
-        ? tabsRef.current.find((t) => t.id === activeTabIdRef.current)
-        : null;
-      if (tab) {
-        if (tab.pickMode) {
-          void api.browser.setPickMode({ browserId: tab.browserId, enabled: false });
-          patchTabInStore(tab.browserId, { pickMode: false });
-        }
-        void api.browser.hide({ browserId: tab.browserId });
-      }
+      releaseSurface();
+      setFreezeFrame(null);
       return;
     }
     // Container activating with existing tabs: re-show the active view + sync.
     if (tabsRef.current.length === 0) return; // first-open tab creation handled above
     showActiveView();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, showActiveView]);
+  }, [isActive, showActiveView, releaseSurface]);
 
   // React to the suppression counter: while > 0, a renderer-DOM overlay may
   // need to cover the OS-level WebContentsView (which always floats above the
@@ -602,7 +644,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
   const occlusionVersion = useSyncExternalStore(subscribeOcclusion, getOcclusionVersion);
   const prevSuppressedRef = useRef(0);
   const reconcileBrowserOcclusion = useCallback(() => {
-    if (!isActive) return;
+    if (!ownsSurface()) return;
     const tab = activeTabIdRef.current
       ? tabsRef.current.find((t) => t.id === activeTabIdRef.current)
       : null;
@@ -626,7 +668,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
       lastBoundsRef.current = null;
       showActiveView();
     }
-  }, [suppressed, isActive, showActiveView, occlusionVersion]);
+  }, [suppressed, isActive, showActiveView, ownsSurface, occlusionVersion]);
   useEffect(() => {
     reconcileBrowserOcclusion();
   }, [reconcileBrowserOcclusion]);
@@ -637,20 +679,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
 
   // When the component unmounts (container swap / panel close), hide the active
   // view so it can't linger over the workspace. The view survives in main.
-  useEffect(() => {
-    return () => {
-      setBrowserStageRect(null);
-      const tab = activeTabIdRef.current
-        ? tabsRef.current.find((t) => t.id === activeTabIdRef.current)
-        : null;
-      if (tab) {
-        if (tab.pickMode) {
-          void api.browser.setPickMode({ browserId: tab.browserId, enabled: false });
-        }
-        void api.browser.hide({ browserId: tab.browserId });
-      }
-    };
-  }, []);
+  useEffect(() => () => releaseSurface(), [releaseSurface]);
 
   // ResizeObserver -> syncBounds + occlusion reconcile (rAF-throttled inside).
   // Scroll events feed the same path. The reconcile rides along because the
@@ -744,6 +773,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
    *  dropdown; the list is refreshed on open so entries are current. */
   const handleMoreMenuOpenChange = useCallback(
     (open: boolean) => {
+      if (open) menuOpenRef.current.add("more"); else menuOpenRef.current.delete("more");
       if (!isActive) return;
       const tab = activeTabIdRef.current
         ? tabsRef.current.find((t) => t.id === activeTabIdRef.current)
@@ -808,6 +838,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
         const req = msg.payload as BrowserAuthRequest;
         if (!req || typeof req.requestId !== "string") return;
         setAuthRequest(req);
+        authRequestRef.current = req;
         const tab = tabsRef.current.find((t) => t.browserId === msg.browserId);
         if (tab) void api.browser.hide({ browserId: tab.browserId });
         return;
@@ -1017,6 +1048,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
   const handleDeviceMenuOpenChange = useCallback(
     (open: boolean) => {
       deviceMenuOpenRef.current = open;
+      if (open) menuOpenRef.current.add("device"); else menuOpenRef.current.delete("device");
       if (!isActive) return;
       const tab = activeTabIdRef.current
         ? tabsRef.current.find((t) => t.id === activeTabIdRef.current)
@@ -1111,6 +1143,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
    *  device dropdown above (renderer-DOM popup vs OS-level view). */
   const handleHistoryMenuOpenChange = useCallback(
     (open: boolean) => {
+      if (open) menuOpenRef.current.add("history"); else menuOpenRef.current.delete("history");
       if (!isActive) return;
       const tab = activeTabIdRef.current
         ? tabsRef.current.find((t) => t.id === activeTabIdRef.current)
@@ -1139,6 +1172,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
   /** Auth dialog closed: restore the (previously hidden) active view. */
   const handleAuthClose = useCallback(() => {
     setAuthRequest(null);
+    authRequestRef.current = null;
     if (!isActive) return;
     const tab = activeTabIdRef.current
       ? tabsRef.current.find((t) => t.id === activeTabIdRef.current)

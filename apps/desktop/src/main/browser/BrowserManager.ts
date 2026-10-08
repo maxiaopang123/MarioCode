@@ -7,7 +7,7 @@
  * match. Navigation/loading state is pushed back to the renderer as
  * `browser:event` messages.
  *
- * The DOM element picker is injected via `webContents.executeJavaScript` into
+ * The DOM element picker is injected via `webContents.mainFrame.executeJavaScript` into
  * the page's main world. Picked elements flow back through the browserPicker
  * preload's `mariocodeBridge.pickElement` -> `ipcRenderer.send` -> this manager
  * -> `sendToRenderer(BROWSER_EVENT / pickResult)`.
@@ -335,6 +335,8 @@ interface LiveBrowser {
   lastBounds: BrowserBounds;
   /** True while the view is attached + onscreen; false when hidden offscreen. */
   visible: boolean;
+  /** Public layout/visibility intent; capture cleanup must not undo newer UI changes. */
+  presentationVersion: number;
   /** Whether the picker is currently injected (avoids double-inject/remove). */
   pickMode: boolean;
   /** Current device emulation preset (desktop = no emulation). */
@@ -631,6 +633,7 @@ class BrowserManagerImpl {
       projectPath,
       lastBounds: HIDDEN_BOUNDS,
       visible: false,
+      presentationVersion: 0,
       pickMode: false,
       device: "desktop",
       viewport: { device: "desktop", orientation: "portrait" },
@@ -925,17 +928,16 @@ class BrowserManagerImpl {
 
   /** Position/resize the view over the renderer's placeholder. When hidden the
    *  bounds are remembered so show() can restore them; the actual call here
-   *  only applies if the view is visible (hidden views stay parked offscreen). */
+   *  parks hidden views offscreen, including temporary screenshot surfaces. */
   setBounds(id: string, bounds: BrowserBounds): BrowserOpResult {
     const live = this.get(id);
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
+    live.presentationVersion += 1;
     live.lastBounds = bounds;
-    if (live.visible) {
-      try {
-        live.view.setBounds(bounds);
-      } catch (err) {
-        log.warn(`browser setBounds failed: ${id} ${err instanceof Error ? err.message : String(err)}`);
-      }
+    try {
+      live.view.setBounds(live.visible ? bounds : { ...bounds, x: -9999, y: -9999 });
+    } catch (err) {
+      log.warn(`browser setBounds failed: ${id} ${err instanceof Error ? err.message : String(err)}`);
     }
     return { ok: true };
   }
@@ -945,7 +947,7 @@ class BrowserManagerImpl {
    *  is still HIDDEN_BOUNDS — fall back to a default on-screen region so the
    *  page is visible and capturable instead of a 1x1 offscreen blank.
    *
-   *  Idempotent: re-showing an already-visible view is a no-op. This matters
+   *  Re-showing an already-visible view restores bounds without re-attaching. This matters
    *  because addChildView on an attached view re-orders/re-hosts the native
    *  surface — the compositor drops a frame and the panel visibly flashes
    *  white. The renderer calls show() liberally (popup open/close resyncs), so
@@ -953,12 +955,12 @@ class BrowserManagerImpl {
   show(id: string): BrowserOpResult {
     const live = this.get(id);
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
-    if (live.visible) return { ok: true };
+    live.presentationVersion += 1;
     const win = getMainWindow();
     if (!win || win.isDestroyed()) return { ok: false, error: "主窗口未就绪" };
     try {
       // Re-attach in case it was removed (e.g. by close/hide using removeChildView).
-      win.contentView.addChildView(live.view);
+      if (!live.visible) win.contentView.addChildView(live.view);
       const b = live.lastBounds.width > 1 ? live.lastBounds : defaultOnscreenBounds();
       live.lastBounds = b;
       live.view.setBounds(b);
@@ -973,11 +975,12 @@ class BrowserManagerImpl {
    *  toggling the panel back on restores the page. Dimensions are PRESERVED
    *  (only x/y move offscreen) so capturePage still reads a valid backing
    *  store from the hidden view — agent screenshots of a hidden panel don't
-   *  need to flash the page on-screen. Idempotent (no-op when already hidden). */
+   *  need to flash the page on-screen. Repeated hides also park any temporary
+   *  screenshot surface, without changing the remembered bounds. */
   hide(id: string): BrowserOpResult {
     const live = this.get(id);
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
-    if (!live.visible) return { ok: true };
+    live.presentationVersion += 1;
     try {
       live.view.setBounds({ x: -9999, y: -9999, width: live.lastBounds.width, height: live.lastBounds.height });
       live.visible = false;
@@ -994,7 +997,7 @@ class BrowserManagerImpl {
     if (enabled === live.pickMode) return { ok: true }; // idempotent
     try {
       const script = enabled ? PICKER_INJECT_SCRIPT : PICKER_REMOVE_SCRIPT;
-      await live.view.webContents.executeJavaScript(script, true);
+      await live.view.webContents.mainFrame.executeJavaScript(script, true);
       live.pickMode = enabled;
       return { ok: true };
     } catch (err) {
@@ -1644,7 +1647,7 @@ class BrowserManagerImpl {
     const live = this.get(id);
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
     try {
-      const data = await live.view.webContents.executeJavaScript(buildSnapshotScript(opts), true);
+      const data = await live.view.webContents.mainFrame.executeJavaScript(buildSnapshotScript(opts), true);
       return { ok: true, data: data as BrowserSnapshotResult["data"] };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1682,7 +1685,7 @@ class BrowserManagerImpl {
     // temp-show, minus the restore: the agent keeps browsing visibly).
     if (!live.visible) this.show(id);
     try {
-      const center = (await wc.executeJavaScript(buildElementCenterScript(selector), true)) as {
+      const center = (await wc.mainFrame.executeJavaScript(buildElementCenterScript(selector), true)) as {
         ok?: boolean;
         error?: string;
         fallback?: boolean;
@@ -1708,7 +1711,7 @@ class BrowserManagerImpl {
 
     try {
       const script = buildClickScript(selector);
-      const res = (await wc.executeJavaScript(script, true)) as {
+      const res = (await wc.mainFrame.executeJavaScript(script, true)) as {
         ok?: boolean;
         error?: string;
         url?: string;
@@ -1762,7 +1765,7 @@ class BrowserManagerImpl {
     }
     try {
       const script = buildTypeScript(selector, text, clear);
-      const res = (await live.view.webContents.executeJavaScript(script, true)) as {
+      const res = (await live.view.webContents.mainFrame.executeJavaScript(script, true)) as {
         ok?: boolean;
         error?: string;
         url?: string;
@@ -1792,7 +1795,7 @@ class BrowserManagerImpl {
     }
     try {
       const script = buildEvaluateScript(code);
-      const res = (await live.view.webContents.executeJavaScript(script, true)) as {
+      const res = (await live.view.webContents.mainFrame.executeJavaScript(script, true)) as {
         ok?: boolean;
         error?: string;
         url?: string;
@@ -1821,7 +1824,7 @@ class BrowserManagerImpl {
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
     try {
       const script = buildScrollScript({ selector: selector || undefined, direction, pages });
-      const res = (await live.view.webContents.executeJavaScript(script, true)) as {
+      const res = (await live.view.webContents.mainFrame.executeJavaScript(script, true)) as {
         ok?: boolean;
         error?: string;
         scrollY?: number;
@@ -1910,7 +1913,7 @@ class BrowserManagerImpl {
     }
     try {
       const script = buildSelectScript(selector, value);
-      const res = (await live.view.webContents.executeJavaScript(script, true)) as {
+      const res = (await live.view.webContents.mainFrame.executeJavaScript(script, true)) as {
         ok?: boolean;
         error?: string;
         options?: Array<{ value: string; text: string; selected?: boolean }>;
@@ -1954,7 +1957,7 @@ class BrowserManagerImpl {
     for (;;) {
       if (wc.isDestroyed()) return { ok: false, error: "浏览器已销毁" };
       try {
-        const res = (await wc.executeJavaScript(script, true)) as {
+        const res = (await wc.mainFrame.executeJavaScript(script, true)) as {
           found?: boolean;
           error?: string;
           reason?: string;
@@ -2003,7 +2006,7 @@ class BrowserManagerImpl {
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
     try {
       const script = buildFindScript(arg);
-      const res = (await live.view.webContents.executeJavaScript(script, true)) as {
+      const res = (await live.view.webContents.mainFrame.executeJavaScript(script, true)) as {
         ok?: boolean;
         error?: string;
         total?: number;
@@ -2073,6 +2076,7 @@ class BrowserManagerImpl {
     const needsTempShow = !live.visible || live.lastBounds.width <= 1;
     const savedVisible = live.visible;
     const savedBounds = live.lastBounds;
+    const savedVersion = live.presentationVersion;
     // Device emulation active: the capture rect must match the emulated
     // viewport (see the note above). Compute it from the stored viewport;
     // null when desktop (no emulation) — then defaultOnscreenBounds applies.
@@ -2085,8 +2089,8 @@ class BrowserManagerImpl {
     if (tempShown) {
       const b = emuRect ?? defaultOnscreenBounds();
       live.view.setBounds(b);
-      live.lastBounds = b;
-      live.visible = true;
+      // Temporary capture geometry must not change the user's visibility or
+      // layout intent. Public show/hide/setBounds can supersede it while awaiting.
       // Give the compositor a frame to paint before capturing.
       await new Promise((r) => setTimeout(r, 100));
     }
@@ -2112,9 +2116,8 @@ class BrowserManagerImpl {
     }
 
     // Restore the hidden/offscreen state if we temporarily showed/resized the
-    // view. Bounds changes during capture are reverted so the renderer's next
-    // syncBounds (or the user's next show) isn't fighting a stale rect.
-    if (tempShown) {
+    // view, only if no newer UI intent arrived while capture was awaiting.
+    if (tempShown && live.presentationVersion === savedVersion && !wc.isDestroyed()) {
       if (savedVisible) {
         live.view.setBounds(savedBounds);
       } else {
@@ -2305,7 +2308,7 @@ class BrowserManagerImpl {
     // Friendly pre-check (also validates the selector in page terms — CDP's
     // DOM.querySelector failure message is cryptic about which side failed).
     try {
-      const check = (await wc.executeJavaScript(buildCheckFileInputScript(selector), true)) as {
+      const check = (await wc.mainFrame.executeJavaScript(buildCheckFileInputScript(selector), true)) as {
         ok?: boolean;
         error?: string;
       };

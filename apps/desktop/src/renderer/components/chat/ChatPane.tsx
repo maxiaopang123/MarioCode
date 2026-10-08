@@ -3483,7 +3483,7 @@ function ChatPaneForSession({
 
       {/* 「本会话」 float — the session overview pinned to the stream's
           top-right corner, folded into a summary pill by default and expanding
-          into one card (tasks / subagents / plans / bookmarks / outline /
+          into one card (tasks / subagents / plans / bookmarks /
           cache+speed / usage). It renders nothing until the session has
           something to report; see SessionFloat. */}
       {!empty && (
@@ -3502,7 +3502,6 @@ function ChatPaneForSession({
           onRemoveBookmark={(b) => void removeBookmark(sessionId, b.id)}
           onRenameBookmark={(b, title) => void renameBookmark(sessionId, b.id, title)}
           onPickPlan={(p) => openPlanDrawer(sessionId, p)}
-          onJumpToMessage={(id) => jumpToMessage(id)}
           bookmarkNodeRef={bookmarkNodeRef}
         />
       )}

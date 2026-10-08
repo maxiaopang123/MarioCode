@@ -7,7 +7,7 @@
  *   folded   → a pill showing the summary that matters while work runs
  *              (spinner + task fraction + mini bar | N subagents | context %)
  *   expanded → the same card, sections stacked in one scroll column:
- *              任务 / 子代理 / 计划 / 书签 / 大纲 / 缓存与速度 / 用量
+ *              任务 / 子代理 / 计划 / 书签 / 缓存与速度 / 用量
  *
  * Only `clip-path` animates between the two (see .fsess in styles.css): the
  * card's size and inner layout are identical in both states, so folding never
@@ -33,7 +33,6 @@ import {
   IconChevronDown,
   IconListCheck,
   IconLoader2,
-  IconMessage,
   IconTrash,
   IconX,
 } from "@renderer/lib/icons.js";
@@ -56,28 +55,12 @@ import type { SessionBookmark } from "@contracts/session";
 import { ActivitySheet } from "@renderer/components/mobile/ActivitySheet.js";
 import { useActivityTabs, type ActivityNodeKey, type PlanBlock } from "./activityShared.js";
 
-/** One outline entry: a user message, or one step line under it. */
-interface OutlineItem {
-  id: string;
-  /** Message to scroll to when clicked. */
-  messageId: string;
-  kind: "turn" | "step";
-  text: string;
-  time?: string;
-}
-
 const EMPTY_MESSAGES: ChatMessage[] = [];
 
 /** mm:ss for subagent elapsed time. */
 function shortDuration(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
-
-function clockOf(ts: number | undefined): string | undefined {
-  if (!ts) return undefined;
-  const d = new Date(ts);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 /** Section wrapper: 11.5px uppercase-ish label + optional trailing slot. */
@@ -132,7 +115,6 @@ export function SessionFloat({
   onRenameBookmark,
   onPickSubagent,
   onPickPlan,
-  onJumpToMessage,
   bookmarkNodeRef,
 }: {
   sessionId: string;
@@ -148,8 +130,6 @@ export function SessionFloat({
   onRenameBookmark?: (b: SessionBookmark, title: string) => void;
   onPickSubagent?: (agent: SubagentSnapshot) => void;
   onPickPlan: (plan: string) => void;
-  /** Scroll the stream to a message (outline / bookmark clicks). */
-  onJumpToMessage?: (messageId: string) => void;
   bookmarkNodeRef?: RefObject<HTMLDivElement | null>;
 }) {
   const { t } = useI18n();
@@ -238,65 +218,9 @@ export function SessionFloat({
   /** Anything worth a live read-out in the folded pill. */
   const hasLive = running || attn || todos.length > 0 || runningAgents.length > 0;
 
-  // ── Outline: one row per user message, with the turn's step lines under it.
-  const outline = useMemo<OutlineItem[]>(() => {
-    const items: OutlineItem[] = [];
-    let tools = 0;
-    let adds = 0;
-    let dels = 0;
-    let anchor: ChatMessage | null = null;
-    const flush = () => {
-      if (!anchor) return;
-      if (tools > 0) {
-        items.push({
-          id: `${anchor.id}:steps`,
-          messageId: anchor.id,
-          kind: "step",
-          text: t("chatStream.float.outlineSteps", { n: tools }),
-        });
-      }
-      if (adds > 0 || dels > 0) {
-        items.push({
-          id: `${anchor.id}:files`,
-          messageId: anchor.id,
-          kind: "step",
-          text: t("chatStream.float.outlineFiles", { add: adds, del: dels }),
-        });
-      }
-      tools = 0;
-      adds = 0;
-      dels = 0;
-    };
-    for (const m of messages) {
-      if (m.role === "user") {
-        flush();
-        const text = m.blocks
-          .map((b) => (b.kind === "text" ? b.text : ""))
-          .join(" ")
-          .trim();
-        items.push({
-          id: m.id,
-          messageId: m.id,
-          kind: "turn",
-          text: text.split("\n")[0]?.slice(0, 80) || t("chatStream.float.outlineUntitled"),
-          time: clockOf(m.createdAt),
-        });
-        anchor = m;
-        continue;
-      }
-      for (const b of m.blocks) {
-        if (b.kind === "tool_use") tools += 1;
-        if (b.kind === "turn-files" && !b.rewound) {
-          for (const f of b.files) {
-            adds += f.adds;
-            dels += f.dels;
-          }
-        }
-      }
-    }
-    flush();
-    return items;
-  }, [messages, t]);
+  // Navigation belongs to MessageTimeline; the overview only needs a count
+  // when this session has no persisted usage history yet.
+  const userTurnCount = useMemo(() => messages.filter((m) => m.role === "user").length, [messages]);
 
   // ── Usage: tool calls + failures come from the rendered stream (the only
   // place that knows which tool results errored).
@@ -330,12 +254,12 @@ export function SessionFloat({
   }, [messages]);
 
   const spark = useMemo(() => cacheSparkline(history), [history]);
-  const turnCount = history.length > 0 ? history.length : outline.filter((o) => o.kind === "turn").length;
+  const turnCount = history.length > 0 ? history.length : userTurnCount;
   const cost = sessionCost(history);
 
   const hasAny =
     todos.length > 0 || subagents.length > 0 || planBlocks.length > 0 || bookmarks.length > 0
-    || history.length > 0 || snapshot != null || outline.length > 0;
+    || history.length > 0 || snapshot != null || userTurnCount > 0;
   if (!hasAny) return null;
 
   // Mobile / web shell: the existing bottom sheet, opened from a plain pill.
@@ -382,7 +306,7 @@ export function SessionFloat({
       className="fsess pointer-events-none absolute right-4 top-3.5 z-[6] flex w-[300px] max-h-[calc(100%-150px)]"
     >
       {/* min-w-0: without it the flex item's min-content (a long, nowrap
-          outline row) widens the card past the 300px shell, shoving the
+          bookmark row) widens the card past the 300px shell, shoving the
           right-anchored pill out of the chat pane. */}
       <div className="fs-card pointer-events-auto flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
         {/* Header = the pill when folded. Its height is --pill-h. */}
@@ -597,32 +521,6 @@ export function SessionFloat({
                     </li>
                   );
                 })}
-              </ul>
-            </Sec>
-          )}
-
-          {/* 大纲 */}
-          {outline.length > 0 && (
-            <Sec title={t("chatStream.float.outline")}>
-              <ul>
-                {outline.map((o) => (
-                  <li key={o.id}>
-                    <button
-                      type="button"
-                      onClick={() => onJumpToMessage?.(o.messageId)}
-                      className={cn(
-                        "flex h-7 w-full items-center gap-2 rounded-md px-1 text-left text-[12.5px]",
-                        o.kind === "turn"
-                          ? "text-content-muted hover:bg-surface-hover hover:text-content"
-                          : "pl-[26px] text-content-subtle hover:bg-surface-hover hover:text-content-muted",
-                      )}
-                    >
-                      {o.kind === "turn" && <IconMessage size={11} className="shrink-0 text-content-subtle" />}
-                      <span className="min-w-0 flex-1 truncate">{o.text}</span>
-                      {o.time && <span className="shrink-0 tabular-nums text-[11px] text-content-subtle">{o.time}</span>}
-                    </button>
-                  </li>
-                ))}
               </ul>
             </Sec>
           )}

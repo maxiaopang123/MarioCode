@@ -271,23 +271,30 @@ function pruneDeadBrowserState(liveIds: Set<string>): void {
 }
 
 /** Find a browserId to operate on. When the caller passed one, validate it
- *  exists. Otherwise prefer the agent's active view, then the first live
- *  view. Returns `kind:"none"` when no usable view is found, so the caller
- *  can decide whether to auto-create (navigate does; the others surface an
- *  error). */
-function resolveBrowserId(browserId?: string):
+ *  exists AND belongs to the agent session (user panel views are off-limits).
+ *  Otherwise prefer the agent's active view, then the first agent view of
+ *  THIS session. Returns `kind:"none"` when no usable agent view is found, so
+ *  the caller can decide whether to auto-create (navigate does; the others
+ *  surface an error). */
+function resolveBrowserId(browserId: string | undefined, agentSessionId: string):
   | { ok: true; browserId: string }
   | { ok: false; reason: string } {
-  const infos = BrowserManager.list();
-  pruneDeadBrowserState(new Set(infos.map((i) => i.browserId)));
+  const all = BrowserManager.list();
+  pruneDeadBrowserState(new Set(all.map((i) => i.browserId)));
+  const agentViews = all.filter((i) => i.owner === "agent" && i.agentSessionId === agentSessionId && !i.takenOver);
   if (browserId) {
-    if (infos.some((i) => i.browserId === browserId)) return { ok: true, browserId };
+    const hit = agentViews.find((i) => i.browserId === browserId);
+    if (hit) return { ok: true, browserId };
+    const exists = all.find((i) => i.browserId === browserId);
+    if (exists && exists.owner === "user") return { ok: false, reason: `browserId "${browserId}" 是用户的浏览器标签,Agent 不能操作它;请不传 browserId 让系统自动开 Agent 专属视图` };
+    if (exists && exists.takenOver) return { ok: false, reason: `browserId "${browserId}" 已被用户接管,请不传 browserId 新开一个 Agent 视图` };
     return { ok: false, reason: `browserId "${browserId}" 不存在或已关闭` };
   }
   if (activeBrowserId) {
-    if (infos.some((i) => i.browserId === activeBrowserId)) return { ok: true, browserId: activeBrowserId };
+    const hit = agentViews.find((i) => i.browserId === activeBrowserId);
+    if (hit) return { ok: true, browserId: activeBrowserId };
   }
-  if (infos.length > 0) return { ok: true, browserId: infos[0].browserId };
+  if (agentViews.length > 0) return { ok: true, browserId: agentViews[0].browserId };
   return { ok: false, reason: "no-live-browser" };
 }
 
@@ -334,17 +341,18 @@ function noBrowserError(): ToolResult {
 
 /** `browser_list` — list all live browser views with their current url/title.
  *  Safe to call with no browser open (returns an empty list). */
-export function browserList(): ToolResult {
-  const infos = BrowserManager.list();
-  pruneDeadBrowserState(new Set(infos.map((i) => i.browserId)));
+export function browserList(agentSessionId: string): ToolResult {
+  const infos = BrowserManager.list().filter((i) => i.owner === "agent" && i.agentSessionId === agentSessionId && !i.takenOver);
+  pruneDeadBrowserState(new Set(BrowserManager.list().map((i) => i.browserId)));
   if (infos.length === 0) {
-    return text("当前没有打开的浏览器视图。先调用 browser_navigate({ url }) 打开一个页面。");
+    return text("当前没有 Agent 的浏览器视图。用 browser_navigate 打开网页会自动创建(不打扰用户面板)。");
   }
   const lines = infos.map((i, idx) => {
-    const active = i.browserId === activeBrowserId ? "(agent 当前目标)" : "";
-    return `[${idx}] browserId=${i.browserId}${active}\n    url=${i.url || "(about:blank)"}\n    title=${i.title || "(无标题)"}`;
+    const active = i.browserId === activeBrowserId ? "(当前目标)" : "";
+    const state = i.presented ? "(已呈现给用户)" : "(后台)";
+    return `[${idx}] browserId=${i.browserId}${active}${state}\n    url=${i.url || "(about:blank)"}\n    title=${i.title || "(无标题)"}`;
   });
-  return text(`当前浏览器视图(${infos.length} 个):\n\n${lines.join("\n\n")}`);
+  return text(`Agent 浏览器视图(${infos.length} 个):\n\n${lines.join("\n\n")}`);
 }
 
 /** `browser_navigate` — load a URL. When no browserId is given and none is
@@ -360,6 +368,7 @@ export function browserList(): ToolResult {
 export async function browserNavigate(
   args: { url: string; browserId?: string; device?: AgentDevicePreset; newTab?: boolean },
   projectPath: string,
+  agentSessionId: string,
 ): Promise<ToolResult> {
   const raw = (args.url ?? "").trim();
   if (!raw) return errorResult("url 不能为空");
@@ -382,25 +391,25 @@ export async function browserNavigate(
     if (!projectPath) {
       return errorResult("无法创建浏览器:缺少 projectPath。请先指定 browserId。");
     }
-    const created = BrowserManager.create(projectPath, device);
+    const created = BrowserManager.create(projectPath, device, { agentSessionId });
     if (!created.ok) return errorResult(created.error ?? "创建浏览器失败");
     browserId = created.browserId;
-    log.info(`agent browser created (newTab): ${browserId} project=${projectPath} device=${device}`);
+    log.info(`agent browser created (newTab): ${browserId} session=${agentSessionId} device=${device}`);
   } else {
-    const resolved = resolveBrowserId(args.browserId);
+    const resolved = resolveBrowserId(args.browserId, agentSessionId);
     if (resolved.ok) {
       browserId = resolved.browserId;
     } else if (resolved.reason === "no-live-browser" && !args.browserId) {
-      // Auto-create so the user sees the agent browsing. Pass the requested
+      // Auto-create a hidden agent view (off-screen). Pass the requested
       // device as initialDevice so emulation is applied at dom-ready (the safe
       // earliest point — applying synchronously crashes the GPU pre-init).
       if (!projectPath) {
         return errorResult("无法自动创建浏览器:缺少 projectPath。请先指定 browserId。");
       }
-      const created = BrowserManager.create(projectPath, device);
+      const created = BrowserManager.create(projectPath, device, { agentSessionId });
       if (!created.ok) return errorResult(created.error ?? "创建浏览器失败");
       browserId = created.browserId;
-      log.info(`agent browser auto-created: ${browserId} project=${projectPath} device=${device}`);
+      log.info(`agent browser auto-created (hidden): ${browserId} session=${agentSessionId} device=${device}`);
     } else {
       return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
     }
@@ -408,13 +417,9 @@ export async function browserNavigate(
   // The view the agent just navigated becomes its implicit target.
   activeBrowserId = browserId;
 
-  // Tell the renderer to surface the browser panel + adopt this view as a tab.
-  // The renderer's BrowserPanel takes over showing the view at precise bounds
-  // (measured from its placeholder div). We DON'T show() here: a pre-show with
-  // default bounds would briefly cover the icon rail before BrowserPanel syncs.
-  // If the renderer is slow to adopt, screenshot's own temp-show covers capture.
-  BrowserManager.notifyAgentOpened(browserId, { device });
-
+  // Agent views stay hidden — the user never sees the agent browsing. The
+  // renderer is NOT notified to adopt this view (that would surface it in the
+  // panel); notifyAgentOpened is only used for user views and presented views.
   const res = BrowserManager.loadUrl(browserId, url);
   if (!res.ok) return errorResult(res.error ?? "导航失败");
   // Wait for the page to finish loading so a subsequent snapshot/screenshot
@@ -470,8 +475,10 @@ export async function browserSnapshot(args: {
   mode?: unknown;
   maxChars?: unknown;
   offset?: unknown;
-}): Promise<ToolResult> {
-  const resolved = resolveBrowserId(args.browserId);
+},
+  agentSessionId: string
+): Promise<ToolResult> {
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -546,8 +553,10 @@ export async function browserClick(args: {
   coordinateX?: number;
   coordinateY?: number;
   browserId?: string;
-}): Promise<ToolResult> {
-  const resolved = resolveBrowserId(args.browserId);
+},
+  agentSessionId: string
+): Promise<ToolResult> {
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -591,9 +600,11 @@ export async function browserType(args: {
   text: string;
   clear?: boolean;
   browserId?: string;
-}): Promise<ToolResult> {
+},
+  agentSessionId: string
+): Promise<ToolResult> {
   const value = (args.text ?? "").toString();
-  const resolved = resolveBrowserId(args.browserId);
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -613,10 +624,10 @@ export async function browserType(args: {
  *  "ArrowDown", "PageDown", "Control+a", "Shift+Enter"). Goes through the real
  *  input pipeline, so Enter submits forms and Tab moves focus. One combo per
  *  call. Side-effecting (Enter can submit) → approval flow. */
-export async function browserKeys(args: { keys: string; browserId?: string }): Promise<ToolResult> {
+export async function browserKeys(args: { keys: string; browserId?: string }, agentSessionId: string): Promise<ToolResult> {
   const keys = (args.keys ?? "").trim();
   if (!keys) return errorResult("keys 不能为空,如 \"Enter\" / \"Escape\" / \"Control+a\"");
-  const resolved = resolveBrowserId(args.browserId);
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -637,10 +648,12 @@ export async function browserScroll(args: {
   pages?: number;
   selector?: string;
   browserId?: string;
-}): Promise<ToolResult> {
+},
+  agentSessionId: string
+): Promise<ToolResult> {
   const direction = args.direction === "up" ? "up" : "down";
   const pages = typeof args.pages === "number" && Number.isFinite(args.pages) && args.pages > 0 ? Math.min(args.pages, 10) : 1;
-  const resolved = resolveBrowserId(args.browserId);
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -663,8 +676,10 @@ export async function browserWait(args: {
   seconds?: number;
   timeoutSeconds?: number;
   browserId?: string;
-}): Promise<ToolResult> {
-  const resolved = resolveBrowserId(args.browserId);
+},
+  agentSessionId: string
+): Promise<ToolResult> {
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -707,12 +722,14 @@ export async function browserWait(args: {
 export async function browserHistory(args: {
   action: "back" | "forward" | "reload";
   browserId?: string;
-}): Promise<ToolResult> {
+},
+  agentSessionId: string
+): Promise<ToolResult> {
   const action = args.action;
   if (action !== "back" && action !== "forward" && action !== "reload") {
     return errorResult('action 必须是 "back" | "forward" | "reload"');
   }
-  const resolved = resolveBrowserId(args.browserId);
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -734,10 +751,12 @@ export async function browserSelect(args: {
   selector?: string;
   value: string;
   browserId?: string;
-}): Promise<ToolResult> {
+},
+  agentSessionId: string
+): Promise<ToolResult> {
   const value = (args.value ?? "").toString();
   if (!value.trim()) return errorResult("value 不能为空(选项的 value 或可见文本)");
-  const resolved = resolveBrowserId(args.browserId);
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -772,8 +791,10 @@ export async function browserFind(args: {
   attributes?: string[];
   cssScope?: string;
   browserId?: string;
-}): Promise<ToolResult> {
-  const resolved = resolveBrowserId(args.browserId);
+},
+  agentSessionId: string
+): Promise<ToolResult> {
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -810,13 +831,12 @@ export async function browserFind(args: {
 /** `browser_switch_tab` — point the agent's implicit target (browserId-less
  *  calls) at another live view. Read-only targeting aid; the panel also
  *  surfaces the tab so the user sees what the agent is working on. */
-export async function browserSwitchTab(args: { browserId: string }): Promise<ToolResult> {
-  const resolved = resolveBrowserId(args.browserId);
+export async function browserSwitchTab(args: { browserId: string }, agentSessionId: string): Promise<ToolResult> {
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
   activeBrowserId = resolved.browserId;
-  BrowserManager.notifyAgentOpened(resolved.browserId);
   const info = BrowserManager.list().find((i) => i.browserId === resolved.browserId);
   return text(
     `已切换目标到 browserId=${resolved.browserId}。url=${info?.url || "(about:blank)"} title=${info?.title || "(无标题)"}。后续省略 browserId 的调用都作用于此视图。`,
@@ -825,8 +845,8 @@ export async function browserSwitchTab(args: { browserId: string }): Promise<Too
 
 /** `browser_close_tab` — close a live view by browserId. Destructive (kills
  *  the page session) → approval flow. */
-export async function browserCloseTab(args: { browserId: string }): Promise<ToolResult> {
-  const resolved = resolveBrowserId(args.browserId);
+export async function browserCloseTab(args: { browserId: string }, agentSessionId: string): Promise<ToolResult> {
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -834,8 +854,26 @@ export async function browserCloseTab(args: { browserId: string }): Promise<Tool
   if (!res.ok) return errorResult(res.error ?? "关闭失败");
   snapshotIndexMaps.delete(resolved.browserId);
   if (activeBrowserId === resolved.browserId) activeBrowserId = null;
-  const remaining = BrowserManager.list().length;
-  return text(`已关闭 browserId=${resolved.browserId}。剩余 ${remaining} 个浏览器视图。`);
+  const remaining = BrowserManager.list().filter((i) => i.owner === "agent").length;
+  return text(`已关闭 browserId=${resolved.browserId}。剩余 ${remaining} 个 Agent 浏览器视图。`);
+}
+
+/** `browser_present` — hand an agent-owned view to the user for interaction
+ *  (login, OAuth, captcha, 2FA, or anything the model can't do alone). The
+ *  view is surfaced in the browser panel with a banner explaining what the
+ *  user should do; the model should tell the user what to do, then wait for
+ *  them to click 「继续」 before calling any further browser_* tools. */
+export async function browserPresent(args: { note: string; browserId?: string }, agentSessionId: string): Promise<ToolResult> {
+  const note = (args.note ?? "").trim() || "请完成页面上的操作";
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
+  if (!resolved.ok) {
+    return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
+  }
+  const res = BrowserManager.present(resolved.browserId, note);
+  if (!res.ok) return errorResult(res.error ?? "呈现失败");
+  return text(
+    `已把 browserId=${resolved.browserId} 呈现给用户。请告诉用户: ${note}\n用户操作完成后会点「继续」,你随后再调用 browser_snapshot 或其他工具继续。`,
+  );
 }
 
 /** `browser_evaluate` — run arbitrary JS in the page (modify DOM text, styles,
@@ -846,10 +884,12 @@ export async function browserCloseTab(args: { browserId: string }): Promise<Tool
 export async function browserEvaluate(args: {
   script: string;
   browserId?: string;
-}): Promise<ToolResult> {
+},
+  agentSessionId: string
+): Promise<ToolResult> {
   const script = (args.script ?? "").trim();
   if (!script) return errorResult("script 不能为空");
-  const resolved = resolveBrowserId(args.browserId);
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -871,11 +911,12 @@ export async function browserEvaluate(args: {
  *  inline conversation rendering. */
 export async function browserScreenshot(
   args: { browserId?: string; fullPage?: boolean },
+  agentSessionId: string,
   ctx: BrowserToolContext & { toolCallId: string },
 ): Promise<ToolResult> {
   const live = BrowserManager.list();
   log.info(`browserScreenshot called: requestedId=${args.browserId ?? "(none)"} fullPage=${args.fullPage === true} liveCount=${live.length} liveIds=${JSON.stringify(live.map((l) => l.browserId))}`);
-  const resolved = resolveBrowserId(args.browserId);
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     log.warn(`browserScreenshot resolveBrowserId failed: ${resolved.reason}`);
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
@@ -930,9 +971,10 @@ export async function browserSavePdf(
     headerFooter?: boolean;
     browserId?: string;
   },
+  agentSessionId: string,
   ctx: { toolCallId: string; sessionId?: string; turnNumber?: number },
 ): Promise<ToolResult> {
-  const resolved = resolveBrowserId(args.browserId);
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -963,6 +1005,7 @@ export async function browserSavePdf(
  *  side-effecting (hands user files to a website) → approval flow. */
 export async function browserUploadFile(
   args: { index?: number; selector?: string; paths: unknown; browserId?: string },
+  agentSessionId: string,
   projectPath: string,
 ): Promise<ToolResult> {
   const raw = Array.isArray(args.paths) ? args.paths : [args.paths];
@@ -970,7 +1013,7 @@ export async function browserUploadFile(
     .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
     .map((p) => p.trim());
   if (!paths.length) return errorResult("paths 不能为空(本地文件绝对路径,或相对项目根的路径)");
-  const resolved = resolveBrowserId(args.browserId);
+  const resolved = resolveBrowserId(args.browserId, agentSessionId);
   if (!resolved.ok) {
     return resolved.reason === "no-live-browser" ? noBrowserError() : errorResult(resolved.reason);
   }
@@ -991,7 +1034,7 @@ export async function browserUploadFile(
 /** `browser_downloads` — list recent downloads of the embedded browser (they
  *  auto-save to `<系统下载>/mariocode-browser/`, no save dialog). Read-only; after
  *  a completed download the model uses the normal file tools on the path. */
-export function browserDownloads(): ToolResult {
+export function browserDownloads(agentSessionId: string): ToolResult {
   const entries = BrowserManager.listDownloads();
   if (entries.length === 0) {
     return text("暂无下载记录。点击下载链接或导航到文件地址会触发下载,自动保存到 <系统下载>/mariocode-browser/。");
@@ -1120,8 +1163,16 @@ export const BROWSER_TOOL_SPECS: Record<string, BrowserToolSpec> = {
   },
   browser_close_tab: {
     name: "browser_close_tab",
-    description: "关闭指定 browserId 的浏览器视图(销毁该页面的会话)。有破坏性——先确认不是用户正在看的页面。",
-    promptSnippet: "browser_close_tab({browserId}): 关闭浏览器标签页",
+    description: "关闭指定 browserId 的 Agent 浏览器视图(销毁该页面的会话)。有破坏性——先确认不是用户正在看的页面。",
+    promptSnippet: "browser_close_tab({browserId}): 关闭 Agent 浏览器标签页",
+  },
+  browser_present: {
+    name: "browser_present",
+    description:
+      "把 Agent 的浏览器视图呈现给用户操作(登录、OAuth、验证码、2FA 等模型自己无法完成的交互)。" +
+      "视图会在浏览器面板中显示并附带说明,用户完成后点「继续」把控制权交还给你。" +
+      "在此之前不要再调用其他 browser_* 工具——用户在操作中,你的操作会互相干扰。",
+    promptSnippet: "browser_present({note, browserId?}): 把页面交给用户操作(等用户点「继续」)",
   },
   browser_upload_file: {
     name: "browser_upload_file",

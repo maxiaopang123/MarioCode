@@ -239,7 +239,7 @@ async function buildBrowserMcpServer(
         name: "browser_list",
         description: BROWSER_TOOL_SPECS.browser_list.description,
         inputSchema: {},
-        handler: async () => browserList(),
+        handler: async () => browserList(sessionId),
       },
       {
         name: "browser_navigate",
@@ -262,6 +262,7 @@ async function buildBrowserMcpServer(
               newTab: args.newTab === true,
             },
             projectPath,
+            sessionId,
           ),
       },
       {
@@ -282,7 +283,7 @@ async function buildBrowserMcpServer(
             mode: args.mode,
             maxChars: args.maxChars,
             offset: args.offset,
-          }),
+          }, sessionId),
       },
       {
         name: "browser_click",
@@ -301,7 +302,7 @@ async function buildBrowserMcpServer(
             coordinateX: typeof args.coordinateX === "number" ? args.coordinateX : undefined,
             coordinateY: typeof args.coordinateY === "number" ? args.coordinateY : undefined,
             browserId: args.browserId as string | undefined,
-          }),
+          }, sessionId),
       },
       {
         name: "browser_type",
@@ -320,7 +321,7 @@ async function buildBrowserMcpServer(
             text: typeof args.text === "string" ? args.text : "",
             clear: args.clear !== false,
             browserId: args.browserId as string | undefined,
-          }),
+          }, sessionId),
       },
       {
         name: "browser_keys",
@@ -333,7 +334,7 @@ async function buildBrowserMcpServer(
           browserKeys({
             keys: typeof args.keys === "string" ? args.keys : "",
             browserId: args.browserId as string | undefined,
-          }),
+          }, sessionId),
       },
       {
         name: "browser_scroll",
@@ -350,7 +351,7 @@ async function buildBrowserMcpServer(
             pages: typeof args.pages === "number" ? args.pages : undefined,
             selector: typeof args.selector === "string" ? args.selector : undefined,
             browserId: args.browserId as string | undefined,
-          }),
+          }, sessionId),
       },
       {
         name: "browser_wait",
@@ -369,7 +370,7 @@ async function buildBrowserMcpServer(
             seconds: typeof args.seconds === "number" ? args.seconds : undefined,
             timeoutSeconds: typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : undefined,
             browserId: args.browserId as string | undefined,
-          }),
+          }, sessionId),
       },
       {
         name: "browser_history",
@@ -382,7 +383,7 @@ async function buildBrowserMcpServer(
           browserHistory({
             action: args.action as "back" | "forward" | "reload",
             browserId: args.browserId as string | undefined,
-          }),
+          }, sessionId),
       },
       {
         name: "browser_select",
@@ -399,7 +400,7 @@ async function buildBrowserMcpServer(
             selector: typeof args.selector === "string" ? args.selector : undefined,
             value: typeof args.value === "string" ? args.value : "",
             browserId: args.browserId as string | undefined,
-          }),
+          }, sessionId),
       },
       {
         name: "browser_find",
@@ -426,7 +427,7 @@ async function buildBrowserMcpServer(
             attributes: Array.isArray(args.attributes) ? (args.attributes as unknown[]).filter((a): a is string => typeof a === "string") : undefined,
             cssScope: typeof args.cssScope === "string" ? args.cssScope : undefined,
             browserId: args.browserId as string | undefined,
-          }),
+          }, sessionId),
       },
       {
         name: "browser_switch_tab",
@@ -435,7 +436,7 @@ async function buildBrowserMcpServer(
           browserId: z.string().describe("要切换到的浏览器视图 id(browser_list 查询)"),
         },
         handler: async (args: Record<string, unknown>) =>
-          browserSwitchTab({ browserId: args.browserId as string }),
+          browserSwitchTab({ browserId: args.browserId as string }, sessionId),
       },
       {
         name: "browser_close_tab",
@@ -444,7 +445,7 @@ async function buildBrowserMcpServer(
           browserId: z.string().describe("要关闭的浏览器视图 id"),
         },
         handler: async (args: Record<string, unknown>) =>
-          browserCloseTab({ browserId: args.browserId as string }),
+          browserCloseTab({ browserId: args.browserId as string }, sessionId),
       },
       {
         name: "browser_upload_file",
@@ -463,6 +464,7 @@ async function buildBrowserMcpServer(
               paths: args.paths,
               browserId: args.browserId as string | undefined,
             },
+            sessionId,
             projectPath,
           ),
       },
@@ -489,6 +491,7 @@ async function buildBrowserMcpServer(
               headerFooter: args.headerFooter === true,
               browserId: args.browserId as string | undefined,
             },
+            sessionId,
             {
               toolCallId: randomUUID(),
               sessionId,
@@ -500,7 +503,7 @@ async function buildBrowserMcpServer(
         name: "browser_downloads",
         description: BROWSER_TOOL_SPECS.browser_downloads.description,
         inputSchema: {},
-        handler: async () => browserDownloads(),
+        handler: async () => browserDownloads(sessionId),
       },
       {
         name: "browser_evaluate",
@@ -513,7 +516,7 @@ async function buildBrowserMcpServer(
           browserEvaluate({
             script: args.script as string,
             browserId: args.browserId as string | undefined,
-          }),
+          }, sessionId),
       },
       {
         name: "browser_screenshot",
@@ -534,6 +537,7 @@ async function buildBrowserMcpServer(
           // in the MCP handler's extra, so we rely solely on the tool_result.
           return browserScreenshot(
             { browserId: args.browserId as string | undefined, fullPage: args.fullPage === true },
+            sessionId,
             {
               toolCallId: randomUUID(),
               sessionId,

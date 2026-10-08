@@ -161,24 +161,24 @@ export class PiHostClient {
     if (!BROWSER_METHODS.has(call.name)) throw new Error(`Unsupported browser method: ${call.name}`);
     const a = call.args as Record<string, unknown>;
     switch (call.name) {
-      case "browser_list": return browser.browserList();
-      case "browser_navigate": return browser.browserNavigate(a as never, (call.meta as { projectPath?: string })?.projectPath ?? "");
-      case "browser_snapshot": return browser.browserSnapshot(a);
-      case "browser_click": return browser.browserClick(a as never);
-      case "browser_type": return browser.browserType(a as never);
-      case "browser_keys": return browser.browserKeys(a as never);
-      case "browser_scroll": return browser.browserScroll(a as never);
-      case "browser_wait": return browser.browserWait(a as never);
-      case "browser_history": return browser.browserHistory(a as never);
-      case "browser_select": return browser.browserSelect(a as never);
-      case "browser_find": return browser.browserFind(a as never);
-      case "browser_switch_tab": return browser.browserSwitchTab(a as never);
-      case "browser_close_tab": return browser.browserCloseTab(a as never);
-      case "browser_upload_file": return browser.browserUploadFile(a as never, (call.meta as { projectPath?: string })?.projectPath ?? "");
-      case "browser_save_pdf": return browser.browserSavePdf(a as never, call.meta as never);
-      case "browser_downloads": return browser.browserDownloads();
-      case "browser_evaluate": return browser.browserEvaluate(a as never);
-      case "browser_screenshot": return browser.browserScreenshot(a as never, { ...(call.meta as object), onImage: (info: { toolCallId: string; data: string; mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif" }) => ctx.emit({ type: "browser.image", sessionId: turnId.split(":", 1)[0]!, toolCallId: info.toolCallId, data: info.data, mimeType: info.mimeType }) } as never);
+      case "browser_list": return browser.browserList(turnId.split(":", 1)[0]!);
+      case "browser_navigate": return browser.browserNavigate(a as never, (call.meta as { projectPath?: string })?.projectPath ?? "", turnId.split(":", 1)[0]!);
+      case "browser_snapshot": return browser.browserSnapshot(a, turnId.split(":", 1)[0]!);
+      case "browser_click": return browser.browserClick(a as never, turnId.split(":", 1)[0]!);
+      case "browser_type": return browser.browserType(a as never, turnId.split(":", 1)[0]!);
+      case "browser_keys": return browser.browserKeys(a as never, turnId.split(":", 1)[0]!);
+      case "browser_scroll": return browser.browserScroll(a as never, turnId.split(":", 1)[0]!);
+      case "browser_wait": return browser.browserWait(a as never, turnId.split(":", 1)[0]!);
+      case "browser_history": return browser.browserHistory(a as never, turnId.split(":", 1)[0]!);
+      case "browser_select": return browser.browserSelect(a as never, turnId.split(":", 1)[0]!);
+      case "browser_find": return browser.browserFind(a as never, turnId.split(":", 1)[0]!);
+      case "browser_switch_tab": return browser.browserSwitchTab(a as never, turnId.split(":", 1)[0]!);
+      case "browser_close_tab": return browser.browserCloseTab(a as never, turnId.split(":", 1)[0]!);
+      case "browser_upload_file": return browser.browserUploadFile(a as never, (call.meta as { projectPath?: string })?.projectPath ?? "", turnId.split(":", 1)[0]!);
+      case "browser_save_pdf": return browser.browserSavePdf(a as never, turnId.split(":", 1)[0]!, call.meta as never);
+      case "browser_downloads": return browser.browserDownloads(turnId.split(":", 1)[0]!);
+      case "browser_evaluate": return browser.browserEvaluate(a as never, turnId.split(":", 1)[0]!);
+      case "browser_screenshot": return browser.browserScreenshot(a as never, turnId.split(":", 1)[0]!, { ...(call.meta as object), onImage: (info: { toolCallId: string; data: string; mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif" }) => ctx.emit({ type: "browser.image", sessionId: turnId.split(":", 1)[0]!, toolCallId: info.toolCallId, data: info.data, mimeType: info.mimeType }) } as never);
       default: throw new Error("unreachable");
     }
   }

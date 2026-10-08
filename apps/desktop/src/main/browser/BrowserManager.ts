@@ -93,6 +93,14 @@ export interface BrowserInfo {
   projectPath: string;
   url: string;
   title: string;
+  /** Owner: user panel tab or agent-isolated view. */
+  owner: BrowserOwner;
+  /** Agent session that owns this view; "" for user views. */
+  agentSessionId: string;
+  /** True while the view is presented to the user for input (present mode). */
+  presented?: boolean;
+  /** True when the user has taken control (agent should open a new view). */
+  takenOver?: boolean;
 }
 
 /** Normalize a model-supplied key name to Electron's accelerator key codes for
@@ -326,11 +334,21 @@ export interface BrowserScreenshotResult {
 /** A pixel rect in window coordinates (the renderer measures + forwards this). */
 export interface BrowserBounds extends Rectangle {}
 
+/** Who owns a browser view. "user" views belong to the browser panel's tab
+ *  strip and are never targeted by agent tools; "agent" views are created by
+ *  agent `browser_*` tools (TODO-051) and default to off-screen operation so
+ *  the user never sees the agent's browsing unless explicitly presented. */
+export type BrowserOwner = "user" | "agent";
+
 interface LiveBrowser {
   id: string;
   view: WebContentsView;
   /** Project root this browser is bound to (for consistency with terminal). */
   projectPath: string;
+  /** Owner: user panel tab (default) or agent tool (isolated view). */
+  owner: BrowserOwner;
+  /** Agent session this view belongs to; "" for user views. */
+  agentSessionId: string;
   /** Last applied bounds, so show() can restore after a hide(). */
   lastBounds: BrowserBounds;
   /** True while the view is attached + onscreen; false when hidden offscreen. */
@@ -339,6 +357,12 @@ interface LiveBrowser {
   presentationVersion: number;
   /** Whether the picker is currently injected (avoids double-inject/remove). */
   pickMode: boolean;
+  /** Present mode: model asked to hand this view to the user for input. */
+  presented: boolean;
+  /** User took control during present(); agent should open a new view next time. */
+  takenOver: boolean;
+  /** Idle after turn end; eligible for cleanup. */
+  idle: boolean;
   /** Current device emulation preset (desktop = no emulation). */
   device: BrowserDevicePreset;
   /** Current viewport config (custom dims + orientation). Mirrors what was
@@ -551,10 +575,14 @@ class BrowserManagerImpl {
    *  Started once with the first browser view; never stopped (process exits). */
   private persistTimer: NodeJS.Timeout | null = null;
 
-  create(projectPath: string, initialDevice?: BrowserDevicePreset): BrowserCreateResult {
+  create(projectPath: string, initialDevice?: BrowserDevicePreset, opts?: { agentSessionId?: string }): BrowserCreateResult {
     const spawned = this.spawnView(projectPath);
     if ("error" in spawned) return { ok: false, error: spawned.error };
     const live = spawned.live;
+    if (opts?.agentSessionId) {
+      live.owner = "agent";
+      live.agentSessionId = opts.agentSessionId;
+    }
 
     // Apply an optional initial device-emulation preset once the renderer is
     // ready. Calling enableDeviceEmulation before the GPU/renderer process is
@@ -631,10 +659,15 @@ class BrowserManagerImpl {
       id,
       view,
       projectPath,
+      owner: "user",
+      agentSessionId: "",
       lastBounds: HIDDEN_BOUNDS,
       visible: false,
       presentationVersion: 0,
       pickMode: false,
+      presented: false,
+      takenOver: false,
+      idle: false,
       device: "desktop",
       viewport: { device: "desktop", orientation: "portrait" },
       defaultUserAgent: desktopUserAgent || rawUserAgent,
@@ -1630,10 +1663,99 @@ class BrowserManagerImpl {
         browserId: id,
         projectPath: live.projectPath,
         url: wc.getURL(),
-        title: wc.getTitle(),
+        title: live.view.webContents.getTitle(),
+        owner: live.owner,
+        agentSessionId: live.agentSessionId,
+        presented: live.presented,
+        takenOver: live.takenOver,
       });
     }
     return out;
+  }
+
+  /** List only agent-owned views for a given session. */
+  listAgentViews(agentSessionId: string): BrowserInfo[] {
+    return this.list().filter((i) => i.owner === "agent" && i.agentSessionId === agentSessionId);
+  }
+
+  /** List only user panel views (what the agent must never touch). */
+  listUserViews(): BrowserInfo[] {
+    return this.list().filter((i) => i.owner === "user");
+  }
+
+  /** True when this view is agent-owned and idle (not presented, not taken over). */
+  isAgentIdle(id: string): boolean {
+    const live = this.get(id);
+    return !!live && live.owner === "agent" && live.idle && !live.presented;
+  }
+
+  /** Present an agent view to the user: show it in the browser panel with a
+   *  banner ("Agent 需要你操作:<note>"), and resolve the returned promise when
+   *  the user clicks "继续" (continueBrowser) or "接管" (takeoverBrowser).
+   *  Rejects if the view is already presented/taken-over or not agent-owned. */
+  present(id: string, note: string): { ok: boolean; error?: string } {
+    const live = this.get(id);
+    if (!live) return { ok: false, error: "browserId 不存在或已关闭" };
+    if (live.owner !== "agent") return { ok: false, error: "browser_present 只能用于 Agent 的浏览器视图" };
+    if (live.presented) return { ok: false, error: "该视图已在等待用户操作,请直接操作后点「继续」" };
+    if (live.takenOver) return { ok: false, error: "用户已接管该视图,请新开一个视图继续(browser_navigate 不传 browserId)" };
+    live.presented = true;
+    live.idle = false;
+    sendToRenderer(IPC.BROWSER_EVENT, {
+      channel: IPC.BROWSER_EVENT,
+      browserId: id,
+      type: "presented",
+      payload: {
+        url: live.view.webContents.getURL(),
+        title: live.view.webContents.getTitle(),
+        note,
+      },
+    });
+    log.info(`browser presented to user: ${id} note=${note.slice(0, 60)}`);
+    return { ok: true };
+  }
+
+  /** The user clicked "继续" on a presented view — hand control back to the
+   *  agent. Hides the view off-screen again and clears presented. */
+  continueBrowser(id: string): BrowserOpResult {
+    const live = this.get(id);
+    if (!live) return { ok: false, error: "browserId 不存在或已关闭" };
+    live.presented = false;
+    // Hide back off-screen unless the renderer had it visible (user tab adopted it).
+    if (live.owner === "agent" && live.visible) this.hide(id);
+    sendToRenderer(IPC.BROWSER_EVENT, {
+      channel: IPC.BROWSER_EVENT,
+      browserId: id,
+      type: "continued",
+      payload: { url: live.view.webContents.getURL(), title: live.view.webContents.getTitle() },
+    });
+    log.info(`browser continued by user: ${id}`);
+    return { ok: true };
+  }
+
+  /** The user took control of a presented view — the agent must not reuse it;
+   *  mark takenOver so the next agent call opens a fresh hidden view. */
+  takeoverBrowser(id: string): BrowserOpResult {
+    const live = this.get(id);
+    if (!live) return { ok: false, error: "browserId 不存在或已关闭" };
+    live.takenOver = true;
+    live.presented = false;
+    live.owner = "user";
+    live.agentSessionId = "";
+    log.info(`browser taken over by user: ${id}`);
+    return { ok: true };
+  }
+
+  /** Mark all agent views of a session idle at turn end: hide them off-screen
+   *  (preserving page state) so the next turn can resume; presented views are
+   *  left untouched (the user is mid-interaction). */
+  markIdleForSession(agentSessionId: string): void {
+    for (const live of this.browsers.values()) {
+      if (live.owner === "agent" && live.agentSessionId === agentSessionId && !live.presented) {
+        live.idle = true;
+        if (live.visible) this.hide(live.id);
+      }
+    }
   }
 
   /** Read a structured snapshot of the page: url/title/readyState, a slice of

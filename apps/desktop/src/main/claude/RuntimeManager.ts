@@ -20,6 +20,7 @@ import { restoreFiles } from "@main/lib/fileSnapshot.js";
 import { BridgeRegistry } from "@main/providers/bridge/bridgeRegistry.js";
 import { mobileEventBus } from "@main/mobile/MobileEventBus.js";
 import { broadcastRuntimeEvent, broadcastSessionChanged } from "@main/lib/sessionSync.js";
+import { BrowserManager } from "@main/browser/BrowserManager.js";
 import { invalidateUsageStats } from "@main/lib/usageStats.js";
 import { log } from "@main/lib/logger.js";
 import { isRuntimeMutationActive } from "@main/runtimes/runtimeMutation.js";
@@ -220,6 +221,11 @@ class RuntimeManager {
             }
           }, TURN_END_SETTLE_GRACE_MS).unref();
         }
+        // Agent browser views (TODO-051): hide them off-screen and mark idle
+        // so the next turn can resume where the user left off.
+        try {
+          BrowserManager.markIdleForSession(session.id);
+        } catch { /* browser manager may not be ready on shutdown */ }
       } else if (e.type === "todo.update") {
         try {
           SessionRepo.updateTodos(session.id, e.todos);

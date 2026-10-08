@@ -84,4 +84,8 @@ export const zh = {
   "browser.downloadOpenFile": "打开文件",
   "browser.downloadRevealFolder": "在文件夹中显示",
   "browser.downloadDismiss": "移除",
+
+  /* ── agent present banner ── */
+  "browser.presented.banner": "Agent 需要你操作: {note}",
+  "browser.presented.continue": "继续",
 } as const;

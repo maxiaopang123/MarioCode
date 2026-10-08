@@ -1388,7 +1388,7 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
         }
       }
       case "browser_list":
-        return toContent(browserList());
+        return toContent(browserList(req.sessionId));
       case "browser_navigate":
         return toContent(
           await browserNavigate(
@@ -1399,6 +1399,7 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
               newTab: args.newTab === true,
             },
             req.cwd,
+            req.sessionId,
           ),
         );
       case "browser_snapshot":
@@ -1408,7 +1409,7 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
             mode: args.mode,
             maxChars: args.maxChars,
             offset: args.offset,
-          }),
+          }, req.sessionId),
         );
       case "browser_click":
         return toContent(
@@ -1418,7 +1419,7 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
             coordinateX: typeof args.coordinateX === "number" ? args.coordinateX : undefined,
             coordinateY: typeof args.coordinateY === "number" ? args.coordinateY : undefined,
             browserId: optStr(args.browserId),
-          }),
+          }, req.sessionId),
         );
       case "browser_type":
         return toContent(
@@ -1428,11 +1429,11 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
             text: typeof args.text === "string" ? args.text : "",
             clear: args.clear !== false,
             browserId: optStr(args.browserId),
-          }),
+          }, req.sessionId),
         );
       case "browser_keys":
         return toContent(
-          await browserKeys({ keys: String(args.keys ?? ""), browserId: optStr(args.browserId) }),
+          await browserKeys({ keys: String(args.keys ?? ""), browserId: optStr(args.browserId) }, req.sessionId),
         );
       case "browser_scroll":
         return toContent(
@@ -1441,7 +1442,7 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
             pages: typeof args.pages === "number" ? args.pages : undefined,
             selector: optStr(args.selector),
             browserId: optStr(args.browserId),
-          }),
+          }, req.sessionId),
         );
       case "browser_wait":
         return toContent(
@@ -1451,14 +1452,14 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
             seconds: typeof args.seconds === "number" ? args.seconds : undefined,
             timeoutSeconds: typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : undefined,
             browserId: optStr(args.browserId),
-          }),
+          }, req.sessionId),
         );
       case "browser_history":
         return toContent(
           await browserHistory({
             action: args.action as "back" | "forward" | "reload",
             browserId: optStr(args.browserId),
-          }),
+          }, req.sessionId),
         );
       case "browser_select":
         return toContent(
@@ -1467,7 +1468,7 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
             selector: optStr(args.selector),
             value: String(args.value ?? ""),
             browserId: optStr(args.browserId),
-          }),
+          }, req.sessionId),
         );
       case "browser_find":
         return toContent(
@@ -1483,12 +1484,12 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
               : undefined,
             cssScope: optStr(args.cssScope),
             browserId: optStr(args.browserId),
-          }),
+          }, req.sessionId),
         );
       case "browser_switch_tab":
-        return toContent(await browserSwitchTab({ browserId: String(args.browserId ?? "") }));
+        return toContent(await browserSwitchTab({ browserId: String(args.browserId ?? "") }, req.sessionId));
       case "browser_close_tab":
-        return toContent(await browserCloseTab({ browserId: String(args.browserId ?? "") }));
+        return toContent(await browserCloseTab({ browserId: String(args.browserId ?? "") }, req.sessionId));
       case "browser_upload_file":
         return toContent(
           await browserUploadFile(
@@ -1498,6 +1499,7 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
               paths: args.paths,
               browserId: optStr(args.browserId),
             },
+            req.sessionId,
             req.cwd,
           ),
         );
@@ -1513,6 +1515,7 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
               headerFooter: args.headerFooter === true,
               browserId: optStr(args.browserId),
             },
+            req.sessionId,
             {
               toolCallId: typeof p.callId === "string" ? p.callId : randomUUID(),
               sessionId: req.sessionId,
@@ -1521,14 +1524,15 @@ async function invokeDynamicTool(p: Record<string, unknown>, deps: RequestDeps):
           ),
         );
       case "browser_downloads":
-        return toContent(browserDownloads());
+        return toContent(browserDownloads(req.sessionId));
       case "browser_evaluate":
         return toContent(
-          await browserEvaluate({ script: String(args.script ?? ""), browserId: optStr(args.browserId) }),
+          await browserEvaluate({ script: String(args.script ?? ""), browserId: optStr(args.browserId) }, req.sessionId),
         );
       case "browser_screenshot": {
         const r = await browserScreenshot(
           { browserId: optStr(args.browserId), fullPage: args.fullPage === true },
+          req.sessionId,
           {
           toolCallId: typeof p.callId === "string" ? p.callId : randomUUID(),
           sessionId: req.sessionId,

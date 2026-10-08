@@ -32,6 +32,8 @@ import {
   BrowserHistoryRemoveSchema,
   BrowserHistoryClearSchema,
   BrowserAuthRespondSchema,
+  BrowserContinueSchema,
+  BrowserTakeoverSchema,
   BrowserDownloadActionSchema,
 } from "@contracts/ipc";
 import { isKnownProjectPath } from "@main/lib/pathGuard.js";
@@ -245,6 +247,29 @@ export function registerBrowserHandlers(ipcMain: IpcMain): void {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.error(`browser.authRespond failed: ${msg}`);
+    }
+  });
+
+  // Agent browser present flow (TODO-051): the user clicked 「继续」 on a
+  // presented agent view — hand control back to the agent and hide the view.
+  ipcMain.handle(IPC.BROWSER_CONTINUE, async (_evt, raw) => {
+    try {
+      const input = BrowserContinueSchema.parse(raw);
+      return BrowserManager.continueBrowser(input.browserId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+  // The user took over a presented agent view — it becomes a normal user tab.
+  ipcMain.handle(IPC.BROWSER_TAKEOVER, async (_evt, raw) => {
+    try {
+      const input = BrowserTakeoverSchema.parse(raw);
+      return BrowserManager.takeoverBrowser(input.browserId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false as const, error: msg };
     }
   });
 

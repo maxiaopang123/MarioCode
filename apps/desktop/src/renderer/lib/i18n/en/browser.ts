@@ -81,4 +81,8 @@ export const en = {
   "browser.downloadOpenFile": "Open file",
   "browser.downloadRevealFolder": "Show in folder",
   "browser.downloadDismiss": "Dismiss",
+
+  /* ── agent present banner ── */
+  "browser.presented.banner": "Agent needs your input: {note}",
+  "browser.presented.continue": "Continue",
 } as const;

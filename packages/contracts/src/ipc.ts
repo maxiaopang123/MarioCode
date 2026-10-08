@@ -4181,8 +4181,19 @@ export interface BrowserEventMessage {
     | "agentOpened"
     | "tabOpened"
     | "authRequest"
-    | "download";
+    | "download"
+    | "presented"
+    | "continued";
   payload: unknown;
+}
+
+/** Payload of the "presented" browser push event. The agent handed this view
+ *  to the user for interaction (login / OAuth / captcha); the panel shows a
+ *  banner with `note` and waits for the user to click 「继续」(→ continued). */
+export interface BrowserPresentedPayload {
+  url: string;
+  title: string;
+  note: string;
 }
 
 /** Payload of the "download" browser push event. Emitted when a download
@@ -4714,6 +4725,14 @@ export const BrowserAuthRespondSchema = z.object({
 });
 export type BrowserAuthRespondInput = z.infer<typeof BrowserAuthRespondSchema>;
 
+/** browser.continue — user finished interacting with a presented agent view. */
+export const BrowserContinueSchema = z.object({ browserId: z.string().min(1) });
+export type BrowserContinueInput = z.infer<typeof BrowserContinueSchema>;
+
+/** browser.takeover — user took over a presented agent view (it becomes theirs). */
+export const BrowserTakeoverSchema = z.object({ browserId: z.string().min(1) });
+export type BrowserTakeoverInput = z.infer<typeof BrowserTakeoverSchema>;
+
 /* ──────────────────────────  RPC method map  ───────────────────────────────── */
 
 /** Revoke a paired mobile device. Input to `mobile.revokeDevice`. */
@@ -5134,6 +5153,12 @@ export interface RpcMap {
   "browser.historyClear": (input: BrowserHistoryClearInput) => Promise<BrowserOpResult>;
   /** Answer a pending HTTP Basic Auth prompt (see "authRequest" push event). */
   "browser.authRespond": (input: BrowserAuthRespondInput) => Promise<void>;
+  /** The user clicked 「继续」 on a presented agent view (see "presented" push
+   *  event): hand control back to the agent and hide the view off-screen. */
+  "browser.continue": (input: BrowserContinueInput) => Promise<BrowserOpResult>;
+  /** The user took over a presented agent view: it becomes a normal user tab
+   *  and the agent must open a fresh view next time. */
+  "browser.takeover": (input: BrowserTakeoverInput) => Promise<BrowserOpResult>;
   /** Open a tracked download's file with the OS default app ("open", only
    *  allowed once the download completed) or select it in the containing
    *  folder ("reveal"). The path is resolved main-side from the download
@@ -5617,6 +5642,11 @@ export const IPC = {
   BROWSER_HISTORY_REMOVE: "browser:historyRemove",
   BROWSER_HISTORY_CLEAR: "browser:historyClear",
   BROWSER_AUTH_RESPOND: "browser:authRespond",
+  // Agent browser present flow (TODO-051): user finished interacting with a
+  // presented agent view (continue → hide back off-screen) or took it over
+  // (takeover → the view becomes a user tab).
+  BROWSER_CONTINUE: "browser:continue",
+  BROWSER_TAKEOVER: "browser:takeover",
   // Download bar (embedded browser): open file / reveal in folder
   BROWSER_DOWNLOAD_ACTION: "browser:downloadAction",
   // App / runtime info (About panel)

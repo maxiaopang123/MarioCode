@@ -118,6 +118,9 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
   /** Pending HTTP Basic Auth request pushed by main ("authRequest" event).
    *  Non-null shows the login dialog (view hidden while it's up). */
   const [authRequest, setAuthRequest] = useState<BrowserAuthRequest | null>(null);
+  /** Agent-presented view waiting for user interaction ("presented" event).
+   *  The banner shows what the user should do;「继续」hands control back. */
+  const [presented, setPresented] = useState<{ browserId: string; note: string } | null>(null);
   /** Frozen-frame placeholder while a toolbar menu (history / device) is open
    *  over the stage: a base64 PNG of the page captured right before the real
    *  view parks offscreen, pinned to the stage at the view's exact rect. The
@@ -881,6 +884,20 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
         adoptWindowOpenTab(msg.browserId, p);
         return;
       }
+      // Agent presented a view for user interaction (browser_present tool):
+      // adopt the view as a tab so the user can see + operate it, and show the
+      // banner with the agent's note. The user clicks 「继续」 to hand control
+      // back (main hides the view off-screen again).
+      if (msg.type === "presented") {
+        const p = (msg.payload as { url?: string; title?: string; note?: string }) ?? {};
+        setPresented({ browserId: msg.browserId, note: p.note ?? "" });
+        adoptWindowOpenTab(msg.browserId, { url: p.url, title: p.title });
+        return;
+      }
+      if (msg.type === "continued") {
+        setPresented(null);
+        return;
+      }
       const tab = tabsRef.current.find((t) => t.browserId === msg.browserId);
       if (!tab) return; // not one of our tabs (e.g. stale view)
       if (msg.type === "navigation") {
@@ -1183,6 +1200,14 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
     }
   }, [isActive, showActiveView]);
 
+  /** Presented banner「继续」: hand control back to the agent (main hides the
+   *  view off-screen and clears presented). */
+  const handlePresentContinue = useCallback(() => {
+    if (!presented) return;
+    void api.browser.continue({ browserId: presented.browserId });
+    setPresented(null);
+  }, [presented]);
+
   /** Select a tab: hide the old active view, show the new one. */
   const handleSelectTab = useCallback(
     (id: string) => {
@@ -1442,6 +1467,24 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
           onClear={handleClearPicked}
           onAdd={handleAddPicked}
         />
+      )}
+
+      {/* Agent-presented banner (browser_present tool): the agent handed this
+          view to the user for interaction. Shows the agent's note and a
+          「继续」button that hands control back. */}
+      {presented && (
+        <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-[13px] text-amber-900 shadow-sm dark:border-amber-800 dark:bg-amber-950/90 dark:text-amber-100">
+          <span className="min-w-0 truncate">
+            {t("browser.presented.banner", { note: presented.note })}
+          </span>
+          <button
+            type="button"
+            className="shrink-0 rounded-md bg-amber-600 px-3 py-1 text-[12px] font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
+            onClick={handlePresentContinue}
+          >
+            {t("browser.presented.continue")}
+          </button>
+        </div>
       )}
 
       {/* HTTP Basic Auth prompt (pushed by main as an "authRequest" event;

@@ -494,6 +494,10 @@ const api = {
       ipcRenderer.invoke(IPC.BROWSER_HISTORY_CLEAR)) as RpcMap["browser.historyClear"],
     authRespond: ((input) =>
       ipcRenderer.invoke(IPC.BROWSER_AUTH_RESPOND, input)) as RpcMap["browser.authRespond"],
+    continue: ((input) =>
+      ipcRenderer.invoke(IPC.BROWSER_CONTINUE, input)) as RpcMap["browser.continue"],
+    takeover: ((input) =>
+      ipcRenderer.invoke(IPC.BROWSER_TAKEOVER, input)) as RpcMap["browser.takeover"],
     downloadAction: ((input) =>
       ipcRenderer.invoke(IPC.BROWSER_DOWNLOAD_ACTION, input)) as RpcMap["browser.downloadAction"],
   },

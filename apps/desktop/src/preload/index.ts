@@ -266,6 +266,8 @@ const api = {
   canvas: {
     home: (() => ipcRenderer.invoke(IPC.CANVAS_HOME)) as RpcMap["canvas.home"],
     list: ((input) => ipcRenderer.invoke(IPC.CANVAS_LIST, input)) as RpcMap["canvas.list"],
+    backfill: ((input) =>
+      ipcRenderer.invoke(IPC.CANVAS_BACKFILL, input)) as RpcMap["canvas.backfill"],
     imageData: ((input) =>
       ipcRenderer.invoke(IPC.CANVAS_IMAGE_DATA, input)) as RpcMap["canvas.imageData"],
     generate: ((input) =>

@@ -8,11 +8,12 @@
  * 列表与读取都过滤已删行。派生链:derived 行的 parentId 指来源图、chainId
  * 指链根(首图为自身 id),删除一张图会连带删掉它的全部后代版本。
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { app, nativeImage } from "electron";
 import {
+  BROWSER_SCREENSHOT_DIR_SETTING_KEY,
   CANVAS_GALLERY_DIR_SETTING_KEY,
   type CanvasImage,
   type CanvasImageKind,
@@ -386,26 +387,120 @@ export function registerSessionImage(sessionId: string, filePath: string, prompt
   try {
     const session = SessionRepo.get(sessionId);
     if (!session) return;
-    if (!existsSync(filePath)) return;
-    const buf = readFileSync(filePath);
-    const dims = imageDimensions(buf);
     const name = prompt.replace(/\s+/g, " ").trim().slice(0, 24) || "会话生成图片";
+    insertProjectGenerated(session.projectId, filePath, name, prompt, Date.now());
+  } catch (err) {
+    log.warn(`canvas register session image failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/* ── 历史图片回填 ── */
+
+/** 生效的工具输出目录(与 imageGenerate / agentBrowserTools 同源):
+ *  设置 `browser.screenshotDir`,空 = 系统「图片」文件夹。 */
+function toolOutputBase(): string {
+  return SettingRepo.get(BROWSER_SCREENSHOT_DIR_SETTING_KEY)?.trim() || app.getPath("pictures");
+}
+
+/** 项目内一张生成图的底层登记(registerSessionImage / backfill 共用)。
+ *  不复制文件,行直接指向原路径;文件丢失或解析失败返回 false。 */
+function insertProjectGenerated(projectId: string, filePath: string, name: string, prompt: string, createdAt: number): boolean {
+  if (!existsSync(filePath)) return false;
+  try {
+    const dims = imageDimensions(readFileSync(filePath));
     const id = randomUUID();
     insertImage({
       id,
       name,
       kind: "generated",
       scope: "project",
-      projectId: session.projectId,
+      projectId,
       parentId: null,
       chainId: id,
       prompt: prompt.slice(0, 4000),
       filePath,
       width: dims.width,
       height: dims.height,
-      createdAt: Date.now(),
+      createdAt,
     });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 会话输出目录下所有 mario_image_generate 的图片文件。只认文件名里带
+ *  `-image-` 标记的条目(imageGenerate 的 `${ts}-image-${toolCallId}.<ext>`
+ *  格式);browser_screenshot 的截图(无该标记)与 PDF 刻意不收。只扫会话
+ *  下的 turn-* 子目录一层,不递归更深。 */
+function listSessionImageFiles(sessionDir: string): string[] {
+  if (!existsSync(sessionDir)) return [];
+  const out: string[] = [];
+  let dirs: string[] = [];
+  try {
+    dirs = readdirSync(sessionDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => join(sessionDir, e.name));
   } catch (err) {
-    log.warn(`canvas register session image failed: ${err instanceof Error ? err.message : String(err)}`);
+    log.warn(`canvas backfill: 读取会话目录失败 ${sessionDir}: ${err instanceof Error ? err.message : String(err)}`);
+    return out;
+  }
+  for (const dir of dirs) {
+    let files: Array<{ name: string; isFile(): boolean }> = [];
+    try {
+      files = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue; // 单个回合目录不可读,跳过不影响其余
+    }
+    for (const f of files) {
+      if (!f.isFile() || !f.name.includes("-image-")) continue;
+      if (!IMAGE_EXT_RE.test(extname(f.name).toLowerCase())) continue;
+      out.push(join(dir, f.name));
+    }
+  }
+  return out;
+}
+
+/** 回填某项目历史会话生成的图片到项目图库:扫描它的每个会话的输出目录
+ *  (<工具输出目录>/<sessionId>/turn-回合号 子目录),把 mario_image_generate
+ *  的产物(文件名带 `-image-` 标记)幂等登记进 canvas_images——行指向原文件,
+ *  不复制。画布打开时调用,补上功能上线前(或漏登记)的存量图;重复调用
+ *  不产生重复行。返回本次新增的图片数。 */
+export function backfillProjectSessionImages(projectId: string): number {
+  try {
+    const sessions = SessionRepo.listByProject(projectId);
+    if (sessions.length === 0) return 0;
+    const base = toolOutputBase();
+    if (!existsSync(base)) return 0;
+    // 已有行的 file_path 集合:同一张图只登记一次(含历史已登记的)。
+    const existing = new Set(
+      (
+        getDb()
+          .prepare("SELECT file_path FROM canvas_images WHERE scope = 'project' AND project_id = ? AND deleted_at IS NULL")
+          .all(projectId) as Array<{ file_path: string }>
+      ).map((r) => r.file_path),
+    );
+    let added = 0;
+    for (const session of sessions) {
+      const safeSession = session.id.replace(/[^\w.-]/g, "_");
+      for (const filePath of listSessionImageFiles(join(base, safeSession))) {
+        if (existing.has(filePath)) continue;
+        // 名字取文件名里的时间戳段(2026-10-08-14-32-05 …),没有就回落默认。
+        const stem = basename(filePath).replace(/\.\w+$/, "").replace(/-image-.*$/, "");
+        const name = (stem ? `${stem} 生成图片` : "会话生成图片").slice(0, 200);
+        try {
+          if (insertProjectGenerated(projectId, filePath, name, "", statSync(filePath).mtimeMs)) {
+            existing.add(filePath);
+            added++;
+          }
+        } catch (err) {
+          log.warn(`canvas backfill: 登记失败 ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+    return added;
+  } catch (err) {
+    log.warn(`canvas backfill failed: ${err instanceof Error ? err.message : String(err)}`);
+    return 0;
   }
 }

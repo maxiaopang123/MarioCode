@@ -4764,6 +4764,12 @@ export const CanvasListSchema = z.object({
 });
 export type CanvasListInput = z.infer<typeof CanvasListSchema>;
 
+/** 历史图片回填:扫描该项目的会话输出目录(<工具输出目录>/<sessionId>/turn-回合号)
+ *  里 mario_image_generate 生成的图片(`-image-` 标记),幂等登记进项目图库。
+ *  只在项目范围有意义(global 没有会话归属)。 */
+export const CanvasBackfillSchema = CanvasListSchema;
+export type CanvasBackfillInput = CanvasListInput;
+
 export const CanvasImageDataSchema = z.object({
   id: z.string().max(64),
 });
@@ -5408,6 +5414,8 @@ export interface RpcMap {
   "canvas.home": () => Promise<{ dir: string; defaultDir: string }>;
   /** 列出某范围(独立 / 项目)的图库条目,按创建时间倒序。 */
   "canvas.list": (input: CanvasListInput) => Promise<{ images: CanvasImage[] }>;
+  /** 回填某项目历史会话生成的图片(见 CanvasBackfillSchema)。返回本次新增数。 */
+  "canvas.backfill": (input: CanvasBackfillInput) => Promise<{ ok: boolean; error?: string; added?: number }>;
   /** 读取单张图为 data URL(预览 / 进画布编辑用)。 */
   "canvas.imageData": (input: { id: string }) => Promise<{ ok: boolean; error?: string; dataUrl?: string }>;
   /** 文生图:生成 count 张、入库入图库,返回新条目。 */
@@ -5752,6 +5760,7 @@ export const IPC = {
   // 画布工作台(canvas workbench)
   CANVAS_HOME: "canvas:home",
   CANVAS_LIST: "canvas:list",
+  CANVAS_BACKFILL: "canvas:backfill",
   CANVAS_IMAGE_DATA: "canvas:imageData",
   CANVAS_GENERATE: "canvas:generate",
   CANVAS_EDIT: "canvas:edit",

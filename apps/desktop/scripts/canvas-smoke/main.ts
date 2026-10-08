@@ -130,6 +130,47 @@ console.log("session image registration");
   check("未知会话静默跳过", (canvasStore.registerSessionImage("nope", sessionImgPath, "x"), projList.length === 2));
 }
 
+/* ── 历史图片回填:扫描工具输出目录补登记 ── */
+console.log("backfill historical session images");
+{
+  // 该项目的会话 s1 已在前面插入;构造它的输出目录里:
+  // - 一个 mario_image_generate 的图(`-image-` 标记)
+  // - 一个浏览器截图(无标记,png)
+  // - 一个 PDF(非图片)
+  const turnDir = join(process.env.SMOKE_PICTURES, "s1", "turn-3");
+  mkdirSync(turnDir, { recursive: true });
+  const genPath = join(turnDir, "2026-10-08-14-32-05-image-abc123.png");
+  writeFileSync(genPath, fakePng(120, 60));
+  const shotPath = join(turnDir, "2026-10-08-14-32-06-screenshot.png");
+  writeFileSync(shotPath, fakePng(90, 90));
+  const pdfPath = join(turnDir, "page.pdf");
+  writeFileSync(pdfPath, Buffer.from("%PDF-1.4 fake"));
+
+  // 其它项目 p2:sessions 表里也有,但输出目录不存在 → 不应产生任何登记。
+  getDb()
+    .prepare("INSERT INTO projects (id, name, path, archived, created_at, updated_at) VALUES ('p2', '项目二', 'C:/proj/two', 0, 1, 1)")
+    .run();
+  getDb()
+    .prepare(
+      "INSERT INTO sessions (id, project_id, provider_id, title, status, model, permission_mode, created_at, updated_at) VALUES (?, 'p2', 'claude-sdk', ?, 'idle', 'm', 'default', 1, 1)",
+    )
+    .run("s2", "会话二");
+
+  const beforeP1 = canvasStore.CanvasImageRepo.list("project", "p1").length;
+  const added1 = canvasStore.backfillProjectSessionImages("p1");
+  const afterP1 = canvasStore.CanvasImageRepo.list("project", "p1");
+  const backfilled = afterP1.find((i) => i.filePath === genPath);
+  check("回填:识别 -image- 文件并登记", added1 >= 1 && !!backfilled && backfilled.scope === "project" && backfilled.projectId === "p1");
+  check("回填:kind = generated 且指向原路径", !!backfilled && backfilled.kind === "generated" && backfilled.filePath === genPath);
+  check("回填:尺寸读自 IHDR", !!backfilled && backfilled.width === 120 && backfilled.height === 60);
+  check("回填:不含浏览器截图", !afterP1.some((i) => i.filePath === shotPath));
+  check("回填:不含 PDF", !afterP1.some((i) => i.filePath === pdfPath));
+  const added2 = canvasStore.backfillProjectSessionImages("p1");
+  check("回填:重复调用幂等", added2 === 0 && canvasStore.CanvasImageRepo.list("project", "p1").length === afterP1.length);
+  check("回填:其它项目不受影响", canvasStore.CanvasImageRepo.list("project", "p2").length === 0);
+  check("回填:之前已登记的会话图不被重复", beforeP1 >= 1 && afterP1.some((i) => i.filePath === join(process.env.SMOKE_PICTURES, "session-turn.png")));
+}
+
 /* ── 连带删除 ── */
 console.log("delete with descendants");
 {

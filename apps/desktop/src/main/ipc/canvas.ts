@@ -11,6 +11,7 @@ import type { IpcMain } from "electron";
 import { dialog, shell } from "electron";
 import { existsSync } from "node:fs";
 import {
+  CanvasBackfillSchema,
   CanvasCropSchema,
   CanvasDeleteSchema,
   CanvasEditSchema,
@@ -27,6 +28,7 @@ import { ProjectRepo } from "@main/store/repositories.js";
 import { getMainWindow } from "@main/window.js";
 import {
   CanvasImageRepo,
+  backfillProjectSessionImages,
   cropImage,
   decodePngBase64,
   defaultGalleryDir,
@@ -61,6 +63,18 @@ export function registerCanvasHandlers(ipcMain: IpcMain): void {
     const input = CanvasListSchema.parse(raw);
     const { projectId } = resolveScope(input);
     return { images: CanvasImageRepo.list(input.scope, projectId) };
+  });
+
+  ipcMain.handle(IPC.CANVAS_BACKFILL, (_evt, raw): { ok: boolean; error?: string; added?: number } => {
+    try {
+      const input = CanvasBackfillSchema.parse(raw);
+      const { projectId } = resolveScope(input);
+      if (!projectId) return { ok: false, error: "回填只对项目图库有效" };
+      const added = backfillProjectSessionImages(projectId);
+      return { ok: true, added };
+    } catch (err) {
+      return fail(err);
+    }
   });
 
   ipcMain.handle(IPC.CANVAS_IMAGE_DATA, (_evt, raw) => {

@@ -46,6 +46,11 @@ export function CanvasWorkbench() {
 
   const reload = useCallback(async () => {
     try {
+      // 项目范围:先回填历史会话生成的图片(幂等),再取列表——让画布打开
+      // 时补上功能上线前(或漏登记)的存量图。
+      if (scopeSel.scope === "project" && scopeSel.projectId) {
+        await api.canvas.backfill({ scope: "project", projectId: scopeSel.projectId });
+      }
       const res = await api.canvas.list({
         scope: scopeSel.scope,
         ...(scopeSel.scope === "project" && scopeSel.projectId ? { projectId: scopeSel.projectId } : {}),

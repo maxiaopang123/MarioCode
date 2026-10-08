@@ -6,6 +6,8 @@
 
 ## 当前进度（2026-10-08）
 
+**10/8 本地安装包交付（v0.2.33）**：沿用功能提交 `e3ccb59` 与本地标签 `v0.2.33`，不因打包增加版本。Windows 安装包 `apps/desktop/release/MarioCode-0.2.33-x64.exe` 已生成（228,553,324 字节，约 218.0 MiB），包含 TODO-038 / 039 与 v0.2.29–31 修复。安装包文件版本、大小与 SHA512 和 `latest.yml` 一致，blockmap 已生成；包内版本、自动更新地址及 1519 个最终构建文件逐字节核对通过，含 PDF / Office worker、PDF 字体 / CMap、预加载和 HTML 自定义协议资源。从打包 ASAR 启动独立测试数据的桌面，文档阅读 / 翻页 / 缩放 / 分页（`.turbo/document-preview/run-ubpcZA`）、HTML / Markdown 交互 / 未保存预览 / 撤销重做 / 保存及隔离边界（`.turbo/text-preview/run-0Sj5Kl`）、原项目 / 旧会话恢复 / 重开与自动分页（`.turbo/startup-recovery/run-AVbvMH`）全部通过，截图已检查。完整性记录 `.turbo/installer-v0.2.33-verification.json`，构建记录 `.turbo/package-v0.2.33.log`。本轮未安装、上传或主动关闭用户应用；安装时需从托盘退出旧版。
+
 **10/8 新增（v0.2.33 · TODO-039）**：HTML / HTM 与 Markdown 文件默认预览，工具栏双语「编辑 / 预览」切换，恢复打开的标签也默认预览。`previewDraft` 只读取脏的 Monaco 缓存模型，预览不落盘、不重置模型；干净文件重读磁盘，返回编辑由既有 freshness 检查同步外部修改，保留撤销 / 重做、保存、行号定位和 Diff。HTML 通过 `file.htmlPreview / releasePreview` IPC 建立临时 `mariocode-preview://<随机令牌>/…` 地址，独立源 iframe 支持普通脚本 / 模块 / CSS / 图片 / JSON / 字体；页面不能访问父应用或 Node，摄像头 / 麦克风 / 剪贴板禁止，弹窗 / 下载 / 表单提交 / Worker 不开放。协议在 app ready 前注册、ready 后绑定，主应用 CSP 仅增加 frame-src，页面使用单独 CSP；只供已登记项目 / 工作树资源，realpath 检查防 junction 越界和隐藏目录别名绕过，HTML 限 2 MB、本地资源限 8 MB。关闭 / 切换吊销令牌并清理该随机源存储，窗口销毁清理全部令牌；每窗口最多保留 16 个，防过时请求积累。`file.readFile` 失败增加可选 error 字段，Markdown 读取失败能显示错误与重试。类型与完整构建通过；`test:text-preview-electron` 验证真实文件树点击、HTML 样式 / 中文路径图片 / 内联与外部脚本 / ES module / JSON / 存储 / 按钮交互、无应用 API / Node / 父窗口访问、两类文档未保存预览与模型身份 / 撤销重做 / 键盘保存、HTML 磁盘刷新、恢复默认模式、行号跳转与 Diff、超大 / 缺失文件、越界与隐藏文件 junction、令牌吊销、英文界面。已检查截图，记录 `.turbo/text-preview/run-ZGt7nN`。`test:document-preview-electron` 在最终构建回归通过（`.turbo/document-preview/run-hv3SyI`），`test:startup-electron` 通过（`.turbo/startup-recovery/run-jpnsoh`）；macOS 待验证。独立功能提交与本地标签 `v0.2.33`，未打包、安装或上传。
 
 **10/8 新增（v0.2.32 · TODO-038）**：PDF、DOCX、XLSX / XLS、PPTX 点击即在文件区阅读。PDF.js 使用兼容 Electron 33 的 legacy 主文件与 worker，字体和 CMap 一并本地打包，支持翻页、缩放和复制本页文字；Office worker 使用 Mammoth / SheetJS / fflate，DOCX / PPTX 显示文字、表格和嵌入图片，PPTX 遵循 presentation 的实际顺序，Excel 切工作表与行列分页。文件通过新 `file.readDocument` IPC 读取，限 32 MB、校验 realpath 防符号链接越界，Office 压缩展开限 64 MB；Word HTML 经 DOMPurify 清洗，图片仅嵌入数据，不读取外部引用。快速切换、解析超时、损坏与密码文件有退出和错误提示。类型检查、完整构建与 `test:document-preview-electron` 通过：本地四类文件、中文内容 / 表格 / 图片、PDF 翻页缩放与重开刷新、Excel 205 行与后续列 / 缓存公式值 / 第二表、PPTX 顺序、快速切换、坏文件、超大与越界 / junction、英文界面；已检查截图。记录 `.turbo/document-preview/run-WJ6IlS`。阅读视图不保证复杂 Word / PPTX 原版式，Excel 不重新计算公式或绘制图表，旧 DOC / PPT、密码 / OCR / PDF 表单暂不支持，macOS 待验证。独立功能提交与本地标签 `v0.2.32`，未打包、安装或上传。
@@ -99,7 +101,7 @@
 
 **Git 状态（9/29）**：分支 `ui-refresh-v3`，v3 这批改动已提交为 `188b481`（原型与文档）+ `1a1d948`（功能 + mcode→mariocode 改名），之后又有 `03c5d5b` / `983d60d` 两个文档提交，以及 v0.2.1 的 `8350d7f`；`dbdab86` 之后共 65 个提交，都没推送（分支无远端），也还没合回 `master`。
 
-**版本（10/08）**：当前源码 `v0.2.33`；TODO-038 文件阅读、TODO-039 HTML / Markdown 预览切换已分别验证并独立提交与本地标签 v0.2.32 / v0.2.33，TODO-038 功能提交 `93b2a67`。TODO-047、048、050 分别对应 v0.2.29 / v0.2.30 / v0.2.31。v0.2.28 本地安装包已生成；v0.2.33 未打包、安装或上传。
+**版本（10/08）**：当前源码 `v0.2.33`；TODO-038 文件阅读、TODO-039 HTML / Markdown 预览切换已分别验证并独立提交与本地标签 v0.2.32 / v0.2.33，功能提交分别为 `93b2a67` / `e3ccb59`。TODO-047、048、050 分别对应 v0.2.29 / v0.2.30 / v0.2.31。当前 v0.2.33 本地 Windows 安装包已生成（约 218.0 MiB），包内资源、清单与桌面预览 / 启动恢复回归通过；待用户安装验收，未上传。
 
 人工验收与发布事项见 [MarioCode 想法与待办](MarioCode-TODO.md)。本机打包用 `scripts\package-win.bat`（`--skip-build` 跳过构建），发布用 `pnpm --filter @mariocode/desktop run release:upload`。
 
@@ -501,8 +503,8 @@
 
 | 版本 | 日期 | Commit | 主要更新 | 状态 |
 |---|---|---|---|---|
-| `v0.2.33` | 2026-10-08 | 本地标签 `v0.2.33` | TODO-039：HTML / Markdown 默认预览与编辑切换，未保存内容预览与隔离网页交互 | 类型、完整构建、桌面网页与文档 / 模型及保存 / 读取和隔离边界、Office 阅读及启动恢复回归通过；未打包安装 |
-| `v0.2.32` | 2026-10-08 | `93b2a67` / 本地标签 `v0.2.32` | TODO-038：本地 PDF、Word、Excel、PPTX 文件点击阅读，后台解析与行列 / 页面导航 | 类型、完整构建、四类真实文件桌面阅读 / 翻页 / 缩放 / 切换 / 文件与内容安全边界通过；未打包安装 |
+| `v0.2.33` | 2026-10-08 | `e3ccb59` / 本地标签 `v0.2.33` | TODO-039：HTML / Markdown 默认预览与编辑切换，未保存内容预览与隔离网页交互 | 类型、完整构建、桌面网页与文档 / 模型及保存 / 读取和隔离边界、Office 阅读及启动恢复回归通过；本地 Windows 安装包约 218.0 MiB，包内资源 / 清单 / 预览及启动恢复通过，待用户安装验收 |
+| `v0.2.32` | 2026-10-08 | `93b2a67` / 本地标签 `v0.2.32` | TODO-038：本地 PDF、Word、Excel、PPTX 文件点击阅读，后台解析与行列 / 页面导航 | 类型、完整构建、四类真实文件桌面阅读 / 翻页 / 缩放 / 切换 / 文件与内容安全边界通过；功能已包含在 v0.2.33 本地安装包，待用户安装验收 |
 | `v0.2.31` | 2026-10-08 | 本地标签 `v0.2.31` | TODO-050：浏览器页面操作不等待整页加载，取消过时显示与截图恢复，修复容器交接与画布切换残留 | 类型、完整构建、原生浏览器与真实应用切换 / 截图竞态 / 菜单提前关闭、启动恢复及画布回归通过；未打包安装 |
 | `v0.2.30` | 2026-10-08 | 本地标签 `v0.2.30` | TODO-048：大纲横条改为小圆点与轻量动效，保留点击与键盘导航 | 类型、完整构建、真实桌面尺寸 / 书签 / 键盘跳转 / 减少动态效果及本会话回归通过；未打包安装 |
 | `v0.2.29` | 2026-10-08 | 本地标签 `v0.2.29` | TODO-047：本会话面板移除重复大纲，保留聊天左侧入口 | 类型、完整构建、隔离真实桌面重开 / 展开 / 收起、书签与用量保留检查通过；未打包安装 |

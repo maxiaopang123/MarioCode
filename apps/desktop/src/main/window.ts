@@ -10,9 +10,9 @@ let mainWindow: BrowserWindow | null = null;
 
 /** Background color matching the effective theme, so the first frame (before
  *  React mounts) doesn't flash the wrong color. Mirrors --surface in CSS
- *  (styles.css): light = #ffffff, dark = #161b19 (v3 graphite). */
+ *  (styles.css): light = #ffffff, dark = #181918 (V4 neutral). */
 function bgColor(): string {
-  return getEffectiveTheme() === "dark" ? "#161b19" : "#ffffff";
+  return getEffectiveTheme() === "dark" ? "#181918" : "#ffffff";
 }
 
 /** Title-bar overlay colour scheme that matches the app theme. The overlay sits
@@ -22,8 +22,8 @@ function bgColor(): string {
  *  `color` mirrors --surface-base (the toolbar's background — it matches the
  *  full-height sidebar so they read as one frame); `symbolColor` mirrors
  *  --content-subtle so the button glyphs match the dim UI text tone. Values
- *  must stay in sync with styles.css — :root #eff1ef / #6c7772, .dark
- *  #0c0f0e / #88938d (the v3 green-grey palette; the old cool greys left a
+ *  must stay in sync with styles.css — :root #f6f6f5 / #70706b, .dark
+ *  #121312 / #868681 (the V4 neutral palette; a stale palette leaves a
  *  visibly different block behind the buttons).
  *
  *  `height` must match the renderer titlebar's height (h-10 = 40px): Electron
@@ -33,8 +33,8 @@ function bgColor(): string {
 function overlayColors() {
   const dark = getEffectiveTheme() === "dark";
   return {
-    color: dark ? "#0c0f0e" : "#eff1ef",
-    symbolColor: dark ? "#88938d" : "#6c7772",
+    color: dark ? "#121312" : "#f6f6f5",
+    symbolColor: dark ? "#868681" : "#70706b",
     height: 40,
   };
 }

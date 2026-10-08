@@ -120,38 +120,35 @@ div:has(> [role="menu"]) {
    * (400/500/600/700) already sits above these bases, so no ladder shift. */
   font-weight: 400;
 
-  /* surfaces (backgrounds). Neutral with a slight cool bias (B channel a
-   * few units above R/G), shared by both themes. --surface-base is the
-   * window ground (sidebar track, titlebar, settings backdrop); --surface-muted
-   * is the inset well inside cards (code blocks, table heads). In light both
-   * sit one soft step below white; dark splits them in opposite directions
-   * (ground darker than the cards, wells lighter). */
-  /* 界面焕新 v3 (prototypes/ui-refresh-v3.html): the palette is taken from
-   * the app icon — graphite #283833 + mint #8BC0A3 — so every neutral
-   * carries a faint green-grey bias in the same hue as the icon. */
+  /* surfaces (backgrounds). V4 neutral greys (no hue bias), shared by both
+   * themes. --surface-base is the window ground (sidebar track, titlebar,
+   * settings backdrop); --surface-muted is the inset well inside cards (code
+   * blocks, table heads). In light both sit one soft step below white; dark
+   * splits them in opposite directions (ground darker than the cards, wells
+   * lighter). The brand mint lives only in --accent / --primary. */
   --surface: 255 255 255; /* white — center pane, right panel, popups */
-  --surface-base: 239 241 239; /* window ground: rail, session column, titlebar */
-  --surface-muted: 244 246 244; /* inset wells */
+  --surface-base: 246 246 245; /* window ground: rail, session column, titlebar */
+  --surface-muted: 243 243 241; /* inset wells */
   /* Hover/active fill. Must stay visible on BOTH white and --surface-muted
    * (sidebar rows hover on the track), and must NOT equal --edge — a hover
    * row next to a same-valued border reads as one blob. */
-  --surface-hover: 229 234 231;
+  --surface-hover: 235 235 232;
   /* content (text). --content-subtle carries 11px metadata, so it is held
    * at ≥4.5:1 on white (≈4.8:1; ≈4.3:1 on the muted track). */
-  --content: 26 34 31;
-  --content-muted: 78 89 84; /* ≈7:1 on white */
-  --content-subtle: 108 119 114;
+  --content: 26 26 25;
+  --content-muted: 82 82 78; /* ≈7.5:1 on white */
+  --content-subtle: 112 112 107; /* ≈5:1 on white */
   /* borders. Ordered deepest → lightest: --input-edge > --edge > --panel-edge,
    * all deeper than --surface-hover so separators never read as hover. */
-  --edge: 225 230 227; /* card outlines, in-panel separators */
+  --edge: 228 228 225; /* card outlines, in-panel separators */
   /* Structural pane dividers (three-pane shell borders, splitter hairlines,
    * tab-strip underline) run the full window height, so they sit one step
    * lighter than card borders. */
-  --panel-edge: 230 234 231;
+  --panel-edge: 234 234 231;
   /* Composer input box outline — the strongest border, so the box reads at
    * a glance (dark needs the brighter-than-edge direction, light the
    * deeper-than-edge direction). Only the composer container uses it. */
-  --input-edge: 208 215 211;
+  --input-edge: 212 212 208;
   /* accent + status. Light text-bearing tokens sit at the 700 stop: the 600
    * shades resolved to ~3.2:1 (amber) / ~3.8:1 (emerald) on white — below
    * the 4.5:1 AA bar for the small colored text they feed (approval prompts,
@@ -166,7 +163,7 @@ div:has(> [role="menu"]) {
   --primary-hover: 28 41 37;
   --on-primary: 255 255 255;
   /* Left project rail ground — one step below the window ground. */
-  --rail: 233 236 234;
+  --rail: 238 238 236;
   /* Inline code span foreground — plain body color on BOTH themes (GitHub
    * convention): the recess background already marks the span as code, so the
    * text itself stays neutral. Light dropped the accent tint after emerald-600
@@ -249,26 +246,26 @@ div:has(> [role="menu"]) {
    * darkest, the floating work cards sit one step up, and inset wells inside
    * cards (code blocks, tool results) one more step up. Hover sits above all
    * three and must not equal --edge. */
-  --surface-base: 12 15 14; /* window ground: session column, titlebar */
-  --surface: 22 27 25; /* center pane, right panel, popups */
-  --surface-muted: 28 34 31; /* inset wells inside cards */
-  --surface-hover: 40 48 44; /* hover/active fills on all three layers */
-  --content: 234 239 236; /* ≈15:1 on --surface */
+  --surface-base: 18 19 18; /* window ground: session column, titlebar */
+  --surface: 24 25 24; /* center pane, right panel, popups */
+  --surface-muted: 32 33 32; /* inset wells inside cards */
+  --surface-hover: 44 45 43; /* hover/active fills on all three layers */
+  --content: 236 236 233; /* ≈15:1 on --surface */
   /* Secondary/tertiary text. --content-subtle carries 11–12px metadata
    * (paths, timestamps, hints), so it stays ≥5:1 on --surface — a notch
    * brighter than the prototype's #7c818b, which only just cleared 4.5:1. */
-  --content-muted: 173 184 178; /* ≈8.5:1; lists / tables / tool-card labels */
-  --content-subtle: 136 147 141; /* ≈5.5:1; metadata / markers / hints */
-  --edge: 38 46 43; /* card outlines, in-panel separators */
-  --panel-edge: 38 46 43; /* mirrors dark --edge — the lighter structural
+  --content-muted: 168 168 163; /* ≈8:1; lists / tables / tool-card labels */
+  --content-subtle: 134 134 129; /* ≈5.3:1; metadata / markers / hints */
+  --edge: 40 41 39; /* card outlines, in-panel separators */
+  --panel-edge: 40 41 39; /* mirrors dark --edge — the lighter structural
                            * divider is a light-mode-only concern */
-  --input-edge: 60 70 66; /* composer outline, the strongest border */
+  --input-edge: 62 63 60; /* composer outline, the strongest border */
   --accent: 120 184 150; /* mint — fills stay legible under both white and ink text */
   --accent-strong: 170 215 190; /* small accent TEXT on near-black */
   --primary: 139 192 163; /* the icon's mint */
   --primary-hover: 162 209 183;
   --on-primary: 18 31 25;
-  --rail: 8 11 10;
+  --rail: 13 14 13;
   --danger: 248 113 113; /* red-400 */
   --warning: 251 191 36; /* amber-400 */
   --info: 167 139 250; /* violet-400 */

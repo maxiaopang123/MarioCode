@@ -6,6 +6,8 @@ export const zh = {
   "chatStream.byline.firstTokenHint": "首字延迟 {secs} 秒",
   "chatStream.image.shownInReply": "图片已在回复中显示 · 展开工具预览",
   // ── MessageTimeline ──
+  "chatStream.timeline.label": "聊天大纲",
+  "chatStream.timeline.jump": "跳转到第 {n} 个大纲条目",
   "chatStream.timeline.current": "当前",
   "chatStream.timeline.noText": "(无文本内容)",
   "chatStream.timeline.attachmentLine": "[附件] {text}",

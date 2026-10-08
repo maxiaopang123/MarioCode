@@ -1,7 +1,7 @@
 /**
- * Left-edge timeline in the chat stream: one small dash per USER message,
- * plus a gold dash PER BOOKMARK (assistant replies included — that is where
- * the key conclusions live). Dashes are stacked vertically in a fixed
+ * Left-edge timeline in the chat stream: one small dot per USER message,
+ * plus a gold dot PER BOOKMARK (assistant replies included — that is where
+ * the key conclusions live). Dots are stacked vertically in a fixed
  * cluster on the left edge, ordered by the stream's render order. The
  * cluster does NOT move with content — it stays anchored to the left edge's
  * vertical middle.
@@ -30,7 +30,7 @@
  *     bookmark's excerpt instead of the full message text).
  *   - Click to scroll to that message (via onJumpItem).
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useId } from "react";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n, type MessageId } from "@renderer/lib/i18n/index.js";
 import { IconBookmark } from "@renderer/lib/icons.js";
@@ -118,6 +118,7 @@ export function MessageTimeline({
   bookmarkedItems,
   onJumpItem,
 }: MessageTimelineProps) {
+  const { t } = useI18n();
   const userMessages = useMemo(
     () => messages.filter((m) => m.role === "user"),
     [messages],
@@ -175,12 +176,12 @@ export function MessageTimeline({
   if (dashes.length === 0) return null;
 
   return (
-    <div
-      className="pointer-events-none absolute left-0 top-1/2 z-10 -translate-y-1/2"
-      aria-hidden
+    <nav
+      className="message-timeline pointer-events-none absolute left-0 top-1/2 z-10 -translate-y-1/2"
+      aria-label={t("chatStream.timeline.label")}
     >
-      <div className="pointer-events-auto flex max-h-[70vh] flex-col items-center justify-center gap-1.5 py-1">
-        {dashes.map((d) => (
+      <div className="pointer-events-auto flex max-h-[70vh] flex-col items-center justify-center gap-0.5 py-1">
+        {dashes.map((d, position) => (
           <TimelineDash
             key={d.key}
             message={d.message}
@@ -188,13 +189,14 @@ export function MessageTimeline({
             bookmarked={d.bookmarked}
             excerpt={d.excerpt}
             title={d.title}
+            position={position + 1}
             onJump={() => {
               if (d.index >= 0 && onJumpItem) onJumpItem(d.message.id, d.index, d.excerpt);
             }}
           />
         ))}
       </div>
-    </div>
+    </nav>
   );
 }
 
@@ -205,6 +207,7 @@ function TimelineDash({
   bookmarked,
   excerpt,
   title,
+  position,
   onJump,
 }: {
   message: ChatMessage;
@@ -215,38 +218,46 @@ function TimelineDash({
   excerpt?: string;
   /** Renamed bookmark's display title (hover card headline). */
   title?: string | null;
+  position: number;
   onJump: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const detailId = useId();
   const { t } = useI18n();
   const text = excerpt ?? blocksToText(message.blocks, t);
+  const revealed = hovered || focused;
 
   return (
     <div
-      className="relative flex h-5 w-5 cursor-pointer items-center justify-center"
+      className="relative flex h-5 w-5 items-center justify-center"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={onJump}
     >
-      {bookmarked ? (
-        // Bookmark: gold, a touch thicker than the gray user dashes so the
-        // color-only rule ("gold = bookmark") also reads by weight.
+      <button
+        type="button"
+        className="message-timeline-target flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+        aria-label={t("chatStream.timeline.jump", { n: position }) + ": " + (title || text.slice(0, 80) || t("chatStream.timeline.noText"))}
+        aria-current={active ? "step" : undefined}
+        aria-describedby={revealed ? detailId : undefined}
+        data-active={active ? "true" : "false"}
+        data-bookmarked={bookmarked ? "true" : "false"}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onClick={onJump}
+      >
         <span
           className={cn(
-            "block h-[3px] rounded-full bg-warning transition-all",
-            hovered ? "w-4" : "w-3.5",
+            "message-timeline-dot block rounded-full",
+            bookmarked ? "bg-warning" : active ? "bg-accent" : "bg-content-subtle/60",
           )}
+          aria-hidden="true"
         />
-      ) : (
-        <span
-          className={cn(
-            "block h-0.5 rounded-full transition-all",
-            active ? "w-4 bg-accent" : hovered ? "w-4 bg-info" : "w-3 bg-content-subtle/60",
-          )}
-        />
-      )}
-      {hovered && (
+      </button>
+      {revealed && (
         <div
+          id={detailId}
+          role="tooltip"
           className={cn(
             "absolute left-full top-1/2 z-40 ml-2 w-72 -translate-y-1/2",
             "rounded-lg border border-edge bg-surface p-3 shadow-2xl",

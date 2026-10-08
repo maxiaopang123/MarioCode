@@ -3,6 +3,8 @@ export const en = {
   "chatStream.byline.firstTokenHint": "First-token latency {secs} s",
   "chatStream.image.shownInReply": "Image shown in reply · expand tool preview",
   // ── MessageTimeline ──
+  "chatStream.timeline.label": "Chat outline",
+  "chatStream.timeline.jump": "Jump to outline item {n}",
   "chatStream.timeline.current": "Current",
   "chatStream.timeline.noText": "(no text)",
   "chatStream.timeline.attachmentLine": "[Attachment] {text}",

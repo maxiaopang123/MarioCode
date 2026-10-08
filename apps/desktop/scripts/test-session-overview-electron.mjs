@@ -4,7 +4,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { electronTest, delay } from "./electron-test-helper.mjs";
 
-await electronTest("session-overview", async data => {
+const checkTimeline = process.argv.includes("--timeline");
+await electronTest(checkTimeline ? "message-timeline" : "session-overview", async data => {
   const db = new DatabaseSync(join(data, "claude-gui.db"));
   db.exec("CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)");
   for (const [key, value] of Object.entries({
@@ -51,11 +52,41 @@ await electronTest("session-overview", async data => {
     await wait("document.querySelector('.fsess')?.dataset.folded==='false'");
     assert.deepEqual(await evaluate("[...document.querySelectorAll('.fsess h4')].map(n=>n.textContent.trim())"), ["书签1", "缓存与速度", "用量"], "Only the duplicate outline is removed");
     assert.ok(await evaluate("document.querySelector('.fsess').textContent.includes('Kept bookmark')"));
-    const timeline = await evaluate("(()=>{const n=[...document.querySelectorAll('[data-chat-root] div')].find(n=>n.className.includes('absolute left-0 top-1/2'));return !!n && n.querySelectorAll('.cursor-pointer').length===3})()");
+    const timeline = await evaluate("document.querySelectorAll('.message-timeline-target').length===3");
     assert.ok(timeline, "Left navigation still contains both turns and the assistant bookmark");
     await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
     await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
     await wait("document.querySelector('.fsess')?.dataset.folded==='true'");
+  }
+  if (checkTimeline) {
+    await command("Emulation.setFocusEmulationEnabled", { enabled: true });
+    const markers = await evaluate("[...document.querySelectorAll('.message-timeline-target')].map(n=>{const r=n.getBoundingClientRect(),d=n.querySelector('.message-timeline-dot').getBoundingClientRect();return {w:r.width,h:r.height,dw:d.width,dh:d.height,label:n.getAttribute('aria-label'),bookmark:n.dataset.bookmarked}})");
+    assert.equal(markers.length, 3);
+    for (const marker of markers) {
+      assert.ok(marker.w >= 20 && marker.h >= 20, "Small dots keep a usable hit area");
+      assert.equal(marker.dw, marker.dh, "Outline markers are round");
+      assert.ok(marker.dw >= 4 && marker.dw <= 6, "Dots replace the old 12-16px bars");
+      assert.ok(marker.label.includes("大纲条目"), "Keyboard targets have a localized label");
+    }
+    assert.equal(markers.filter(n=>n.bookmark==='true').length, 1, "Assistant bookmark keeps its marker");
+    await evaluate("document.querySelector('.message-timeline-target').focus()");
+    await wait("document.querySelector('.message-timeline [role=tooltip]')?.textContent.includes('First navigation target')");
+    await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, text: "\r" });
+    await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    await wait("Boolean(document.querySelector('[data-message-id=overview-u1].bookmark-flash'))").catch(async error => {
+      console.log(await evaluate("({focus:document.activeElement?.outerHTML,rows:[...document.querySelectorAll('[data-message-id]')].map(n=>({id:n.dataset.messageId,class:n.className,text:n.textContent.slice(0,80)}))})"));
+      throw error;
+    });
+    await command("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+    assert.equal(await evaluate("getComputedStyle(document.querySelector('.message-timeline-dot')).transitionDuration"), "0s", "Reduced motion disables dot animation");
+    await command("Emulation.setEmulatedMedia", { features: [] });
+    await evaluate("document.querySelector('.message-timeline-target').blur()");
+    await click(".message-timeline-target[data-bookmarked=true]");
+    await wait("Boolean(document.querySelector('.message-timeline [role=tooltip]'))");
+    await delay(250);
+    const navigationShot = await command("Page.captureScreenshot", { format: "png", fromSurface: false });
+    await writeFile(join(data, "timeline.png"), Buffer.from(navigationShot.data, "base64"));
+    await evaluate("document.activeElement.blur()");
   }
   await click(".fsess .fs-card > button");
   await delay(250);

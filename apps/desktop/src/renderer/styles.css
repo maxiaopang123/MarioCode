@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* A quiet outline marker; keep the larger button for pointer and keyboard use. */
+.message-timeline-dot {
+  width: 4px;
+  height: 4px;
+  transition: width 180ms ease-out, height 180ms ease-out, transform 180ms ease-out, background-color 180ms ease-out, box-shadow 180ms ease-out;
+}
+.message-timeline-target[data-bookmarked="true"] .message-timeline-dot {
+  width: 5px;
+  height: 5px;
+}
+.message-timeline-target[data-active="true"] .message-timeline-dot {
+  width: 6px;
+  height: 6px;
+  box-shadow: 0 0 0 3px rgb(var(--accent) / 0.1);
+}
+.message-timeline-target:hover .message-timeline-dot,
+.message-timeline-target:focus-visible .message-timeline-dot {
+  transform: scale(1.25);
+}
+@media (prefers-reduced-motion: reduce) {
+  .message-timeline-dot { transition: none; }
+  .message-timeline-target:hover .message-timeline-dot,
+  .message-timeline-target:focus-visible .message-timeline-dot { transform: none; }
+}
+
 /* ───────────── base-ui popup enter-animation fix ─────────────
  * base-ui (Menu / Tooltip / ContextMenu / ...) drives its popup enter
  * animation through a `data-starting-style` attribute: the popup mounts WITH

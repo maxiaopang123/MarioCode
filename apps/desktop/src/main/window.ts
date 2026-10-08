@@ -1,7 +1,7 @@
 import { BrowserWindow, shell, session, type WebContents } from "electron";
 import { join } from "node:path";
 import { is } from "@main/utils.js";
-import { getEffectiveTheme } from "@main/lib/theme.js";
+import { getEffectiveTheme, getThemeTonePreference } from "@main/lib/theme.js";
 import { log } from "@main/lib/logger.js";
 import { logStartup } from "@main/lib/startupTimer.js";
 import { IPC, type WindowFocusChangedMessage } from "@contracts/ipc";
@@ -10,9 +10,12 @@ let mainWindow: BrowserWindow | null = null;
 
 /** Background color matching the effective theme, so the first frame (before
  *  React mounts) doesn't flash the wrong color. Mirrors --surface in CSS
- *  (styles.css): light = #ffffff, dark = #181918 (V4 neutral). */
+ *  (styles.css): neutral light #ffffff / dark #181918; warm light #faf9f5 /
+ *  dark #262624. */
 function bgColor(): string {
-  return getEffectiveTheme() === "dark" ? "#181918" : "#ffffff";
+  const warm = getThemeTonePreference() === "warm";
+  if (getEffectiveTheme() === "dark") return warm ? "#262624" : "#181918";
+  return warm ? "#faf9f5" : "#ffffff";
 }
 
 /** Title-bar overlay colour scheme that matches the app theme. The overlay sits
@@ -24,7 +27,8 @@ function bgColor(): string {
  *  --content-subtle so the button glyphs match the dim UI text tone. Values
  *  must stay in sync with styles.css — :root #f6f6f5 / #70706b, .dark
  *  #121312 / #868681 (the V4 neutral palette; a stale palette leaves a
- *  visibly different block behind the buttons).
+ *  visibly different block behind the buttons); warm light #f0eee6 /
+ *  #767268, warm dark #1f1e1d / #8c887c.
  *
  *  `height` must match the renderer titlebar's height (h-10 = 40px): Electron
  *  draws the overlay aligned to the top of the window, and the buttons are
@@ -32,9 +36,10 @@ function bgColor(): string {
  *  buttons sit too high instead of being vertically centered. */
 function overlayColors() {
   const dark = getEffectiveTheme() === "dark";
+  const warm = getThemeTonePreference() === "warm";
   return {
-    color: dark ? "#121312" : "#f6f6f5",
-    symbolColor: dark ? "#868681" : "#70706b",
+    color: dark ? (warm ? "#1f1e1d" : "#121312") : warm ? "#f0eee6" : "#f6f6f5",
+    symbolColor: dark ? (warm ? "#8c887c" : "#868681") : warm ? "#767268" : "#70706b",
     height: 40,
   };
 }

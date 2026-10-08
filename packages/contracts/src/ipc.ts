@@ -108,6 +108,16 @@ export const THEME_SETTING_KEY = "theme";
 export const ThemeNameSchema = z.enum(["dark", "light", "system"]);
 
 /**
+ * Setting key for the colour TONE ("neutral" | "warm", V4). Orthogonal to
+ * THEME_SETTING_KEY; main reads it for native chrome colours, the renderer
+ * mirrors it as `data-tone` on <html>. Rides the generic setting IPC.
+ */
+export const THEME_TONE_SETTING_KEY = "ui.themeTone";
+
+/** zod schema for the tone preference (type lives in theme.ts). */
+export const ThemeToneSchema = z.enum(["neutral", "warm"]);
+
+/**
  * Setting key under which the custom UI font family is persisted (empty
  * string = follow the stylesheet default stack). The value is a single font family name; the renderer composes
  * it into a full CSS font-family stack with the system UI stack as fallback

@@ -2126,6 +2126,42 @@ body:has(.lightbox-root[data-chrome="hidden"]) .lightbox-scrim {
   outline-offset: 2px;
 }
 
+
+/* ───────────── Colour tone · 暖纸 (ui.themeTone="warm", V4) ─────────────
+ * prototypes/ui-refresh-v4.html 的暖纸基调:只换表面 / 文字 / 边框 token,与明暗
+ * 正交(两个块各管一种明暗)。强调色、状态色、语义色不动。聊天正文改衬线,
+ * 代码 / 终端 / diff 因元素自带 font-mono 而保持等宽。特异性 (0,2,1) 压过
+ * :root / .dark。 */
+html[data-tone="warm"]:not(.dark) {
+  --surface: 250 249 245;
+  --surface-base: 240 238 230;
+  --surface-muted: 244 242 235;
+  --surface-hover: 233 231 222;
+  --content: 43 42 39;
+  --content-muted: 100 97 88;
+  --content-subtle: 118 114 104;
+  --edge: 232 229 218;
+  --panel-edge: 236 233 224;
+  --input-edge: 216 212 198;
+  --rail: 236 234 225;
+}
+html[data-tone="warm"].dark {
+  --surface: 38 38 36;
+  --surface-base: 31 30 29;
+  --surface-muted: 48 48 45;
+  --surface-hover: 58 58 54;
+  --content: 238 236 228;
+  --content-muted: 170 166 154;
+  --content-subtle: 140 136 124;
+  --edge: 52 51 47;
+  --panel-edge: 52 51 47;
+  --input-edge: 72 71 66;
+  --rail: 26 25 24;
+}
+html[data-tone="warm"] .chat-md {
+  font-family: "Iowan Old Style", "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, "Times New Roman", serif;
+}
+
 /* ───────────── 界面焕新 v3 (prototypes/ui-refresh-v3.html) ─────────────
  * Tinted project avatars, session-column rows, tool strip.
  * Kept here (not in Tailwind utilities) where a rule needs --av / color-mix

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
-import { applyUiFontFamily } from "@renderer/lib/theme.js";
+import { applyThemeTone, applyUiFontFamily } from "@renderer/lib/theme.js";
 import type { ChatDensity } from "@contracts/ipc";
 
 /**
@@ -153,4 +153,16 @@ export function useRightPanelAppearance(): void {
   useEffect(() => {
     applyRightPanelFontSize(rightPanelFontSize);
   }, [rightPanelFontSize]);
+}
+
+/**
+ * Keep `data-tone` on <html> in sync with the store's themeTone (settings key
+ * ui.themeTone, hydrated in the first-paint batch). Mount once at the app
+ * root; the FOUC guard already applied the cached value before React mounted.
+ */
+export function useThemeTone(): void {
+  const themeTone = useSessionStore((s) => s.themeTone);
+  useEffect(() => {
+    applyThemeTone(themeTone);
+  }, [themeTone]);
 }

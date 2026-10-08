@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@renderer/lib/api.js";
-import type { ThemeName, EffectiveTheme } from "@contracts/theme";
+import type { ThemeName, EffectiveTheme, ThemeTone } from "@contracts/theme";
 
 /**
  * Toggle the `.dark` class on <html>, which (with `darkMode: 'class'` in the
@@ -19,6 +19,10 @@ const THEME_TRANSITION_MS = 260;
 
 /** Retired localStorage key of the removed sketch theme; cleared on boot. */
 const LEGACY_THEME_STYLE_CACHE_KEY = "mariocode-theme-style";
+
+/** localStorage mirror of the last applied colour tone — initFoucGuard() reads
+ *  it synchronously (SQLite/IPC aren't up yet), applyThemeTone() writes it. */
+const THEME_TONE_CACHE_KEY = "mariocode-theme-tone";
 
 /** localStorage key mirroring the last applied custom UI font. initFoucGuard()
  *  reads it synchronously (SQLite/IPC are not up yet),
@@ -110,6 +114,13 @@ export function initFoucGuard(): void {
   } catch {
     // localStorage unavailable - nothing to clean.
   }
+  // Colour-tone FOUC guard: no OS media query to guess from, so read the
+  // localStorage mirror; first-paint hydration corrects it from SQLite.
+  try {
+    if (localStorage.getItem(THEME_TONE_CACHE_KEY) === "warm") applyThemeTone("warm");
+  } catch {
+    // localStorage unavailable - neutral stands; hydration fixes.
+  }
   // Custom UI font: same localStorage-mirror pattern (no OS media query to
   // guess from). applyUiFontFamily sanitizes, so a stale/corrupt cache value
   // degrades to the default stack; first-paint hydration reconciles.
@@ -117,6 +128,22 @@ export function initFoucGuard(): void {
     applyUiFontFamily(localStorage.getItem(UI_FONT_CACHE_KEY) ?? "");
   } catch {
     // localStorage unavailable - default stack; hydration fixes.
+  }
+}
+
+/**
+ * Mirror the colour tone as `data-tone="warm"` on <html> (absent = neutral).
+ * styles.css holds the warm token blocks + the serif chat prose rule. Also
+ * refreshes the localStorage cache the FOUC guard reads.
+ */
+export function applyThemeTone(tone: ThemeTone): void {
+  const el = document.documentElement;
+  if (tone === "warm") el.setAttribute("data-tone", "warm");
+  else el.removeAttribute("data-tone");
+  try {
+    localStorage.setItem(THEME_TONE_CACHE_KEY, tone);
+  } catch {
+    // Best-effort cache only.
   }
 }
 

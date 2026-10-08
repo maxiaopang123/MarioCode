@@ -27,7 +27,7 @@ import { useSessionStore } from "./stores/sessionStore.js";
 import type { BrowserDevicePreset } from "@contracts/ipc";
 import { api } from "./lib/api.js";
 import { useTheme } from "./lib/theme.js";
-import { useChatAppearance, useRightPanelAppearance } from "./lib/appearance.js";
+import { useChatAppearance, useRightPanelAppearance, useThemeTone } from "./lib/appearance.js";
 import { useI18n } from "./lib/i18n/index.js";
 import { OpenTabsBar } from "./components/ide/OpenTabsBar.js";
 
@@ -110,6 +110,8 @@ export function App() {
   // Apply + keep in sync the chat appearance CSS vars (--chat-font-size,
   // --user-bubble) from the user-configurable settings.
   useChatAppearance();
+  // Colour tone (neutral / warm) → data-tone on <html>.
+  useThemeTone();
   // Apply + keep in sync the global side-panel + settings font-size CSS var
   // (--right-panel-font-size) for the left bar, right files/git/terminal
   // panels, and the settings page.

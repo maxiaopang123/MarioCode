@@ -14,8 +14,8 @@
  * sync. No polling required.
  */
 import { nativeTheme } from "electron";
-import type { ThemeName, EffectiveTheme } from "@contracts/theme";
-import { THEME_SETTING_KEY } from "@contracts/ipc";
+import type { ThemeName, EffectiveTheme, ThemeTone } from "@contracts/theme";
+import { THEME_SETTING_KEY, THEME_TONE_SETTING_KEY } from "@contracts/ipc";
 import { SettingRepo } from "@main/store/repositories.js";
 import { awaitDb } from "@main/store/db.js";
 import { sendToRenderer, updateTitleBarOverlay } from "@main/window.js";
@@ -59,6 +59,19 @@ export function getThemePreference(): ThemeName {
   const raw = SettingRepo.get(THEME_SETTING_KEY);
   if (raw === "dark" || raw === "light" || raw === "system") return raw;
   return "system";
+}
+
+/** Read the persisted colour-TONE preference (default "neutral"). Main uses it
+ *  only for native chrome colours (window background / title-bar overlay) that
+ *  a CSS attribute can't reach. Safe before DB init: any failure → "neutral",
+ *  and the post-DB updateTitleBarOverlay() corrects it at startup. */
+export function getThemeTonePreference(): ThemeTone {
+  try {
+    if (SettingRepo.get(THEME_TONE_SETTING_KEY) === "warm") return "warm";
+  } catch {
+    // DB not ready yet — neutral stands until initTheme syncs.
+  }
+  return "neutral";
 }
 
 /** Current resolved theme (what's actually rendering). */

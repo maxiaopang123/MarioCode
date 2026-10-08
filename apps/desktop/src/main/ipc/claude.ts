@@ -19,6 +19,7 @@ import {
   SetSettingSchema,
   GetManySettingsSchema,
   UI_LOCALE_SETTING_KEY,
+  THEME_TONE_SETTING_KEY,
 } from "@contracts/ipc";
 import type {
   SaveMessagesInput,
@@ -30,6 +31,7 @@ import { SessionRepo, ProjectRepo, MessageRepo, SettingRepo } from "@main/store/
 import { runtimeManager } from "@main/claude/RuntimeManager.js";
 import { providerRegistry } from "@main/providers/registry.js";
 import { refreshTrayMenu } from "@main/tray.js";
+import { updateTitleBarOverlay } from "@main/window.js";
 import { log } from "@main/lib/logger.js";
 import { broadcastSessionChanged } from "@main/lib/sessionSync.js";
 import { createOrReuseSession } from "@main/lib/sessionStart.js";
@@ -239,6 +241,16 @@ export function registerClaudeHandlers(ipcMain: IpcMain): void {
     const input = SetSettingSchema.parse(raw);
     if (input.key === CONTEXT_POLICY_SETTING_KEY) ContextPolicySchema.parse(JSON.parse(input.value));
     SettingRepo.set(input.key, input.value);
+    // The colour tone repaints native chrome (win/linux title-bar overlay)
+    // that only main can reach. Best-effort: before the window exists (or on
+    // macOS, where updateTitleBarOverlay no-ops) this is harmless.
+    if (input.key === THEME_TONE_SETTING_KEY) {
+      try {
+        updateTitleBarOverlay();
+      } catch {
+        // Window not created yet — initTheme's startup sync covers it.
+      }
+    }
     // Tray menu labels follow the UI language (no-op without a tray).
     if (input.key === UI_LOCALE_SETTING_KEY) refreshTrayMenu();
   });

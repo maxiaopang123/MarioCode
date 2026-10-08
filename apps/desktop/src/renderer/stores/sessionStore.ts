@@ -36,6 +36,7 @@ import {
   TAB_BAR_MULTI_ROW_SETTING_KEY,
   LEFTBAR_MODE_SETTING_KEY,
   UI_FONT_FAMILY_SETTING_KEY,
+  THEME_TONE_SETTING_KEY,
   UI_LOCALE_SETTING_KEY,
   DEFAULT_PROVIDER_ID,
   UI_CHAT_FONT_SIZE_SETTING_KEY,
@@ -110,6 +111,7 @@ import {
   type BrowserDevicePreset,
   type BrowserOrientation,
 } from "@contracts/ipc";
+import type { ThemeTone } from "@contracts/theme";
 
 /** One browser tab, shared across the sidebar and overlay containers. `id` is
  *  renderer-local; `browserId` is the main-process view id. All
@@ -694,6 +696,10 @@ export interface SessionState {
    *  (lib/theme.ts applyUiFontFamily via useChatAppearance). The value is a single family name; the composed CSS stack keeps the
    *  system UI stack as fallback so an uninstalled font degrades gracefully. */
   uiFontFamily: string;
+  /** Colour tone — "neutral" (default) or "warm" (paper tones + serif chat
+   *  prose). Orthogonal to light/dark. Persisted under `ui.themeTone`; applied
+   *  as `data-tone` on <html> (lib/theme.ts applyThemeTone via useThemeTone). */
+  themeTone: ThemeTone;
   /** Which tab kind owns the center content area in `tabs` displayMode: the
    *  active session's chat ("chat") or the editor — file / plan tab
    *  ("editor"). Only read in `tabs` mode; `single` mode keeps the legacy
@@ -1648,6 +1654,8 @@ export interface SessionState {
    *  pattern as setDisplayMode). */
   setLeftBarMode: (mode: LeftBarMode) => Promise<void>;
   setUiFontFamily: (family: string) => void;
+  /** Switch the colour tone. Instant local flip + fire-and-forget persistence. */
+  setThemeTone: (tone: ThemeTone) => void;
   /** Set the stream sidebar's project scope filter. Persists under
    *  `ui.streamScope` so the selection survives remounts and relaunches. */
   setStreamScope: (scope: string | null) => void;
@@ -4508,6 +4516,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // Custom UI font family ("" = stylesheet default). Persisted under
   // ui.uiFontFamily; init() overwrites from the DB.
   uiFontFamily: "",
+  themeTone: "neutral",
   // Center focus for the unified tab bar (`tabs` displayMode). UI-only.
   centerTabFocus: "chat",
   // UI language. Persisted in `settings` table; init() overwrites from the
@@ -4722,6 +4731,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           TAB_BAR_MULTI_ROW_SETTING_KEY,
           LEFTBAR_MODE_SETTING_KEY,
           UI_FONT_FAMILY_SETTING_KEY,
+          THEME_TONE_SETTING_KEY,
           UI_LOCALE_SETTING_KEY,
           CHAT_DISPLAY_SETTING_KEY,
           UI_CHAT_DENSITY_SETTING_KEY,
@@ -4797,6 +4807,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       if (value === "tree" || value === "stream") set({ leftBarMode: value });
     } catch (err) {
       console.error("apply(leftBarMode) failed:", err);
+    }
+
+    // Colour tone: reconciles the FOUC guard's localStorage guess with the
+    // SQLite source of truth; anything but "warm" (incl. a corrupt row) is neutral.
+    try {
+      const value = fp[THEME_TONE_SETTING_KEY];
+      set({ themeTone: value === "warm" ? "warm" : "neutral" });
+    } catch (err) {
+      console.error("apply(themeTone) failed:", err);
     }
 
     // Custom UI font. Anything non-string (corrupt row) is ignored → the
@@ -8656,6 +8675,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     } catch (err) {
       console.error("setting.set(leftBarMode) failed:", err);
     }
+  },
+
+  setThemeTone: (tone) => {
+    set({ themeTone: tone });
+    // Fire-and-forget — a failed write keeps the in-session choice. The
+    // <html> data-tone attribute reacts via useThemeTone (lib/appearance.ts).
+    api.setting.set({ key: THEME_TONE_SETTING_KEY, value: tone })
+      .catch((err) => console.error("setting.set(themeTone) failed:", err));
   },
 
   setUiFontFamily: (family) => {

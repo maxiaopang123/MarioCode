@@ -34,7 +34,7 @@ import { MobileViewerOverlay } from "./components/mobile/MobileViewerOverlay.js"
 import { useClaudeEvents } from "./hooks/useClaudeEvents.js";
 import { useSessionStore, selectActiveEnvPath } from "./stores/sessionStore.js";
 import { useTheme } from "./lib/theme.js";
-import { useChatAppearance, useRightPanelAppearance } from "./lib/appearance.js";
+import { useChatAppearance, useRightPanelAppearance, useThemeTone } from "./lib/appearance.js";
 import { useI18n } from "./lib/i18n/index.js";
 import { worktreeDisplayName } from "./lib/worktree.js";
 import { isPaired, onAuthLost, clearAuth, checkStoredAuth } from "./lib/webApi.js";
@@ -80,6 +80,7 @@ export function AppMobile() {
   useTheme();
   useChatAppearance();
   useRightPanelAppearance();
+  useThemeTone();
   const { t } = useI18n();
 
   // Confirm the stored token once per boot. Only an explicit 401 ("invalid")

@@ -406,7 +406,7 @@ pnpm build
 ### 已移除:手绘风主题(ui.themeStyle,2026-10-09,v0.2.36,TODO-053)
 
 - **手绘 / 牛皮纸主题与 `ui.themeStyle` 整体删除**(TODO-044 界面 V4 的前置减法,用户确认):styles.css 的 Sketch 区块、`.sketch` 作用域选择器、`index.html` 的 `#sk-wobble` 滤镜、霞鹜文楷依赖 `lxgw-wenkai-webfont`、`THEME_STYLE_SETTING_KEY` / `ThemeStyle` 契约、store 的 `themeStyle`/`setThemeStyle`、`applyThemeStyle` / `useThemeStyle`、main 侧 `getThemeStylePreference` 与 window.ts 的 sketch 配色分支、设置页「界面风格」行及词条全部移除。旧库里残留的 `ui.themeStyle` 设置行无人读取、无害;`localStorage["mariocode-theme-style"]` 由 `initFoucGuard` 启动时清掉。
-- **不要再引入第二套整体风格维度**:外观只有 明暗(`ui.theme`)× 强调色 × 字号 / 字体,V4 在此基础上再加「配色基调(中性 / 暖纸)」。原型 `prototypes/theme-sketch-redesign.html` 仅作历史留档。
+- **不要再引入第二套整体风格维度**:外观只有 明暗(`ui.theme`)× **配色基调**(`ui.themeTone`,"neutral" 默认 | "warm",v0.2.39:`data-tone="warm"` on <html>,styles.css 两块 token + `.chat-md` 衬线;main 的 `getThemeTonePreference` 只给原生窗口底色 / 标题栏 overlay 用,`setting.set` 命中 `THEME_TONE_SETTING_KEY` 时 `updateTitleBarOverlay()`;启动首帧靠 localStorage `mariocode-theme-tone`)× 强调色 × 字号 / 字体。原型 `prototypes/theme-sketch-redesign.html` 仅作历史留档。
 
 ### 界面字体自定义(ui.uiFontFamily,2026-09-12)
 

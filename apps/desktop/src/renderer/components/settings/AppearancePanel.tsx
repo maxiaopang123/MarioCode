@@ -9,7 +9,7 @@ import { Button, Select, Input, Switch } from "@renderer/components/ui/index.js"
 import { IconRefresh, IconSun, IconMoon, IconDeviceDesktop, IconChevronDown, IconTypography } from "@renderer/lib/icons.js";
 import { useI18n, type MessageId } from "@renderer/lib/i18n/index.js";
 import { editorThemePresetsForMode } from "@renderer/lib/editorThemes.js";
-import type { ThemeName } from "@contracts/theme";
+import type { ThemeName, ThemeTone } from "@contracts/theme";
 import type { ReactNode } from "react";
 import { PanelHeader } from "./PanelHeader.js";
 import { SettingsSection } from "./SettingsSection.js";
@@ -80,6 +80,12 @@ const THEME_OPTIONS: { value: ThemeName; labelKey: MessageId; icon: ReactNode }[
   { value: "light", labelKey: "settings.appearance.themeLight", icon: <IconSun size={14} className="text-content-muted" /> },
   { value: "dark", labelKey: "settings.appearance.themeDark", icon: <IconMoon size={14} className="text-content-muted" /> },
   { value: "system", labelKey: "settings.appearance.themeSystem", icon: <IconDeviceDesktop size={14} className="text-content-muted" /> },
+];
+
+/** Colour TONE — orthogonal to light/dark: plain greys vs paper tones. */
+const THEME_TONE_OPTIONS: { value: ThemeTone; labelKey: MessageId }[] = [
+  { value: "neutral", labelKey: "settings.appearance.toneNeutral" },
+  { value: "warm", labelKey: "settings.appearance.toneWarm" },
 ];
 
 /** Mini preview strip for an editor scheme: the scheme's editor-background
@@ -223,6 +229,10 @@ export function AppearancePanel() {
   const { t } = useI18n();
   const { theme, effective } = useTheme();
 
+  // ── Colour tone (neutral ↔ warm, orthogonal to light/dark) ──
+  const themeTone = useSessionStore((s) => s.themeTone);
+  const setThemeTone = useSessionStore((s) => s.setThemeTone);
+
   // ── Chat font size ──
   const chatFontSize = useSessionStore((s) => s.chatFontSize);
   const setChatFontSize = useSessionStore((s) => s.setChatFontSize);
@@ -318,6 +328,37 @@ export function AppearancePanel() {
                     {THEME_OPTIONS.map((o) => (
                       <Select.Item key={o.value} value={o.value}>
                         {o.icon}
+                        <Select.ItemText>{t(o.labelKey)}</Select.ItemText>
+                      </Select.Item>
+                    ))}
+                  </Select.List>
+                </Select.Popup>
+              </Select.Positioner>
+            </Select.Portal>
+          </Select.Root>
+        </SettingRow>
+
+        {/* ── Colour tone (neutral ↔ warm; independent of light/dark) ── */}
+        <SettingRow
+          title={t("settings.appearance.themeTone")}
+          desc={t("settings.appearance.themeToneDesc")}
+          htmlFor="setting-theme-tone"
+        >
+          <Select.Root value={themeTone} onValueChange={(v) => setThemeTone(v as ThemeTone)}>
+            <Select.Trigger id="setting-theme-tone" className="w-full">
+              <Select.Value>
+                {(val: ThemeTone) => {
+                  const o = THEME_TONE_OPTIONS.find((x) => x.value === val) ?? THEME_TONE_OPTIONS[0];
+                  return t(o.labelKey);
+                }}
+              </Select.Value>
+            </Select.Trigger>
+            <Select.Portal>
+              <Select.Positioner>
+                <Select.Popup>
+                  <Select.List>
+                    {THEME_TONE_OPTIONS.map((o) => (
+                      <Select.Item key={o.value} value={o.value}>
                         <Select.ItemText>{t(o.labelKey)}</Select.ItemText>
                       </Select.Item>
                     ))}

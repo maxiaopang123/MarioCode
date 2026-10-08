@@ -35,7 +35,6 @@ import {
   DISPLAY_MODE_SETTING_KEY,
   TAB_BAR_MULTI_ROW_SETTING_KEY,
   LEFTBAR_MODE_SETTING_KEY,
-  THEME_STYLE_SETTING_KEY,
   UI_FONT_FAMILY_SETTING_KEY,
   UI_LOCALE_SETTING_KEY,
   DEFAULT_PROVIDER_ID,
@@ -111,7 +110,6 @@ import {
   type BrowserDevicePreset,
   type BrowserOrientation,
 } from "@contracts/ipc";
-import type { ThemeStyle } from "@contracts/theme";
 
 /** One browser tab, shared across the sidebar and overlay containers. `id` is
  *  renderer-local; `browserId` is the main-process view id. All
@@ -689,19 +687,11 @@ export interface SessionState {
    *  with a project scope filter). Persisted; the two views are pure
    *  renderers over the same store data. */
   leftBarMode: LeftBarMode;
-  /** UI theme STYLE, orthogonal to the light/dark scheme: "classic" (default)
-   *  or "sketch" (纸面手绘 — paper palette + handwriting font + hand-drawn
-   *  shapes, styles.css `html.sketch` section). Persisted under
-   *  `ui.themeStyle`; applied to <html> as a `.sketch` class next to `.dark`
-   *  (lib/theme.ts applyThemeStyle via useThemeStyle in lib/appearance.ts). */
   chatDisplay: ChatDisplay;
   setChatDisplay: (config: ChatDisplay) => Promise<void>;
-  themeStyle: ThemeStyle;
   /** Custom UI font family ("" = stylesheet default system stack). Persisted
    *  under `ui.uiFontFamily`; applied to <html> as the `--app-font` CSS var
-   *  (lib/theme.ts applyUiFontFamily via useChatAppearance). Only affects
-   *  the classic style — sketch overrides with the bundled handwriting face.
-   *  The value is a single family name; the composed CSS stack keeps the
+   *  (lib/theme.ts applyUiFontFamily via useChatAppearance). The value is a single family name; the composed CSS stack keeps the
    *  system UI stack as fallback so an uninstalled font degrades gracefully. */
   uiFontFamily: string;
   /** Which tab kind owns the center content area in `tabs` displayMode: the
@@ -1657,10 +1647,6 @@ export interface SessionState {
    *  stream. Instant local flip + fire-and-forget persistence (same
    *  pattern as setDisplayMode). */
   setLeftBarMode: (mode: LeftBarMode) => Promise<void>;
-  /** Switch the UI theme style (classic ↔ sketch). Instant local flip +
-   *  fire-and-forget persistence; the `.sketch` class application reacts
-   *  via useThemeStyle (lib/appearance.ts). */
-  setThemeStyle: (style: ThemeStyle) => void;
   setUiFontFamily: (family: string) => void;
   /** Set the stream sidebar's project scope filter. Persists under
    *  `ui.streamScope` so the selection survives remounts and relaunches. */
@@ -4513,15 +4499,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // the default; the classic project tree stays as the fallback view.
   // init() overwrites from the persisted ui.leftBarMode preference.
   leftBarMode: "stream",
-  // UI theme style (orthogonal to light/dark). Default "classic"; init()
-  // overwrites from the persisted ui.themeStyle preference.
   chatDisplay: DEFAULT_CHAT_DISPLAY,
   setChatDisplay: async (config) => {
     const next = ChatDisplaySchema.parse(config);
     await api.setting.set({ key: CHAT_DISPLAY_SETTING_KEY, value: JSON.stringify(next) });
     set({ chatDisplay: next });
   },
-  themeStyle: "classic",
   // Custom UI font family ("" = stylesheet default). Persisted under
   // ui.uiFontFamily; init() overwrites from the DB.
   uiFontFamily: "",
@@ -4738,7 +4721,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           DISPLAY_MODE_SETTING_KEY,
           TAB_BAR_MULTI_ROW_SETTING_KEY,
           LEFTBAR_MODE_SETTING_KEY,
-          THEME_STYLE_SETTING_KEY,
           UI_FONT_FAMILY_SETTING_KEY,
           UI_LOCALE_SETTING_KEY,
           CHAT_DISPLAY_SETTING_KEY,
@@ -4815,16 +4797,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       if (value === "tree" || value === "stream") set({ leftBarMode: value });
     } catch (err) {
       console.error("apply(leftBarMode) failed:", err);
-    }
-
-    // Theme style (classic ↔ sketch): reconciles the FOUC guard's
-    // localStorage guess against the SQLite source of truth. Values other
-    // than the two enum members (corrupt row) are ignored → classic stands.
-    try {
-      const value = fp[THEME_STYLE_SETTING_KEY];
-      if (value === "classic" || value === "sketch") set({ themeStyle: value });
-    } catch (err) {
-      console.error("apply(themeStyle) failed:", err);
     }
 
     // Custom UI font. Anything non-string (corrupt row) is ignored → the
@@ -8686,20 +8658,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
-  setThemeStyle: (style) => {
-    set({ themeStyle: style });
-    // Fire-and-forget — a failed write keeps the in-session choice (same
-    // pattern as setTabBarMultiRow). The <html>.sketch class reacts via
-    // useThemeStyle (lib/appearance.ts), which also refreshes the
-    // localStorage cache the boot FOUC guard reads.
-    api.setting.set({ key: THEME_STYLE_SETTING_KEY, value: style })
-      .catch((err) => console.error("setting.set(themeStyle) failed:", err));
-  },
-
   setUiFontFamily: (family) => {
     const clean = sanitizeFontFamily(family);
     set({ uiFontFamily: clean });
-    // Fire-and-forget like setThemeStyle — a failed write keeps the
+    // Fire-and-forget — a failed write keeps the
     // in-session choice. The <html> `--app-font` var reacts via
     // useChatAppearance (lib/appearance.ts), which also refreshes the
     // localStorage cache the boot FOUC guard reads.

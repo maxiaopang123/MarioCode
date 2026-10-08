@@ -1,7 +1,7 @@
 import { BrowserWindow, shell, session, type WebContents } from "electron";
 import { join } from "node:path";
 import { is } from "@main/utils.js";
-import { getEffectiveTheme, getThemeStylePreference } from "@main/lib/theme.js";
+import { getEffectiveTheme } from "@main/lib/theme.js";
 import { log } from "@main/lib/logger.js";
 import { logStartup } from "@main/lib/startupTimer.js";
 import { IPC, type WindowFocusChangedMessage } from "@contracts/ipc";
@@ -10,13 +10,9 @@ let mainWindow: BrowserWindow | null = null;
 
 /** Background color matching the effective theme, so the first frame (before
  *  React mounts) doesn't flash the wrong color. Mirrors --surface in CSS
- *  (styles.css): light = #ffffff (sketch paper #fcfaf3), dark = #161b19
- *  (v3 graphite; sketch kraft #3b3126) — the pre-DB fallback below is an
- *  imperceptible delta. */
+ *  (styles.css): light = #ffffff, dark = #161b19 (v3 graphite). */
 function bgColor(): string {
-  const sketch = getThemeStylePreference() === "sketch";
-  if (getEffectiveTheme() === "dark") return sketch ? "#3b3126" : "#161b19";
-  return sketch ? "#fcfaf3" : "#ffffff";
+  return getEffectiveTheme() === "dark" ? "#161b19" : "#ffffff";
 }
 
 /** Title-bar overlay colour scheme that matches the app theme. The overlay sits
@@ -28,8 +24,7 @@ function bgColor(): string {
  *  --content-subtle so the button glyphs match the dim UI text tone. Values
  *  must stay in sync with styles.css — :root #eff1ef / #6c7772, .dark
  *  #0c0f0e / #88938d (the v3 green-grey palette; the old cool greys left a
- *  visibly different block behind the buttons), sketch paper #f6f2e7 /
- *  #8d8371 and kraft #332a20 / #aca089.
+ *  visibly different block behind the buttons).
  *
  *  `height` must match the renderer titlebar's height (h-10 = 40px): Electron
  *  draws the overlay aligned to the top of the window, and the buttons are
@@ -37,10 +32,9 @@ function bgColor(): string {
  *  buttons sit too high instead of being vertically centered. */
 function overlayColors() {
   const dark = getEffectiveTheme() === "dark";
-  const sketch = getThemeStylePreference() === "sketch";
   return {
-    color: dark ? (sketch ? "#332a20" : "#0c0f0e") : sketch ? "#f6f2e7" : "#eff1ef",
-    symbolColor: dark ? (sketch ? "#aca089" : "#88938d") : sketch ? "#8d8371" : "#6c7772",
+    color: dark ? "#0c0f0e" : "#eff1ef",
+    symbolColor: dark ? "#88938d" : "#6c7772",
     height: 40,
   };
 }

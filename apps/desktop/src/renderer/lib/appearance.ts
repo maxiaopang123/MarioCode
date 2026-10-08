@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
-import { applyThemeStyle, applyUiFontFamily } from "@renderer/lib/theme.js";
+import { applyUiFontFamily } from "@renderer/lib/theme.js";
 import type { ChatDensity } from "@contracts/ipc";
 
 /**
@@ -38,10 +38,9 @@ import type { ChatDensity } from "@contracts/ipc";
 
 /** Stylesheet defaults for the two font-size vars (styles.css :root/.dark).
  *  When the store value equals its default we REMOVE the inline property
- *  instead of writing it, so a theme-scoped stylesheet default can differ —
- *  html.sketch raises the base to 15px for the handwriting face (kaiti
- *  smears below ~13px). An explicit user choice still wins via the inline
- *  write. Must match the store defaults in sessionStore. */
+ *  instead of writing it, so the stylesheet default applies. An explicit user
+ *  choice still wins via the inline write. Must match the store defaults in
+ *  sessionStore. */
 const DEFAULT_CHAT_FONT_SIZE_PX = 15;
 const DEFAULT_PANEL_FONT_SIZE_PX = 14;
 
@@ -154,19 +153,4 @@ export function useRightPanelAppearance(): void {
   useEffect(() => {
     applyRightPanelFontSize(rightPanelFontSize);
   }, [rightPanelFontSize]);
-}
-
-/**
- * Keep the `.sketch` class on <html> in sync with the session store's
- * themeStyle (settings key ui.themeStyle, hydrated in the first-paint batch).
- * Mount once at the app root. The boot-time FOUC guard (lib/theme.ts) has
- * already applied the localStorage-cached value before React mounts; this
- * reconciles against the SQLite source of truth once it lands.
- */
-export function useThemeStyle(): void {
-  const themeStyle = useSessionStore((s) => s.themeStyle);
-
-  useEffect(() => {
-    applyThemeStyle(themeStyle);
-  }, [themeStyle]);
 }

@@ -18,7 +18,6 @@ import {
   GetSettingSchema,
   SetSettingSchema,
   GetManySettingsSchema,
-  THEME_STYLE_SETTING_KEY,
   UI_LOCALE_SETTING_KEY,
 } from "@contracts/ipc";
 import type {
@@ -30,7 +29,6 @@ import type { UserInputAnswers } from "@contracts/provider";
 import { SessionRepo, ProjectRepo, MessageRepo, SettingRepo } from "@main/store/repositories.js";
 import { runtimeManager } from "@main/claude/RuntimeManager.js";
 import { providerRegistry } from "@main/providers/registry.js";
-import { updateTitleBarOverlay } from "@main/window.js";
 import { refreshTrayMenu } from "@main/tray.js";
 import { log } from "@main/lib/logger.js";
 import { broadcastSessionChanged } from "@main/lib/sessionSync.js";
@@ -241,18 +239,6 @@ export function registerClaudeHandlers(ipcMain: IpcMain): void {
     const input = SetSettingSchema.parse(raw);
     if (input.key === CONTEXT_POLICY_SETTING_KEY) ContextPolicySchema.parse(JSON.parse(input.value));
     SettingRepo.set(input.key, input.value);
-    // The theme STYLE repaints native chrome accents (win/linux title-bar
-    // overlay) that only main can reach — the renderer's .sketch class does
-    // nothing for them. Refresh on flip; every other key has no main-side
-    // visual. Best-effort: before the window exists (or on macOS, where
-    // updateTitleBarOverlay no-ops) this is a harmless no-op.
-    if (input.key === THEME_STYLE_SETTING_KEY) {
-      try {
-        updateTitleBarOverlay();
-      } catch {
-        // Window not created yet — initTheme's startup sync covers it.
-      }
-    }
     // Tray menu labels follow the UI language (no-op without a tray).
     if (input.key === UI_LOCALE_SETTING_KEY) refreshTrayMenu();
   });

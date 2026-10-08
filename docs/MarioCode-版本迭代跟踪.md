@@ -2,9 +2,11 @@
 
 > 记录完成结果、验证与 Git 版本。新想法和未完成事项统一维护在 [MarioCode 想法与待办](MarioCode-TODO.md)。
 
-最后更新：2026-10-08
+最后更新：2026-10-09
 
-## 当前进度（2026-10-08）
+## 当前进度（2026-10-09）
+
+**10/9 移除（v0.2.36 · TODO-053）**：删除手绘 / 牛皮纸主题，作为 TODO-044 界面 V4 的前置减法（用户在评审 V4 原型后确认，同时确认取消项目栏与状态栏、默认中性基调、不含标签栏模式）。移除范围：styles.css Sketch 区块与 `.sketch` 作用域选择器、`index.html` 的 `#sk-wobble`、`lxgw-wenkai-webfont` 依赖、`THEME_STYLE_SETTING_KEY` / `ThemeStyle` 契约、store 与 appearance / theme 中的 themeStyle 逻辑、main 的 `getThemeStylePreference` 与 window.ts 配色分支、设置页「界面风格」行与中英词条；启动清理旧 localStorage 缓存键。验证：类型检查、完整构建、81 项 store 检查、`test:settings-navigation-electron`（26 屏）通过，外观页截图已检查。未打包。
 
 **10/8 本地安装包交付（v0.2.34）**：沿用已提交版本 v0.2.34（功能提交 `1f4d6ee`）与本地标签 `v0.2.34`，不因打包增加版本。Windows 安装包 `apps/desktop/release/MarioCode-0.2.34-x64.exe` 已生成（228,553,616 字节，约 218.0 MiB）；安装包版本、大小、SHA512 与 latest.yml 一致，blockmap 已生成；包内 app-update.yml 指向自建更新服务器（generic + `http://39.109.58.6:3458/`），ASAR 内 `canvas:backfill` 通道核对通过。本轮未安装、上传或主动关闭用户应用；安装时需从托盘退出旧版。
 

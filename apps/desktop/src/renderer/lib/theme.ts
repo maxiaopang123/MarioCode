@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@renderer/lib/api.js";
-import type { ThemeName, EffectiveTheme, ThemeStyle } from "@contracts/theme";
+import type { ThemeName, EffectiveTheme } from "@contracts/theme";
 
 /**
  * Toggle the `.dark` class on <html>, which (with `darkMode: 'class'` in the
@@ -17,13 +17,11 @@ import type { ThemeName, EffectiveTheme, ThemeStyle } from "@contracts/theme";
  */
 const THEME_TRANSITION_MS = 260;
 
-/** localStorage key mirroring the last applied theme style. Read
- *  synchronously by initFoucGuard() before React mounts (SQLite/IPC aren't
- *  up yet), written by applyThemeStyle() on every change. */
-const THEME_STYLE_CACHE_KEY = "mariocode-theme-style";
+/** Retired localStorage key of the removed sketch theme; cleared on boot. */
+const LEGACY_THEME_STYLE_CACHE_KEY = "mariocode-theme-style";
 
-/** localStorage key mirroring the last applied custom UI font. Same FOUC
- *  pattern as THEME_STYLE_CACHE_KEY: initFoucGuard() reads it synchronously,
+/** localStorage key mirroring the last applied custom UI font. initFoucGuard()
+ *  reads it synchronously (SQLite/IPC are not up yet),
  *  applyUiFontFamily() writes it on every change. */
 const UI_FONT_CACHE_KEY = "mariocode-ui-font";
 
@@ -107,16 +105,10 @@ export function initFoucGuard(): void {
   } catch {
     // matchMedia unavailable - leave default (light); useTheme() will fix up.
   }
-  // Sketch-style FOUC guard: unlike the color scheme there is no OS media
-  // query to guess from, so we keep a localStorage mirror of the last applied
-  // value (written by applyThemeStyle) and read it synchronously here. SQLite
-  // isn't reachable yet at this point; the first-paint hydration in
-  // sessionStore corrects the class the moment the real preference lands.
   try {
-    const cached = localStorage.getItem(THEME_STYLE_CACHE_KEY);
-    if (cached === "sketch" || cached === "classic") applyThemeStyle(cached);
+    localStorage.removeItem(LEGACY_THEME_STYLE_CACHE_KEY);
   } catch {
-    // localStorage unavailable (or disabled) - stay classic; hydration fixes.
+    // localStorage unavailable - nothing to clean.
   }
   // Custom UI font: same localStorage-mirror pattern (no OS media query to
   // guess from). applyUiFontFamily sanitizes, so a stale/corrupt cache value
@@ -125,23 +117,6 @@ export function initFoucGuard(): void {
     applyUiFontFamily(localStorage.getItem(UI_FONT_CACHE_KEY) ?? "");
   } catch {
     // localStorage unavailable - default stack; hydration fixes.
-  }
-}
-
-/**
- * Mirror the theme-style preference as a `.sketch` class on <html> (sibling
- * of `.dark`; the two dimensions are independent). styles.css holds ONE
- * centralized `html.sketch` section — token palette, hand-drawn shape
- * recipes, the handwriting font stack and the icon wobble filter all live
- * there. Also refreshed into the localStorage cache the FOUC guard reads.
- */
-export function applyThemeStyle(style: ThemeStyle): void {
-  document.documentElement.classList.toggle("sketch", style === "sketch");
-  try {
-    localStorage.setItem(THEME_STYLE_CACHE_KEY, style);
-  } catch {
-    // Cache is best-effort only - a failed write just means one classic
-    // first frame after restart before hydration re-applies the class.
   }
 }
 

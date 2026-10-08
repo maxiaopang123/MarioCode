@@ -108,23 +108,8 @@ export const THEME_SETTING_KEY = "theme";
 export const ThemeNameSchema = z.enum(["dark", "light", "system"]);
 
 /**
- * Setting key under which the UI theme STYLE preference is persisted
- * (prototypes/theme-sketch-redesign.html). Orthogonal to THEME_SETTING_KEY
- * (light/dark): the renderer mirrors the value as a `.sketch` class on <html>
- * next to `.dark`, and nativeTheme never sees it. Rides the generic
- * setting.get/set IPC like the other ui.* keys (first-paint getMany →
- * sessionStore.themeStyle).
- */
-export const THEME_STYLE_SETTING_KEY = "ui.themeStyle";
-
-/** zod schema for the theme-style preference (type lives in theme.ts). */
-export const ThemeStyleSchema = z.enum(["classic", "sketch"]);
-
-/**
  * Setting key under which the custom UI font family is persisted (empty
- * string = follow the stylesheet default stack). Only meaningful under the
- * "classic" theme style — sketch always renders the bundled handwriting face
- * (--sk-font). The value is a single font family name; the renderer composes
+ * string = follow the stylesheet default stack). The value is a single font family name; the renderer composes
  * it into a full CSS font-family stack with the system UI stack as fallback
  * (see applyUiFontFamily in renderer lib/theme.ts), so a font uninstalled
  * after the fact degrades gracefully instead of breaking the chrome. Rides

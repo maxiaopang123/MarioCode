@@ -4019,7 +4019,7 @@ function ChatPaneForSession({
                     data-ready={hasComposerContent ? "1" : "0"}
                     onAnimationEnd={() => setSendLaunching(false)}
                     className={cn(
-                      "composer-send inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-surface shadow-sm transition-all duration-150 ease-out",
+                      "composer-send inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-primary-on shadow-sm transition-all duration-150 ease-out",
                       "hover:scale-110 hover:brightness-110 hover:shadow-md",
                       "active:scale-95 active:brightness-95",
                       "disabled:scale-100 disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-content-subtle disabled:shadow-none disabled:hover:scale-100",

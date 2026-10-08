@@ -1541,10 +1541,11 @@ button.chat-ledger-head:hover {
   display: inline-flex;
   align-items: center;
   height: 1.75rem;            /* 28px — matches the chip row's visual height */
-  padding: 0 0.1875rem;
-  border: 1px solid rgb(var(--edge));
-  border-radius: 0.5625rem;   /* 9px */
-  background: rgb(var(--surface-muted) / 0.6);
+  padding: 0;
+  /* V4: the pill container is gone — segments read as quiet text buttons
+   * (prototypes/ui-refresh-v4.html); no border, fill or dividers. */
+  border: none;
+  background: none;
   flex: none;
   min-width: 0;
 }
@@ -1567,11 +1568,12 @@ button.chat-ledger-head:hover {
   transition: background 0.15s, color 0.15s, gap var(--composer-dur-collapse) var(--composer-ease-out);
 }
 [data-chat-root] .composer-minipill-seg:hover {
-  background: rgb(var(--accent) / 0.11);
-  color: rgb(var(--accent-strong));
+  background: rgb(var(--surface-hover));
+  color: rgb(var(--content));
 }
 [data-chat-root] .composer-minipill-seg[data-popup-open] {
-  background: rgb(var(--accent) / 0.12);
+  background: rgb(var(--surface-hover));
+  color: rgb(var(--content));
 }
 /* Disabled segment (the attach "+" while an approval owns the composer):
  * no hover play, just the dim. */
@@ -1582,6 +1584,7 @@ button.chat-ledger-head:hover {
   color: rgb(var(--content-muted));
 }
 [data-chat-root] .composer-minipill-mid {
+  display: none;
   width: 1px;
   height: 0.875rem;
   background: rgb(var(--edge));
@@ -1659,12 +1662,8 @@ button.chat-ledger-head:hover {
 [data-chat-root] .composer-card {
   --composer-agent: var(--accent);
   --composer-agent-strong: var(--accent);
-  border-color: color-mix(
-    in srgb,
-    rgb(var(--composer-agent)) 28%,
-    rgb(var(--input-edge))
-  );
-  box-shadow: var(--shadow-2);
+  border-color: rgb(var(--input-edge));
+  box-shadow: var(--shadow-1);
 }
 [data-chat-root] .composer-card[data-agent="claude"] {
   --composer-agent: 217 119 87;
@@ -1683,13 +1682,13 @@ button.chat-ledger-head:hover {
  * hairline without tinting the input background. */
 [data-chat-root] .composer-card:focus-within {
   border-color: rgb(var(--composer-agent-strong) / 0.78);
-  box-shadow: var(--shadow-2), 0 0 0 3px rgb(var(--composer-agent-strong) / 0.14);
+  box-shadow: var(--shadow-1), 0 0 0 3px rgb(var(--composer-agent-strong) / 0.12);
 }
 /* Drag feedback is an interaction state rather than provider identity. Keep
  * it after the base/focus rules so the original global accent ring wins. */
 [data-chat-root] .composer-card[data-drag-over="1"] {
   border-color: rgb(var(--accent));
-  box-shadow: var(--shadow-2), 0 0 0 4px rgb(var(--accent) / 0.2);
+  box-shadow: var(--shadow-1), 0 0 0 4px rgb(var(--accent) / 0.2);
 }
 [data-chat-root] .composer-card::after {
   content: "";
@@ -1737,12 +1736,12 @@ button.chat-ledger-head:hover {
 /* The active send action shares the session provider identity. Disabled
  * styling remains the composer's existing neutral surface treatment. */
 [data-chat-root] .composer-send:not(:disabled) {
-  background: rgb(var(--composer-agent-strong));
+  background: rgb(var(--primary));
 }
 /* Ready (has content): a resident soft glow says "可以发了" without touching
  * transform (the button's Tailwind hover/active scales own that). */
 [data-chat-root] .composer-send[data-ready="1"] {
-  box-shadow: 0 4px 16px -5px rgb(var(--composer-agent-strong) / 0.55);
+  box-shadow: 0 4px 14px -6px rgb(var(--primary) / 0.5);
 }
 /* Launch: one-shot after a send/enqueue — the icon flies out and re-enters
  * from the opposite corner while a halo pulse expands around the button.

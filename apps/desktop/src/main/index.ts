@@ -32,6 +32,9 @@ import { warmRuntimeDiscovery } from "@main/runtimes/runtimeSelection.js";
 import { startSkillSyncEngine, setSkillSyncChangeListener } from "@main/lib/skillSync.js";
 import { startMcpSyncEngine, setMcpSyncChangeListener } from "@main/lib/mcpSync.js";
 import { join } from "node:path";
+import { HTML_PREVIEW_SCHEME, registerHtmlPreviewScheme, registerHtmlPreviewProtocol } from "@main/lib/htmlPreview.js";
+
+registerHtmlPreviewScheme();
 
 let clawBotStartupPromise: Promise<void> | null = null;
 let clawBotQuitRequested = false;
@@ -137,6 +140,7 @@ app.on("second-instance", () => {
 
 app.whenReady().then(async () => {
   logStartup("whenReady entered");
+  registerHtmlPreviewProtocol();
 
   // Kick off DB init in the background (better-sqlite3 loads its native
   // binding + opens the file + migrates). We DON'T await it - the window is
@@ -156,11 +160,12 @@ app.whenReady().then(async () => {
   // strict CSP would block, leaving the page blank.
   if (is.prod) {
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      if (details.url.startsWith(`${HTML_PREVIEW_SCHEME}:`)) { callback({ responseHeaders: details.responseHeaders }); return; }
       callback({
         responseHeaders: {
           ...details.responseHeaders,
             "Content-Security-Policy": [
-            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:",
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-src 'self' mariocode-preview:",
           ],
         },
       });

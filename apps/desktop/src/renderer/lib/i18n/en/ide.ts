@@ -1,5 +1,10 @@
 /** English mirror of `zh/ide.ts`. */
 export const en = {
+  "ide.preview.edit": "Edit",
+  "ide.preview.preview": "Preview",
+  "ide.preview.html": "HTML preview",
+  "ide.preview.unsaved": "Previewing unsaved changes",
+  "ide.preview.htmlLarge": "This HTML exceeds 2 MB. Reduce its size or open it in a browser.",
   "ide.document.readOnly": "Read-only preview",
   "ide.document.openExternal": "Open in default app",
   "ide.document.readingLayout": "Reading view preserves text, tables and images. Open the original for complex layouts.",

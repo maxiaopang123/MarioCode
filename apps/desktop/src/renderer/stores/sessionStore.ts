@@ -146,6 +146,7 @@ function isMarkdownPath(filePath: string): boolean {
   const lower = filePath.toLowerCase();
   return lower.endsWith(".md") || lower.endsWith(".markdown");
 }
+function isHtmlPath(filePath: string): boolean { return /\.html?$/i.test(filePath); }
 
 /** True for image files the editor previews via the `app-resource://` protocol.
  *  Mirrors `isImage()` in FileEditor.tsx - kept here so `openFileInIde` can
@@ -10440,14 +10441,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     // or "preview" view-mode for this file doesn't swallow the reveal.
     else if (opts?.line != null) viewMode[canonicalPath] = "edit";
     // Files that render as a read-only preview default to "preview" on FIRST
-    // open (no prior view-mode for this file): Markdown (rendered), images
-    // (<img> via app-resource://), and unsupported binary types (Office docs,
-    // archives, etc. - shown as a "can't preview" notice). Re-opening respects
+    // open (no prior view-mode for this file): HTML / Markdown, images,
+    // documents, and other binary types. Re-opening respects
     // the user's earlier choice (e.g. they switched to "edit") since the entry
     // already exists. A diff request above takes precedence over this default.
     else if (
       !(canonicalPath in prevViewMode) &&
-      (isMarkdownPath(canonicalPath) || isImagePath(canonicalPath) || isUnsupportedPath(canonicalPath))
+      (isMarkdownPath(canonicalPath) || isHtmlPath(canonicalPath) || isImagePath(canonicalPath) || isUnsupportedPath(canonicalPath))
     ) {
       viewMode[canonicalPath] = "preview";
     }

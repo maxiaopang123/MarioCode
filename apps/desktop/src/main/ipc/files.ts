@@ -32,6 +32,8 @@ import {
   FileReadSchema,
   FileReadBinarySchema,
   FileReadDocumentSchema,
+  FileHtmlPreviewSchema,
+  FileReleasePreviewSchema,
   FileListDirSchema,
   FileSearchSchema,
   FileWriteSchema,
@@ -56,6 +58,7 @@ import type {
 } from "@contracts/ipc";
 import { log } from "@main/lib/logger.js";
 import { readDocumentPreview } from "@main/lib/documentPreview.js";
+import { createHtmlPreview, releaseHtmlPreview } from "@main/lib/htmlPreview.js";
 import { SettingRepo } from "@main/store/repositories.js";
 import { resolveRg, rgListFiles, rgGrep } from "@main/lib/rgSearch.js";
 import {
@@ -302,12 +305,13 @@ const BINARY_MIME: Record<string, string> = {
  *  handler and the mobile RPC whitelist. Scans every persisted project AND
  *  every session worktree root for one containing the path; clipboard-paste
  *  temp files (app-owned) are allowed outside both. Degrades to empty
- *  content instead of throwing. */
-export async function readFileGuarded(filePath: string): Promise<{ content: string }> {
+ *  content with an error flag instead of throwing, so previews can distinguish
+ *  a missing file from a genuinely empty document. */
+export async function readFileGuarded(filePath: string): Promise<{ content: string; error?: "outside" | "read" }> {
   const root = findContainingWorkspaceRoot(filePath);
   if (!root && !isPasteTempPath(filePath)) {
     log.warn(`file.readFile refused — path outside any project root: ${filePath}`);
-    return { content: "" };
+    return { content: "", error: "outside" };
   }
   try {
     const content = await readFile(filePath, "utf-8");
@@ -315,7 +319,7 @@ export async function readFileGuarded(filePath: string): Promise<{ content: stri
   } catch (err) {
     // ENOENT (file gone), EACCES, or binary content that isn't valid utf-8.
     log.warn(`file.readFile failed for ${filePath}: ${(err as Error).message}`);
-    return { content: "" };
+    return { content: "", error: "read" };
   }
 }
 
@@ -774,6 +778,15 @@ export function registerFileHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(IPC.FILE_READ_DOCUMENT, async (_evt, raw) => {
     const input = FileReadDocumentSchema.parse(raw);
     return readDocumentPreview(input.filePath);
+  });
+  ipcMain.handle(IPC.FILE_HTML_PREVIEW, async (event, raw) => {
+    const input = FileHtmlPreviewSchema.parse(raw);
+    if (event.senderFrame !== event.sender.mainFrame) return { ok: false, code: "outside" };
+    return createHtmlPreview(event.sender, input);
+  });
+  ipcMain.handle(IPC.FILE_RELEASE_PREVIEW, (event, raw) => {
+    const input = FileReleasePreviewSchema.parse(raw);
+    if (event.senderFrame === event.sender.mainFrame) releaseHtmlPreview(event.sender, input.token);
   });
 
   /* ── net:fetchImage — remote image → data URL (reply 「加载图片」) ── */

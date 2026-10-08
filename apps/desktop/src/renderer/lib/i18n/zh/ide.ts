@@ -3,6 +3,11 @@
  * zh is the source of truth for `MessageId`.
  */
 export const zh = {
+  "ide.preview.edit": "编辑",
+  "ide.preview.preview": "预览",
+  "ide.preview.html": "HTML 预览",
+  "ide.preview.unsaved": "正在预览未保存的内容",
+  "ide.preview.htmlLarge": "HTML 超过 2 MB，无法预览。请精简文档或使用浏览器打开。",
   "ide.document.readOnly": "只读预览",
   "ide.document.openExternal": "用默认应用打开",
   "ide.document.readingLayout": "阅读视图保留文字、表格与图片；复杂排版请查看原文件。",

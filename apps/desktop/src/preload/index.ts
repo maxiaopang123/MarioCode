@@ -328,6 +328,8 @@ const api = {
       ipcRenderer.invoke(IPC.FILE_READ_BINARY, input)) as RpcMap["file.readBinary"],
     readDocument: ((input) =>
       ipcRenderer.invoke(IPC.FILE_READ_DOCUMENT, input)) as RpcMap["file.readDocument"],
+    htmlPreview: ((input) => ipcRenderer.invoke(IPC.FILE_HTML_PREVIEW, input)) as RpcMap["file.htmlPreview"],
+    releasePreview: ((input) => ipcRenderer.invoke(IPC.FILE_RELEASE_PREVIEW, input)) as RpcMap["file.releasePreview"],
     /** OS dialog image picker → base64 images (composer 图片 button). */
     pickImages: ((input) =>
       ipcRenderer.invoke(IPC.FILE_PICK_IMAGES, input)) as RpcMap["file.pickImages"],

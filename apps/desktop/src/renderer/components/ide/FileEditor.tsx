@@ -12,7 +12,10 @@ import { IconEye, IconEdit, IconLoader2, IconAlertTriangle, IconSquare, IconColu
 import { FileTypeIcon } from "@renderer/lib/fileIcon.js";
 import { Markdown } from "../chat/Markdown.js";
 import { DocumentPreview } from "./DocumentPreview.js";
+import { HtmlPreview } from "./HtmlPreview.js";
 import { isDocumentPath } from "@renderer/lib/documentTypes.js";
+import { previewDraft } from "@renderer/lib/previewDraft.js";
+import { Button } from "../ui/index.js";
 // LSP provider bridge: registers definition/references/hover providers, syncs
 // documents, and applies diagnostics markers to the model.
 import {
@@ -77,8 +80,9 @@ export function FileEditor({
 }) {
   // View mode is scoped to the active project's bucket.
   const pid = useSessionStore((s) => s.activeProjectId);
+  const defaultMode = isMarkdown(filePath) || /\.html?$/i.test(filePath) ? "preview" : "edit";
   const viewMode = useSessionStore((s) =>
-    pid ? s.ideFileViewModeByProject[pid]?.[filePath] ?? "edit" : "edit",
+    pid ? s.ideFileViewModeByProject[pid]?.[filePath] ?? defaultMode : defaultMode,
   );
   const setViewMode = useSessionStore((s) => s.setIdeFileViewMode);
   const editorMode = useSessionStore((s) => s.ideEditorMode);
@@ -105,8 +109,8 @@ export function FileEditor({
 
   // Effective mode:
   //  - diff: history pairs (forced) OR explicitly requested with a snapshot.
-  //  - preview: explicitly requested (Markdown rendered read-only).
-  //  - edit: the normal editable Monaco instance (default for non-md files).
+  //  - preview: HTML / Markdown by default, or explicitly requested.
+  //  - edit: the normal editable Monaco instance.
   const effectiveMode: "edit" | "diff" | "preview" =
     isDocumentPath(filePath) ? "preview" : historyOnly || (viewMode === "diff" && diffBefore != null)
       ? "diff"
@@ -115,6 +119,7 @@ export function FileEditor({
         : "edit";
 
   const markdown = isMarkdown(filePath);
+  const html = /\.html?$/i.test(filePath);
   const image = isImage(filePath);
   const unsupported = isUnsupported(filePath);
   const document = isDocumentPath(filePath);
@@ -127,10 +132,7 @@ export function FileEditor({
         mode={effectiveMode}
         canDiff={!document && diffBefore != null && !historyOnly}
         onToggleMode={() => setViewMode(filePath, effectiveMode === "edit" ? "diff" : "edit")}
-        isMarkdown={markdown}
-        isImage={image}
-        isUnsupported={unsupported}
-        isDocument={document}
+        hasPreviewToggle={!document && !historyOnly && (markdown || html || image || unsupported)}
         onTogglePreview={() =>
           setViewMode(filePath, effectiveMode === "preview" ? "edit" : "preview")
         }
@@ -143,6 +145,8 @@ export function FileEditor({
         ) : effectiveMode === "preview" ? (
           document ? (
             <DocumentPreview key={filePath} filePath={filePath} />
+          ) : html ? (
+            <HtmlPreview key={filePath} filePath={filePath} />
           ) : image ? (
             <ImagePreviewPane filePath={filePath} />
           ) : unsupported ? (
@@ -169,10 +173,7 @@ function EditorToolbar({
   mode,
   canDiff,
   onToggleMode,
-  isMarkdown,
-  isImage,
-  isUnsupported,
-  isDocument,
+  hasPreviewToggle,
   onTogglePreview,
   editorMode,
   onToggleEditorMode,
@@ -182,10 +183,7 @@ function EditorToolbar({
   mode: "edit" | "diff" | "preview";
   canDiff: boolean;
   onToggleMode: () => void;
-  isMarkdown: boolean;
-  isImage: boolean;
-  isUnsupported: boolean;
-  isDocument: boolean;
+  hasPreviewToggle: boolean;
   onTogglePreview: () => void;
   editorMode: "tabs" | "replace";
   onToggleEditorMode: () => void;
@@ -257,7 +255,6 @@ function EditorToolbar({
   // Files that default to a read-only preview pane (markdown rendered, image
   // displayed, or an unsupported-type notice). These get a Preview/Edit toggle
   // so the user can still drop into the raw Monaco editor if they want.
-  const hasPreviewToggle = !isDocument && (isMarkdown || isImage || isUnsupported);
   // Show the path relative to the project root when possible (cleaner in the
   // narrow toolbar); fall back to the full path. Case-insensitive on Windows/
   // macOS so a lowercased drive letter from LSP (`d:\foo`) still matches a
@@ -379,7 +376,7 @@ function EditorToolbar({
             title={mode === "preview" ? t("ide.editor.switchToSource") : t("ide.editor.switchToPreview")}
           >
             {mode === "preview" ? <IconEdit size={12} /> : <IconEye size={12} />}
-            {mode === "preview" ? "Edit" : "Preview"}
+            {mode === "preview" ? t("ide.preview.edit") : t("ide.preview.preview")}
           </button>
         )}
         {/* Editor open-mode toggle: tabs (multi-file) ↔ replace (single-file).
@@ -1164,15 +1161,18 @@ function GotoActivityPill() {
 
 /* ───────────────────────── Markdown preview ───────────────────────── */
 
-/** Read-only rendered Markdown preview for `.md` files. Loads the file content
- *  via the same `file.readFile` API as EditPane, then renders it with the chat
+/** Rendered Markdown preview. Uses an unsaved cached model when present,
+ *  otherwise reads disk via `file.readFile`, then renders with the chat
  *  Markdown renderer (Shiki code highlighting, GFM, math). The outer container
  *  overrides `--chat-font-size` so the rendered text uses an editor-appropriate
- *  size instead of the chat bubble size. Read-only - no save / dirty tracking.
+ *  size instead of the chat bubble size. Preview never saves or resets models.
  *  Re-reads on filePath change. */
 function MarkdownPreviewPane({ filePath, projectPath }: { filePath: string; projectPath: string }) {
   const { t } = useI18n();
   const [content, setContent] = useState<string | null>(null); // null = loading
+  const [error, setError] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [draft, setDraft] = useState(false);
   // The preview pane is a plain scroll container that unmounts on every file
   // switch (and re-mounts its body on every content read), so without this a
   // long README the user had scrolled re-opened at the top. Monaco's own
@@ -1181,18 +1181,26 @@ function MarkdownPreviewPane({ filePath, projectPath }: { filePath: string; proj
   useEffect(() => {
     let cancelled = false;
     setContent(null);
+    setError(false);
+    const unsaved = previewDraft(filePath);
+    setDraft(unsaved !== undefined);
+    if (unsaved !== undefined) { setContent(unsaved); return; }
     api.file
       .readFile({ filePath })
-      .then(({ content }) => {
-        if (!cancelled) setContent(content);
+      .then(({ content, error }) => {
+        if (!cancelled) { setContent(content); setError(Boolean(error)); }
       })
       .catch(() => {
-        if (!cancelled) setContent(""); // degrade to empty
+        if (!cancelled) { setError(true); setContent(""); }
       });
     return () => {
       cancelled = true;
     };
-  }, [filePath]);
+  }, [filePath, reload]);
+
+  if (error) return <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-sm text-content-muted">
+    {t("ide.document.error.read")}<Button onClick={() => setReload(reload + 1)}>{t("common.refresh")}</Button>
+  </div>;
 
   if (content === null) {
     return (
@@ -1206,7 +1214,9 @@ function MarkdownPreviewPane({ filePath, projectPath }: { filePath: string; proj
     <div
       ref={scrollRef}
       className="h-full overflow-auto bg-surface px-6 py-4 [--chat-font-size:13px]"
+      data-markdown-preview
     >
+      {draft && <p className="mb-3 text-xs text-content-subtle">{t("ide.preview.unsaved")}</p>}
       <Markdown
         projectPath={projectPath}
         baseDir={dirname(filePath) || projectPath}

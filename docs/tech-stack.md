@@ -90,6 +90,8 @@
 | **mammoth** / **xlsx** | 1.13.0 / 0.20.3 | Office worker 内 DOCX 转阅读 HTML、Excel 格式化读取；SheetJS 使用官方 CDN tarball |
 | **fflate** / **dompurify** | 0.8.3 / 3.3.3 | Office 压缩包展开上限、PPTX 部件读取与 Word 阅读 HTML 清洗 |
 
+**文件预览（v0.2.32 / 0.2.33）**：PDF / DOCX / XLSX / XLS / PPTX 用 `file.readDocument` 的 32 MB、有真实路径检查的二进制读取，PDF 和 Office 各自后台 worker 解析。Word / PPTX 是内容阅读排版，Excel 只读缓存计算值。HTML / Markdown 预览从 `previewDraft` 取未保存的缓存模型，其余重读磁盘，不改变编辑模型或撤销栈；缺省模式同时覆盖第一次打开和恢复标签。HTML 经主进程 `htmlPreview.ts` 的临时自定义协议提供已登记工作区 Web 资源，每个预览随机独立源、iframe sandbox 与权限策略隔离应用，main CSP 只放行此 frame scheme，页面使用独立 CSP。普通脚本 / 模块 / 样式 / 图片 / JSON / 字体可用；源文件 2 MB、辅助资源 8 MB，隐藏配置与真实路径越界拒绝，关闭清理令牌和该源存储。仅用于桌面文件阅读，不等同完整浏览器或 Office 编辑器。
+
 > **TanStack Router / Query、Lexical** 等在总体方案中规划,但**当前尚未安装**。Monaco / xterm / react-markdown / node-pty 已随 P4 引入。组件库(`@base-ui/react`)和图标库(`@tabler/icons-react`)已安装可用。
 
 ### 3.4 共享契约(packages/contracts)

@@ -2077,6 +2077,17 @@ export type FileReadDocumentResult =
   | { ok: false; code: "outside" | "large" | "format" | "read" };
 export const DOCUMENT_PREVIEW_MAX_BYTES = 32 * 1024 * 1024;
 
+export const FileHtmlPreviewSchema = z.object({
+  filePath: z.string().min(1),
+  content: z.string().max(2 * 1024 * 1024).optional(),
+});
+export type FileHtmlPreviewInput = z.infer<typeof FileHtmlPreviewSchema>;
+export type FileHtmlPreviewResult =
+  | { ok: true; url: string; token: string }
+  | { ok: false; code: "outside" | "large" | "format" | "read" };
+export const FileReleasePreviewSchema = z.object({ token: z.string().uuid() });
+export type FileReleasePreviewInput = z.infer<typeof FileReleasePreviewSchema>;
+
 /** Fetch a REMOTE image (http/https) in the main process and return it as a
  *  `data:` URL (TODO-022, 回复里的网络图片).
  *
@@ -4970,10 +4981,12 @@ export interface RpcMap {
     input: FontsListSystemFamiliesInput,
   ) => Promise<FontsListSystemFamiliesResult>;
   // File read (on-demand diff rendering)
-  "file.readFile": (input: FileReadInput) => Promise<{ content: string }>;
+  "file.readFile": (input: FileReadInput) => Promise<{ content: string; error?: "outside" | "read" }>;
   /** Read a binary file as a base64 data URL (image preview). Same path guard. */
   "file.readBinary": (input: FileReadBinaryInput) => Promise<{ dataUrl: string }>;
   "file.readDocument": (input: FileReadDocumentInput) => Promise<FileReadDocumentResult>;
+  "file.htmlPreview": (input: FileHtmlPreviewInput) => Promise<FileHtmlPreviewResult>;
+  "file.releasePreview": (input: FileReleasePreviewInput) => Promise<void>;
   /** Fetch a remote image as a data URL (reply 「加载图片」). Never throws:
    *  a refusal comes back as `{ dataUrl: "", error }`. */
   "net.fetchImage": (input: NetFetchImageInput) => Promise<{ dataUrl: string; error?: string }>;
@@ -5515,6 +5528,8 @@ export const IPC = {
   // File read as base64 data URL (image preview)
   FILE_READ_BINARY: "file:readBinary",
   FILE_READ_DOCUMENT: "file:readDocument",
+  FILE_HTML_PREVIEW: "file:htmlPreview",
+  FILE_RELEASE_PREVIEW: "file:releasePreview",
   // Remote image fetched by main and returned as a data URL (reply 加载图片)
   NET_FETCH_IMAGE: "net:fetchImage",
   // OS dialog image picker → base64 images (composer 图片 button)

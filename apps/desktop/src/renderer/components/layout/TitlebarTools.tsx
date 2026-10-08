@@ -1,10 +1,11 @@
 /**
- * ToolStrip — the vertical tool strip at the window's right edge (界面焕新
- * v3). Replaces the right panel's top segmented tabs: one cell per pane
- * (文件 / Git / 浏览器 / 轮次 / 旁聊), then the bottom terminal, and the
- * panel toggle at the foot. Clicking the ACTIVE pane while the panel is
- * open closes the panel (the strip is the panel's handle); any other cell
- * switches to that pane and opens it.
+ * TitlebarTools — the pane / panel switchers on the title bar's right (V4,
+ * TODO-044 step 3; replaces V3's vertical ToolStrip at the window's right
+ * edge): 文件 / Git / 浏览器, the bottom terminal, then the right-panel toggle.
+ * Clicking the ACTIVE pane while the panel is open closes the panel (the
+ * buttons are the panel's handle); any other pane switches to it and opens
+ * it. 轮次 / 旁聊 are reached from the panel's own tab header (and their
+ * shortcuts), which keeps this cluster short.
  */
 import { memo } from "react";
 import {
@@ -12,8 +13,6 @@ import {
   IconGitBranch,
   IconLayoutSidebarRightCollapse,
   IconLayoutSidebarRightExpand,
-  IconListDetails,
-  IconMessages,
   IconTerminal2,
   IconWorld,
 } from "@renderer/lib/icons.js";
@@ -23,7 +22,9 @@ import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import type { RightPanelTab } from "@contracts/ipc";
 
-function ToolStripBase() {
+const NO_DRAG = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
+
+function TitlebarToolsBase() {
   const { t } = useI18n();
   const tab = useSessionStore((s) => s.rightPanelTab);
   const setTab = useSessionStore((s) => s.setRightPanelTab);
@@ -48,20 +49,15 @@ function ToolStripBase() {
   };
 
   const panes: { id: RightPanelTab; label: string; hint?: string; icon: React.ReactNode; badge?: number }[] = [
-    { id: "files", label: t("layout.tabFiles"), icon: <IconFolder size={18} /> },
-    { id: "git", label: "Git", icon: <IconGitBranch size={18} /> },
-    { id: "browser", label: t("layout.tabBrowser"), hint: hintFor("layout.toggle-browser"), icon: <IconWorld size={18} />, badge: browserTabCount },
-    { id: "turns", label: t("layout.tabTurns"), icon: <IconListDetails size={18} /> },
-    { id: "sidechat", label: t("layout.tabSideChat"), hint: hintFor("sidechat.open"), icon: <IconMessages size={18} /> },
+    { id: "files", label: t("layout.tabFiles"), icon: <IconFolder size={17} /> },
+    { id: "git", label: "Git", icon: <IconGitBranch size={17} /> },
+    { id: "browser", label: t("layout.tabBrowser"), hint: hintFor("layout.toggle-browser"), icon: <IconWorld size={17} />, badge: browserTabCount },
   ];
 
   return (
-    <nav
-      aria-label={t("layout.strip.aria")}
-      className="flex w-11 shrink-0 flex-col items-center gap-1 py-1"
-    >
+    <nav aria-label={t("layout.strip.aria")} className="flex shrink-0 items-center gap-0.5" style={NO_DRAG}>
       {panes.map((p) => (
-        <Hint key={p.id} label={p.label + (p.hint ?? "")} side="left">
+        <Hint key={p.id} label={p.label + (p.hint ?? "")}>
           <button
             type="button"
             onClick={() => pickPane(p.id)}
@@ -79,9 +75,7 @@ function ToolStripBase() {
         </Hint>
       ))}
 
-      <i className="my-1.5 h-px w-5 shrink-0 bg-edge" aria-hidden />
-
-      <Hint label={t("lib.commands.toggleTerminal") + hintFor("layout.toggle-bottom-terminal")} side="left">
+      <Hint label={t("lib.commands.toggleTerminal") + hintFor("layout.toggle-bottom-terminal")}>
         <button
           type="button"
           onClick={() => setBottomTerminalOpen(!bottomTerminalOpen)}
@@ -89,24 +83,24 @@ function ToolStripBase() {
           data-on={bottomTerminalOpen ? "true" : undefined}
           className="strip-btn grid place-items-center"
         >
-          <IconTerminal2 size={18} />
+          <IconTerminal2 size={17} />
         </button>
       </Hint>
 
-      <span className="flex-1" aria-hidden />
+      <i className="mx-1 h-4 w-px shrink-0 bg-edge" aria-hidden />
 
-      <Hint label={(rightOpen ? t("layout.hideRightPanel") : t("layout.showRightPanel")) + hintFor("layout.toggle-right")} side="left">
+      <Hint label={(rightOpen ? t("layout.hideRightPanel") : t("layout.showRightPanel")) + hintFor("layout.toggle-right")}>
         <button
           type="button"
           onClick={() => setRightOpen(!rightOpen)}
           aria-pressed={rightOpen}
           className="strip-btn grid place-items-center"
         >
-          {rightOpen ? <IconLayoutSidebarRightCollapse size={18} /> : <IconLayoutSidebarRightExpand size={18} />}
+          {rightOpen ? <IconLayoutSidebarRightCollapse size={17} /> : <IconLayoutSidebarRightExpand size={17} />}
         </button>
       </Hint>
     </nav>
   );
 }
 
-export const ToolStrip = memo(ToolStripBase);
+export const TitlebarTools = memo(TitlebarToolsBase);

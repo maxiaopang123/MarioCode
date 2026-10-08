@@ -18,6 +18,7 @@ import { WorktreeMergeToolbarButton } from "@renderer/components/chat/WorktreeMe
 import { resolveShortcut, acceleratorToDisplayString } from "@renderer/lib/shortcuts.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { BrandLogo } from "./BrandLogo.js";
+import { TitlebarTools } from "./TitlebarTools.js";
 
 type Mode = "workspace" | "settings";
 
@@ -200,8 +201,10 @@ export function Titlebar({
               {/* Editor column toggle - shows/hides the center-pane editor
                   column without closing the open file. */}
               {!isBrowserMode && <EditorColumnToggle />}
-              {/* v3: the bottom-terminal and right-panel toggles moved to
-                  the vertical ToolStrip at the window's right edge. */}
+              {/* V4: pane switchers + bottom terminal + right-panel toggle
+                  live here (V3's vertical ToolStrip is gone). Hidden while
+                  the fullscreen browser overlay covers the workspace. */}
+              {!isBrowserOverlay && <TitlebarTools />}
             </div>
           </>
         )}

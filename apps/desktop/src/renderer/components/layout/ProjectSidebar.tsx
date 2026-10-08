@@ -57,6 +57,7 @@ import { resolveShortcut, acceleratorToDisplayString, acceleratorToDisplayTokens
 import { jumpToNextAttention, useAttention } from "@renderer/lib/attention.js";
 import { ConfirmDialog, Hint, Kbd } from "@renderer/components/ui/index.js";
 import { useCursorAnchor } from "@renderer/hooks/useCursorAnchor.js";
+import { fmtTokens, useGlobalStatus } from "@renderer/lib/globalStatus.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { WorktreeMergeBackDialog, WorktreeRemoveDialog } from "@renderer/components/chat/WorktreeMergeBack.js";
 import { ProjectManageMenuPopup, type ManageMenuState } from "./ProjectManageMenu.js";
@@ -146,6 +147,8 @@ function ProjectSidebarBase() {
   const streamScope = useSessionStore((s) => s.streamScope);
   const streamDirty = useSessionStore((s) => s.streamDirty);
   const attention = useAttention();
+  const claudeInstalled = useSessionStore((s) => s.claudeInstalled);
+  const { proxy, today, scheduled } = useGlobalStatus();
 
   const setLeftOpen = useSessionStore((s) => s.setLeftOpen);
   const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
@@ -290,6 +293,21 @@ function ProjectSidebarBase() {
     for (const s of pinnedSessions) byId.set(s.id, s.title);
     return attention.map((a) => byId.get(a.sessionId)).filter((x): x is string => !!x);
   }, [attention, sessionsByProject, pinnedSessions]);
+
+  // Global facts the V3 status bar carried (V4 step 3): network route +
+  // today's usage, shown as the settings row's subtitle.
+  const proxyText = proxy
+    ? proxy.mode === "direct"
+      ? t("layout.status.proxyDirect")
+      : proxy.mode === "custom"
+        ? t("layout.status.proxyCustom")
+        : t("layout.status.proxySystem")
+    : null;
+  const todayText =
+    today && today.tokens > 0
+      ? t("layout.status.today", { tokens: fmtTokens(today.tokens), cost: `$${today.cost.toFixed(2)}` })
+      : null;
+  const statusLine = [proxyText, todayText].filter(Boolean).join(" · ");
 
   const newAccel = resolveShortcut("session.new", overrides);
   const attentionAccel = resolveShortcut("session.next-attention", overrides);
@@ -615,6 +633,11 @@ function ProjectSidebarBase() {
           >
             <IconCalendar size={16} className="shrink-0 text-content-muted" />
             <span className="flex-1 truncate text-left">{t("layout.scheduledTasks")}</span>
+            {scheduled != null && scheduled > 0 && (
+              <span className="shrink-0 text-[11.5px] tabular-nums text-content-subtle" title={t("layout.status.scheduled", { n: scheduled })}>
+                {scheduled}
+              </span>
+            )}
           </button>
           <MobileConnectButton />
         </div>
@@ -631,8 +654,24 @@ function ProjectSidebarBase() {
               settingsOpen && "bg-surface-hover",
             )}
           >
-            <IconSettings size={16} className="shrink-0 text-content-muted" />
-            <span className="truncate font-medium">{t("layout.settings")}</span>
+            <span className="relative shrink-0">
+              <IconSettings size={16} className="text-content-muted" />
+              {claudeInstalled === false && (
+                <i
+                  className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-danger ring-2 ring-surface-base"
+                  title={t("layout.status.claudeMissing")}
+                  aria-label={t("layout.status.claudeMissing")}
+                />
+              )}
+            </span>
+            <span className="flex min-w-0 flex-col leading-[1.25]">
+              <span className="truncate font-medium">{t("layout.settings")}</span>
+              {statusLine && (
+                <span className="truncate text-[10.5px] font-normal text-content-subtle" title={proxy?.proxyUrl ? t("layout.status.proxyVia", { url: proxy.proxyUrl }) : undefined}>
+                  {statusLine}
+                </span>
+              )}
+            </span>
           </button>
         </Hint>
         <Hint label={effectiveTheme === "dark" ? t("layout.themeToLight") : t("layout.themeToDark")}>

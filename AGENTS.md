@@ -267,6 +267,11 @@ pnpm build
 - **UI**:`TurnFilesCard` 每个**未撤销**的卡片都显示「撤销本轮」(历史卡片点击前 `confirm` 警告可能影响后续轮次);`rewound` block 的 `rewound` 字段在 `turn-files` case 上(block 联合类型新增,向后兼容)。`store.rewindTurn(files, targetFiles)` 由调用方显式传 files + targetFiles(必填),不乐观清状态(等 `turn.rewound` 事件)。
 - **契约**:`RewindTurnSchema` 含 `files`(内联 zod)+ 必填 `targetFiles`;`TurnRewoundEvent` 带必填 `targetFiles`。
 
+### V4 第三步:取消 ToolStrip 与 StatusBar(TODO-044,2026-10-09,v0.2.41;**覆盖下方 v3 布局节「五段布局」中 ToolStrip / StatusBar 及「右侧面板」「状态栏只放全局信息」的描述**)
+
+- **右缘竖向 `ToolStrip` 与底部 `StatusBar` 已删除**。`components/layout/TitlebarTools.tsx` 在 Titlebar 右侧放 文件 / Git / 浏览器 三个面板钮(点已激活的面板 = 收起右栏)、底部终端钮、右栏开关,沿用 `nav[aria-label="工具"]` 与原图标(脚本选择器不变);全屏浏览器 overlay 时隐藏。**轮次流程 / 子会话只在右栏顶部分段标签里**(`RightPanel` 的 `legacyTabs` 默认已翻成 true,`false` = V3 的标题式头部),面板收起时靠快捷键或先打开右栏。
+- **全局状态迁入侧栏**:`lib/globalStatus.ts` 的 `useGlobalStatus()`(代理模式 / 今日 tokens 与费用 / 已启用定时任务数;挂载、窗口聚焦、60 秒、运行数变化时刷新)→ `ProjectSidebar` 设置行副标题、定时任务行计数、Claude 未安装红点。**单会话指标(上下文 / 缓存 / 速度)仍不许放进全局位置**。主区面板行 `pr-2`,右栏卡片不贴窗口右缘。
+
 ### V4 侧栏:ProjectSidebar(TODO-044 第二步,2026-10-09,v0.2.38;**本节覆盖下方 v3 布局节里 ProjectRail / StreamSidebar / 会话列的全部描述**)
 
 - **一栏取代两栏**:`components/layout/ProjectSidebar.tsx` 替换 V3 的 ProjectRail(60px 项目栏)+ StreamSidebar(范围菜单 + 时间混排会话流),二者文件已删。`App.tsx` 不再有 `railVisible`,`Titlebar` 的 `railVisible` 参数同步删除(侧栏收起时恢复显示品牌 + 展开钮)。

@@ -7,8 +7,6 @@ import { ProjectSidebar } from "./components/layout/ProjectSidebar.js";
 import { ChatPane } from "./components/chat/ChatPane.js";
 import { UnifiedTabsBar } from "./components/layout/UnifiedTabsBar.js";
 import { RightPanel } from "./components/layout/RightPanel.js";
-import { ToolStrip } from "./components/layout/ToolStrip.js";
-import { StatusBar } from "./components/layout/StatusBar.js";
 import { BottomTerminalBar } from "./components/layout/BottomTerminalBar.js";
 import { SettingsDialog } from "./components/settings/SettingsDialog.js";
 import { CommandPalette } from "./components/layout/CommandPalette.js";
@@ -316,7 +314,7 @@ export function App() {
             the cards clear the window edge and the sidebar; the left pad is
             also where the sidebar Divider's grab area lands, so resizing
             never starts on top of the card. */}
-        <div className="relative flex min-h-0 flex-1 bg-surface-base pb-2 pl-2">
+        <div className="relative flex min-h-0 flex-1 bg-surface-base pb-2 pl-2 pr-2">
           {/*
             Center is ONE stable tree across wide mode (CenterPane takes the
             wide flag as a render variation) — the old ternary swap
@@ -345,10 +343,6 @@ export function App() {
               onResetRight={widePanelOpen ? resetWidePanelPct : resetRightWidth}
               onResetBottomTerminal={resetBottomTerminalHeight}
             />
-            {/* 界面焕新 v3 — vertical tool strip: pane switcher + terminal +
-                panel toggle (replaces the right panel's top tabs and the
-                titlebar's terminal / right-panel toggles). */}
-            <ToolStrip />
           </div>
           {/* 画布工作台(TODO-033/041 + TODO-049):占满面版行的兄弟节点;
               打开时上方工作区 CSS 隐藏保活(终端 PTY / 聊天不打断)。 */}
@@ -384,8 +378,6 @@ export function App() {
         </div>
       </div>
     </div>
-      {/* 界面焕新 v3 — global status bar (global facts only). */}
-      <StatusBar />
       {/* Settings — a floating window over the (still mounted) workspace,
           so terminals / PTYs stay alive while it is open. */}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}

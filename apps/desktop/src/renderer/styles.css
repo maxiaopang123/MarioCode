@@ -2191,13 +2191,14 @@ html[data-tone="warm"] .chat-md {
 }
 
 /* Tool strip cells mirror the rail's cells (slightly smaller). */
+/* Title-bar tool buttons (TitlebarTools). */
 .strip-btn {
   position: relative;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   color: rgb(var(--content-subtle));
   transition: background-color 120ms ease, color 120ms ease;
 }

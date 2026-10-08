@@ -70,7 +70,7 @@ function WideToggle() {
   );
 }
 
-export function RightPanel({ legacyTabs = false }: { legacyTabs?: boolean } = {}) {
+export function RightPanel({ legacyTabs = true }: { legacyTabs?: boolean } = {}) {
   const { t } = useI18n();
   const tab = useSessionStore((s) => s.rightPanelTab);
   const setTab = useSessionStore((s) => s.setRightPanelTab);
@@ -90,10 +90,11 @@ export function RightPanel({ legacyTabs = false }: { legacyTabs?: boolean } = {}
     setTab(tab === "browser" ? "files" : "browser");
   };
 
-  // v3: the tab switcher lives in the vertical ToolStrip beside this card;
-  // the header only names the active pane (+ the project it shows) and keeps
-  // the wide-mode toggle. The legacy segmented header remains available via
-  // `legacyTabs` for surfaces that mount the panel without the strip.
+  // V4: the segmented tab header is back inside the panel (it carries all
+  // five panes incl. 轮次 / 旁聊) because V3's vertical ToolStrip is gone; the
+  // title-bar buttons (TitlebarTools) open / close the panel and pick the
+  // main panes. `legacyTabs={false}` keeps the V3 title-only header for any
+  // surface that mounts the panel with its own switcher.
   const activeProjectName = useSessionStore((s) => {
     const pid = s.activeProjectId;
     return pid ? s.projects.find((p) => p.id === pid)?.name ?? null : null;

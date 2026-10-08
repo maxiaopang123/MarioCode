@@ -66,9 +66,9 @@ await electronTest("todo025-walkthrough",async data=>{
     await pane('world');
     await wait("document.querySelector('nav[aria-label=工具] button:has(.tabler-icon-world)').getAttribute('aria-pressed')==='true'");
     await screenshot(theme+'-browser');
-    await pane('list-details');
+    await evaluate("[...document.querySelectorAll('[role=tab]')].find(b=>b.getAttribute('aria-label')==='轮次流程').click()");
     await screenshot(theme+'-turns');
-    await pane('messages');
+    await evaluate("[...document.querySelectorAll('[role=tab]')].find(b=>b.getAttribute('aria-label')==='子会话').click()");
     await screenshot(theme+'-sidechat');
     await pointer('nav[aria-label="工具"] button:has(.tabler-icon-terminal-2)');
     await wait("[...document.querySelectorAll('.xterm')].some(e=>e.getBoundingClientRect().height>50)");

@@ -120,7 +120,8 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
   const [authRequest, setAuthRequest] = useState<BrowserAuthRequest | null>(null);
   /** Agent-presented view waiting for user interaction ("presented" event).
    *  The banner shows what the user should do;「继续」hands control back. */
-  const [presented, setPresented] = useState<{ browserId: string; note: string } | null>(null);
+  const presented = useSessionStore((s) => s.presentedBrowser);
+  const clearPresented = useCallback(() => useSessionStore.setState({ presentedBrowser: null }), []);
   /** Frozen-frame placeholder while a toolbar menu (history / device) is open
    *  over the stage: a base64 PNG of the page captured right before the real
    *  view parks offscreen, pinned to the stage at the view's exact rect. The
@@ -647,6 +648,19 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
     void createTab(url);
   }, [isActive, pendingBrowserUrl, createTab]);
 
+  // An Agent view was just presented (App adopted it as the active tab): park
+  // the other tabs' native views and bring the presented one up.
+  const presentedId = presented?.browserId ?? null;
+  useEffect(() => {
+    if (!isActive || !presentedId) return;
+    for (const t of tabsRef.current) {
+      if (t.browserId !== presentedId) void api.browser.hide({ browserId: t.browserId });
+    }
+    lastBoundsRef.current = null;
+    showActiveView();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, presentedId]);
+
   // Show/hide the active tab's view as THIS container activates/deactivates.
   // Deactivating hides the view WITHOUT destroying it (preserves browsing
   // state); the other container will re-show it when it activates.
@@ -914,21 +928,13 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
         adoptWindowOpenTab(msg.browserId, p);
         return;
       }
-      // Agent presented a view for user interaction (browser_present tool):
-      // adopt the view as a tab so the user can see + operate it, and show the
-      // banner with the agent's note. The user clicks 「继续」 to hand control
-      // back (main hides the view off-screen again).
-      if (msg.type === "presented") {
-        const p = (msg.payload as { url?: string; title?: string; note?: string }) ?? {};
-        setPresented({ browserId: msg.browserId, note: p.note ?? "" });
-        adoptWindowOpenTab(msg.browserId, { url: p.url, title: p.title });
-        return;
-      }
+      // "presented" is adopted into the store by App (it must arrive even when
+      // this panel is closed); the effect on `presented` below shows the view.
       // The agent view was handed back (continued) or recycled by main
-      // (closed): drop the adopted tab locally so no stale agent page stays in
-      // the strip. The native view is already hidden / destroyed by main.
+      // (closed): App clears the store; here we also move the native view
+      // selection to the neighbouring tab right away. The native view is
+      // already hidden / destroyed by main.
       if (msg.type === "continued" || msg.type === "closed") {
-        setPresented((p) => (p && p.browserId === msg.browserId ? null : p));
         removeTabLocal(msg.browserId);
         return;
       }
@@ -1239,7 +1245,6 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
   const handlePresentContinue = useCallback(() => {
     if (!presented) return;
     void api.browser.continue({ browserId: presented.browserId });
-    setPresented(null);
   }, [presented]);
 
   /** Presented banner「接管」: keep the page as an ordinary user tab. Main
@@ -1248,8 +1253,8 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
   const handlePresentTakeover = useCallback(() => {
     if (!presented) return;
     void api.browser.takeover({ browserId: presented.browserId });
-    setPresented(null);
-  }, [presented]);
+    clearPresented();
+  }, [presented, clearPresented]);
 
   /** Select a tab: hide the old active view, show the new one. */
   const handleSelectTab = useCallback(

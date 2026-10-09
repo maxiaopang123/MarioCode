@@ -960,6 +960,10 @@ export interface SessionState {
   browserTabs: BrowserTab[];
   /** The currently active browser tab id (shared across containers). */
   browserActiveTabId: string | null;
+  /** An Agent view the agent handed to the user (browser_present), waiting for
+   *  「继续」/「接管」. Lives in the store (not the panel) so the hand-off is
+   *  delivered even while the browser panel is closed. NOT persisted. */
+  presentedBrowser: { browserId: string; note: string } | null;
   /** A URL staged by an external entry (e.g. file-tree "open in browser") to
    *  be loaded into the browser panel when no tab exists yet. BrowserPanel's
    *  first-tab effect consumes and clears it. NOT persisted. */
@@ -1617,6 +1621,12 @@ export interface SessionState {
    *  createTab) into the renderer's tab list, so BrowserPanel's show/hide/
    *  bounds logic can manage it. Idempotent: if a tab for this browserId
    *  already exists, just updates its url/title/device and activates it. */
+  /** Main presented an Agent view: adopt it as the active tab, remember the
+   *  note for the banner and open the right panel on the browser tab. */
+  agentViewPresented: (browserId: string, info: { url?: string; title?: string; note?: string }) => void;
+  /** Main handed the view back (continued) or recycled it (closed): drop the
+   *  adopted tab + banner. Idempotent; a view that was never adopted is a no-op. */
+  agentViewReleased: (browserId: string) => void;
   adoptAgentBrowserTab: (
     browserId: string,
     info: {
@@ -4610,6 +4620,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   browserDeviceToolbarOpen: false,
   browserTabs: [],
   browserActiveTabId: null,
+  presentedBrowser: null,
   pendingBrowserUrl: null,
   browserViewSuppressed: 0,
   // Draggable pane sizes. Persisted as one JSON blob (UI_PANE_WIDTHS_SETTING_KEY);
@@ -8532,6 +8543,34 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     // initial tab.
     get().setRightPanelTab("browser");
     set({ rightOpen: true, pendingBrowserUrl: url });
+  },
+  agentViewPresented: (browserId, info) => {
+    get().adoptAgentBrowserTab(browserId, { url: info.url, title: info.title });
+    set({ presentedBrowser: { browserId, note: info.note ?? "" } });
+    const s = get();
+    if (!s.browserPanelOpen) {
+      s.setRightPanelTab("browser");
+      s.setRightOpen(true);
+    }
+  },
+  agentViewReleased: (browserId) => {
+    const s = get();
+    const presentedBrowser = s.presentedBrowser?.browserId === browserId ? null : s.presentedBrowser;
+    const idx = s.browserTabs.findIndex((t) => t.browserId === browserId);
+    if (idx === -1) {
+      if (presentedBrowser !== s.presentedBrowser) set({ presentedBrowser });
+      return;
+    }
+    const removing = s.browserTabs[idx];
+    const remaining = s.browserTabs.filter((t) => t.browserId !== browserId);
+    set({
+      presentedBrowser,
+      browserTabs: remaining,
+      browserActiveTabId:
+        removing.id === s.browserActiveTabId
+          ? remaining[Math.min(idx, remaining.length - 1)]?.id ?? null
+          : s.browserActiveTabId,
+    });
   },
   adoptAgentBrowserTab: (browserId, info) => {
     const s = get();

@@ -15,8 +15,10 @@ import {
   BrowserManager,
   AGENT_VIEWS_PER_SESSION_MAX,
   AGENT_VIEW_IDLE_TTL_MS,
+  applyAgentHostFlags,
 } from "@main/browser/BrowserManager.js";
 import {
+  browserClick,
   browserList,
   browserNavigate,
   browserPresent,
@@ -31,8 +33,13 @@ const textOf = (r: { content: { type: string; text?: string }[] }) =>
 const agentViews = (session: string) =>
   BrowserManager.list().filter(i => i.owner === "agent" && i.agentSessionId === session);
 
+const internals = () => BrowserManager as unknown as { get(id: string): { view: Electron.WebContentsView; parent: string; visible: boolean } };
+const wcOf = (id: string) => internals().get(id).view.webContents;
+const parentOf = (id: string) => internals().get(id).parent;
+
 async function main() {
   const data = process.env.MARIOCODE_SMOKE_DATA!;
+  applyAgentHostFlags();
   app.setPath("userData", data);
   app.on("window-all-closed", () => {});
   await app.whenReady();
@@ -65,8 +72,20 @@ async function main() {
     assert.equal(agentViews("S1").length, 1, "one agent view for S1");
     const a1 = agentViews("S1")[0].browserId;
     assert.notEqual(a1, userId);
-    const views = window.contentView.children.map(v => v.getBounds());
-    assert.ok(views.some(b => b.x < 0), "agent view is off-screen");
+    // The agent view rests in the invisible host window, NOT in the main window.
+    assert.equal(window.contentView.children.length, 1, "main window holds only the user's tab");
+    assert.equal(parentOf(a1), "host", "agent view rests in the host window");
+    // A resting view is a real browser: full desktop viewport, working clicks, real pixels.
+    assert.equal(await wcOf(a1).mainFrame.executeJavaScript("innerWidth"), 1280, "resting agent view has a real 1280px viewport");
+    for (let i = 0; i < 4; i++) {
+      await wcOf(a1).mainFrame.executeJavaScript(`window.__c=0;document.getElementById("b").onclick=()=>{window.__c++}`);
+      await browserSnapshot({}, "S1");
+      const clicked = textOf(await browserClick({ index: 2 }, "S1"));
+      assert.ok(!clicked.startsWith("❌"), clicked);
+      assert.equal(await wcOf(a1).mainFrame.executeJavaScript("window.__c"), 1, `real click #${i} landed`);
+    }
+    const shot = await BrowserManager.screenshot(a1);
+    assert.ok(shot.ok && shot.data.length > 1000, "resting agent view can be captured");
     assert.equal(BrowserManager.list().find(i => i.browserId === userId)!.url, userUrlBefore, "user tab URL unchanged");
     assert.equal(BrowserManager.list().find(i => i.browserId === userId)!.owner, "user");
 
@@ -114,6 +133,15 @@ async function main() {
     assert.ok(!present.startsWith("❌"), present);
     BrowserManager.markIdleForSession("S3"); // presented → must NOT go idle
     assert.deepEqual(BrowserManager.reapIdleAgentViews(Date.now() + AGENT_VIEW_IDLE_TTL_MS * 10), [], "presented view is never reaped");
+    // Presenting hands the view to the renderer, which shows it: it must move
+    // into the main window; closing the panel's interest sends it back home.
+    assert.ok(BrowserManager.show(s3).ok);
+    assert.equal(parentOf(s3), "main", "shown view lives in the main window");
+    assert.equal(window.contentView.children.length, 2, "main window now holds the presented view too");
+    assert.ok(BrowserManager.hide(s3).ok);
+    assert.equal(parentOf(s3), "host", "hidden agent view returns to the host window");
+    assert.equal(window.contentView.children.length, 1);
+    assert.ok(BrowserManager.show(s3).ok); // still mounted in main when it is closed below
     sentMessages.length = 0;
     const closed = BrowserManager.closeAgentViewsForSession("S3");
     assert.deepEqual(closed, [s3]);
@@ -127,7 +155,11 @@ async function main() {
     await browserNavigate({ url: `${base}/oauth` }, data, "S4");
     const s4 = agentViews("S4")[0].browserId;
     await browserPresent({ note: "完成授权" }, "S4");
+    assert.ok(BrowserManager.show(s4).ok);
     assert.ok(BrowserManager.takeoverBrowser(s4).ok);
+    assert.equal(parentOf(s4), "main", "a taken-over view stays in the main window");
+    assert.ok(BrowserManager.hide(s4).ok);
+    assert.equal(parentOf(s4), "main", "a user view hides inside the main window, never goes back to the host");
     assert.equal(BrowserManager.list().find(i => i.browserId === s4)!.owner, "user");
     const refused = textOf(await browserSnapshot({ browserId: s4 }, "S4"));
     assert.ok(refused.startsWith("❌"), "agent can no longer use a taken-over view");

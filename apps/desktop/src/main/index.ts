@@ -9,7 +9,7 @@ import { initTheme } from "@main/lib/theme.js";
 import { TerminalManager } from "@main/terminal/TerminalManager.js";
 import { BridgeRegistry } from "@main/providers/bridge/bridgeRegistry.js";
 import { lspManager } from "@main/lsp/LspManager.js";
-import { BrowserManager } from "@main/browser/BrowserManager.js";
+import { BrowserManager, applyAgentHostFlags } from "@main/browser/BrowserManager.js";
 import { startMobileServer, stopMobileServer } from "@main/mobile/MobileHttpServer.js";
 import { relayManager } from "@main/relay/RelayManager.js";
 import { RELAY_AUTO_START_SETTING_KEY } from "@contracts/relay";
@@ -63,6 +63,7 @@ const progressCapsule = new ProgressCapsule(runtimeManager, {
 const prevUserData = app.isPackaged
   ? join(app.getPath("appData"), "MarioCode")
   : app.getPath("userData");
+applyAgentHostFlags();
 app.setName("MarioCode");
 app.setPath("userData", prevUserData);
 // Managed agent runtimes (claude/codex/pi download-on-demand) live under

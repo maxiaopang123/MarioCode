@@ -70,6 +70,24 @@ await electronTest("agent-browser-panel", async data => {
   await delay(200);
   assert.equal(await tabCount(), 1);
 
+  // 4b. presented while the right panel is CLOSED: the hand-off must not be lost —
+  //      the store adopts the view, opens the panel on the browser tab and shows the banner.
+  await evaluate("window.panelTestStore.setState({rightOpen:false,rightPanelTab:'files'})");
+  await delay(200);
+  await push("presented", "agent-view-4", { url: "https://example.test/captcha", title: "Captcha", note: "通过验证" });
+  await wait("window.panelTestStore.getState().rightOpen&&window.panelTestStore.getState().rightPanelTab==='browser'");
+  await wait("window.panelTestStore.getState().browserTabs.length===2");
+  await wait("document.body.textContent.includes('Agent 需要你操作: 通过验证')");
+  assert.equal(await evaluate("window.panelTestStore.getState().presentedBrowser?.browserId"), "agent-view-4");
+  // handed back while the panel is closed again: store-level release, no stale tab
+  await evaluate("window.panelTestStore.setState({rightOpen:false,rightPanelTab:'files'})");
+  await delay(200);
+  await push("continued", "agent-view-4");
+  await wait("window.panelTestStore.getState().browserTabs.length===1");
+  assert.equal(await evaluate("window.panelTestStore.getState().presentedBrowser"), null, "presented cleared without the panel");
+  await evaluate("window.panelTestStore.setState({rightOpen:true,rightPanelTab:'browser'})");
+  await delay(300);
+
   // 5. presented again, take over → banner gone, the page stays as an ordinary tab.
   await push("presented", "agent-view-3", { url: "https://example.test/2fa", title: "2FA", note: "输入验证码" });
   await wait("window.panelTestStore.getState().browserTabs.length===2");

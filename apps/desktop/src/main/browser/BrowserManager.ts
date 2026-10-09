@@ -31,6 +31,7 @@ import {
   safeStorage,
   shell,
   session,
+  BrowserWindow,
   WebContentsView,
   type Rectangle,
   type Session,
@@ -366,6 +367,13 @@ interface LiveBrowser {
   agentSessionId: string;
   /** Last applied bounds, so show() can restore after a hide(). */
   lastBounds: BrowserBounds;
+  /** Which native window currently holds the view. Agent views rest in the
+   *  invisible host window ("host") and are moved into the main window only
+   *  while the user looks at them (present / show). */
+  parent: "main" | "host";
+  /** Agent views park in the host window when hidden. Cleared on take-over:
+   *  a user view hides off-screen inside the main window like any other tab. */
+  hostable: boolean;
   /** True while the view is attached + onscreen; false when hidden offscreen. */
   visible: boolean;
   /** Public layout/visibility intent; capture cleanup must not undo newer UI changes. */
@@ -409,6 +417,26 @@ interface LiveBrowser {
 
 /** Offscreen parking rect used while hidden (keeps the view alive but unseen). */
 const HIDDEN_BOUNDS: Rectangle = { x: -9999, y: -9999, width: 1, height: 1 };
+
+/** Size of the invisible window that hosts resting agent views. A view parked
+ *  at x/y -9999 INSIDE the main window is unreliable: Chromium treats it as
+ *  not visible (viewport 0×0, empty capturePage, ~half of real clicks lost).
+ *  A real — but fully transparent, unfocusable, off-screen — window keeps the
+ *  compositor running, so agent views get a true 1280×800 viewport, working
+ *  clicks and screenshots without ever flashing on the user's screen. */
+const AGENT_HOST_WIDTH = 1440;
+const AGENT_HOST_HEIGHT = 1100;
+/** Must run BEFORE app 'ready'. Windows' native occlusion tracking decides an
+ *  off-screen window is covered and Chromium stops compositing it, so the host
+ *  window's views fail capturePage ("Current display surface not available")
+ *  and drop real input events. Turning the tracker off keeps them live. It only
+ *  stops Chromium from pausing painting of windows hidden behind others. */
+export function applyAgentHostFlags(): void {
+  app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+}
+
+/** Where a view sits inside the host window (desktop viewport). */
+const AGENT_HOST_VIEW_BOUNDS: Rectangle = { x: 0, y: 0, width: 1280, height: 800 };
 
 /** Default on-screen bounds for an agent-created view that the renderer hasn't
  *  measured yet. Sized to a reasonable right-panel region of the main window so
@@ -601,11 +629,68 @@ class BrowserManagerImpl {
   /** Idle agent-view reaper (started with the first agent view; unref'd). */
   private reapTimer: NodeJS.Timeout | null = null;
 
+  /** The invisible window agent views rest in (see AGENT_HOST_*). Created
+   *  lazily with the first agent view; null if the window cannot be made, in
+   *  which case agent views fall back to the old off-screen-in-main parking. */
+  private agentHost: BrowserWindow | null = null;
+
+  private ensureAgentHost(): BrowserWindow | null {
+    if (this.agentHost && !this.agentHost.isDestroyed()) return this.agentHost;
+    try {
+      const host = new BrowserWindow({
+        show: false,
+        x: -12000,
+        y: -12000,
+        width: AGENT_HOST_WIDTH,
+        height: AGENT_HOST_HEIGHT,
+        frame: false,
+        skipTaskbar: true,
+        focusable: false,
+        opacity: 0,
+        webPreferences: { backgroundThrottling: false },
+      });
+      // A never-shown window is not composited, so its views would report a 0×0
+      // viewport and capture nothing. showInactive() gives them a live surface
+      // without stealing focus; opacity 0 + off-screen keeps it invisible.
+      host.showInactive();
+      host.on("closed", () => {
+        if (this.agentHost === host) this.agentHost = null;
+      });
+      this.agentHost = host;
+      return host;
+    } catch (err) {
+      log.warn(`agent host window create failed: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  /** Move a view into the window it should live in. A view is only ever a child
+   *  of one window, and `close()` must detach it from the window that really
+   *  holds it — removing from the wrong parent leaves a dangling native view
+   *  that crashes the process when its webContents is closed. */
+  private attachTo(live: LiveBrowser, target: "main" | "host"): boolean {
+    const win = target === "main" ? getMainWindow() : this.ensureAgentHost();
+    if (!win || win.isDestroyed()) return false;
+    this.detachFromParent(live);
+    win.contentView.addChildView(live.view);
+    live.parent = target;
+    return true;
+  }
+
+  private detachFromParent(live: LiveBrowser): void {
+    const win = live.parent === "host" ? this.agentHost : getMainWindow();
+    try {
+      if (win && !win.isDestroyed()) win.contentView.removeChildView(live.view);
+    } catch {
+      /* window tearing down - ignore */
+    }
+  }
+
   create(projectPath: string, initialDevice?: BrowserDevicePreset, opts?: { agentSessionId?: string }): BrowserCreateResult {
     // Per-session cap: make room BEFORE spawning so the new view never
     // pushes the session over the limit.
     if (opts?.agentSessionId) this.evictForNewAgentView(opts.agentSessionId);
-    const spawned = this.spawnView(projectPath);
+    const spawned = this.spawnView(projectPath, !!opts?.agentSessionId);
     if ("error" in spawned) return { ok: false, error: spawned.error };
     const live = spawned.live;
     if (opts?.agentSessionId) {
@@ -635,11 +720,16 @@ class BrowserManagerImpl {
    *  the shared browser session, registers it, wires navigation events, and
    *  installs the window-open handler that turns target=_blank / window.open
    *  into in-panel tabs (see handleWindowOpen). */
-  private spawnView(projectPath: string): { live: LiveBrowser } | { error: string } {
-    const win = getMainWindow();
-    if (!win || win.isDestroyed()) {
+  private spawnView(projectPath: string, forAgent = false): { live: LiveBrowser } | { error: string } {
+    const mainWin = getMainWindow();
+    if (!mainWin || mainWin.isDestroyed()) {
       return { error: "主窗口未就绪，无法创建浏览器" };
     }
+    // Agent views start in the invisible host; if it cannot be created they
+    // degrade to the legacy off-screen parking in the main window.
+    const hostWin = forAgent ? this.ensureAgentHost() : null;
+    const win = hostWin ?? mainWin;
+    const parent: "main" | "host" = hostWin ? "host" : "main";
 
     const id = randomUUID();
     const ses = browserSession();
@@ -673,7 +763,8 @@ class BrowserManagerImpl {
 
     view.setBackgroundColor(BROWSER_BACKGROUND);
     // Start offscreen + invisible until the renderer sends real bounds + show().
-    view.setBounds(HIDDEN_BOUNDS);
+    // Hosted agent views get a real desktop viewport inside the host window.
+    view.setBounds(parent === "host" ? AGENT_HOST_VIEW_BOUNDS : HIDDEN_BOUNDS);
 
     // Present a plain Chrome UA on desktop pages — chromeLikeUserAgent strips
     // the Electron/app-name tail, which sign-in flows (Google & friends) and
@@ -691,7 +782,11 @@ class BrowserManagerImpl {
       projectPath,
       owner: "user",
       agentSessionId: "",
+      // Stays HIDDEN_BOUNDS for hosted views too: it is the RENDERER's layout
+      // intent (width 1 = never measured), which show() uses to pick defaults.
       lastBounds: HIDDEN_BOUNDS,
+      parent,
+      hostable: parent === "host",
       visible: false,
       presentationVersion: 0,
       pickMode: false,
@@ -1045,6 +1140,9 @@ class BrowserManagerImpl {
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
     live.presentationVersion += 1;
     live.lastBounds = bounds;
+    // A resting host view keeps its fixed desktop viewport; the renderer's
+    // layout only applies once show() moves it into the main window.
+    if (live.parent === "host") return { ok: true };
     try {
       live.view.setBounds(live.visible ? bounds : { ...bounds, x: -9999, y: -9999 });
     } catch (err) {
@@ -1070,8 +1168,13 @@ class BrowserManagerImpl {
     const win = getMainWindow();
     if (!win || win.isDestroyed()) return { ok: false, error: "主窗口未就绪" };
     try {
-      // Re-attach in case it was removed (e.g. by close/hide using removeChildView).
-      if (!live.visible) win.contentView.addChildView(live.view);
+      // A resting agent view lives in the host window: bring it over.
+      if (live.parent === "host") {
+        if (!this.attachTo(live, "main")) return { ok: false, error: "主窗口未就绪" };
+      } else if (!live.visible) {
+        // Re-attach in case it was removed (e.g. by close/hide using removeChildView).
+        win.contentView.addChildView(live.view);
+      }
       const b = live.lastBounds.width > 1 ? live.lastBounds : defaultOnscreenBounds();
       live.lastBounds = b;
       live.view.setBounds(b);
@@ -1093,6 +1196,17 @@ class BrowserManagerImpl {
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
     live.presentationVersion += 1;
     try {
+      if (live.hostable) {
+        // Agent view: go back to resting in the invisible host window (full
+        // viewport, capturable) instead of a degenerate off-screen slot.
+        if (live.parent !== "host" && !this.attachTo(live, "host")) {
+          live.view.setBounds({ x: -9999, y: -9999, width: live.lastBounds.width, height: live.lastBounds.height });
+        } else {
+          live.view.setBounds(AGENT_HOST_VIEW_BOUNDS);
+        }
+        live.visible = false;
+        return { ok: true };
+      }
       live.view.setBounds({ x: -9999, y: -9999, width: live.lastBounds.width, height: live.lastBounds.height });
       live.visible = false;
       return { ok: true };
@@ -1281,12 +1395,7 @@ class BrowserManagerImpl {
   close(id: string): BrowserOpResult {
     const live = this.get(id);
     if (!live) return { ok: true }; // already gone is fine
-    const win = getMainWindow();
-    try {
-      if (win && !win.isDestroyed()) win.contentView.removeChildView(live.view);
-    } catch {
-      /* window tearing down - ignore */
-    }
+    this.detachFromParent(live);
     this.wcToBrowser.delete(live.view.webContents.id);
     this.browsers.delete(id);
     if (live.uaDebuggerAttached) {
@@ -1823,6 +1932,12 @@ class BrowserManagerImpl {
     live.presented = false;
     live.owner = "user";
     live.agentSessionId = "";
+    // From now on it is an ordinary user tab: it belongs in the main window.
+    live.hostable = false;
+    if (live.parent === "host" && this.attachTo(live, "main")) {
+      live.view.setBounds({ x: -9999, y: -9999, width: Math.max(live.lastBounds.width, 1), height: Math.max(live.lastBounds.height, 1) });
+      live.visible = false;
+    }
     log.info(`browser taken over by user: ${id}`);
     return { ok: true };
   }
@@ -2359,7 +2474,10 @@ class BrowserManagerImpl {
     // incomplete output (wrong viewport size) or changes the page layout
     // (resizing to scrollHeight triggers reflow), so we prioritize capture
     // correctness over avoiding the flash.
-    const needsTempShow = !live.visible || live.lastBounds.width <= 1;
+    // A view resting in the host window already has a live compositor surface
+    // and a full viewport, so it is captured in place — no on-screen flash.
+    const inHost = live.parent === "host";
+    const needsTempShow = !inHost && (!live.visible || live.lastBounds.width <= 1);
     const savedVisible = live.visible;
     const savedBounds = live.lastBounds;
     const savedVersion = live.presentationVersion;
@@ -2369,11 +2487,13 @@ class BrowserManagerImpl {
     const emuRect = this.emulationCaptureRect(live);
     const boundsMatchEmu =
       emuRect != null &&
+      !inHost &&
       Math.abs(live.lastBounds.width - emuRect.width) <= 2 &&
       Math.abs(live.lastBounds.height - emuRect.height) <= 2;
     const tempShown = needsTempShow || (emuRect != null && !boundsMatchEmu);
     if (tempShown) {
-      const b = emuRect ?? defaultOnscreenBounds();
+      // In the host window the emulated viewport is laid out from its origin.
+      const b = inHost && emuRect ? { x: 0, y: 0, width: emuRect.width, height: emuRect.height } : emuRect ?? defaultOnscreenBounds();
       live.view.setBounds(b);
       // Temporary capture geometry must not change the user's visibility or
       // layout intent. Public show/hide/setBounds can supersede it while awaiting.
@@ -2404,7 +2524,9 @@ class BrowserManagerImpl {
     // Restore the hidden/offscreen state if we temporarily showed/resized the
     // view, only if no newer UI intent arrived while capture was awaiting.
     if (tempShown && live.presentationVersion === savedVersion && !wc.isDestroyed()) {
-      if (savedVisible) {
+      if (inHost) {
+        live.view.setBounds(AGENT_HOST_VIEW_BOUNDS);
+      } else if (savedVisible) {
         live.view.setBounds(savedBounds);
       } else {
         // Keep offscreen but preserve dimensions (consistent with hide()).
@@ -2697,6 +2819,14 @@ class BrowserManagerImpl {
   disposeAll(): void {
     const ids = [...this.browsers.keys()];
     for (const id of ids) this.close(id);
+    // Views are gone; the invisible host window must not keep the app alive.
+    const host = this.agentHost;
+    this.agentHost = null;
+    if (host && !host.isDestroyed()) host.destroy();
+    if (this.reapTimer) {
+      clearInterval(this.reapTimer);
+      this.reapTimer = null;
+    }
   }
 }
 

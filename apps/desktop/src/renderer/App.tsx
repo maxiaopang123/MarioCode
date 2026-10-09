@@ -77,6 +77,17 @@ export function App() {
   // (collapsed = full-width desktop, ignoring the agent's device).
   useEffect(() => {
     const off = api.on.browserEvent((msg) => {
+      // Agent hand-off (browser_present): handled here, not in BrowserPanel, so
+      // it still arrives while the browser panel is closed or unmounted.
+      if (msg.type === "presented") {
+        const p = (msg.payload as { url?: string; title?: string; note?: string }) ?? {};
+        useSessionStore.getState().agentViewPresented(msg.browserId, p);
+        return;
+      }
+      if (msg.type === "continued" || msg.type === "closed") {
+        useSessionStore.getState().agentViewReleased(msg.browserId);
+        return;
+      }
       if (msg.type !== "agentOpened") return;
       const p = (msg.payload as { url?: string; title?: string; device?: BrowserDevicePreset }) ?? {};
       const st = useSessionStore.getState();

@@ -570,6 +570,36 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
     [addTab, setActiveTabId, patchTabInStore, showActiveView],
   );
 
+  /** Remove a tab from the strip WITHOUT closing its native view. Used when
+   *  main already hid / destroyed the view (an agent view handed back or
+   *  recycled), so the strip never keeps a tab pointing at an agent page the
+   *  user could then operate. Idempotent. */
+  const removeTabLocal = useCallback(
+    (browserId: string) => {
+      const idx = tabsRef.current.findIndex((t) => t.browserId === browserId);
+      if (idx === -1) return;
+      const removing = tabsRef.current[idx];
+      const remaining = tabsRef.current.filter((t) => t.browserId !== browserId);
+      setTabs(remaining);
+      tabsRef.current = remaining;
+      if (remaining.length === 0) {
+        setActiveTabId(null);
+        activeTabIdRef.current = null;
+        lastBoundsRef.current = null;
+        if (mode === "overlay") setOpen(false);
+        else setRightPanelTab("files");
+        return;
+      }
+      if (removing.id === activeTabIdRef.current) {
+        const nextTab = remaining[Math.min(idx, remaining.length - 1)];
+        setActiveTabId(nextTab.id);
+        activeTabIdRef.current = nextTab.id;
+        showActiveView();
+      }
+    },
+    [mode, setTabs, setActiveTabId, setOpen, setRightPanelTab, showActiveView],
+  );
+
   // First time THIS container becomes active with no tabs at all: create the
   // initial tab. (Tabs are shared, so this only fires once per session no
   // matter which container mounts first.) creatingTabRef skips the redundant
@@ -894,8 +924,12 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
         adoptWindowOpenTab(msg.browserId, { url: p.url, title: p.title });
         return;
       }
-      if (msg.type === "continued") {
-        setPresented(null);
+      // The agent view was handed back (continued) or recycled by main
+      // (closed): drop the adopted tab locally so no stale agent page stays in
+      // the strip. The native view is already hidden / destroyed by main.
+      if (msg.type === "continued" || msg.type === "closed") {
+        setPresented((p) => (p && p.browserId === msg.browserId ? null : p));
+        removeTabLocal(msg.browserId);
         return;
       }
       const tab = tabsRef.current.find((t) => t.browserId === msg.browserId);
@@ -1208,6 +1242,15 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
     setPresented(null);
   }, [presented]);
 
+  /** Presented banner「接管」: keep the page as an ordinary user tab. Main
+   *  flips the owner to user, so the agent can no longer touch it and will open
+   *  a fresh hidden view next time. */
+  const handlePresentTakeover = useCallback(() => {
+    if (!presented) return;
+    void api.browser.takeover({ browserId: presented.browserId });
+    setPresented(null);
+  }, [presented]);
+
   /** Select a tab: hide the old active view, show the new one. */
   const handleSelectTab = useCallback(
     (id: string) => {
@@ -1477,13 +1520,23 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
           <span className="min-w-0 truncate">
             {t("browser.presented.banner", { note: presented.note })}
           </span>
-          <button
-            type="button"
-            className="shrink-0 rounded-md bg-amber-600 px-3 py-1 text-[12px] font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
-            onClick={handlePresentContinue}
-          >
-            {t("browser.presented.continue")}
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              className="rounded-md border border-amber-600/50 px-3 py-1 text-[12px] font-medium text-amber-900 hover:bg-amber-100 dark:text-amber-100 dark:hover:bg-amber-900/60"
+              onClick={handlePresentTakeover}
+              title={t("browser.presented.takeoverHint")}
+            >
+              {t("browser.presented.takeover")}
+            </button>
+            <button
+              type="button"
+              className="rounded-md bg-amber-600 px-3 py-1 text-[12px] font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
+              onClick={handlePresentContinue}
+            >
+              {t("browser.presented.continue")}
+            </button>
+          </div>
         </div>
       )}
 

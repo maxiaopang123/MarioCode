@@ -746,6 +746,13 @@ class RuntimeManager {
     // and go. The registry holds onto the per-session FileSnapshot
     // for the lifetime of the app otherwise.
     dropFileSnapshot(sessionId);
+    // Agent browser views of a deleted / archived session can never be used
+    // again (TODO-051): destroy them instead of leaving hidden pages around.
+    try {
+      BrowserManager.closeAgentViewsForSession(sessionId);
+    } catch {
+      /* browser manager may not be ready on shutdown */
+    }
     this.sessions.delete(sessionId);
   }
 

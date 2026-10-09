@@ -85,4 +85,6 @@ export const en = {
   /* ── agent present banner ── */
   "browser.presented.banner": "Agent needs your input: {note}",
   "browser.presented.continue": "Continue",
+  "browser.presented.takeover": "Take over",
+  "browser.presented.takeoverHint": "Keep this page as your own tab; the agent will open a new background view next time",
 } as const;

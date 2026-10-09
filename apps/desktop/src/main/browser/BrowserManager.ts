@@ -340,6 +340,21 @@ export interface BrowserBounds extends Rectangle {}
  *  the user never sees the agent's browsing unless explicitly presented. */
 export type BrowserOwner = "user" | "agent";
 
+/** Agent views that stayed idle (turn ended, not presented) this long are
+ *  destroyed by the reaper. Long enough that "look at that page again" on the
+ *  next turn still finds it; short enough that hidden pages never pile up. */
+export const AGENT_VIEW_IDLE_TTL_MS = 10 * 60_000;
+
+/** Max live agent views per session. Creating one more evicts the least
+ *  recently used one that is not presented to the user. */
+export const AGENT_VIEWS_PER_SESSION_MAX = 3;
+
+/** How often the reaper scans for expired idle agent views. */
+const AGENT_VIEW_REAP_INTERVAL_MS = 60_000;
+
+/** Outcome of a `loadUrl()`-initiated navigation (the loadURL promise). */
+type LoadOutcome = { ok: true } | { ok: false; error: string };
+
 interface LiveBrowser {
   id: string;
   view: WebContentsView;
@@ -363,6 +378,15 @@ interface LiveBrowser {
   takenOver: boolean;
   /** Idle after turn end; eligible for cleanup. */
   idle: boolean;
+  /** When the view went idle (0 = active). The reaper compares this with the TTL. */
+  idleSince: number;
+  /** Last time an agent tool used this view; orders LRU eviction. */
+  lastUsedAt: number;
+  /** The most recent loadUrl() navigation: its promise settles when the page
+   *  finished loading (or failed). waitForLoad awaits it — polling
+   *  isLoading() raced with the cookie-vault wait that precedes loadURL and
+   *  lagged on hidden views. */
+  pendingLoad: { done: boolean; promise: Promise<LoadOutcome> } | null;
   /** Current device emulation preset (desktop = no emulation). */
   device: BrowserDevicePreset;
   /** Current viewport config (custom dims + orientation). Mirrors what was
@@ -574,14 +598,20 @@ class BrowserManagerImpl {
   /** Background cookie-vault save timer (see saveCookieVault).
    *  Started once with the first browser view; never stopped (process exits). */
   private persistTimer: NodeJS.Timeout | null = null;
+  /** Idle agent-view reaper (started with the first agent view; unref'd). */
+  private reapTimer: NodeJS.Timeout | null = null;
 
   create(projectPath: string, initialDevice?: BrowserDevicePreset, opts?: { agentSessionId?: string }): BrowserCreateResult {
+    // Per-session cap: make room BEFORE spawning so the new view never
+    // pushes the session over the limit.
+    if (opts?.agentSessionId) this.evictForNewAgentView(opts.agentSessionId);
     const spawned = this.spawnView(projectPath);
     if ("error" in spawned) return { ok: false, error: spawned.error };
     const live = spawned.live;
     if (opts?.agentSessionId) {
       live.owner = "agent";
       live.agentSessionId = opts.agentSessionId;
+      this.ensureReapTimer();
     }
 
     // Apply an optional initial device-emulation preset once the renderer is
@@ -668,6 +698,9 @@ class BrowserManagerImpl {
       presented: false,
       takenOver: false,
       idle: false,
+      idleSince: 0,
+      lastUsedAt: Date.now(),
+      pendingLoad: null,
       device: "desktop",
       viewport: { device: "desktop", orientation: "portrait" },
       defaultUserAgent: desktopUserAgent || rawUserAgent,
@@ -874,7 +907,20 @@ class BrowserManagerImpl {
       // only exists as in-memory cookies after the re-inject) is present from
       // the very first request — otherwise the site would see an anonymous
       // session and bounce to its login page.
-      void live.ready.then(() => wc.loadURL(url));
+      const entry: { done: boolean; promise: Promise<LoadOutcome> } = {
+        done: false,
+        promise: Promise.resolve({ ok: true } as LoadOutcome),
+      };
+      entry.promise = live.ready
+        .then(() => wc.loadURL(url))
+        .then(
+          (): LoadOutcome => ({ ok: true }),
+          (err: unknown): LoadOutcome => ({ ok: false, error: err instanceof Error ? err.message : String(err) }),
+        )
+        .finally(() => {
+          entry.done = true;
+        });
+      live.pendingLoad = entry;
       return { ok: true };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -893,32 +939,64 @@ class BrowserManagerImpl {
     const live = this.get(id);
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
     const wc = live.view.webContents;
-    if (wc.isLoading() === false) {
-      // Already loaded (or hasn't started yet). Give a brief grace period for a
-      // just-kicked-off loadURL to register as loading, then return current state.
-      await new Promise((r) => setTimeout(r, 200));
-      if (wc.isLoading() === false) {
-        return { ok: true, url: wc.getURL(), title: wc.getTitle() };
+    // A loadUrl()-initiated navigation: wait for ITS promise (authoritative —
+    // the navigation may not even have started yet while the cookie vault is
+    // restoring, and hidden views report isLoading() late).
+    const pending = live.pendingLoad && !live.pendingLoad.done ? live.pendingLoad : null;
+    if (pending) {
+      let timer: NodeJS.Timeout | undefined;
+      const outcome = await Promise.race([
+        pending.promise,
+        new Promise<"timeout">((r) => {
+          timer = setTimeout(() => r("timeout"), timeoutMs);
+        }),
+      ]);
+      if (timer) clearTimeout(timer);
+      // Backstop (permanent spinners / streaming pages): report what we have.
+      if (outcome === "timeout" || outcome.ok) return { ok: true, url: wc.getURL(), title: wc.getTitle() };
+      // ERR_ABORTED (-3): a newer navigation superseded this one — fall through
+      // and wait for whatever is loading now.
+      if (!/(-3)/.test(outcome.error)) {
+        const m = /^(ERR_[A-Z_]+) ((-?d+))/.exec(outcome.error);
+        return { ok: false, error: m ? `页面加载失败(${m[2]}): ${m[1]}` : `页面加载失败: ${outcome.error}` };
       }
     }
     return new Promise((resolve) => {
       let settled = false;
+      let graceTimer: NodeJS.Timeout | null = null;
+      let backstop: NodeJS.Timeout | null = null;
+      const current = () => ({ ok: true, url: wc.getURL(), title: wc.getTitle() });
       const finish = (result: { ok: boolean; url?: string; title?: string; error?: string }) => {
         if (settled) return;
         settled = true;
         wc.removeListener("did-finish-load", onLoad);
         wc.removeListener("did-fail-load", onFail);
+        if (graceTimer) clearTimeout(graceTimer);
+        if (backstop) clearTimeout(backstop);
         resolve(result);
       };
-      const onLoad = () => finish({ ok: true, url: wc.getURL(), title: wc.getTitle() });
+      const onLoad = () => finish(current());
       const onFail = (_e: unknown, errorCode: number, errorDesc: string) =>
         finish({ ok: false, error: `页面加载失败(${errorCode}): ${errorDesc}` });
+      // Listen FIRST, then look at isLoading(). The old order (check, sleep
+      // 200ms, then listen) missed did-finish-load for fast local pages that
+      // finished inside the grace window while a hidden view still reported
+      // isLoading()=true, so the call sat on the 8s backstop (TODO-051: agent
+      // views live off-screen, where that flag lags).
       wc.on("did-finish-load", onLoad);
       wc.on("did-fail-load", onFail);
+      if (!wc.isLoading()) {
+        // Not loading (yet): a just-kicked-off loadURL may not have registered.
+        // Give it a brief grace period, then return the current state — unless a
+        // load event already settled us above.
+        graceTimer = setTimeout(() => {
+          if (!wc.isLoading()) finish(current());
+        }, 200);
+      }
       // Backstop: some pages never fire did-finish-load (permanent spinners,
       // streaming responses). Resolve with whatever we have so the agent isn't
       // blocked indefinitely.
-      setTimeout(() => finish({ ok: true, url: wc.getURL(), title: wc.getTitle() }), timeoutMs);
+      backstop = setTimeout(() => finish(current()), timeoutMs);
     });
   }
 
@@ -1701,6 +1779,8 @@ class BrowserManagerImpl {
     if (live.takenOver) return { ok: false, error: "用户已接管该视图,请新开一个视图继续(browser_navigate 不传 browserId)" };
     live.presented = true;
     live.idle = false;
+    live.idleSince = 0;
+    live.lastUsedAt = Date.now();
     sendToRenderer(IPC.BROWSER_EVENT, {
       channel: IPC.BROWSER_EVENT,
       browserId: id,
@@ -1721,6 +1801,7 @@ class BrowserManagerImpl {
     const live = this.get(id);
     if (!live) return { ok: false, error: "browserId 不存在或已关闭" };
     live.presented = false;
+    live.lastUsedAt = Date.now();
     // Hide back off-screen unless the renderer had it visible (user tab adopted it).
     if (live.owner === "agent" && live.visible) this.hide(id);
     sendToRenderer(IPC.BROWSER_EVENT, {
@@ -1753,9 +1834,92 @@ class BrowserManagerImpl {
     for (const live of this.browsers.values()) {
       if (live.owner === "agent" && live.agentSessionId === agentSessionId && !live.presented) {
         live.idle = true;
+        live.idleSince = Date.now();
         if (live.visible) this.hide(live.id);
       }
     }
+  }
+
+  /** An agent tool used this view: it is active again (not idle) and the
+   *  newest in the LRU order. Called from every agent-tool resolve path. */
+  touchAgentView(id: string): void {
+    const live = this.browsers.get(id);
+    if (!live || live.owner !== "agent") return;
+    live.idle = false;
+    live.idleSince = 0;
+    live.lastUsedAt = Date.now();
+  }
+
+  /** Destroy agent views that have been idle past the TTL. Presented views
+   *  (the user is mid-interaction) and active ones are never touched. `now` /
+   *  `ttlMs` are injectable so tests do not wait ten minutes. Returns the
+   *  closed browserIds. */
+  reapIdleAgentViews(now: number = Date.now(), ttlMs: number = AGENT_VIEW_IDLE_TTL_MS): string[] {
+    const closed: string[] = [];
+    for (const live of [...this.browsers.values()]) {
+      if (live.owner !== "agent" || live.presented || !live.idle || live.idleSince <= 0) continue;
+      if (now - live.idleSince < ttlMs) continue;
+      this.closeAgentView(live, "idle-timeout");
+      closed.push(live.id);
+    }
+    return closed;
+  }
+
+  /** Destroy every agent view that belongs to a session — the session was
+   *  deleted / archived, so nothing will ever use them again. Includes
+   *  presented views (the renderer is told so it drops the adopted tab). */
+  closeAgentViewsForSession(agentSessionId: string): string[] {
+    const closed: string[] = [];
+    for (const live of [...this.browsers.values()]) {
+      if (live.owner === "agent" && live.agentSessionId === agentSessionId) {
+        this.closeAgentView(live, "session-gone");
+        closed.push(live.id);
+      }
+    }
+    return closed;
+  }
+
+  /** Make room for one more agent view of this session: evict the least
+   *  recently used non-presented views until the session is under the cap. */
+  private evictForNewAgentView(agentSessionId: string): void {
+    const mine = [...this.browsers.values()].filter(
+      (l) => l.owner === "agent" && l.agentSessionId === agentSessionId,
+    );
+    if (mine.length < AGENT_VIEWS_PER_SESSION_MAX) return;
+    const evictable = mine.filter((l) => !l.presented).sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+    let over = mine.length - AGENT_VIEWS_PER_SESSION_MAX + 1;
+    for (const live of evictable) {
+      if (over <= 0) break;
+      this.closeAgentView(live, "over-cap");
+      over--;
+    }
+  }
+
+  /** Close an agent view; when the renderer adopted it (presented), tell it
+   *  to drop the tab so a dead / hidden agent page never lingers in the strip. */
+  private closeAgentView(live: LiveBrowser, reason: string): void {
+    if (live.presented) {
+      sendToRenderer(IPC.BROWSER_EVENT, {
+        channel: IPC.BROWSER_EVENT,
+        browserId: live.id,
+        type: "closed",
+        payload: { reason },
+      });
+    }
+    log.info(`agent browser view recycled: ${live.id} session=${live.agentSessionId} reason=${reason}`);
+    this.close(live.id);
+  }
+
+  private ensureReapTimer(): void {
+    if (this.reapTimer) return;
+    this.reapTimer = setInterval(() => {
+      try {
+        this.reapIdleAgentViews();
+      } catch (err) {
+        log.warn(`agent view reaper failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }, AGENT_VIEW_REAP_INTERVAL_MS);
+    this.reapTimer.unref?.();
   }
 
   /** Read a structured snapshot of the page: url/title/readyState, a slice of

@@ -88,4 +88,6 @@ export const zh = {
   /* ── agent present banner ── */
   "browser.presented.banner": "Agent 需要你操作: {note}",
   "browser.presented.continue": "继续",
+  "browser.presented.takeover": "接管",
+  "browser.presented.takeoverHint": "把这个页面留作你自己的标签页;Agent 之后会另开新的后台视图",
 } as const;

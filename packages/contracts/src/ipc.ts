@@ -4178,7 +4178,8 @@ export interface BrowserEventMessage {
     | "authRequest"
     | "download"
     | "presented"
-    | "continued";
+    | "continued"
+    | "closed";
   payload: unknown;
 }
 

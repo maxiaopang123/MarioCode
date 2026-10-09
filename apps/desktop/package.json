@@ -1,6 +1,6 @@
 {
   "name": "@mariocode/desktop",
-  "version": "0.2.41",
+  "version": "0.2.42",
   "private": true,
   "description": "MarioCode - Desktop GUI for Claude Code",
   "author": "huangbh",
@@ -25,6 +25,8 @@
     "test:startup-electron": "node scripts/test-startup-electron.mjs",
     "test:session-overview-electron": "node scripts/test-session-overview-electron.mjs",
     "test:message-timeline-electron": "node scripts/test-session-overview-electron.mjs --timeline",
+    "test:agent-browser-panel-electron": "node scripts/test-agent-browser-panel-electron.mjs",
+    "test:agent-browser": "node scripts/agent-browser-smoke/run.mjs",
     "test:browser-lifecycle-electron": "node scripts/browser-lifecycle-smoke/run.mjs && node scripts/test-browser-lifecycle-electron.mjs",
     "test:document-preview-electron": "node scripts/test-document-preview-electron.mjs",
     "test:text-preview-electron": "node scripts/test-text-preview-electron.mjs",

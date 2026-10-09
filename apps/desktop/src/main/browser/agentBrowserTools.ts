@@ -284,7 +284,10 @@ function resolveBrowserId(browserId: string | undefined, agentSessionId: string)
   const agentViews = all.filter((i) => i.owner === "agent" && i.agentSessionId === agentSessionId && !i.takenOver);
   if (browserId) {
     const hit = agentViews.find((i) => i.browserId === browserId);
-    if (hit) return { ok: true, browserId };
+    if (hit) {
+      BrowserManager.touchAgentView(browserId);
+      return { ok: true, browserId };
+    }
     const exists = all.find((i) => i.browserId === browserId);
     if (exists && exists.owner === "user") return { ok: false, reason: `browserId "${browserId}" 是用户的浏览器标签,Agent 不能操作它;请不传 browserId 让系统自动开 Agent 专属视图` };
     if (exists && exists.takenOver) return { ok: false, reason: `browserId "${browserId}" 已被用户接管,请不传 browserId 新开一个 Agent 视图` };
@@ -292,9 +295,15 @@ function resolveBrowserId(browserId: string | undefined, agentSessionId: string)
   }
   if (activeBrowserId) {
     const hit = agentViews.find((i) => i.browserId === activeBrowserId);
-    if (hit) return { ok: true, browserId: activeBrowserId };
+    if (hit) {
+      BrowserManager.touchAgentView(activeBrowserId);
+      return { ok: true, browserId: activeBrowserId };
+    }
   }
-  if (agentViews.length > 0) return { ok: true, browserId: agentViews[0].browserId };
+  if (agentViews.length > 0) {
+    BrowserManager.touchAgentView(agentViews[0].browserId);
+    return { ok: true, browserId: agentViews[0].browserId };
+  }
   return { ok: false, reason: "no-live-browser" };
 }
 

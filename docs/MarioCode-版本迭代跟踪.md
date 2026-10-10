@@ -4,9 +4,11 @@
 
 最后更新：2026-10-11
 
-## 当前进度（2026-10-10）
+## 当前进度（2026-10-11）
 
-**10/11 修复（v0.2.44 · TODO-055 Mac 窗口适配）**：用户反馈 Mac 上看不到最小化 / 最大化 / 关闭、窗口不能改变大小、流体云没有与刘海合到一起。①主窗口：`window.ts` 新增 `initialBounds()`，按鼠标所在显示器 `workArea` 限制初始与最小尺寸并居中（原固定 1440×900 在 13 寸 MacBook 放不下，标题栏被顶到菜单栏下）；macOS 不再传 `titleBarOverlay`，并显式 `setWindowButtonVisibility(true)`。②流体云：`ProgressCapsule` 增加 `notchFor()`，由内置屏菜单栏高度推断刘海（宽 200pt 为估计值），居中贴顶、收起为刘海加两侧 48pt 黑条、展开从刘海向下长出卡片；窗口层级改 `screen-saver` 以盖过菜单栏；`setVisibleOnAllWorkspaces` 加 `skipTransformProcessType`；契约 `ProgressCapsuleState` 新增 `notch`，渲染端 `.notch` 样式。验证：electron-vite 构建、`tsc -p tsconfig.json`、胶囊冒烟测试在 Windows 通过（`tsconfig.node.json` 的 1120 条 `@contracts` 解析报错改动前后一致）。**未在真机 Mac 验证**，红绿灯、拖拽缩放、刘海对齐需验收。未打包、未推送。
+**10/11 GitHub 发布（v0.2.44，服务器继续暂缓）**：当前已提交源码为 v0.2.44，原本地安装包仍为 v0.2.41。本轮将功能提交 `e43dc4d` 推送到 GitHub master，并创建和推送标签 `v0.2.44`（目标为同一提交）。[Release 工作流](https://github.com/maxiaopang123/MarioCode/actions/runs/38068834844) 的 Windows x64、Apple 芯片、Intel Mac 三平台构建与 publish 均成功；[GitHub Release](https://github.com/maxiaopang123/MarioCode/releases/tag/v0.2.44) 已公开，含 Windows 安装包（194,214,575 字节，约 185.2 MiB）、两种 Mac DMG / zip、blockmap、latest.yml 与合并 latest-mac.yml。核对标签目标、清单 v0.2.44、清单文件大小与实际资产、三平台安装包下载 HEAD 长度；下载的两份清单 SHA256 与 GitHub 资产元数据一致，核验记录 `.turbo/github-v044-verification.json`。v0.2.44 安装包采用 CI 构建文件，未使用或改名上传旧的 v0.2.41 本地安装包。服务器按用户此前选择继续暂缓，待通过可信渠道确认变化的 SSH 主机指纹后再发布；未修改服务器。Mac 窗口与刘海适配仍待真机验收。
+
+**10/11 修复（v0.2.44 · TODO-055 Mac 窗口适配）**：用户反馈 Mac 上看不到最小化 / 最大化 / 关闭、窗口不能改变大小、流体云没有与刘海合到一起。①主窗口：`window.ts` 新增 `initialBounds()`，按鼠标所在显示器 `workArea` 限制初始与最小尺寸并居中（原固定 1440×900 在 13 寸 MacBook 放不下，标题栏被顶到菜单栏下）；macOS 不再传 `titleBarOverlay`，并显式 `setWindowButtonVisibility(true)`。②流体云：`ProgressCapsule` 增加 `notchFor()`，由内置屏菜单栏高度推断刘海（宽 200pt 为估计值），居中贴顶、收起为刘海加两侧 48pt 黑条、展开从刘海向下长出卡片；窗口层级改 `screen-saver` 以盖过菜单栏；`setVisibleOnAllWorkspaces` 加 `skipTransformProcessType`；契约 `ProgressCapsuleState` 新增 `notch`，渲染端 `.notch` 样式。验证：electron-vite 构建、`tsc -p tsconfig.json`、胶囊冒烟测试在 Windows 通过（`tsconfig.node.json` 的 1120 条 `@contracts` 解析报错改动前后一致）。**未在真机 Mac 验证**，红绿灯、拖拽缩放、刘海对齐需验收。功能提交 `e43dc4d` 与标签 `v0.2.44` 已同步 GitHub，三平台安装包由 CI 构建发布，见上方发布记录。
 
 **10/10 GitHub 发布（v0.2.41，服务器暂缓）**：核对本地 release 目录后，最新安装包为 `MarioCode-0.2.41-x64.exe`（190,479,091 字节，约 181.7 MiB），源码为 v0.2.43、尚未打包。将已提交源码 master 与本地标签 `v0.2.41`（`f9559d4`）推送至 `maxiaopang123/MarioCode`；[GitHub Release](https://github.com/maxiaopang123/MarioCode/releases/tag/v0.2.41) 已公开，Windows 安装包 / blockmap / latest.yml 在 CI 完成后替换为本地同一文件，逐项大小及 SHA256 一致；从 GitHub 资产 API 下载更新清单与本地逐字节一致，Windows 下载 HEAD 长度正确。标签触发的 [Release 工作流](https://github.com/maxiaopang123/MarioCode/actions/runs/38064223215) 三平台构建与 publish 均成功，Apple 芯片 / Intel DMG、zip 与合并 latest-mac.yml 已发布，清单 v0.2.41 与 DMG 大小核对通过。核验记录 `.turbo/github-v041-verification.json`，最终 Windows 上传记录 `.turbo/github-v041-final-upload.log`。服务器 SSH 严格校验发现主机指纹与本机记录不同，用户明确选择「暂不确认，先同步 GitHub」，因此未连接认证或上传，服务器网页仍为 Windows v0.2.10 / macOS v0.2.8；待可信核对指纹后再发布。发布脚本已在独立 v0.2.41 标签检出下 dry-run 通过，避免误用 v0.2.43 的源码版本。未生成新版本号、未安装本机应用。
 
@@ -529,6 +531,7 @@
 
 | 版本 | 日期 | Commit | 主要更新 | 状态 |
 |---|---|---|---|---|
+| `v0.2.44` | 2026-10-11 | `e43dc4d` / 标签 `v0.2.44` | TODO-055：Mac 窗口控制按钮、按工作区适配初始和最小尺寸、流体云贴合刘海 | 本地构建、渲染端类型检查与胶囊冒烟通过；GitHub 三平台构建和发布成功，清单与下载长度核对通过；服务器暂缓，Mac 真机待验收 |
 | `v0.2.33` | 2026-10-08 | `e3ccb59` / 本地标签 `v0.2.33` | TODO-039：HTML / Markdown 默认预览与编辑切换，未保存内容预览与隔离网页交互 | 类型、完整构建、桌面网页与文档 / 模型及保存 / 读取和隔离边界、Office 阅读及启动恢复回归通过；本地 Windows 安装包约 218.0 MiB，包内资源 / 清单 / 预览及启动恢复通过，待用户安装验收 |
 | `v0.2.32` | 2026-10-08 | `93b2a67` / 本地标签 `v0.2.32` | TODO-038：本地 PDF、Word、Excel、PPTX 文件点击阅读，后台解析与行列 / 页面导航 | 类型、完整构建、四类真实文件桌面阅读 / 翻页 / 缩放 / 切换 / 文件与内容安全边界通过；功能已包含在 v0.2.33 本地安装包，待用户安装验收 |
 | `v0.2.31` | 2026-10-08 | 本地标签 `v0.2.31` | TODO-050：浏览器页面操作不等待整页加载，取消过时显示与截图恢复，修复容器交接与画布切换残留 | 类型、完整构建、原生浏览器与真实应用切换 / 截图竞态 / 菜单提前关闭、启动恢复及画布回归通过；未打包安装 |

@@ -2,9 +2,11 @@
 
 > 记录完成结果、验证与 Git 版本。新想法和未完成事项统一维护在 [MarioCode 想法与待办](MarioCode-TODO.md)。
 
-最后更新：2026-10-09
+最后更新：2026-10-10
 
-## 当前进度（2026-10-09）
+## 当前进度（2026-10-10）
+
+**10/10 GitHub 发布（v0.2.41，服务器暂缓）**：核对本地 release 目录后，最新安装包为 `MarioCode-0.2.41-x64.exe`（190,479,091 字节，约 181.7 MiB），源码为 v0.2.43、尚未打包。将已提交源码 master 与本地标签 `v0.2.41`（`f9559d4`）推送至 `maxiaopang123/MarioCode`；[GitHub Release](https://github.com/maxiaopang123/MarioCode/releases/tag/v0.2.41) 已公开，Windows 安装包 / blockmap / latest.yml 在 CI 完成后替换为本地同一文件，逐项大小及 SHA256 一致；从 GitHub 资产 API 下载更新清单与本地逐字节一致，Windows 下载 HEAD 长度正确。标签触发的 [Release 工作流](https://github.com/maxiaopang123/MarioCode/actions/runs/38064223215) 三平台构建与 publish 均成功，Apple 芯片 / Intel DMG、zip 与合并 latest-mac.yml 已发布，清单 v0.2.41 与 DMG 大小核对通过。核验记录 `.turbo/github-v041-verification.json`，最终 Windows 上传记录 `.turbo/github-v041-final-upload.log`。服务器 SSH 严格校验发现主机指纹与本机记录不同，用户明确选择「暂不确认，先同步 GitHub」，因此未连接认证或上传，服务器网页仍为 Windows v0.2.10 / macOS v0.2.8；待可信核对指纹后再发布。发布脚本已在独立 v0.2.41 标签检出下 dry-run 通过，避免误用 v0.2.43 的源码版本。未生成新版本号、未安装本机应用。
 
 **10/9 完善（v0.2.43 · TODO-051 隐形宿主窗口）**：用户追问「互斥是否真的做好」时排查发现 v0.2.35 起的"隐藏 Agent 视图"并不可靠：把 WebContentsView 停在主窗口屏外（x/y -9999）后，Chromium 视其为不可见，视口 0×0、`capturePage` 空图、真实点击约一半丢失（诊断脚本多轮实测）。改为：①`BrowserManager.ensureAgentHost()` 懒建不可见宿主窗口（opacity 0、x/y -12000、`focusable:false`、`skipTaskbar`、无边框，`showInactive()`），Agent 视图出生并静息其中（1280×800）；`LiveBrowser` 新增 `parent` / `hostable`，`show()` 搬入主窗口、`hide()` 搬回宿主、`takeoverBrowser` 清 `hostable` 搬入主窗口，`close()` 经 `detachFromParent` 从真实所在窗口摘除（从错的窗口摘会崩），`disposeAll` 销毁宿主与回收定时器；截图在宿主里原地进行（设备仿真临时 0,0,w,h）；②`applyAgentHostFlags()` 关闭 `CalculateNativeWinOcclusion`（app ready 前调用，`index.ts` 与冒烟各一次）——对照实测：不关则宿主视图 `capturePage` 报 "Current display surface not available for capture"、点击全丢，opacity / 尺寸 / 是否 showInactive 都不影响，关闭后截图与点击恒成功；③`presented` 交接改走 store：`App.tsx` 全局监听 `presented` / `continued` / `closed`，新增 store 的 `presentedBrowser`、`agentViewPresented`（收编活动标签 + 自动切到右栏浏览器页）、`agentViewReleased`（幂等），`BrowserPanel` 读 store、用 effect 切换原生视图，修复面板没打开时呈现事件被丢；④验证：类型检查、完整构建；`test:agent-browser` 新增宿主窗口断言（主窗口只含用户标签、视口 1280、4 次真实点击命中、截图非空、show / hide / 接管的窗口搬移）连跑 3 次通过；`test:agent-browser-panel-electron` 新增「右栏关闭时呈现 / 继续」；`test:browser-lifecycle-electron` 通过。未验证：三引擎真实对话里的 `browser_present`；观看模式（只读镜像）下一版做；未打包。
 

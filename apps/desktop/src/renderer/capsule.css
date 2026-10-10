@@ -40,3 +40,11 @@ nav svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-wi
 @keyframes breathe { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
 @keyframes flow { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .orb, .orb i, .peek-flow { animation: none; } .capsule, .peek, #fill { transition: none; } }
+/* MacBook notch: the window is centered on the camera housing and flush with the top edge. The black card
+   continues the housing, so --notch (its height in px) is reserved at the top and content only uses the ears. */
+.notch { --notch: 37px; }
+.notch .peek { inset: 0; height: auto; justify-content: space-between; padding: 0 14px; border-radius: 0 0 14px 14px; background: #000; box-shadow: none; }
+.notch #peek-phase { display: none; }
+.notch .capsule { height: calc(var(--notch) + 70px); margin: 0; padding: calc(var(--notch) + 4px) 14px 8px; background: #000; border: 0; box-shadow: none; }
+.notch .grip { display: none; }
+.notch .track { background: #ffffff14; }

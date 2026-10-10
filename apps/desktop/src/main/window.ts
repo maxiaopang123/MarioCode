@@ -1,4 +1,4 @@
-import { BrowserWindow, shell, session, type WebContents } from "electron";
+import { BrowserWindow, screen, shell, session, type WebContents } from "electron";
 import { join } from "node:path";
 import { is } from "@main/utils.js";
 import { getEffectiveTheme, getThemeTonePreference } from "@main/lib/theme.js";
@@ -96,14 +96,30 @@ function setupSessionPermissions(): void {
   });
 }
 
+/** Initial size / position clamped to the work area of the display the cursor
+ *  is on. A fixed 1440x900 (min 1024x640) is taller than the usable area of a
+ *  13" MacBook once the menu bar is subtracted: macOS then pushes the title
+ *  bar under the menu bar, so the traffic lights are unreachable and the
+ *  window can neither be dragged nor resized. */
+function initialBounds() {
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const width = Math.min(1440, area.width);
+  const height = Math.min(900, area.height);
+  return {
+    width,
+    height,
+    x: area.x + Math.round((area.width - width) / 2),
+    y: area.y + Math.round((area.height - height) / 2),
+    minWidth: Math.min(1024, area.width),
+    minHeight: Math.min(640, area.height),
+  };
+}
+
 /** Create the primary three-pane window. */
 export function createMainWindow(): BrowserWindow {
   setupSessionPermissions();
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1024,
-    minHeight: 640,
+    ...initialBounds(),
     show: false,
     autoHideMenuBar: true,
     title: "MarioCode",
@@ -118,7 +134,9 @@ export function createMainWindow(): BrowserWindow {
     // native window-control buttons (min / max / close).  The overlay colours
     // are set once here and kept in sync by updateTitleBarOverlay().
     titleBarStyle: "hidden",
-    titleBarOverlay: overlayColors(),
+    // Windows / Linux only: on macOS the native traffic lights are used and
+    // the overlay option just enables the Window Controls Overlay APIs.
+    ...(process.platform === "darwin" ? {} : { titleBarOverlay: overlayColors() }),
     // macOS only: pin the traffic-light buttons (close/min/zoom) so they sit
     // vertically centered in our 40px (h-10) custom titlebar. Without this,
     // macOS uses its default Y (~14px from the top), which is tuned for the
@@ -133,6 +151,10 @@ export function createMainWindow(): BrowserWindow {
       sandbox: false,
     },
   });
+
+  // Keep the traffic lights on regardless of what other windows do to the
+  // process (see ProgressCapsule's all-workspaces setup).
+  if (process.platform === "darwin") mainWindow.setWindowButtonVisibility(true);
 
   mainWindow.on("ready-to-show", () => {
     logStartup("ready-to-show");

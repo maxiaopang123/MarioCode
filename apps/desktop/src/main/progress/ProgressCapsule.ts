@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, screen, type IpcMainInvokeEvent, type Rectangle } from "electron";
+import { BrowserWindow, ipcMain, screen, type Display, type IpcMainInvokeEvent, type Rectangle } from "electron";
 import { z } from "zod";
 import { IPC, UI_LOCALE_SETTING_KEY, ProgressCapsuleReadSchema, ProgressCapsuleOpenSchema, ProgressCapsuleViewSchema, type ProgressCapsuleState, type ProgressCapsuleSession } from "@contracts/ipc";
 import type { RuntimeEvent } from "@contracts/runtime";
@@ -13,6 +13,24 @@ const DockSchema = z.object({ displayId: z.number().int(), centerX: z.number().i
 // Clip its drawable/input region to the rail instead of leaving an invisible blocker.
 const COLLAPSED = { width: 176, height: process.platform === "darwin" ? 16 : 48 };
 const EXPANDED = { width: 304, height: 86 };
+// MacBook notch: Electron exposes no safe-area API, so the cut-out is inferred.
+// The menu bar of a notched built-in display is ~37pt tall (vs ~24pt without),
+// and the housing is roughly 200pt wide on every 14"/16"/Air model.
+const NOTCH_WIDTH = 200;
+const NOTCH_EAR = 48; // visible black strip either side of the housing
+const NOTCH_MIN_BAR = 32;
+const NOTCH_FALLBACK_BAR = 38;
+// Default scaled resolutions of notched MacBooks, used when the menu bar is auto-hidden (workArea.y == bounds.y).
+const NOTCH_SCREEN_WIDTHS = new Set([1470, 1512, 1710, 1728]);
+// Height of the dropped-down card below the notch strip (matches the 76px card minus its former top padding).
+const NOTCH_CARD_HEIGHT = 70;
+
+function notchFor(display: Display): { width: number; height: number } | null {
+  if (process.platform !== "darwin" || !display.internal) return null;
+  const bar = display.workArea.y - display.bounds.y;
+  if (bar >= NOTCH_MIN_BAR) return { width: NOTCH_WIDTH, height: bar };
+  return NOTCH_SCREEN_WIDTHS.has(display.bounds.width) ? { width: NOTCH_WIDTH, height: NOTCH_FALLBACK_BAR } : null;
+}
 
 export interface CapsuleRuntime {
   runningSessionIds(): string[];
@@ -147,9 +165,11 @@ export class ProgressCapsule {
           total: todos.length, task: todos.find(t => t.status === "in_progress")?.content ?? null });
       }
       for (const id of this.turns.keys()) if (!active.includes(id)) this.turns.delete(id);
-      const next: ProgressCapsuleState = { locale: SettingRepo.get(UI_LOCALE_SETTING_KEY) === "en" ? "en" : "zh", expanded: sessions.length > 0 && this.state.expanded, sessions };
+      const next: ProgressCapsuleState = { locale: SettingRepo.get(UI_LOCALE_SETTING_KEY) === "en" ? "en" : "zh", expanded: sessions.length > 0 && this.state.expanded, sessions, notch: notchFor(this.currentDisplay()) };
       const changed = JSON.stringify(next) !== JSON.stringify(this.state);
+      const notchChanged = JSON.stringify(next.notch) !== JSON.stringify(this.state.notch);
       this.state = next;
+      if (notchChanged) this.reposition();
       if (!sessions.length) { this.window?.hide(); this.reposition(); return; }
       if (!this.window) this.createWindow();
       if (this.loaded && this.window) {
@@ -161,7 +181,8 @@ export class ProgressCapsule {
 
   private createWindow(): void {
     const primary = screen.getPrimaryDisplay();
-    this.dock = { displayId: primary.id, centerX: primary.bounds.x + Math.round(primary.bounds.width / 2) };
+    const first = screen.getAllDisplays().find(d => notchFor(d)) ?? primary;
+    this.dock = { displayId: first.id, centerX: first.bounds.x + Math.round(first.bounds.width / 2) };
     try { this.dock = DockSchema.parse(JSON.parse(SettingRepo.get(DOCK_KEY) ?? "null")); }
     catch {
       // Migrate the free-floating position to the same horizontal screen edge.
@@ -172,15 +193,16 @@ export class ProgressCapsule {
       } catch { /* first use */ }
     }
     const bounds = this.dockBounds();
-    const win = new BrowserWindow({ ...bounds, title: "MarioCode", show: false, frame: false, transparent: true, resizable: false,
+    const win = new BrowserWindow({ ...bounds, title: "MarioCode", show: false, frame: false, transparent: true, resizable: false, enableLargerThanScreen: process.platform === "darwin",
       maximizable: false, minimizable: false, fullscreenable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false,
       // ESM preload uses the same isolated bridge configuration as the main window.
       webPreferences: { preload: this.options.preloadPath, contextIsolation: true, nodeIntegration: false, sandbox: false, backgroundThrottling: false } });
     this.window = win;
     this.applyShape();
     this.loaded = false;
-    win.setAlwaysOnTop(true, "floating");
-    if (process.platform === "darwin") win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    // macOS: the default "floating" level sits below the menu bar, which hides a window docked at y=0 (and the notch).
+    win.setAlwaysOnTop(true, process.platform === "darwin" ? "screen-saver" : "floating");
+    if (process.platform === "darwin") win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     win.webContents.on("will-navigate", event => event.preventDefault());
     win.on("move", () => {
@@ -188,6 +210,8 @@ export class ProgressCapsule {
       const expected = this.dockBounds();
       // Programmatic expansion keeps the saved center, including near an edge.
       if (current.x === expected.x && current.y === expected.y) return;
+      // Notched displays pin the capsule to the cut-out; snap back instead of re-docking.
+      if (notchFor(this.currentDisplay())) { this.reposition(); return; }
       if (this.moveTimer) clearTimeout(this.moveTimer);
       this.moveTimer = setTimeout(() => {
         this.moveTimer = null;
@@ -214,10 +238,20 @@ export class ProgressCapsule {
     if (this.loaded) this.window?.webContents.send(IPC.PROGRESS_CAPSULE_STATE, this.state);
   }
 
+  private currentDisplay(): Display {
+    return screen.getAllDisplays().find(d => d.id === this.dock?.displayId) ?? screen.getPrimaryDisplay();
+  }
+
   private dockBounds(): Rectangle {
-    const display = screen.getAllDisplays().find(d => d.id === this.dock?.displayId) ?? screen.getPrimaryDisplay();
+    const display = this.currentDisplay();
     const area = display.bounds;
     if (this.dock?.displayId !== display.id) this.dock = { displayId: display.id, centerX: area.x + Math.round(area.width / 2) };
+    const notch = notchFor(display);
+    if (notch) {
+      // Centered on the camera housing and flush with the top edge so the capsule grows out of the notch.
+      const size = this.state.expanded ? { width: EXPANDED.width, height: notch.height + NOTCH_CARD_HEIGHT } : { width: notch.width + NOTCH_EAR * 2, height: notch.height };
+      return { ...size, x: area.x + Math.round((area.width - size.width) / 2), y: area.y };
+    }
     const size = this.state.expanded ? EXPANDED : COLLAPSED;
     const width = Math.min(size.width, area.width);
     const centerX = Math.min(Math.max(this.dock!.centerX, area.x + COLLAPSED.width / 2), area.x + area.width - COLLAPSED.width / 2);

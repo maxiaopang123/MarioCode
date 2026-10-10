@@ -24,6 +24,8 @@ const TOOL_ACTIONS: Partial<Record<string, Parameters<typeof translate>[1]>> = {
 function render(): void {
   const session = state.sessions.find(s => s.sessionId === selected) ?? state.sessions[0];
   document.documentElement.classList.toggle("expanded", state.expanded);
+  document.documentElement.classList.toggle("notch", !!state.notch);
+  if (state.notch) document.documentElement.style.setProperty("--notch", state.notch.height + "px");
   el("capsule").inert = !state.expanded;
   el("peek").tabIndex = state.expanded ? -1 : 0;
   if (!session) { selected = null; return; }

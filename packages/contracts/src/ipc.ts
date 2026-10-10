@@ -1759,6 +1759,9 @@ export interface ProgressCapsuleState {
   locale: Locale;
   expanded: boolean;
   sessions: ProgressCapsuleSession[];
+  /** macOS display with a camera housing (notch): physical size in DIP of the
+   *  cut-out strip the capsule must merge into. Absent / null elsewhere. */
+  notch?: { width: number; height: number } | null;
 }
 export interface ProgressCapsuleApi {
   getState(): Promise<ProgressCapsuleState>;

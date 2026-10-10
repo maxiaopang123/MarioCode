@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Mcode 设置页设计稿 · 五个页面</title>
+<title>MarioCode 设置页设计稿 · 五个页面</title>
 <!--
-  Mcode 设置页设计稿(五个页面) · 单文件、无依赖、双击即开
+  MarioCode 设置页设计稿(五个页面) · 单文件、无依赖、双击即开
   ─────────────────────────────────────────────────────────────
   页面:模型配置 / 外观 / 通知 / MCP 服务器 / Skills
   四种主题组合可切:浅色·经典 / 深色·经典 / 浅色·手绘(纸面) / 深色·手绘(牛皮纸)
@@ -440,7 +440,7 @@ html.sketch .code{border-width:1.5px;border-style:dashed;border-radius:var(--sk-
 </svg>
 
 <div class="tools">
-  <span class="brand">Mcode 设置页设计稿</span>
+  <span class="brand">MarioCode 设置页设计稿</span>
   <span class="sep"></span>
   <label>主题</label>
   <span class="seg" data-group="theme">
@@ -643,7 +643,7 @@ function modelConfigForm() {
           '<span class="fctl">' + sw('telemetry', '禁用遥测') + '<span class="fhint side">不发送使用统计</span></span></div>' +
         '<div class="frow block"><span class="flabel">自定义请求头 <span class="cnt">1</span></span>' +
           '<div class="fctl" style="gap:6px"><input class="inp mono" value="x-opencode-session" style="max-width:260px">' +
-            '<input class="inp mono" value="mcode-session" style="max-width:260px">' +
+            '<input class="inp mono" value="mariocode-session" style="max-width:260px">' +
             '<button class="btn icon" title="删除该请求头">' + ico('trash', 14) + '</button>' +
             '<button class="btn ghost sm">' + ico('plus', 13) + '添加</button></div>' +
           '<span class="fhint" style="display:block;margin-top:6px">每个请求都会带上这些头;opencode.ai 端点会自动附加 x-opencode-session,此处留空即可。</span>' +
@@ -763,11 +763,11 @@ function pageAppearance() {
             '<span style="width:14px;height:14px;border-radius:4px;background:#1a1d24;display:flex;align-items:center;justify-content:center;gap:1px">' +
             '<i style="width:2px;height:6px;background:#569cd6"></i><i style="width:2px;height:6px;background:#ce9178"></i>' +
             '<i style="width:2px;height:6px;background:#b5cea8"></i><i style="width:2px;height:6px;background:#6a9955"></i></span>' +
-            'Mcode 深色(默认)</span>' + ico('chevD', 13) + '</span>') +
+            'MarioCode 深色(默认)</span>' + ico('chevD', 13) + '</span>') +
         row('编辑器配色 · 浅色', null,
           '<span class="sel" data-act="noop" style="min-width:180px"><span class="v" style="display:flex;align-items:center;gap:7px">' +
             '<span style="width:14px;height:14px;border-radius:4px;background:#ffffff;border:1px solid rgb(var(--edge))"></span>' +
-            'Mcode 浅色(默认)</span>' + ico('chevD', 13) + '</span>') +
+            'MarioCode 浅色(默认)</span>' + ico('chevD', 13) + '</span>') +
         row('用户消息背景色', '影响聊天中用户消息气泡的背景色调。当前:主题默认色(灰色)。',
           swatches(bub, '#52525b', true), true) +
         row('品牌强调色', '影响按钮、链接、选中态、输入框聚焦边框等。当前:主题默认色(翠绿)。',
@@ -852,7 +852,7 @@ function pageMcp() {
     '</section>';
   return head('plug', 'MCP 服务器', null, '') +
     '<div class="stack">' +
-      card('plug', '用户级', '保存在 Mcode 自己的 Claude 配置(<code>~/.mcode/.claude.json</code>)中,所有项目可用。关闭的 server 配置会被暂存,重新开启即可恢复。',
+      card('plug', '用户级', '保存在 MarioCode 自己的 Claude 配置(<code>~/.mariocode/.claude.json</code>)中,所有项目可用。关闭的 server 配置会被暂存,重新开启即可恢复。',
         srow('filesystem', 'stdio', 'npx -y @modelcontextprotocol/server-filesystem /Users/me/projects', { k:'mfs' }, '<button class="btn icon" title="删除此 server">' + ico('trash', 14) + '</button>') +
         srow('github', 'stdio', 'npx -y @modelcontextprotocol/server-github', { k:'mgh' }, '<button class="btn icon" title="删除此 server">' + ico('trash', 14) + '</button>') +
         srow('canva', 'http', 'https://mcp.canva.com/mcp', { auth:'no', k:'mcv' }, '<button class="btn icon" title="删除此 server">' + ico('trash', 14) + '</button>') +
@@ -865,9 +865,9 @@ function pageMcp() {
         srow('sentry', 'http', 'https://mcp.sentry.dev/mcp · 默认关闭,确认来源后开启', { k:'msentry' }) +
         srow('postgres', 'stdio', 'npx -y @modelcontextprotocol/server-postgres postgresql://localhost/app · 默认关闭', { k:'mpg' })) +
       card('grid', '插件', '已启用插件提供的 MCP server(名称为 <code>插件__server</code>)。可在此单独停用某个 server;插件的启停统一在「插件」面板管理。',
-        srow('acme-tools__browser', 'stdio', 'node /Users/me/.mcode/plugins/acme-tools/mcp/server.js', { k:'macme' })) +
+        srow('acme-tools__browser', 'stdio', 'node /Users/me/.mariocode/plugins/acme-tools/mcp/server.js', { k:'macme' })) +
       card('shield', '内置', '随应用内置、运行在本进程内的 MCP server。',
-        srow('mcode-browser', '内置', 'in-process browser automation server (screenshots, navigation, click / type)', { k:'mbw' })) +
+        srow('mariocode-browser', '内置', 'in-process browser automation server (screenshots, navigation, click / type)', { k:'mbw' })) +
     '</div>';
 }
 
@@ -883,7 +883,7 @@ const SKILLS = [
 ];
 function pageSkills() {
   const cur = SKILLS.find((s) => s.name === state.skill) || SKILLS[0];
-  const path = cur.scope === '项目' ? '.claude/skills/' + cur.name + '/SKILL.md' : '~/.mcode/skills/' + cur.name + '/SKILL.md';
+  const path = cur.scope === '项目' ? '.claude/skills/' + cur.name + '/SKILL.md' : '~/.mariocode/skills/' + cur.name + '/SKILL.md';
   return head('sparkles', 'Skills', null,
       '<button class="btn" style="min-width:230px;justify-content:space-between;font-weight:400">' +
       ico('folder', 13) + '<span style="flex:1;text-align:left;margin-left:8px">my-claude-gui <span style="color:rgb(var(--content-subtle))">(当前工作区)</span></span>' + ico('chevD', 13) + '</button>') +
@@ -1071,7 +1071,7 @@ const NOTES = {
     items:[
       '右侧编辑面从"裸滚动区"改成与模型配置一致的详情卡(头部 + 滚动正文 + 常驻动作条):现状 SkillsPanel 右栏没有卡片、没有内边距对齐,而 CustomModelsPanel 有,两个孪生页面骨架不一致。',
       '左侧列表 200 → 232px,与模型配置同宽;列表项补上 skill 图标,作用域徽标保留(项目 = accent / 全局 = 中性)。',
-      '详情头显示 SKILL.md 的真实落盘路径(项目 .claude/skills/… / 全局 ~/.mcode/skills/…)+ 复制路径:现状面板里任何地方都看不到路径,而路径恰恰是排障时最想知道的。',
+      '详情头显示 SKILL.md 的真实落盘路径(项目 .claude/skills/… / 全局 ~/.mariocode/skills/…)+ 复制路径:现状面板里任何地方都看不到路径,而路径恰恰是排障时最想知道的。',
       '代码面用"代码井"(手绘下自动转虚线内衬框,与终端/代码块同一语言);底部加已保存状态与常驻动作条。',
       '项目选择器搬进页头右侧(同模型配置的家族页签理由);另注:现状 Skills 的页头标题是硬编码英文 "Skills",没有走 i18n,本次一并收进词条。',
     ],

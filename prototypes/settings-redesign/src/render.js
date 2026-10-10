@@ -173,7 +173,7 @@ export function renderApp(st) {
   return `<div class="win">
     <div class="tbar">
       <span class="tl"></span><span class="tl"></span><span class="tl"></span>
-      <span class="tt">Mcode — 设置</span>
+      <span class="tt">MarioCode — 设置</span>
       <span class="tr"><span>${st.plan === "a" ? "方案 A · 精修卡片流" : st.plan === "b" ? "方案 B · 双栏工作台" : "方案 C · 自适应网格"}</span></span>
     </div>
     <div class="shell">

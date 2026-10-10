@@ -249,7 +249,7 @@ await wait(80);
 const before = await evalJs('({dm: document.querySelector(".dhead .dm").innerText, code: document.querySelector(".code").innerText.length})');
 check(await clickSel('.rail [data-act="skill"][data-v="pdf"]'), "交互 · skill 项可点");
 const after = await evalJs('({dm: document.querySelector(".dhead .dm").innerText, code: document.querySelector(".code").innerText.length})');
-check(/~\/\.mcode\/skills\/pdf/.test(after.dm) && after.dm !== before.dm, "交互 · 全局 skill 路径随之切换", after.dm);
+check(/~\/\.mariocode\/skills\/pdf/.test(after.dm) && after.dm !== before.dm, "交互 · 全局 skill 路径随之切换", after.dm);
 check(after.code > 0 && after.code < before.code, "交互 · 代码井内容随之切换", `${before.code}→${after.code}`);
 
 // 代码井里的 frontmatter 尖括号没有被 HTML 吞掉

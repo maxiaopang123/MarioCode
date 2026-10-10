@@ -51,9 +51,9 @@ export const PAGES = [
         rows: [
           sw("自动归档不活跃会话", "关闭后所有会话都留在活跃列表,需要手动归档。", true),
           sel("默认不活跃天数", "超过该天数没有新消息即归档。", "30 天", ["7 天", "14 天", "30 天", "60 天", "90 天"]),
-          sel("mcode-gui", "该项目的归档规则,覆盖上面的默认值。", "永不归档", ["永不归档", "7 天", "30 天", "90 天"], { inline: "remove" }),
+          sel("mariocode-gui", "该项目的归档规则,覆盖上面的默认值。", "永不归档", ["永不归档", "7 天", "30 天", "90 天"], { inline: "remove" }),
           sel("api-gateway", "该项目的归档规则,覆盖上面的默认值。", "90 天", ["永不归档", "7 天", "30 天", "90 天"], { inline: "remove" }),
-          sel("添加项目覆盖", "为某个项目单独指定归档规则。", "选择项目…", ["mcode-gui", "api-gateway", "docs-site"]),
+          sel("添加项目覆盖", "为某个项目单独指定归档规则。", "选择项目…", ["mariocode-gui", "api-gateway", "docs-site"]),
         ],
       },
       {
@@ -68,7 +68,7 @@ export const PAGES = [
         t: "输出风格", icon: "pencil",
         d: "决定模型如何组织回复。仅 Claude 会话生效。",
         rows: [
-          { k: "sel", t: "回复风格", d: "自定义风格以 ~/.mcode/output-styles 下的文件为准,点击刷新即可加载。", v: "默认", o: ["默认", "讲解型", "学习型", "简洁型"], refresh: true, wide: true },
+          { k: "sel", t: "回复风格", d: "自定义风格以 ~/.mariocode/output-styles 下的文件为准,点击刷新即可加载。", v: "默认", o: ["默认", "讲解型", "学习型", "简洁型"], refresh: true, wide: true },
         ],
       },
     ],
@@ -83,8 +83,8 @@ export const PAGES = [
         t: "主题与颜色", icon: "palette",
         rows: [
           sel("界面主题", "跟随系统时随操作系统的浅色/深色切换。当前:浅色", "跟随系统", ["浅色", "深色", "跟随系统"]),
-          { k: "custom", key: "editorSchemeDark", t: "编辑器配色 · 深色模式", d: "深色主题下代码编辑器的配色方案。", v: "Mcode 深色" },
-          { k: "custom", key: "editorSchemeLight", t: "编辑器配色 · 浅色模式", d: "浅色主题下代码编辑器的配色方案。", v: "Mcode 浅色" },
+          { k: "custom", key: "editorSchemeDark", t: "编辑器配色 · 深色模式", d: "深色主题下代码编辑器的配色方案。", v: "MarioCode 深色" },
+          { k: "custom", key: "editorSchemeLight", t: "编辑器配色 · 浅色模式", d: "浅色主题下代码编辑器的配色方案。", v: "MarioCode 浅色" },
           { k: "pal", t: "用户消息背景色", d: "影响聊天中用户消息气泡的背景色调。", v: "主题默认色(灰色)", cur: 0, opts: ["#52525b", "#059669", "#0284c7", "#4f46e5", "#7c3aed", "#e11d48", "#d97706"], names: ["灰", "翠绿", "天蓝", "靛蓝", "紫罗兰", "玫瑰红", "琥珀"] },
           { k: "pal", t: "品牌强调色", d: "影响按钮、链接、选中态与输入框聚焦边框。", v: "主题默认色(翠绿)", cur: 1, opts: ["#059669", "#0284c7", "#4f46e5", "#0891b2", "#7c3aed", "#db2777", "#d97706", "#ea580c"], names: ["翠绿", "天蓝", "靛蓝", "青色", "紫罗兰", "樱粉", "琥珀", "橙色"] },
         ],
@@ -117,7 +117,7 @@ export const PAGES = [
           sw("后台任务", "后台子代理或长命令结束时提醒。", false, { sub: true, chg: true }),
         ],
         sub: { key: "notifyTest" },
-        note: "macOS 首次发送时需在「系统设置 → 通知」中允许 Mcode;窗口处于前台时不重复弹通知。",
+        note: "macOS 首次发送时需在「系统设置 → 通知」中允许 MarioCode;窗口处于前台时不重复弹通知。",
       },
     ],
   },
@@ -134,7 +134,7 @@ export const PAGES = [
       {
         t: "模型存储位置", icon: "folder",
         rows: [
-          path("模型目录", "留空使用应用数据目录下的 models/voice。", "~/Library/Application Support/Mcode/models/voice", { custom: true, actions: ["更改…"], reset: true, stack: true }),
+          path("模型目录", "留空使用应用数据目录下的 models/voice。", "~/Library/Application Support/MarioCode/models/voice", { custom: true, actions: ["更改…"], reset: true, stack: true }),
         ],
       },
       {
@@ -289,7 +289,7 @@ export const PAGES = [
         t: "自定义命令", icon: "list",
         d: "命令按项目保存,可在终端工具栏的一键运行菜单中调用。",
         rows: [
-          sel("选择项目", "不同项目的命令互不影响。", "mcode-gui (当前工作区)", ["mcode-gui (当前工作区)", "api-gateway", "docs-site"]),
+          sel("选择项目", "不同项目的命令互不影响。", "mariocode-gui (当前工作区)", ["mariocode-gui (当前工作区)", "api-gateway", "docs-site"]),
           { k: "custom", key: "cmdList" },
         ],
       },
@@ -304,7 +304,7 @@ export const PAGES = [
       {
         t: "存储位置", icon: "folder",
         rows: [
-          path("截图目录", "留空时使用系统图片目录。", "~/Pictures/Mcode", { actions: ["选择目录…", "保存"], stack: true, saved: "已保存。后续截图将保存到此目录。" }),
+          path("截图目录", "留空时使用系统图片目录。", "~/Pictures/MarioCode", { actions: ["选择目录…", "保存"], stack: true, saved: "已保存。后续截图将保存到此目录。" }),
           path("数据目录", "留空时使用应用默认位置。", "", { empty: "应用默认位置(~/Library/…/browser)", actions: ["选择目录…", "保存"], stack: true, note: "修改后需重启应用生效。" }),
         ],
       },
@@ -431,7 +431,7 @@ export const PAGES = [
     sections: [
       {
         t: "用户级", icon: "plug",
-        d: "保存在 Mcode 自己的 Claude 配置(~/.mcode/.claude.json)中,对所有项目生效。",
+        d: "保存在 MarioCode 自己的 Claude 配置(~/.mariocode/.claude.json)中,对所有项目生效。",
         render: "mcpUser",
       },
       {

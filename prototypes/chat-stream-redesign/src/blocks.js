@@ -152,7 +152,7 @@ export const turnB = () => `
     <div class="rcard" data-on="false">
       <header class="rc-h">
         ${monogram(SESSION.providerShort, "sm")}
-        <div class="rc-hx"><b>${esc(SESSION.model)}</b><span class="rc-sub">Mcode · ${esc(SESSION.clock)}</span></div>
+        <div class="rc-hx"><b>${esc(SESSION.model)}</b><span class="rc-sub">MarioCode · ${esc(SESSION.clock)}</span></div>
         <span class="rc-badge live">${liveDot()}运行中</span>
         <span class="rc-badge done">${ico("check", 11)}已完成</span>
       </header>
@@ -205,7 +205,7 @@ export const turnC = () => `
     <div class="dcard" data-on="false">
       <header class="dc-h">
         ${monogram(SESSION.providerShort, "lg")}
-        <div class="dc-hx"><b>${esc(SESSION.model)}</b><span>Mcode · ${esc(SESSION.clock)}</span></div>
+        <div class="dc-hx"><b>${esc(SESSION.model)}</b><span>MarioCode · ${esc(SESSION.clock)}</span></div>
         <span class="dc-badge live">${liveDot()}运行中</span>
         <span class="dc-badge done">${ico("check", 11)}已完成</span>
       </header>
@@ -280,7 +280,7 @@ export const historyTurn = (plan) => {
       <div class="rcard rcard-h">
         <header class="rc-h">
           ${monogram(SESSION.providerShort, "sm")}
-          <div class="rc-hx"><b>${esc(SESSION.model)}</b><span class="rc-sub">Mcode · 02:07</span></div>
+          <div class="rc-hx"><b>${esc(SESSION.model)}</b><span class="rc-sub">MarioCode · 02:07</span></div>
           <span class="rc-badge done">${ico("check", 11)}已完成</span>
         </header>
         ${histReply("rc-b")}
@@ -303,7 +303,7 @@ export const historyTurn = (plan) => {
       <div class="dcard">
         <header class="dc-h">
           ${monogram(SESSION.providerShort, "lg")}
-          <div class="dc-hx"><b>${esc(SESSION.model)}</b><span>Mcode · 02:07</span></div>
+          <div class="dc-hx"><b>${esc(SESSION.model)}</b><span>MarioCode · 02:07</span></div>
           <span class="dc-badge done">${ico("check", 11)}已完成</span>
         </header>
         <div class="dc-proc">

@@ -1351,7 +1351,7 @@
                   <div class="step"><span class="st"><svg class="ic sm"><use href="#i-check"/></svg></span><span class="verb">读取</span><span class="target">piHost.ts、PiHostClient.ts 等 3 个文件</span><span class="dur">0.4s</span></div>
                   <div class="step"><span class="st"><svg class="ic sm"><use href="#i-check"/></svg></span><span class="verb">搜索</span><span class="target">"Pi host exited" · main.log</span><span class="dur">0.2s</span></div>
                   <div class="step fail"><span class="st"><svg class="ic sm"><use href="#i-x"/></svg></span><span class="verb">运行</span><span class="target">node out/pi-host/piHost.mjs</span><span class="dur">退出码 1</span></div>
-                  <div class="step run"><span class="st"><span class="spin"></span></span><span class="verb">运行</span><span class="target">pnpm --filter @mcode/desktop typecheck</span><span class="dur">进行中</span></div>
+                  <div class="step run"><span class="st"><span class="spin"></span></span><span class="verb">运行</span><span class="target">pnpm --filter @mariocode/desktop typecheck</span><span class="dur">进行中</span></div>
                 </div>
                 <h3 id="h-cause">原因</h3>
                 <p>提交 <code>b2dfcdb</code> 把构建脚本改成了 <code>write: false</code>，却没有把产物写回磁盘，于是 <code>piHost.mjs</code> 一直停在旧版本，里面还带着 Electron 依赖。</p>
@@ -1453,10 +1453,10 @@
                 <button class="btn btn-ghost sm ml-auto" data-act="detail">查看工具输入<svg class="ic xs"><use href="#i-chev-d"/></svg></button>
               </div>
               <div class="dk-body">
-                <div class="dk-cmd"><span class="k">Bash</span><span><span class="pr">$ </span>pnpm --filter @mcode/desktop build</span></div>
+                <div class="dk-cmd"><span class="k">Bash</span><span><span class="pr">$ </span>pnpm --filter @mariocode/desktop build</span></div>
                 <p class="dk-note">重新构建桌面端，确认新的 piHost.mjs 里没有 Electron 导入。</p>
                 <pre class="dk-detail">{
-  "command": "pnpm --filter @mcode/desktop build",
+  "command": "pnpm --filter @mariocode/desktop build",
   "description": "重新构建桌面端，确认新的 piHost.mjs 里没有 Electron 导入",
   "timeout": 600000
 }</pre>
@@ -1650,7 +1650,7 @@
 <div class="term"><span class="p">PS MarioCode&gt;</span> node out/pi-host/piHost.mjs
 <span class="e">Error: Cannot find module 'electron'</span>
 <span class="m">    at piHost.mjs:1:18</span>
-<span class="p">PS MarioCode&gt;</span> pnpm --filter @mcode/desktop typecheck
+<span class="p">PS MarioCode&gt;</span> pnpm --filter @mariocode/desktop typecheck
 <span class="m">&gt; tsc --noEmit -p tsconfig.json</span>
 ▍</div>
           </div>

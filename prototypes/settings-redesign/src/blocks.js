@@ -13,8 +13,8 @@ const secret = (v) => `
 
 /* ── 行内块 ───────────────────────────────────────────────── */
 
-registerRow("editorSchemeDark", (r) => schemeRow(r, ["#1a1d24", "#c586c0", "#ce9178", "#b5cea8"], ["Mcode 深色(默认)", "One Dark", "Monokai", "Solarized Dark"]));
-registerRow("editorSchemeLight", (r) => schemeRow(r, ["#ffffff", "#7c3aed", "#047857", "#b45309"], ["Mcode 浅色(默认)", "Solarized Light", "GitHub Light"]));
+registerRow("editorSchemeDark", (r) => schemeRow(r, ["#1a1d24", "#c586c0", "#ce9178", "#b5cea8"], ["MarioCode 深色(默认)", "One Dark", "Monokai", "Solarized Dark"]));
+registerRow("editorSchemeLight", (r) => schemeRow(r, ["#ffffff", "#7c3aed", "#047857", "#b45309"], ["MarioCode 浅色(默认)", "Solarized Light", "GitHub Light"]));
 
 function schemeRow(r, colors, opts) {
   return `<div class="row">
@@ -147,9 +147,9 @@ register("lsp", () => {
     log: "尚未安装。点击「安装」后执行:\n$ go install golang.org/x/tools/gopls@latest",
   }) + row({
     n: "Java", k: "importing", hint: "jdtls(自动匹配 JDK 版本)", open: true, jdk: true,
-    path: "~/Library/Application Support/Mcode/lsp/java/plugins/org.eclipse.equinox.launcher_1.6.700.jar",
-    phase: "项目索引导入中 24% · Importing project mcode-gui。导入期间跳转与补全会等待;每个项目只导入一次,之后启动秒级就绪。",
-    log: "$ java -jar jdtls --version\n[Info] Loading Gradle/Maven project…\n[Info] Importing project mcode-gui (24%)\n[Info] Workspace data: ~/Library/Application Support/Mcode/lsp/workspaces/8f2a1c",
+    path: "~/Library/Application Support/MarioCode/lsp/java/plugins/org.eclipse.equinox.launcher_1.6.700.jar",
+    phase: "项目索引导入中 24% · Importing project mariocode-gui。导入期间跳转与补全会等待;每个项目只导入一次,之后启动秒级就绪。",
+    log: "$ java -jar jdtls --version\n[Info] Loading Gradle/Maven project…\n[Info] Importing project mariocode-gui (24%)\n[Info] Workspace data: ~/Library/Application Support/MarioCode/lsp/workspaces/8f2a1c",
   });
 });
 
@@ -220,7 +220,7 @@ register("about", () => `
       <div class="hero">
         <div class="logo">${ico("layers", 26)}</div>
         <div>
-          <div class="t-page">Mcode</div>
+          <div class="t-page">MarioCode</div>
           <div class="t-desc" style="margin-top:3px">基于 Claude Agent SDK 构建的桌面端 GUI。不重新实现 agent,只做 Claude 的交互界面。</div>
           <div class="t-meta" style="margin-top:6px">v0.9.4(build 20260910)</div>
         </div>
@@ -255,7 +255,7 @@ register("about", () => `
       <button class="btn">${ico("refresh", 13)} 检查更新</button>
     </div>
     <div class="snote" style="border:1px solid rgb(var(--edge));border-radius:var(--r-card);background:rgb(var(--surface))">
-      ${ico("info", 13)} <span class="t-desc">Mcode 是 MIT 许可的开源项目,不收集任何遥测数据。会话与配置保存在本机应用数据目录。</span></div>
+      ${ico("info", 13)} <span class="t-desc">MarioCode 是 MIT 许可的开源项目,不收集任何遥测数据。会话与配置保存在本机应用数据目录。</span></div>
   </div>`);
 
 /* ── Agent 运行时 ─────────────────────────────────────────── */
@@ -296,7 +296,7 @@ register("runtimes", (sec, page, plan) => {
       <button class="btn ghost sm icon" title="重新安装">${ico("refresh", 13)}</button>
       <button class="btn sm">卸载</button>
       <button class="btn ghost sm icon" title="从本地目录或 .tgz 包安装">${ico("fileImport", 13)}</button>`,
-    body: detail({ src: "独立安装副本(应用数据目录)", ver: "v2.1.238", size: "209 MB", path: "~/Library/Application Support/Mcode/runtimes/claude/2.1.238" }),
+    body: detail({ src: "独立安装副本(应用数据目录)", ver: "v2.1.238", size: "209 MB", path: "~/Library/Application Support/MarioCode/runtimes/claude/2.1.238" }),
   }) + row({
     n: "Codex", ic: "terminal", open: false, badge: badge("n", "开发依赖"), detail: "开发依赖 v0.153.4",
     actions: `<button class="btn ghost sm icon" title="重新安装">${ico("refresh", 13)}</button>
@@ -324,7 +324,7 @@ register("pluginsInstalled", (sec, page, plan, st) => {
       <div class="dt">
         <div class="dtrow"><span class="k">来源</span><span class="v">${esc(o.src)}</span></div>
         <div class="dtrow"><span class="k">安装于</span><span class="v">${esc(o.at)}</span></div>
-        <div class="dtrow"><span class="k">路径</span><span class="v mono">${esc("~/.mcode/plugins/" + o.name + "/" + o.ver)}</span></div>
+        <div class="dtrow"><span class="k">路径</span><span class="v mono">${esc("~/.mariocode/plugins/" + o.name + "/" + o.ver)}</span></div>
       </div>
       <div class="mx">
         <span class="t-desc">组件支持</span>
@@ -371,7 +371,7 @@ register("pluginsInstalled", (sec, page, plan, st) => {
       cmp: {
         skills: [["audit-deps", "扫描依赖树中的已知漏洞"], ["audit-secrets", "在改动中查找硬编码密钥"], ["audit-report", "汇总为可提交的审查报告"]],
         mcp: [["security-audit__osv", "http", "https://api.osv.dev/mcp"]],
-        hooks: [["PostToolUse", "Write|Edit", "node ~/.mcode/plugins/security-audit/scan.js"], ["Stop", "*", "node ~/.mcode/plugins/security-audit/report.js"]],
+        hooks: [["PostToolUse", "Write|Edit", "node ~/.mariocode/plugins/security-audit/scan.js"], ["Stop", "*", "node ~/.mariocode/plugins/security-audit/report.js"]],
       },
     },
     {
@@ -384,7 +384,7 @@ register("pluginsInstalled", (sec, page, plan, st) => {
       name: "postgres-toolkit", ver: "0.4.1", on: true, src: "Git · https://github.com/acme/pg-toolkit", at: "2026-09-05 18:02",
       desc: "MCP 形式暴露的 Postgres 查询与 schema 检查工具。",
       chips: [chip("MCP", 2)],
-      cmp: { mcp: [["postgres-toolkit__pg", "stdio", "npx -y @mcode/pg-mcp"], ["postgres-toolkit__schema", "stdio", "npx -y @mcode/pg-schema"]] },
+      cmp: { mcp: [["postgres-toolkit__pg", "stdio", "npx -y @mariocode/pg-mcp"], ["postgres-toolkit__schema", "stdio", "npx -y @mariocode/pg-schema"]] },
     },
     {
       name: "figma-bridge", ver: "0.1.0", on: false, src: "本地目录 · ~/dev/figma-bridge", at: "2026-09-03 11:26",
@@ -455,14 +455,14 @@ register("mcpUser", () => `
 register("mcpProject", () => `
   <div class="row"><div class="row-l"><div class="row-t"><span class="t-row">项目</span></div>
     <div class="t-desc row-d">切换项目可查看各自的 .mcp.json 条目。</div></div>
-    <div class="row-c"><div class="sel" style="width:220px">mcode-gui(当前工作区)</div></div></div>
+    <div class="row-c"><div class="sel" style="width:220px">mariocode-gui(当前工作区)</div></div></div>
   ${mcpRow({ name: "playwright", kind: "stdio", detail: "npx -y @playwright/mcp@latest", on: true })}
   ${mcpRow({ name: "local-index", kind: "sse", detail: "http://127.0.0.1:8848/sse · 默认关闭,确认来源后开启", on: false, acts: badge("w", "默认关闭") })}
   <div class="sub t-desc">${ico("info", 13)} 项目级 server 不提供删除入口,请直接编辑项目中的 .mcp.json。</div>`);
 
 register("mcpPlugin", () => `
   ${mcpRow({ name: "security-audit__osv", kind: "http", detail: "https://api.osv.dev/mcp · 来自插件 security-audit", on: true })}
-  ${mcpRow({ name: "postgres-toolkit__pg", kind: "stdio", detail: "npx -y @mcode/pg-mcp · 来自插件 postgres-toolkit", on: false })}
+  ${mcpRow({ name: "postgres-toolkit__pg", kind: "stdio", detail: "npx -y @mariocode/pg-mcp · 来自插件 postgres-toolkit", on: false })}
   <div class="sub t-desc">${ico("info", 13)} 插件 MCP 的主开关是插件自身的启用状态;这里的开关用于单独阻断某个 server。</div>`);
 
 register("mcpBuiltin", () => mcpRow({ name: "browser", kind: "内置", detail: "应用内浏览器控制(截图、导航、点击)", on: true, acts: badge("n", "随应用提供") }));
@@ -511,7 +511,7 @@ register("providerForm", (sec, page, plan, st) => {
           ${fld("禁用遥测", `<label class="tagsw"><button class="sw sm" role="switch" aria-checked="true"></button> 不发送使用统计</label>`)}
         </div>
         <div class="fld" style="padding-top:12px"><label>自定义请求头 <span class="badge n">1</span></label>
-          <div class="hrow"><input class="inp mono" value="x-opencode-session"><input class="inp mono" value="mcode-session"><button class="btn ghost sm icon" title="删除">${ico("trash", 13)}</button></div>
+          <div class="hrow"><input class="inp mono" value="x-opencode-session"><input class="inp mono" value="mariocode-session"><button class="btn ghost sm icon" title="删除">${ico("trash", 13)}</button></div>
           <button class="btn ghost sm" style="align-self:flex-start">${ico("plus", 13)} 添加</button>
           <span class="hint">会随每次请求发送,可用于网关要求的额外鉴权或会话头。</span></div>`, false)}
       <div class="actions"><span class="badge a">${ico("check", 11)} 连接成功 · 812ms</span><span class="sp"></span>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mcode 左侧栏 v3 · T3 Code 式</title>
+<title>MarioCode 左侧栏 v3 · T3 Code 式</title>
 <style>
 /* ══════════════════════════════════════════════════════════════
    左侧栏 v3 —— 按 T3 Code 当前侧栏(Sidebar.tsx, apps/web)重设计
@@ -274,19 +274,19 @@ body{
         <li><b>三行富卡片</b>:① 项目 favicon+项目名 ② 标题 ③ 分支(「Always the branch——行最稳定的标识」)+ 终端/PR/diff/provider</li>
         <li><b>平铺 + 项目过滤</b>:不再按项目建树;每张卡自带项目身份行,顶部「全部项目 ▾」下拉切范围(下拉内可搜索项目)</li>
         <li><b>置顶 = 卡片 + hairline 分隔线</b>,可拖拽排序;归档 = <b>Settled shelf</b>(收起、灰度头像、hover 恢复)</li>
-        <li>双击行内重命名;T3 原版为内联搜索输入框(<b>未采纳</b>——Mcode 已有 ⌘K 全局搜索,快捷入口区整块保留现状);默认宽 256px</li>
+        <li>双击行内重命名;T3 原版为内联搜索输入框(<b>未采纳</b>——MarioCode 已有 ⌘K 全局搜索,快捷入口区整块保留现状);默认宽 256px</li>
       </ul>
       <div class="src">出处:apps/web/src/components/Sidebar.tsx(4048 行)、sidebar/SidebarChrome.tsx;状态色 Working sky-400 / Approval amber-300 / Input indigo-300 / Failed red-300 / Done emerald。</div>
     </div>
     <div class="card">
-      <h2>🔀 Mcode 概念映射</h2>
+      <h2>🔀 MarioCode 概念映射</h2>
       <ul>
         <li><b>快捷入口区不动</b>:新建会话(⌘N)/ 搜索(⌘K)/ 连接手机 三行维持现状样式与位置,只在其下加项目过滤行</li>
-        <li>项目 favicon → <b>项目色块头像</b>(Mcode 无 favicon,取名称哈希色+首字母)</li>
-        <li>worktree → <b>行内 fork + mcode/* 分支名</b>(T3 正是行属性而非容器);同树多会话各自成行;原泳道的合并回/在此新建/重命名/移除 → <b>worktree 行右键菜单</b>(试右键带分支的行)</li>
+        <li>项目 favicon → <b>项目色块头像</b>(MarioCode 无 favicon,取名称哈希色+首字母)</li>
+        <li>worktree → <b>行内 fork + mariocode/* 分支名</b>(T3 正是行属性而非容器);同树多会话各自成行;原泳道的合并回/在此新建/重命名/移除 → <b>worktree 行右键菜单</b>(试右键带分支的行)</li>
         <li>未合并 → 分支旁 <b>琥珀点+「未合并」</b>(对应 T3 的 PR 徽标位)</li>
         <li>provider → 行尾小色点(Claude 橙 / Pi 紫)</li>
-        <li>Settled shelf → <b>归档 shelf</b>(Mcode 无 snooze/settle 生命周期,归档即终点,语义不变)</li>
+        <li>Settled shelf → <b>归档 shelf</b>(MarioCode 无 snooze/settle 生命周期,归档即终点,语义不变)</li>
         <li>项目分组「工作」→ 进过滤下拉的分组项;项目树/泳道/时间分组标签全部退场</li>
       </ul>
     </div>
@@ -297,7 +297,7 @@ body{
 </main>
 
 <script>
-/* ── 数据模型(与 Mcode 现实概念对齐) ── */
+/* ── 数据模型(与 MarioCode 现实概念对齐) ── */
 const PROJECTS={
   ccgui:{name:"cc-gui",color:"#3b82f6",group:null},
   blog:{name:"blog-site",color:"#d97706",group:null},
@@ -309,8 +309,8 @@ const THREADS=[
   {p:"ccgui",t:"worktree 隔离会话设计",stat:"time",time:"2 小时",pv:"claude",pin:true},
   {p:"blog",t:"里程碑复盘",stat:"time",time:"昨天",pv:"pi",pin:true},
   // 活跃
-  {p:"ccgui",t:"左侧栏重设计原型",stat:"working",dur:"04:32",pv:"pi",wt:"mcode/leftbar",unmerged:true,active:true},
-  {p:"ccgui",t:"网桥截断回归",stat:"working",dur:"12:07",pv:"claude",wt:"mcode/bridge-fix"},
+  {p:"ccgui",t:"左侧栏重设计原型",stat:"working",dur:"04:32",pv:"pi",wt:"mariocode/leftbar",unmerged:true,active:true},
+  {p:"ccgui",t:"网桥截断回归",stat:"working",dur:"12:07",pv:"claude",wt:"mariocode/bridge-fix"},
   {p:"blog",t:"文章排版调整",stat:"approval",pv:"claude"},
   {p:"ccgui",t:"LSP jdtls 工作区自愈",stat:"done",pv:"claude"},
   {p:"data",t:"分页游标重构",stat:"failed",pv:"claude"},

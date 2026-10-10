@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mcode 聊天流重设计 · 三个方向</title>
+<title>MarioCode 聊天流重设计 · 三个方向</title>
 <style>/* ============================================================================
  * 聊天流重设计 · 交互原型样式
  *
@@ -573,7 +573,7 @@ code, pre, .mono, .tnum { font-variant-numeric: tabular-nums; }
 </head>
 <body>
 <div class="paper">
-  <h1>Mcode 聊天流重设计 · 三个方向</h1>
+  <h1>MarioCode 聊天流重设计 · 三个方向</h1>
   <p class="psub">
     目标:重做「模型输出」与「用户输出」在会话流里的排版,并把<b>运行中</b>与<b>运行结束后</b>做成两种真正不同的形态——
     运行中让人看清"它正在干什么",结束后让人只看"它交付了什么"。三版共享同一套令牌与动效语汇,差异在
@@ -1068,7 +1068,7 @@ const turnB = () => `
     <div class="rcard" data-on="false">
       <header class="rc-h">
         ${monogram(SESSION.providerShort, "sm")}
-        <div class="rc-hx"><b>${esc(SESSION.model)}</b><span class="rc-sub">Mcode · ${esc(SESSION.clock)}</span></div>
+        <div class="rc-hx"><b>${esc(SESSION.model)}</b><span class="rc-sub">MarioCode · ${esc(SESSION.clock)}</span></div>
         <span class="rc-badge live">${liveDot()}运行中</span>
         <span class="rc-badge done">${ico("check", 11)}已完成</span>
       </header>
@@ -1121,7 +1121,7 @@ const turnC = () => `
     <div class="dcard" data-on="false">
       <header class="dc-h">
         ${monogram(SESSION.providerShort, "lg")}
-        <div class="dc-hx"><b>${esc(SESSION.model)}</b><span>Mcode · ${esc(SESSION.clock)}</span></div>
+        <div class="dc-hx"><b>${esc(SESSION.model)}</b><span>MarioCode · ${esc(SESSION.clock)}</span></div>
         <span class="dc-badge live">${liveDot()}运行中</span>
         <span class="dc-badge done">${ico("check", 11)}已完成</span>
       </header>
@@ -1196,7 +1196,7 @@ const historyTurn = (plan) => {
       <div class="rcard rcard-h">
         <header class="rc-h">
           ${monogram(SESSION.providerShort, "sm")}
-          <div class="rc-hx"><b>${esc(SESSION.model)}</b><span class="rc-sub">Mcode · 02:07</span></div>
+          <div class="rc-hx"><b>${esc(SESSION.model)}</b><span class="rc-sub">MarioCode · 02:07</span></div>
           <span class="rc-badge done">${ico("check", 11)}已完成</span>
         </header>
         ${histReply("rc-b")}
@@ -1219,7 +1219,7 @@ const historyTurn = (plan) => {
       <div class="dcard">
         <header class="dc-h">
           ${monogram(SESSION.providerShort, "lg")}
-          <div class="dc-hx"><b>${esc(SESSION.model)}</b><span>Mcode · 02:07</span></div>
+          <div class="dc-hx"><b>${esc(SESSION.model)}</b><span>MarioCode · 02:07</span></div>
           <span class="dc-badge done">${ico("check", 11)}已完成</span>
         </header>
         <div class="dc-proc">

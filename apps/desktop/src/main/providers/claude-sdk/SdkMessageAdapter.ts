@@ -110,6 +110,7 @@ import {
   buildSnapshotFromControlChannel,
   resolveEffectiveContextWindow,
   totalProcessedTokensFromRawUsage,
+  isOccupancyReport,
   type RawClaudeUsage,
   type ClaudeContextWindowTag,
 } from "./claudeTokenUsage.js";
@@ -1794,6 +1795,9 @@ const costUsd = m.total_cost_usd ?? (muCost > 0 ? muCost : undefined);
     reportedWindow: number | undefined,
   ): void {
     if (!usage) return;
+    // Output-only reports (gateway `message_delta`) carry no occupancy: skip,
+    // so they cannot replace a real read with a 0% snapshot.
+    if (!isOccupancyReport(usage)) return;
     const snapshot = normalizeClaudeTokenUsage(
       { ...usage, model: usage.model ?? model },
       {
@@ -1889,7 +1893,9 @@ const costUsd = m.total_cost_usd ?? (muCost > 0 ? muCost : undefined);
           // shrink below 10% of the cumulative input, but path C's merge uses the
           // last known snapshot (post-compact value), so the result stays correct.
           const accInput = accumulatedRaw.inputTokens ?? 0;
-          const plausible = accInput <= 0 || cc.totalTokens >= accInput * 0.1;
+          // A zero total is never trustworthy occupancy either (a stale/empty
+          // tracker), regardless of what the accumulated input says.
+          const plausible = cc.totalTokens > 0 && (accInput <= 0 || cc.totalTokens >= accInput * 0.1);
           if (plausible) {
             const accumulated = normalizeClaudeTokenUsage(
               accumulatedRaw,

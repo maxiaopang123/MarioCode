@@ -36,6 +36,10 @@ import { useSessionStore } from "@renderer/stores/sessionStore.js";
 export function isValidSnapshot(s: unknown): s is ContextSnapshot {
   if (!s || typeof s !== "object") return false;
   const o = s as Record<string, unknown>;
+  // Rows/events written by the old output-only-usage bug: tokens were
+  // processed but occupancy is 0. Treat as absent (keep the previous value /
+  // hide the ring) instead of rendering a stuck 0%.
+  if (o.usedTokens === 0 && typeof o.totalProcessedTokens === "number" && o.totalProcessedTokens > 0) return false;
   return (
     typeof o.usedTokens === "number" &&
     typeof o.maxTokens === "number" &&

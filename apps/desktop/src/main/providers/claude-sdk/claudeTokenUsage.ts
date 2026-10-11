@@ -64,6 +64,16 @@ export function claudePromptTokensFromRawUsage(raw: RawClaudeUsage): number {
   );
 }
 
+/** True when a usage report actually describes window occupancy (some prompt
+ *  tokens). Gateways often send `message_delta.usage` with only
+ *  `output_tokens`; such a report passes the "anything non-zero" check in
+ *  {@link normalizeClaudeTokenUsage} (output counts toward throughput) but
+ *  normalizes to `usedTokens=0`. Publishing it overwrote the real occupancy
+ *  read and pinned the context ring at 0%. Occupancy callers must gate on this. */
+export function isOccupancyReport(raw: RawClaudeUsage): boolean {
+  return claudePromptTokensFromRawUsage(raw) > 0;
+}
+
 /** Total tokens processed this turn — input + output + cache read + cache
  *  creation. May exceed `maxTokens` (it's a throughput number, not a window
  *  occupancy number). */
@@ -295,7 +305,13 @@ export function mergeClaudeTokenUsageSnapshot(
   maxTokens: number,
 ): ContextSnapshot {
   // usedTokens = the path-A window read, clamped to the resolved ceiling.
-  const usedTokens = Math.min(lastKnown.usedTokens, maxTokens);
+  // A zero read is "no occupancy information", never a real empty window
+  // after a turn that processed tokens: keep the accumulated figure only as
+  // a last resort so the ring is not forced to 0.
+  const usedTokens = Math.min(
+    lastKnown.usedTokens > 0 ? lastKnown.usedTokens : accumulated.usedTokens,
+    maxTokens,
+  );
   const pct = round1(Math.min(100, (usedTokens / maxTokens) * 100));
   const warning: ContextWarning =
     pct >= 90 ? "critical" : pct >= 70 ? "near-window" : "ok";

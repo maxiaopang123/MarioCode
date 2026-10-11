@@ -1,6 +1,6 @@
 # MarioCode TODO
 
-更新：2026-10-11 · 软件版本：v0.2.44。新想法直接加到「想法」表，状态填「想法」；已实现的标 ✅ 并移到「已完成」表，验收和遗留工作保留在备注中。详细方案与版本记录见[版本迭代跟踪](MarioCode-版本迭代跟踪.md)。
+更新：2026-10-11 · 软件版本：v0.2.45。新想法直接加到「想法」表，状态填「想法」；已实现的标 ✅ 并移到「已完成」表，验收和遗留工作保留在备注中。详细方案与版本记录见[版本迭代跟踪](MarioCode-版本迭代跟踪.md)。
 
 交付约定：一个想法对应一个软件版本和一次本地 Git 功能提交，验证并记录后再做下一个。首批 TODO-028、029、030、031、032、034，依次对应 v0.2.14 至 v0.2.19。
 
@@ -30,7 +30,7 @@
 | TODO-010 | 聊天流渲染性能 | 暂缓 | 先采集真实行高与重算耗时，再决定改动 |
 | TODO-008 | DeepSeek 接入 | 未开始 | 先做 1 至 2 天可行性验证，再决定是否作为第四个引擎 |
 
-下一个编号：TODO-056。记录想法不代表立即开工。
+下一个编号：TODO-057。记录想法不代表立即开工。
 
 ## 已完成
 
@@ -39,6 +39,7 @@
 | 编号 | 事项 | 状态 | 剩余工作或备注 |
 |---|---|---|---|
 | 发布 | v0.2.44 GitHub 发布 | ✅ 已完成 | 2026-10-11：源码 master（功能提交 `e43dc4d`）与标签 v0.2.44 已同步 GitHub；三平台构建和 publish 全部成功，Windows x64（194,214,575 字节，约 185.2 MiB）、Apple 芯片 / Intel Mac 安装包、zip、blockmap 及更新清单已公开发布。核对标签目标、清单版本 / 大小与安装包下载长度，两份清单下载 SHA256 与资产元数据一致；安装包采用 CI 构建，原本地 v0.2.41 安装包保留。服务器按用户此前选择继续暂缓，Mac 真机验收仍待完成 |
+| TODO-056 | 修复上下文用量一直显示 0 | ✅ 已完成 | 2026-10-11 · v0.2.45：用户反馈上下文（圆环）一直是 0。排查本机 `main.log`：496 条 turn 结束合并快照中 81 条 `final=0/0%`，且全部 `deltaUsage>0`，集中在 10-07、10-08、10-10 走第三方网关的会话；pathB 记录为 0（自定义模型 `!req.apiConfig` 关闭了控制通道）。根因：部分网关的 `message_delta.usage` 只带 `output_tokens`，`normalizeClaudeTokenUsage` 以总吞吐是否为 0 判断「无数据」，输出 token 让它通过，而占用只算 `input + cacheCreation + cacheRead`，得到 `usedTokens=0`；`publishTokenUsageSnapshot` 后来者覆盖，把路径 A 的真实读数冲成 0，turn 结束时合并又直接取该值，随后被写入 `sessions.context_snapshot`，渲染端 `isValidSnapshot` 只检查类型、0 算合法，重开会话仍显示 0。修复：①`claudeTokenUsage.ts` 新增 `isOccupancyReport`，`emitTokenUsage` 对无提示词 token 的报告直接跳过，不发快照也不进 `lastKnownTokenUsage`；②`mergeClaudeTokenUsageSnapshot` 在路径 A 读数为 0 时改用累计快照的占用，不再强制归零；③路径 B 的可信度判断要求 `cc.totalTokens > 0`；④持久化（`RuntimeManager`）与渲染端（`isValidSnapshot`）拒绝「`totalProcessedTokens>0` 且 `usedTokens===0`」的快照，已被污染的历史行不再恢复，圆环保持上一个值或隐藏。验证：`tsc -p tsconfig.json`、`test:metrics`（新增 6 条断言：仅 output 的 usage 非占用、缓存读取计入占用、合并保留真实读数、零读数不强制归零）、`test:session-store` 81/81、`test-metrics-reload-electron` 通过。**未覆盖**：①pathC-direct 把累计 `result.usage` 当占用的高估（日志 2 条 accInput 为 70 万与 300 万，圆环会顶到高位），本版未改；②82 条 `accProcessed=0` 的网关完全不返回 usage，圆环仍不显示；③未用真实网关复现，依据是日志与代码推导。 |
 | TODO-055 | 【紧急】Mac 窗口适配：控制栏、改变大小、流体云贴合刘海 | ✅ 已实现（待 Mac 真机验收） | 2026-10-11 · v0.2.44：①主窗口 `initialBounds()` 按鼠标所在显示器 `workArea` 限制初始与最小尺寸并居中——原固定 1440×900（min 1024×640）在 13 寸 MacBook 去掉菜单栏后放不下，标题栏被顶到菜单栏下，红绿灯够不着、窗口拖不动也缩不了（按代码与 Electron 行为推断，未在 Mac 复现）；②macOS 不再传 `titleBarOverlay`（仅 Windows/Linux 需要），并显式 `setWindowButtonVisibility(true)`；③流体云：`setVisibleOnAllWorkspaces` 加 `skipTransformProcessType`，避免进程被转成 UIElement；macOS 窗口层级改 `screen-saver` 才盖得过菜单栏；`notchFor(display)` 用内置屏菜单栏高度（≥32pt）推断刘海，菜单栏自动隐藏时按 1470/1512/1710/1728 宽度兜底，刘海宽 200pt 为估计值；收起态为刘海加两侧各 48pt 黑条，展开态从刘海向下长出卡片，位置固定居中贴顶，被拖动会吸回；契约 `ProgressCapsuleState` 新增 `notch`，`capsule.css/ts` 增加 `.notch` 样式。验证：electron-vite 构建、`tsc -p tsconfig.json`、胶囊冒烟测试在 Windows 通过。功能提交 `e43dc4d` 与标签 `v0.2.44` 已同步 GitHub，三平台安装包已由 CI 发布。**未验证（需真机 Mac，含刘海屏）**：红绿灯是否出现、窗口能否拖动缩放、胶囊与刘海对齐（必要时调 `NOTCH_WIDTH` / `NOTCH_EAR`）、外接屏与全屏表现。 |
 | 发布 | v0.2.41 GitHub 发布 | ✅ 已完成 | 2026-10-10：源码 master 与 v0.2.41 标签已同步 GitHub；Release 采用现有本地 Windows 安装包（190,479,091 字节），exe / blockmap / latest.yml 文件大小及 SHA256 与本地逐项一致，清单下载与安装包下载长度核对通过。GitHub Actions 三平台构建及发布全部成功，Apple 芯片 / Intel DMG 与合并 latest-mac.yml 已发布，清单版本及文件大小核对通过。CI 生成的 Windows 产物在流程结束后替换为本地安装包，避免同版本文件不一致；服务器按用户选择暂缓，现有文件未修改 |
 | 打包 | v0.2.41 Windows 安装包 | ✅ 已完成 | 2026-10-09：沿用已提交版本 v0.2.41（功能提交 `f9559d4`，含 TODO-044 的 v0.2.37–41 与 TODO-053 的 v0.2.36），本地安装包 `apps/desktop/release/MarioCode-0.2.41-x64.exe` 已生成（190,479,091 字节，约 181.7 MiB）；安装包 SHA512 与 latest.yml 一致，blockmap 已生成，包内 app-update.yml 指向自建更新服务器（generic + `http://39.109.58.6:3458/`）。打包 ASAR 下的启动恢复、工作区走查、画布、聊天显示真实桌面回归通过。体积比 v0.2.35（约 218.0 MiB）小约 36 MiB，主要来自移除霞鹜文楷字体等；未逐文件比对。未安装或上传，未主动关闭用户应用 |

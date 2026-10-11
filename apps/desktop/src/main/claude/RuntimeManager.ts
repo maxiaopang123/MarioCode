@@ -161,8 +161,12 @@ class RuntimeManager {
       // session reopen. Each event type → one Repo call, fire-and-forget.
       // contextSnapshot / todos / subagents / planDraft are all JSON blobs.
       if (e.type === "token-usage.updated") {
+        // Same guard as the renderer's isValidSnapshot: processed tokens with
+        // zero occupancy is the output-only-usage signature, never persist it
+        // over a good row.
+        const lostOccupancy = e.snapshot.usedTokens === 0 && e.snapshot.totalProcessedTokens > 0;
         try {
-          SessionRepo.updateSnapshot(session.id, e.snapshot);
+          if (!lostOccupancy) SessionRepo.updateSnapshot(session.id, e.snapshot);
           if (SessionRepo.recordUsedModel(session.id, e.snapshot.model)) {
             const updated = SessionRepo.get(session.id);
             if (updated) broadcastSessionChanged(updated);

@@ -10,6 +10,8 @@
 
 | 编号 | 事项 | 状态 | 剩余工作或备注 |
 |---|---|---|---|
+| TODO-059 | 【关键】上下文是否有问题，token 消耗很大 | 想法（待排查） | 用户反馈：上下文很费 token，需要确认是不是有问题。已有线索（未验证）：本机 `main.log` 的 turn 结束日志里 `accProcessed` 动辄数百万甚至两千万（如 `accProcessed=20209166`，仅 2 条 assistant 消息，`lastKnownUsed=252755`），说明累计处理量远大于窗口占用，可能来自子代理、缓存读取反复计入，或同一历史被重复发送；`pathC-direct` 还有两条 `accInput` 为 70 万与 300 万的记录。待查：①每轮实际发给模型的输入由哪些部分构成（系统提示词各层、用户提示词、技能与 MCP 描述、历史、图片 base64）；②缓存命中率是否正常，第三方网关是否根本不缓存；③浏览器截图等图片是否随历史每轮重发（见 TODO-058）；④自动压缩阈值（默认 80%、窗口 1M）是否过晚，使会话长期处于很大的上下文；⑤子代理与后台任务的 token 归因是否被重复计入；⑥圆环显示的占用与真实计费用量是否一致（v0.2.45 已修圆环为 0，仍有 pathC-direct 高估）。产出：先给出一次完整回合的 token 构成清单，再决定优化项。 |
+| TODO-058 | 【关键】Mario 浏览器被频繁打开并反复截图，原因待查 | 想法（待排查） | 用户反馈：使用中 Mario 浏览器（`browser_*` 工具）被打开得很频繁，并且次数很多地截图。要先弄清楚为什么：①是模型自己反复调用 `browser_screenshot` / `browser_snapshot`，还是每步操作后有自动截图；②提示词 `browserToolsUsagePrompt` 是否在引导「每步先截图确认」；③点击、输入后工具结果是否附带截图；④Agent 视图被回收（空闲 10 分钟、每会话最多 3 个）后是否导致反复新开；⑤三个引擎（Claude / Codex / Pi）表现是否一致。线索（未验证）：截图是免审批的只读工具，模型调用没有成本门槛；截图以 base64 图片块进入工具结果，可能随历史每轮重复发送，与 TODO-059 的 token 消耗相关。排查方式：从会话记录统计 `browser_*` 调用次数与顺序，对照 `main.log` 的 `browser screenshot start/done`。 |
 | TODO-057 | 运行时不再使用客户本机安装的 Claude / Codex / Pi | 想法（待考虑） | 起因：Windows 与 Mac 的 `auto` 模式选到的二进制可能不同——Windows 走托管版（如 `runtimes/claude/0.3.258`），Mac 会优先用本机已安装的 claude，版本与 usage 字段可能不一致，疑似造成「0.2.41 在 Mac 上不显示上下文」（未验证，缺 Mac 日志）。设想：把 `auto` 里「本机已安装」一步去掉（`sdkBinaryPath.ts`、`codexBinaryResolve.ts`、`runtimeSelection.ts` 的 Pi 解析），只用托管版与开发依赖；设置里「使用本机安装」保留为用户主动选项，已手动选择的用户不受影响。待决定：①范围，三个引擎一起改还是只改 Claude；②无网络的新用户无法使用，是否在首次发送时自动下载托管运行时（目前只有「请到 设置 → Agent 安装」提示）；③设置页「自动」选项的说明文字需同步修改。Mac 日志命令：`grep -E "runtime auto: claude|context-usage|token-usage|getContextUsage" "$HOME/Library/Application Support/MarioCode/logs/main.log" | tail -30`。 |
 | 发布 | v0.2.44 服务器发布与安装验收 | 待确认 | 2026-10-11：源码 master 与 v0.2.44 标签已同步 GitHub；Windows、Apple 芯片 / Intel Mac 安装包及更新清单均由 GitHub Actions 构建发布，标签、清单版本 / 大小与安装包下载长度核对通过。服务器 SSH 指纹与保存记录不符，用户此前选择「暂不确认，先同步 GitHub」，服务器继续暂缓；此前检查网页为 Windows v0.2.10 / macOS v0.2.8，本轮未连接服务器。待通过可信渠道确认指纹后，按 v0.2.44 对应文件更新服务器及核对下载页；安装版更新流程和 Mac 窗口 / 刘海效果仍待用户验收 |
 | TODO-054 | 导入 Codex、Claude 本地会话 | 想法 | 支持将 Codex、Claude 的本地会话导入 MarioCode，在应用内查看历史对话；待确定导入入口、本地记录格式兼容、消息与工具记录映射、项目归属、重复导入去重及导入后继续对话的支持范围 |
@@ -31,7 +33,7 @@
 | TODO-010 | 聊天流渲染性能 | 暂缓 | 先采集真实行高与重算耗时，再决定改动 |
 | TODO-008 | DeepSeek 接入 | 未开始 | 先做 1 至 2 天可行性验证，再决定是否作为第四个引擎 |
 
-下一个编号：TODO-058。记录想法不代表立即开工。
+下一个编号：TODO-060。记录想法不代表立即开工。
 
 ## 已完成
 

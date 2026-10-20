@@ -3916,24 +3916,25 @@ export type RuntimeAgentId = z.infer<typeof RuntimeAgentSchema>;
  *  "dev" = node_modules of a development checkout (devDependencies / the
  *  SDK's platform optionalDependency — absent in packaged builds);
  *  "bundled" = a legacy build that still ships the payload in
- *  app.asar.unpacked; "external" = the user's explicit local selection;
- *  "local" = a detected local installation picked automatically by "auto"
- *  mode. null = not available anywhere → the provider errors on use and the
- *  panel should offer the install button.
+ *  app.asar.unpacked. null = not available anywhere → the provider errors
+ *  on use and the panel should offer the install button.
  *
- *  RuntimeMode: "auto" (default when the user never chose) = managed copy →
- *  detected local install → dev/bundled fallback; "managed" = managed copy →
- *  dev/bundled fallback (never local); "external" = only the selected path. */
-export type RuntimeMode = "auto" | "managed" | "external";
-export type RuntimeAgentSource = "managed" | "dev" | "bundled" | "external" | "local";
+ *  TODO-057: device detection was removed. "local"/"external" sources no
+ *  longer exist; AUTO mode = managed copy → dev/bundled fallback only, and
+ *  auto-updates to the latest managed version in the background.
+ *
+ *  RuntimeMode: "auto" (default) = managed copy → dev/bundled fallback;
+ *  "managed" = same order, pinned to managed-first. Stored "external"
+ *  selections read as "auto". */
+export type RuntimeMode = "auto" | "managed";
+export type RuntimeAgentSource = "managed" | "dev" | "bundled";
 export type RuntimeCompatibility = "compatible" | "incompatible" | "unknown";
 
-/** Minimum version a LOCALLY installed runtime (auto-detected or explicitly
- *  selected "external") must report before MarioCode will use it. Older (or,
- *  for claude/codex, unidentifiable) local installs are skipped by auto mode,
- *  refused for explicit selection, and surfaced in the settings panel with an
- *  update reminder. Managed / dev copies are pinned by this build and are not
- *  gated here.
+/** Minimum version a LOCALLY installed runtime must report to be listed as
+ *  usable in the settings panel's info block. Since TODO-057 the engines
+ *  never use local installs at all — this gate only shapes what the panel
+ *  shows (a too-old install is listed with an update reminder). Managed /
+ *  copies are pinned/auto-updated by this build and are not gated here.
  *  - claude: Claude Code CLI version as reported by `claude --version`.
  *    2.1.238 is the CLI verified against MarioCode's plan-approval /
  *    AskUserQuestion / tool-approval paths (see AGENTS.md); the pinned SDK
@@ -3977,9 +3978,11 @@ export interface RuntimeAgentState {
   agent: RuntimeAgentId;
   /** Persisted execution policy. Managed retains the dev/bundled fallback. */
   selectedMode: RuntimeMode;
-  /** Explicit external path, or null when external mode uses auto-detection. */
+  /** Legacy external selection path retained for display only. Always null
+   *  since TODO-057 (external mode removed); kept in the shape so an old
+   *  renderer talking to a new main process degrades gracefully. */
   configuredPath: string | null;
-  /** Pi-only explicit Node executable for external mode. */
+  /** Legacy external Pi Node path; same story as configuredPath. */
   configuredNodePath: string | null;
   /** Version this MarioCode build expects (pinned in package.json). */
   expectedVersion: string;
@@ -3999,12 +4002,11 @@ export interface RuntimeAgentState {
   available: boolean;
   compatibility: RuntimeCompatibility;
   diagnostic: string;
-  /** Detected zero-copy external installations. */
+  /** Detected LOCAL installations on this device (info display only since
+   *  TODO-057 — they are never used by the engines). */
   candidates: RuntimeCandidate[];
-  /** Newest detected local install that was skipped for being below
-   *  RUNTIME_MIN_LOCAL_VERSIONS, set only when no usable local candidate
-   *  exists (or the stored external selection itself is too old). The panel
-   *  shows an update reminder from it. */
+  /** Newest detected local install below RUNTIME_MIN_LOCAL_VERSIONS, shown
+   *  as an update reminder (info only — such installs are never used). */
   localTooOld?: RuntimeLocalTooOld | null;
   /** Latest version advertised by the registry, or null when the check
    *  hasn't run yet / failed (offline). Populated lazily by `runtimes.list`. */
@@ -4065,11 +4067,7 @@ export type RuntimesRemoveInput = z.infer<typeof RuntimesRemoveSchema>;
 
 export const RuntimesSelectSchema = z.object({
   agent: RuntimeAgentSchema,
-  mode: z.enum(["auto", "managed", "external"]),
-  /** Required for external mode; discovery never binds a candidate implicitly. */
-  path: z.string().optional(),
-  /** Pi-only Node executable override. */
-  nodePath: z.string().optional(),
+  mode: z.enum(["auto", "managed"]),
 });
 export type RuntimesSelectInput = z.infer<typeof RuntimesSelectSchema>;
 export const RuntimesDiscoverSchema = z.object({ agent: RuntimeAgentSchema });
@@ -5368,8 +5366,11 @@ export interface RpcMap {
   /** Delete an installed runtime from disk. Rejected while any turn is
    *  running. */
   "runtimes.remove": (input: RuntimesRemoveInput) => Promise<{ ok: boolean; error?: string }>;
-  /** Select managed execution or a zero-copy external installation. */
+  /** Persist the execution policy: auto (managed + background auto-update
+   *  to latest) or managed (managed copy, dev/bundled fallback). */
   "runtimes.select": (input: RuntimesSelectInput) => Promise<{ ok: boolean; error?: string }>;
+  /** Detect local installations on this device. Since TODO-057 the results
+   *  are info display only — they never influence engine runtime choice. */
   "runtimes.discover": (input: RuntimesDiscoverInput) => Promise<{ candidates: RuntimeCandidate[] }>;
   "sharedProviders.list": () => Promise<{ providers: SharedProviderPublic[] }>;
   "sshCatalog.get": () => Promise<SshCatalogState>;

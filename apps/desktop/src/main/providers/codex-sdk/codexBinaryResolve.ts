@@ -25,10 +25,8 @@ import { createRequire } from "node:module";
 import { basename as pathBasename, join } from "node:path";
 import { getManagedRuntimeRoot, listManagedVersions } from "@main/runtimes/managedRuntimeRoots.js";
 import {
-  autoLocalRuntimeSync,
   getRuntimeSelection,
   noteAutoPick,
-  resolveExternalRuntimeSync,
 } from "@main/runtimes/runtimeSelection.js";
 
 /** The platform-package suffix, e.g. "darwin-arm64" / "win32-x64". */
@@ -84,12 +82,11 @@ export function codexVendorTriple(): string | null {
 }
 
 /**
- * Resolve the codex binary path. Explicit "external" mode uses only the
- * selected binary. "auto" (default) and "managed" share this order:
+ * Resolve the codex binary path. "auto" (default) and "managed" share this
+ * order (TODO-057: external mode and local-install detection were removed):
  *   0) managed runtime downloaded via the settings panel
  *      (`<userData>/runtimes/codex/<version>/vendor/...`) — highest priority,
  *      works in dev and packaged apps alike;
- *   (auto only) a locally installed Codex found by discovery;
  *   1-3) node_modules resolution (dev) — unchanged;
  *   4) packaged-app fallback under app.asar.unpacked (kept for forward-compat
  *      in case a build ever bundles the platform package again).
@@ -98,13 +95,6 @@ export function codexVendorTriple(): string | null {
  */
 export function resolveCodexBinaryPath(): string | null {
   const selection = getRuntimeSelection("codex");
-  if (selection.mode === "external") {
-    const resolved = resolveExternalRuntimeSync("codex");
-    if (resolved) return resolved.path;
-    throw new Error(selection.path
-      ? `Configured external Codex runtime is unavailable: ${selection.path}. Choose a valid native Codex executable in Settings.`
-      : "Codex external runtime is selected but no executable is configured. Choose a detected installation in Settings.");
-  }
   const auto = selection.mode === "auto";
   const managedRoot = getManagedRuntimeRoot();
   if (managedRoot) {
@@ -115,14 +105,6 @@ export function resolveCodexBinaryPath(): string | null {
         if (auto) noteAutoPick("codex", "managed", found);
         return found;
       }
-    }
-  }
-  // AUTO only: a locally installed Codex beats the dev/bundled fallback.
-  if (auto) {
-    const local = autoLocalRuntimeSync("codex");
-    if (local) {
-      noteAutoPick("codex", "local", local.path);
-      return local.path;
     }
   }
   const bundled = resolveBundledCodexBinaryPath();

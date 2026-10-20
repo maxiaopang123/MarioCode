@@ -91,8 +91,17 @@ export async function withHiddenPage<T>(
   await acquire();
   const win = new BrowserWindow({
     show: false,
+    // Never let a read surface on the user's screen: the window starts hidden,
+    // is parked outside every display, stays out of the taskbar and cannot take
+    // focus, so even a stray show() cannot cover the workspace.
+    x: -12000,
+    y: -12000,
     width: 1280,
     height: 900,
+    skipTaskbar: true,
+    focusable: false,
+    // A hidden window still paints, which is what lets the read run.
+    paintWhenInitiallyHidden: true,
     webPreferences: {
       session: ses,
       sandbox: true,

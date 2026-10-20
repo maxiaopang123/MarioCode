@@ -35,7 +35,9 @@ export async function listAvailablePiModels(): Promise<BuiltinModelOption[]> {
     // Inject every configured apiKey so the SDK's auth-priority chain
     // reports these models as authenticated (the env-fallback won't
     // have credentials for custom providers).
-    const publicProviders = await PiModelsStore.listPublic();
+    // Shared providers only: legacy models.json entries are never offered to
+    // the picker (they remain available to the shared-provider migration UI).
+    const publicProviders = PiModelsStore.listShared();
     const apiKeys: Record<string, string> = {};
     for (const [name, pub] of Object.entries(publicProviders)) {
       if (!pub.hasApiKey) continue;

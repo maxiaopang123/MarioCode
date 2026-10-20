@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RUNTIME_MIN_LOCAL_VERSIONS } from "@contracts/ipc";
 import {
-  autoLocalRuntimeSync,
   compareCoreVersions,
   discoverExternalRuntimes,
+  getRuntimeSelection,
   newestTooOld,
   selectRuntime,
   validateExternalSelection,
@@ -23,9 +23,6 @@ function check(name: string, condition: boolean): void {
   process.stdout.write(`  ✓ ${name}\n`);
 }
 
-// Before any discovery ran, AUTO must not hand out an unprobed local path.
-check("auto local resolver returns null before discovery (no probe-less guess)", autoLocalRuntimeSync("claude") === null && autoLocalRuntimeSync("codex") === null);
-
 check("compareCoreVersions orders numerically", compareCoreVersions("2.1.238", "2.1.99") > 0 && compareCoreVersions("0.153.4", "0.153.10") < 0);
 check("compareCoreVersions ignores prerelease suffix", compareCoreVersions("2.1.238-beta.1", "2.1.238") === 0 && compareCoreVersions("v0.83.0", "0.83.0") === 0);
 check("newestTooOld picks the newest known version", newestTooOld([
@@ -35,6 +32,9 @@ check("newestTooOld picks the newest known version", newestTooOld([
   { path: "d", version: "9.9.9", available: false, compatibility: "incompatible", diagnostic: "x" },
 ])?.path === "c");
 
+// TODO-057: discovery still probes local installations, but they are info
+// display only — the engines never load from them (resolvers were reduced to
+// managed → dev/bundled). These checks pin the probing behavior.
 for (const agent of ["claude", "codex", "pi"] as const) {
   const candidates = await discoverExternalRuntimes(agent);
   process.stdout.write(`  • ${agent}: ${candidates.map((c) => `${c.version ?? "?"}${c.tooOld ? " (too old)" : ""} ${c.path}`).join(", ") || "none"}\n`);
@@ -64,26 +64,30 @@ check("too-old Pi package is marked tooOld + unavailable", oldPi.tooOld === true
 check("too-old diagnostic names version and minimum", oldPi.diagnostic.includes("0.1.0") && oldPi.diagnostic.includes(RUNTIME_MIN_LOCAL_VERSIONS.pi));
 const newPi = await validateExternalSelection("pi", fakePi("99.0.0"));
 check("new-enough Pi package passes the gate", newPi.available && !newPi.tooOld);
-const settingsBeforeOld = snapshotSettings().size;
-const refused = await selectRuntime("pi", "external", fakePi("0.2.0"));
-check("explicit selection of a too-old runtime is refused with version + minimum", !refused.ok
-  && (refused.error ?? "").includes("0.2.0") && (refused.error ?? "").includes(RUNTIME_MIN_LOCAL_VERSIONS.pi));
-check("refused too-old selection does not persist", snapshotSettings().size === settingsBeforeOld);
 rmSync(fakeRoot, { recursive: true, force: true });
 
+// TODO-057: external mode was removed. A legacy "external" row in settings
+// must read as AUTO (graceful degradation), and both current modes persist.
 const before = snapshotSettings();
-const invalid = await selectRuntime("claude", "external", join(tmpdir(), "definitely-missing-claude"));
-check("invalid external selection is rejected", !invalid.ok);
-check("invalid external selection does not persist", snapshotSettings().size === before.size);
-
-const pi = (await discoverExternalRuntimes("pi")).find((candidate) => candidate.available);
-if (pi) {
-  const badNode = await selectRuntime("pi", "external", pi.path, join(tmpdir(), "missing-node"));
-  check("explicit invalid Pi Node is rejected without system fallback", !badNode.ok);
-  check("failed Pi Node selection does not persist", snapshotSettings().size === before.size);
-  const validPi = await selectRuntime("pi", "external", pi.path);
-  check("Pi SDK imports in a real Node process and exposes its minimum API", validPi.ok);
-}
+check("managed mode persists", (await selectRuntime("claude", "managed")).ok);
+check("managed mode reads back", getRuntimeSelection("claude").mode === "managed");
+check("auto mode persists", (await selectRuntime("claude", "auto")).ok);
+check("auto mode reads back", getRuntimeSelection("claude").mode === "auto");
+writeFileSync(join(tmpdir(), `mariocode-legacy-external-${Date.now()}`), "");
+// Seed a legacy external selection the way pre-TODO-057 builds stored it.
+const { SettingRepo } = await import("@main/store/repositories.js");
+SettingRepo.set("runtime.selection.claude", JSON.stringify({
+  mode: "external",
+  path: "C:\\legacy\\claude.exe",
+  nodePath: null,
+  verifiedVersion: "2.1.0",
+  payloadFingerprint: "deadbeef",
+  nodeFingerprint: null,
+}));
+check("legacy external selection degrades to auto", getRuntimeSelection("claude").mode === "auto");
+await selectRuntime("claude", "auto"); // overwrite the legacy row
+check("legacy external selection is overwritten by a mode save", (JSON.parse(SettingRepo.get("runtime.selection.claude") ?? "{}") as { mode?: string }).mode === "auto");
+check("mode saves leave exactly one row for the agent", [...snapshotSettings().keys()].filter((key) => key === "runtime.selection.claude").length === 1);
 
 const root = mkdtempSync(join(tmpdir(), "mariocode-runtime-selection-"));
 const external = join(root, "external-claude.exe");
@@ -93,7 +97,7 @@ mkdirSync(join(managedRoot, "claude", "1.0.0"), { recursive: true });
 writeFileSync(join(managedRoot, "claude", "1.0.0", "claude.exe"), "managed sentinel");
 setManagedRuntimeRoot(managedRoot);
 await removeRuntime("claude");
-check("managed removal never deletes an external-owned program", existsSync(external));
+check("managed removal never deletes a user-owned program", existsSync(external));
 
 let release!: () => void;
 const held = withRuntimeMutation("claude", async () => await new Promise<void>((resolve) => { release = resolve; }));

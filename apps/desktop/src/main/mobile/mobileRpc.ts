@@ -170,7 +170,7 @@ const HANDLERS: Record<string, RpcHandler> = {
   }),
 
   // ── Composer config data (read-only, mirrors the desktop IPC handlers) ──
-  "customModel:list": () => ({ models: CustomModelStore.listPublic() }),
+  "customModel:list": () => ({ models: CustomModelStore.listShared() }),
 
   "piModels:listAvailable": async () => {
     const models = await listAvailablePiModels();
@@ -182,7 +182,7 @@ const HANDLERS: Record<string, RpcHandler> = {
   // shows a Codex thread as "未配置"/选择模型 and the send guard blocks every
   // turn. Save/delete/getApiKey stay desktop-only (secrets management).
   "codexModels:list": async () => ({
-    providers: await CodexModelsStore.listPublic(),
+    providers: await CodexModelsStore.listShared(),
   }),
 
   "skills:list": (raw) => {

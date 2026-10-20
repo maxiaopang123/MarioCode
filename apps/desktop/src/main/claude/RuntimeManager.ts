@@ -604,7 +604,27 @@ class RuntimeManager {
     // For the built-in path it's the session's model unless "default".
     let modelForReq: string | undefined = session.model !== "default" ? session.model : undefined;
     if (session.customModelId) {
-      const cfg = CustomModelStore.resolveApiConfig(session.customModelId, session.model);
+      // TODO-062: engines only run shared providers. A session pinned to a
+      // legacy local endpoint (`cm_*`, still on disk for the migration panel)
+      // must fail loudly — falling through to the built-in endpoint would
+      // silently switch the user's model (and possibly leak prompts to it).
+      if (!session.customModelId.startsWith("shared_")) {
+        const message = "该会话使用的本地 Claude 模型已停用：请到「设置 → 模型」把该提供商复制为公共提供商，然后重新选择模型。";
+        rt.ctx.emit({ type: "error", sessionId: session.id, message, code: "CLAUDE_LEGACY_MODEL_DISABLED" });
+        rt.ctx.emit({ type: "turn.done", sessionId: session.id, reason: "error" });
+        return;
+      }
+      let cfg: ReturnType<typeof CustomModelStore.resolveApiConfig>;
+      try {
+        cfg = CustomModelStore.resolveApiConfig(session.customModelId, session.model);
+      } catch (err) {
+        // A shared provider deleted or denylisted for Claude since the session
+        // was bound: surface the store's message instead of a raw throw.
+        const message = err instanceof Error ? err.message : String(err);
+        rt.ctx.emit({ type: "error", sessionId: session.id, message, code: "CLAUDE_SHARED_MODEL_INVALID" });
+        rt.ctx.emit({ type: "turn.done", sessionId: session.id, reason: "error" });
+        return;
+      }
       if (!cfg) {
         log.warn(`sendTurn: custom model ${session.customModelId} not found, token undecryptable, or no model configured; falling back to default endpoint`);
         this.releaseBridge(rt);

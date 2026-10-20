@@ -46,14 +46,14 @@ await electronTest("todo026-validation", async data => {
   // Edit retains a secret without exposing it to the form.
   await click("编辑"); await wait("Boolean(document.getElementById('ssh-password'))"); assert.equal(await evaluate("document.getElementById('ssh-password').value"), ""); await click("保存"); await wait("!document.getElementById('ssh-alias')");
   // Select actual local runtimes in the isolated profile.
-  assert.equal((await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "pi", mode: "external", path: join(desktop, "node_modules/@earendil-works/pi-coding-agent"), nodePath: process.execPath })})`)).ok, true);
+  assert.equal((await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "pi", mode: "auto" })})`)).ok, true);
   const suffix = `${process.platform}-${process.arch}`;
   const sdkRequire = createRequire(require.resolve("@anthropic-ai/claude-agent-sdk"));
   const claudePath = join(dirname(sdkRequire.resolve(`@anthropic-ai/claude-agent-sdk-${suffix}/package.json`)), process.platform === "win32" ? "claude.exe" : "claude");
-  assert.equal((await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "claude", mode: "external", path: claudePath })})`)).ok, true);
+  assert.equal((await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "claude", mode: "auto" })})`)).ok, true);
   const triples = { "win32-x64": "x86_64-pc-windows-msvc", "linux-x64": "x86_64-unknown-linux-musl", "darwin-arm64": "aarch64-apple-darwin", "darwin-x64": "x86_64-apple-darwin" };
   const codexPath = join(desktop, "../../node_modules/.pnpm", `@openai+codex@${require("@openai/codex/package.json").version}-${suffix}`, "node_modules/@openai/codex/vendor", triples[suffix], "bin", process.platform === "win32" ? "codex.exe" : "codex");
-  assert.equal((await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "codex", mode: "external", path: codexPath })})`)).ok, true);
+  assert.equal((await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "codex", mode: "auto" })})`)).ok, true);
   const baseUrl = `http://127.0.0.1:${upstream.port}/v1`;
   const providers = (await evaluate(`window.api.sharedProviders.save(${JSON.stringify({ name: "SSH fixture", baseUrl, apiKey: "ssh-upstream-fake-key", protocols: ["chat-completions", "anthropic", "responses"], enabledAgents: ["claude", "pi", "codex"], models: [{ id: "ssh-pi", interfaces: ["chat-completions"] }, { id: "ssh-claude", interfaces: ["anthropic"] }, { id: "ssh-codex", interfaces: ["responses"] }] })})`)).providers;
   const runtimeId = `shared_${providers[0].id.replaceAll("-", "")}`;

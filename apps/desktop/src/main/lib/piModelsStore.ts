@@ -102,34 +102,34 @@ function validateProvider(name: string, cfg: PiProviderConfig): string | null {
   return null;
 }
 
-export const PiModelsStore = {
-  /** List all custom providers (apiKey presence only, never cleartext). */
-  async listPublic(): Promise<Record<string, PiProviderPublic>> {
-    const file = await readModelsFile();
-    const keys = readKeyMap();
-    const out: Record<string, PiProviderPublic> = {};
-    for (const [name, cfg] of Object.entries(file.providers)) {
-      out[name] = toPublic(cfg, Boolean(keys[name]));
-    }
-    // Unified providers are projected into Pi's in-memory provider shape.
-    // They never get copied into ~/.pi/agent/models.json.
-    for (const provider of SharedProviderStore.listPublic()) {
-      if (!provider.enabledAgents.includes("pi") || provider.protocols.length === 0) continue;
-      const firstModel = provider.models[0];
-      const protocol = resolveSharedModelProtocol("pi", provider.protocols, firstModel?.interfaces);
-      if (!protocol) continue;
-      const runtimeId = sharedRuntimeId(provider.id);
-      const api = protocol === "anthropic" ? "anthropic-messages"
-        : protocol === "responses" ? "openai-responses" : "openai-completions";
-      out[runtimeId] = {
-        name: provider.name,
-        baseUrl: SharedProviderStore.endpointUrl(provider, protocol),
-        api,
-        authHeader: true,
-        models: provider.models.map((model) => {
-          const modelProtocol = resolveSharedModelProtocol("pi", provider.protocols, model.interfaces);
-          if (!modelProtocol) return null;
-          return normalizePiRegisteredModel({
+/** Shared providers projected into Pi's in-memory provider shape. They never
+ *  get copied into ~/.pi/agent/models.json.
+ *
+ *  This is the ONLY provider surface a Pi turn or the Pi model picker may
+ *  consume (see TODO-062). Legacy providers in `~/.pi/agent/models.json` are
+ *  deliberately excluded: they stay on disk for the migration panel, but no
+ *  agent registers them anymore. Keeping the two systems apart is what makes
+ *  the shared-provider normalization (e.g. `supportsDeveloperRole: false`)
+ *  the single code path every Pi request goes through. */
+function sharedPiProviders(): Record<string, PiProviderPublic> {
+  const out: Record<string, PiProviderPublic> = {};
+  for (const provider of SharedProviderStore.listPublic()) {
+    if (!provider.enabledAgents.includes("pi") || provider.protocols.length === 0) continue;
+    const firstModel = provider.models[0];
+    const protocol = resolveSharedModelProtocol("pi", provider.protocols, firstModel?.interfaces);
+    if (!protocol) continue;
+    const runtimeId = sharedRuntimeId(provider.id);
+    const api = protocol === "anthropic" ? "anthropic-messages"
+      : protocol === "responses" ? "openai-responses" : "openai-completions";
+    out[runtimeId] = {
+      name: provider.name,
+      baseUrl: SharedProviderStore.endpointUrl(provider, protocol),
+      api,
+      authHeader: true,
+      models: provider.models.map((model) => {
+        const modelProtocol = resolveSharedModelProtocol("pi", provider.protocols, model.interfaces);
+        if (!modelProtocol) return null;
+        return normalizePiRegisteredModel({
           id: model.id,
           name: model.label ?? model.id,
           api: modelProtocol === "anthropic" ? "anthropic-messages"
@@ -139,12 +139,31 @@ export const PiModelsStore = {
           maxTokens: model.maxTokens,
           reasoning: model.reasoning,
           input: model.input,
-          });
-        }).filter((model): model is NonNullable<typeof model> => model !== null),
-        hasApiKey: provider.hasApiKey,
-      };
+        });
+      }).filter((model): model is NonNullable<typeof model> => model !== null),
+      hasApiKey: provider.hasApiKey,
+    };
+  }
+  return out;
+}
+
+export const PiModelsStore = {
+  /** List all providers, including legacy local ones (migration panel only). */
+  async listPublic(): Promise<Record<string, PiProviderPublic>> {
+    const file = await readModelsFile();
+    const keys = readKeyMap();
+    const out: Record<string, PiProviderPublic> = {};
+    for (const [name, cfg] of Object.entries(file.providers)) {
+      out[name] = toPublic(cfg, Boolean(keys[name]));
     }
-    return out;
+    return Object.assign(out, sharedPiProviders());
+  },
+
+  /** Engine-facing list: shared providers only. Pi turns and the model picker
+   *  consume this, so a legacy models.json provider can never be selected or
+   *  run. The legacy entries stay readable through `listPublic` for migration. */
+  listShared(): Record<string, PiProviderPublic> {
+    return sharedPiProviders();
   },
 
   /**

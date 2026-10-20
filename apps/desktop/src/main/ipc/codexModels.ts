@@ -23,7 +23,9 @@ import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 
 export function registerCodexModelsHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(IPC.CODEX_MODELS_LIST, async () => {
-    const providers = await CodexModelsStore.listPublic();
+    // Engine-facing: shared providers only (legacy entries remain available
+    // to the shared-provider migration panel in main).
+    const providers = await CodexModelsStore.listShared();
     return { providers };
   });
 

@@ -1,9 +1,15 @@
 /**
  * mario_web_fetch — a page's main content as light Markdown, in bounded slices.
  *
- * The page loads in a hidden window (webPage.ts) and goes through the same
- * main-content extractor as browser_snapshot (MAIN_TEXT_JS). The whole
- * extracted text is cached on disk for 30 minutes under
+ * Two lanes, same output (TODO-060). Static HTML is read over plain HTTP
+ * (httpPage.ts) and parsed in-process: no renderer, no window, tens of
+ * milliseconds. Only when that text is unusable — a JS shell, a consent
+ * interstitial, a non-HTML body — does the page load in a hidden window
+ * (webPage.ts) and go through the same main-content extractor as
+ * browser_snapshot (MAIN_TEXT_JS). The lane used is recorded in the result and
+ * in the cache entry, so a slow read is explainable after the fact.
+ *
+ * The whole extracted text is cached on disk for 30 minutes under
  * `userData/web-cache/`, so reading on with `offset` never reloads the page
  * and never puts more than one slice in the model's context.
  *
@@ -11,7 +17,8 @@
  * auto-approved; reaching into the LAN stays with the approval-gated browser
  * tools), and search-engine result pages (mario_web_search is the bounded way to
  * search). Search-engine redirect links such as Baidu's /link?url= are
- * allowed — the check runs again on the URL the page finally lands on.
+ * allowed — the check runs again on the URL the page finally lands on, and the
+ * HTTP lane checks before it reads the body.
  */
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
@@ -21,6 +28,7 @@ import { matchSearchEngine } from "@main/browser/searchEngines.js";
 import { MAIN_TEXT_JS } from "@main/browser/snapshotScript.js";
 import { log } from "@main/lib/logger.js";
 import { readBuiltinToolsConfig } from "./builtinToolsConfig.js";
+import { readStaticPage, StaticPageRejected } from "./httpPage.js";
 import { evalInPage, withHiddenPage } from "./webPage.js";
 import { WEB_FETCH_MAX_CHARS, WEB_FETCH_MIN_CHARS, type BuiltinToolResult } from "./builtinToolSpecs.js";
 
@@ -41,6 +49,8 @@ interface CachedPage {
   title: string;
   text: string;
   source: string;
+  /** Which lane produced the text. Absent in entries cached before TODO-060. */
+  via?: "http" | "chromium";
   at: number;
 }
 
@@ -124,7 +134,22 @@ async function writeCache(page: CachedPage, links: boolean): Promise<void> {
   }
 }
 
-async function loadPage(url: string, links: boolean): Promise<CachedPage> {
+/** Refusal for the URL a load finally landed on, if it left the allowed web.
+ *  Used as the HTTP lane's redirect guard and again after a render. Pure
+ *  (exported for the offline smoke). */
+export function landedProblem(finalUrl: string): string | null {
+  let landed: URL;
+  try {
+    landed = new URL(finalUrl);
+  } catch {
+    return null;
+  }
+  if (isPrivateHost(landed.hostname)) return "该网址跳转到了本地或内网地址,mario_web_fetch 不读取";
+  const engine = matchSearchEngine(landed.href);
+  return engine ? `该网址落在了搜索引擎 ${engine} 的页面上;搜索请用 mario_web_search` : null;
+}
+
+async function loadViaChromium(url: string, links: boolean): Promise<CachedPage> {
   const script = EXTRACT_SCRIPT.replace("%ARG_JSON%", () => JSON.stringify(JSON.stringify({ links, limit: TEXT_LIMIT })));
   const read = async (wc: WebContents): Promise<unknown> => {
     // Some redirectors bounce by script after their own page has loaded.
@@ -151,8 +176,51 @@ async function loadPage(url: string, links: boolean): Promise<CachedPage> {
     title: result.title || "",
     text: result.text ?? "",
     source: result.source ?? "body",
+    via: "chromium",
     at: Date.now(),
   };
+}
+
+/**
+ * Read a page, HTTP first. The static lane is the common case and the whole
+ * point of TODO-060: it must stay a fast miss, never a slow one, so it bails
+ * out on the first sign of a JS-rendered page rather than trying to be clever.
+ *
+ * `guard` is a parameter only because the offline smoke serves its fixtures
+ * from loopback — the one host the real guard refuses. Production always uses
+ * the default.
+ */
+export async function loadPage(
+  url: string,
+  links: boolean,
+  guard: (finalUrl: string) => string | null = landedProblem,
+): Promise<CachedPage> {
+  const startedAt = Date.now();
+  try {
+    const page = await readStaticPage(url, { links, limit: TEXT_LIMIT, guard });
+    if (page.ok) {
+      log.info(
+        `mario_web_fetch: ${url} read over HTTP in ${Date.now() - startedAt}ms (${page.text.length} chars, ${page.source})`,
+      );
+      return {
+        url,
+        finalUrl: page.finalUrl,
+        title: page.title,
+        text: page.text,
+        source: page.source,
+        via: "http",
+        at: Date.now(),
+      };
+    }
+    log.info(`mario_web_fetch: ${url} rendering in Chromium: ${page.reason}`);
+  } catch (err) {
+    // PDF and the redirect refusals apply to both lanes; a transport failure
+    // does not — Chromium reaches the network through its own stack and proxy
+    // config, so it still gets a turn.
+    if (err instanceof StaticPageRejected) throw err;
+    log.warn(`mario_web_fetch: HTTP lane failed for ${url}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return loadViaChromium(url, links);
 }
 
 /** The mario_web_fetch tool. */
@@ -196,15 +264,8 @@ export async function webFetch(args: {
     } catch (err) {
       return errorResult(`${err instanceof Error ? err.message : String(err)}(${url})`);
     }
-    let landed: URL | null = null;
-    try {
-      landed = new URL(page.finalUrl);
-    } catch {
-      landed = null;
-    }
-    if (landed && isPrivateHost(landed.hostname)) return errorResult("该网址跳转到了本地或内网地址,mario_web_fetch 不读取");
-    const landedEngine = landed ? matchSearchEngine(landed.href) : null;
-    if (landedEngine) return errorResult(`该网址落在了搜索引擎 ${landedEngine} 的页面上;搜索请用 mario_web_search`);
+    const problem = landedProblem(page.finalUrl);
+    if (problem) return errorResult(problem);
     await writeCache(page, links);
   }
 
@@ -212,10 +273,11 @@ export async function webFetch(args: {
   const start = Math.min(offset, total);
   const slice = page.text.slice(start, start + maxChars);
   const end = start + slice.length;
+  const lane = page.via === "http" ? " · HTTP 直读" : page.via === "chromium" ? " · Chromium 渲染" : "";
   const lines = [
     `网页正文(Markdown):${page.title || "(无标题)"}`,
     `URL: ${page.finalUrl}${page.finalUrl !== url ? `(由 ${url} 跳转)` : ""}`,
-    `(内容来自${SOURCE_LABEL[page.source] ?? SOURCE_LABEL.body};第 ${start}–${end} 字,共 ${total} 字${fromCache ? ",取自 30 分钟内的缓存" : ""})`,
+    `(内容来自${SOURCE_LABEL[page.source] ?? SOURCE_LABEL.body}${lane};第 ${start}–${end} 字,共 ${total} 字${fromCache ? ",取自 30 分钟内的缓存" : ""})`,
     "",
   ];
   if (total === 0) lines.push("(页面没有可读的正文,可能需要登录,或内容在图片、视频里)");

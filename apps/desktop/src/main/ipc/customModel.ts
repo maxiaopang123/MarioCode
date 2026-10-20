@@ -33,7 +33,9 @@ const TEST_TIMEOUT_MS = 30_000;
 
 export function registerCustomModelHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(IPC.CUSTOM_MODEL_LIST, () => {
-    return { models: CustomModelStore.listPublic() };
+    // Engine-facing: shared providers only. Legacy local endpoints remain on
+    // disk for the shared-provider migration panel, never for agent selection.
+    return { models: CustomModelStore.listShared() };
   });
 
   ipcMain.handle(IPC.CUSTOM_MODEL_SAVE, (_evt, raw) => {

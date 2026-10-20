@@ -79,44 +79,43 @@ try {
   let text;
   do {
     text = await evaluate("document.body.innerText");
-    if (text.includes("MarioCode 管理") && text.includes("使用本机安装")) break;
+    if (text.includes("MarioCode 管理") && text.includes("检测到本机安装")) break;
     await delay(250);
   } while (Date.now() < settingsDeadline);
   await writeFile(join(data, "settings-dom.txt"), text);
-  assert.ok(text.includes("MarioCode 管理") && text.includes("使用本机安装"), "Runtime source controls are visible");
+  assert.ok(text.includes("MarioCode 管理") && text.includes("检测到本机安装"), "Runtime source controls are visible");
   const discoveries = {};
   for (const agent of ["claude", "codex", "pi"]) {
     discoveries[agent] = await evaluate(`window.api.runtimes.discover(${JSON.stringify({ agent })})`);
     assert.ok(discoveries[agent].candidates.some((c) => c.available), `${agent}: a real local installation is detected`);
   }
+  // TODO-057: local installs are info display only. The mode toggle must
+  // stick to auto/managed and the engines must not pick up a local source.
   const pi = discoveries.pi.candidates.find((c) => c.available);
-  await evaluate("[...document.querySelectorAll('button')].filter(b=>b.innerText.trim()==='使用本机安装').at(-1).click()");
-  await delay(250);
-  await evaluate("document.querySelector('input').focus()");
-  await command("Input.insertText", { text: pi.path });
-  await evaluate("[...document.querySelectorAll('button')].find(b=>b.innerText.trim()==='验证并使用').click()");
-  const bindingDeadline = Date.now() + 20000;
-  while (!await evaluate("document.body.innerText.includes('基础检查通过')")) {
-    if (Date.now() > bindingDeadline) throw new Error(`UI binding failed: ${await evaluate("document.body.innerText")}`);
-    await delay(250);
-  }
+  assert.ok(pi, "pi: a real local installation is detected");
+  await evaluate("[...document.querySelectorAll('button')].find(b=>b.innerText.trim()==='检测到本机安装').click()");
+  await delay(400);
+  text = await evaluate("document.body.innerText");
+  await writeFile(join(data, "settings-detected-dom.txt"), text);
+  assert.ok(text.includes(pi.path), "Detected local installations are listed in the info block");
   let state = (await evaluate("window.api.runtimes.list()")).runtimes.find((r) => r.agent === "pi");
-  assert.equal(state.selectedMode, "external");
-  assert.equal(state.source, "external");
-  assert.equal(state.available, true, state.diagnostic);
-  assert.equal(state.updateAvailable, false);
-  assert.equal(await evaluate("[...document.querySelectorAll('button')].filter(b=>b.innerText.trim()==='安装').length"), 2, "External Pi no longer offers managed install actions");
-  const activePath = state.activePath;
-  const failed = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "pi", mode: "external", path: join(data, "missing-pi") })})`);
-  assert.equal(failed.ok, false);
+  assert.equal(state.selectedMode, "auto", "Pi mode stays AUTO after opening the info block");
+  assert.notEqual(state.source, "external", "Local installs never become the engine source");
+  assert.notEqual(state.source, "local", "Local installs never become the engine source");
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].filter(b=>b.innerText.trim()==='安装').length"), 3, "All three agents offer managed install actions");
+  // Mode toggle round-trip: managed then back to auto.
+  await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "pi", mode: "managed" })})`);
   state = (await evaluate("window.api.runtimes.list()")).runtimes.find((r) => r.agent === "pi");
-  assert.equal(state.activePath, activePath, "Failed binding preserves the working selection");
+  assert.equal(state.selectedMode, "managed", "Pi mode persists as managed after the toggle");
+  await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "pi", mode: "auto" })})`);
+  state = (await evaluate("window.api.runtimes.list()")).runtimes.find((r) => r.agent === "pi");
+  assert.equal(state.selectedMode, "auto", "Pi mode persists as auto after the toggle back");
+  const activePath = state.activePath;
   // Concurrent real model-list calls exercise the Electron-side single-flight.
   const lists = await evaluate("Promise.all(Array.from({length:5},()=>window.api.piModels.listAvailable()))");
   assert.ok(lists.every((r) => Array.isArray(r.models)));
   assert.ok(!stderr.includes("No such built-in module: node:sqlite"));
   assert.ok(!stderr.includes("piModels.listAvailable failed"), "Pi host loads successfully through the real app");
-  await assert.rejects(access(join(data, "runtimes", "pi")), "External selection must not copy a Pi installation");
   try {
     await command("Page.bringToFront");
     const screenshot = await command("Page.captureScreenshot", { format: "png", fromSurface: false }, 5000);
@@ -124,7 +123,7 @@ try {
   } catch { console.log("Screenshot unavailable; live DOM/IPC assertions completed."); }
   await writeFile(join(data, "verification.json"), JSON.stringify({
     result: "passed", runtime: { source: state.source, version: state.activeVersion, path: activePath },
-    checks: ["real Electron UI", "three local CLI discoveries", "zero-copy Pi selection", "failed selection preserved", "concurrent Pi host model discovery", "no sqlite compatibility error"],
+    checks: ["real Electron UI", "three local CLI discoveries", "info-only local block", "mode toggle round-trip", "concurrent Pi host model discovery", "no sqlite compatibility error"],
   }, null, 2));
   console.log(`Electron runtime verification passed. Artifacts: ${data}`);
 } finally {

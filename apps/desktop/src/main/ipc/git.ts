@@ -293,6 +293,11 @@ export async function resolveModelForGitOp(
   | { ok: true; config: ApiConfig; releaseBridge: () => void }
   | { ok: false; error: string }
 > {
+  // TODO-062: auxiliary Claude calls (commit messages, PR text) follow the
+  // same shared-only rule as live turns; a legacy endpoint is refused.
+  if (!customModelId.startsWith("shared_")) {
+    return { ok: false, error: "本地模型配置已停用，请在「设置 → 模型」中改用公共提供商" };
+  }
   const cfg = CustomModelStore.resolveApiConfig(customModelId, role);
   if (!cfg) {
     return { ok: false, error: "找不到指定的模型配置" };

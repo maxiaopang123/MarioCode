@@ -29,7 +29,9 @@ export function piPrivateAgentDir(): string {
 }
 
 async function loadHostConfiguration(sessionId: string): Promise<{ providers: Record<string, PiProviderPublic>; apiKeys: Record<string, string>; extraSkillPaths: string[]; gitBash: string | null; browserToolsEnabled: boolean; webToolsEnabled: boolean; imageToolEnabled: boolean; scheduleToolsEnabled: boolean; wechatToolEnabled: boolean; unattended: boolean; agentDir: string }> {
-  const providers = await PiModelsStore.listPublic();
+  // Turns only see shared providers: the legacy models.json system is kept
+  // on disk for migration but must never reach an agent runtime (TODO-062).
+  const providers = PiModelsStore.listShared();
   const apiKeys: Record<string, string> = {};
   for (const [name, provider] of Object.entries(providers)) {
     if (!provider.hasApiKey) continue;
@@ -82,6 +84,15 @@ export class PiAgentSdkProvider implements AgentProvider {
         ctx.emit({ type: "turn.done", sessionId: req.sessionId, reason: "error" });
         return { done: Promise.resolve(), interrupt: () => {}, isRunning: () => false };
       }
+    } else if (selectedProvider && selectedProvider !== "default" && !config.providers[selectedProvider]) {
+      // The session is pinned to a provider this runtime no longer loads —
+      // in practice a legacy models.json entry after TODO-062. Fail loudly:
+      // the host would otherwise fall back to the first shared model and
+      // silently switch the user's model.
+      const message = "该会话使用的本地 Pi 模型已停用：请到「设置 → 模型」把该提供商复制为公共提供商，然后重新选择模型。";
+      ctx.emit({ type: "error", sessionId: req.sessionId, message, code: "PI_LEGACY_MODEL_DISABLED" });
+      ctx.emit({ type: "turn.done", sessionId: req.sessionId, reason: "error" });
+      return { done: Promise.resolve(), interrupt: () => {}, isRunning: () => false };
     }
     const turnId = `${req.sessionId}:${randomUUID()}`;
     // User global + project prompt (settings → 系统提示词): resolved here

@@ -92,6 +92,39 @@ const claudeProjection = CustomModelStore.listPublic().find((provider) => provid
 check("Claude projection prefers chat completions", claudeProjection?.protocol === "openai" && claudeProjection.baseUrl === base.baseUrl);
 const codexProjection = (await CodexModelsStore.listPublic()).find((provider) => provider.id === runtimeId);
 check("Codex projection uses responses override", codexProjection?.baseUrl === base.endpointOverrides.responses);
+
+// TODO-062: engines consume ONLY shared providers. `listPublic()` stays the
+// migration surface (legacy + shared) so 「模型 → 旧配置」 can still copy old
+// entries; every engine-facing path uses `listShared()`.
+const legacyClaude = CustomModelStore.save({
+  name: "Legacy Claude Endpoint",
+  baseUrl: "https://legacy-claude.example.invalid/v1",
+  authMode: "api_key",
+  protocol: "anthropic",
+  models: [{ id: "legacy-claude-model" }],
+  authToken: "LEGACY_CLAUDE_TEST_SECRET",
+}).find((provider) => !provider.id.startsWith("shared_"))!;
+check("engine Claude list excludes legacy local endpoints", !CustomModelStore.listShared().some((provider) => provider.id === legacyClaude.id));
+check("migration Claude list still exposes legacy endpoints", CustomModelStore.listPublic().some((provider) => provider.id === legacyClaude.id));
+check("engine Claude list exposes the shared provider", CustomModelStore.listShared().some((provider) => provider.id === runtimeId));
+CustomModelStore.remove(legacyClaude.id);
+
+// Codex legacy rows live in the `codexProviders` setting; seed one directly so
+// the test never materializes a config.toml.
+SettingRepo.set("codexProviders", JSON.stringify([{
+  id: "legacy-codex",
+  name: "Legacy Codex Provider",
+  baseUrl: "https://legacy-codex.example.invalid/v1",
+  models: [{ id: "legacy-codex-model" }],
+}]));
+const engineCodexIds = (await CodexModelsStore.listShared()).map((provider) => provider.id);
+check("engine Codex list excludes legacy local providers", !engineCodexIds.includes("legacy-codex"));
+check("migration Codex list still exposes legacy providers", (await CodexModelsStore.listPublic()).some((provider) => provider.id === "legacy-codex"));
+check("engine Codex list keeps the shared provider", engineCodexIds.includes(runtimeId));
+SettingRepo.set("codexProviders", JSON.stringify([]));
+
+const enginePiIds = Object.keys(PiModelsStore.listShared());
+check("engine Pi list is built only from shared providers", enginePiIds.every((id) => id.startsWith("shared_")));
 check("model interfaces must be enabled by the provider", !SharedProviderSaveInputSchema.safeParse({
   ...base,
   models: [{ id: "chat-model", interfaces: ["responses"] }],
@@ -115,6 +148,7 @@ const scopedPi = (await PiModelsStore.listPublic())[runtimeId];
 check("Claude receives models with compatible interfaces including Responses", JSON.stringify(scopedClaude?.models.map((model) => model.id)) === JSON.stringify(["chat-model", "responses-model"]));
 check("Codex receives compatible models", JSON.stringify(scopedCodex?.models.map((model) => model.id)) === JSON.stringify(["chat-model", "responses-model"]));
 check("Pi keeps the interface on each projected model", scopedPi?.models?.find((model) => model.id === "responses-model")?.api === "openai-responses");
+check("engine Pi list keeps the Pi-enabled shared provider", Object.keys(PiModelsStore.listShared()).includes(runtimeId));
 SharedProviderStore.save({ ...base, id: saved[0]!.id, apiKey: "TEST_SECRET_DO_NOT_PERSIST" });
 let legacyWriteRefused = false;
 try { CustomModelStore.remove(runtimeId); } catch { legacyWriteRefused = true; }

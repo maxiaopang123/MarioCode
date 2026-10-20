@@ -438,6 +438,19 @@ export function applyAgentHostFlags(): void {
 /** Where a view sits inside the host window (desktop viewport). */
 const AGENT_HOST_VIEW_BOUNDS: Rectangle = { x: 0, y: 0, width: 1280, height: 800 };
 
+/** capturePage() / CDP screenshots never settle when Chromium stops producing
+ *  frames for the view (occluded or throttled window). Without a deadline the
+ *  screenshot would hang while the view sits on-screen at its temporary rect. */
+const CAPTURE_TIMEOUT_MS = 3000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
 /** Default on-screen bounds for an agent-created view that the renderer hasn't
  *  measured yet. Sized to a reasonable right-panel region of the main window so
  *  the page is visible AND capturable (capturePage on a 1x1 offscreen view
@@ -2435,9 +2448,14 @@ class BrowserManagerImpl {
    *  blank, so callers should snapshot/click after navigation settles. Retries
    *  once after a short delay if the first capture throws (the renderer/GPU
    *  process can be momentarily unavailable right after view creation).
-   *  If the view is currently hidden (user switched the right panel away from
-   *  the browser tab), it is temporarily shown for the capture, then hidden
-   *  again so it doesn't linger over the workspace.
+   *  A resting view — hidden, still 1×1, or not yet measured — has no pixels to
+   *  read, so it is first given a real render size. That happens where the view
+   *  already rests: off-screen in the main window, or at the invisible host
+   *  window's origin. It is never moved over the workspace. (v0.2.41 and
+   *  earlier parked it in the right-hand 42% of the main window for the whole
+   *  capture: it covered the user's work and swallowed their clicks.) An
+   *  off-screen view often yields an empty capturePage(); the debugger renders
+   *  that viewport on demand instead, so no on-screen flash is ever needed.
    *
    *  Device-emulation note: when a mobile preset is active (enableDeviceEmulation
    *  sized the page to e.g. 390×844), capturePage() returns BLACK frames unless
@@ -2445,9 +2463,9 @@ class BrowserManagerImpl {
    *  normally keeps them in sync, but at capture time the view may be hidden
    *  (offscreen) or its bounds may not have been synced yet (agent navigate →
    *  immediate screenshot races the renderer's rAF sync). So when emulation is
-   *  active we temporarily size the view to the emulated rect (centered), wait
-   *  a frame, capture, then restore — exactly like the default temp-show below,
-   *  but with matching dimensions. */
+   *  active we temporarily size the view to the emulated rect in place, wait a
+   *  frame, capture, then restore — the same off-screen resize a resting view
+   *  gets, so nothing is ever shown. */
   async screenshot(id: string, opts?: { fullPage?: boolean }): Promise<BrowserScreenshotResult> {
     const live = this.get(id);
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
@@ -2467,73 +2485,109 @@ class BrowserManagerImpl {
       log.warn(`browser full-page capture unavailable, falling back to viewport: ${id}`);
     }
 
-    // If the view is offscreen/hidden (user switched panels, or it was never
-    // measured), temporarily bring it on-screen so capturePage gets real pixels.
-    // capturePage on a hidden/1x1 view returns an empty 0-byte image. The brief
-    // on-screen flash is the known trade-off: offscreen capture either yields
-    // incomplete output (wrong viewport size) or changes the page layout
-    // (resizing to scrollHeight triggers reflow), so we prioritize capture
-    // correctness over avoiding the flash.
-    // A view resting in the host window already has a live compositor surface
-    // and a full viewport, so it is captured in place — no on-screen flash.
+    // A view resting off-screen has no composited surface to read, so it needs
+    // a real render size before any capture. Resize it where it already rests —
+    // never over the workspace.
     const inHost = live.parent === "host";
-    const needsTempShow = !inHost && (!live.visible || live.lastBounds.width <= 1);
     const savedVisible = live.visible;
     const savedBounds = live.lastBounds;
     const savedVersion = live.presentationVersion;
-    // Device emulation active: the capture rect must match the emulated
-    // viewport (see the note above). Compute it from the stored viewport;
-    // null when desktop (no emulation) — then defaultOnscreenBounds applies.
+    // Device emulation active: the render rect must match the emulated viewport
+    // (see the note above), or capturePage returns black frames.
     const emuRect = this.emulationCaptureRect(live);
     const boundsMatchEmu =
-      emuRect != null &&
-      !inHost &&
-      Math.abs(live.lastBounds.width - emuRect.width) <= 2 &&
-      Math.abs(live.lastBounds.height - emuRect.height) <= 2;
-    const tempShown = needsTempShow || (emuRect != null && !boundsMatchEmu);
-    if (tempShown) {
-      // In the host window the emulated viewport is laid out from its origin.
-      const b = inHost && emuRect ? { x: 0, y: 0, width: emuRect.width, height: emuRect.height } : emuRect ?? defaultOnscreenBounds();
-      live.view.setBounds(b);
-      // Temporary capture geometry must not change the user's visibility or
-      // layout intent. Public show/hide/setBounds can supersede it while awaiting.
-      // Give the compositor a frame to paint before capturing.
-      await new Promise((r) => setTimeout(r, 100));
-    }
+      emuRect == null ||
+      (Math.abs(live.lastBounds.width - emuRect.width) <= 2 &&
+        Math.abs(live.lastBounds.height - emuRect.height) <= 2);
+    // Only views without a usable render size are resized before capture: the
+    // 1×1 off-screen rest position, or bounds that don't match active device
+    // emulation. A view resting in the host already has a full viewport.
+    const needsRenderSize =
+      live.lastBounds.width <= 1 || live.lastBounds.height <= 1 || !boundsMatchEmu;
+    const renderSize = emuRect
+      ? { width: emuRect.width, height: emuRect.height }
+      : { width: AGENT_HOST_VIEW_BOUNDS.width, height: AGENT_HOST_VIEW_BOUNDS.height };
 
-    const capture = async (): Promise<{ pngBuf: Buffer; data: string } | { error: string }> => {
+    type CaptureResult = { pngBuf: Buffer; data: string } | { error: string };
+
+    const capture = async (): Promise<CaptureResult> => {
       try {
-        const image = await wc.capturePage();
+        const image = await withTimeout(wc.capturePage(), CAPTURE_TIMEOUT_MS, "截图超时(页面未输出画面)");
         const pngBuf = image.toPNG();
         return { pngBuf, data: pngBuf.toString("base64") };
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
       }
     };
-
-    let result = await capture();
-    // Retry once after a brief wait if capture threw (common right after view
-    // creation, before the compositor is ready) or produced an empty image.
-    if ("error" in result || ("data" in result && result.data.length === 0)) {
-      const firstError = "error" in result ? result.error : "(empty image)";
-      log.info(`browser screenshot retrying after: ${firstError}`);
-      await new Promise((r) => setTimeout(r, 500));
-      result = await capture();
-    }
-
-    // Restore the hidden/offscreen state if we temporarily showed/resized the
-    // view, only if no newer UI intent arrived while capture was awaiting.
-    if (tempShown && live.presentationVersion === savedVersion && !wc.isDestroyed()) {
-      if (inHost) {
-        live.view.setBounds(AGENT_HOST_VIEW_BOUNDS);
-      } else if (savedVisible) {
-        live.view.setBounds(savedBounds);
-      } else {
-        // Keep offscreen but preserve dimensions (consistent with hide()).
-        live.view.setBounds({ x: -9999, y: -9999, width: savedBounds.width, height: savedBounds.height });
+    // Off-screen views have no composited surface for capturePage to read; the
+    // debugger renders the current viewport on demand, without showing anything.
+    const captureOffscreen = async (): Promise<CaptureResult> => {
+      const res = await this.withDebugger<{ data?: string }>(id, (dbg) =>
+        withTimeout(
+          dbg.sendCommand("Page.captureScreenshot", { format: "png" }) as Promise<{ data?: string }>,
+          CAPTURE_TIMEOUT_MS,
+          "截图超时(页面未输出画面)",
+        ),
+      );
+      const data = res.ok ? res.value?.data : undefined;
+      if (typeof data !== "string" || data.length === 0) {
+        return { error: res.ok ? "(empty image)" : res.error };
       }
-      live.lastBounds = savedBounds;
-      live.visible = savedVisible;
+      return { pngBuf: Buffer.from(data, "base64"), data };
+    };
+
+    let result: CaptureResult;
+    try {
+      if (needsRenderSize) {
+        // Rest, but with a real size: off-screen in the main window, or at the
+        // invisible host window's origin. Never over the workspace.
+        const origin = inHost ? { x: 0, y: 0 } : { x: HIDDEN_BOUNDS.x, y: HIDDEN_BOUNDS.y };
+        live.view.setBounds({ ...origin, ...renderSize });
+        // Temporary capture geometry must not change the user's visibility or
+        // layout intent. Public show/hide/setBounds can supersede it while awaiting.
+        // Give the compositor a frame to paint before capturing.
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
+      result = await capture();
+      // Retry once after a brief wait if capture threw (common right after view
+      // creation, before the compositor is ready) or produced an empty image.
+      // A timeout is not retried: the view would keep the capture geometry for
+      // another deadline, and the page is evidently not producing frames.
+      const timedOut = "error" in result && result.error.startsWith("截图超时");
+      if (!timedOut && ("error" in result || result.data.length === 0)) {
+        const firstError = "error" in result ? result.error : "(empty image)";
+        log.info(`browser screenshot retrying after: ${firstError}`);
+        await new Promise((r) => setTimeout(r, 500));
+        result = await capture();
+      }
+      // Still nothing: the view really is off-screen (or occluded), where
+      // capturePage has nothing to read. Render it through the debugger rather
+      // than flashing it on screen.
+      if ((!live.visible || needsRenderSize) && ("error" in result || result.data.length === 0)) {
+        log.info(`browser screenshot reading off-screen view through CDP: ${id}`);
+        result = await captureOffscreen();
+      }
+    } finally {
+      // Always put the view back if we temporarily resized it, unless a newer
+      // UI intent arrived while capture was awaiting. This must run on every
+      // exit path, or the view keeps the capture geometry.
+      if (needsRenderSize && live.presentationVersion === savedVersion && !wc.isDestroyed()) {
+        try {
+          if (inHost) {
+            live.view.setBounds(AGENT_HOST_VIEW_BOUNDS);
+          } else if (savedVisible) {
+            live.view.setBounds(savedBounds);
+          } else {
+            // Keep offscreen but preserve dimensions (consistent with hide()).
+            live.view.setBounds({ x: -9999, y: -9999, width: savedBounds.width, height: savedBounds.height });
+          }
+          live.lastBounds = savedBounds;
+          live.visible = savedVisible;
+        } catch (err) {
+          log.warn(`browser screenshot restore failed: ${id} ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
     }
 
     if ("error" in result) {
@@ -2594,10 +2648,14 @@ class BrowserManagerImpl {
    *  the caller degrades to the viewport capture. */
   private async captureFullPage(id: string): Promise<string | null> {
     const res = await this.withDebugger<{ data?: string }>(id, (dbg) =>
-      dbg.sendCommand("Page.captureScreenshot", {
-        format: "png",
-        captureBeyondViewport: true,
-      }) as Promise<{ data?: string }>,
+      withTimeout(
+        dbg.sendCommand("Page.captureScreenshot", {
+          format: "png",
+          captureBeyondViewport: true,
+        }) as Promise<{ data?: string }>,
+        CAPTURE_TIMEOUT_MS,
+        "整页截图超时",
+      ),
     );
     const data = res.ok ? res.value?.data : undefined;
     return typeof data === "string" && data.length > 0 ? data : null;

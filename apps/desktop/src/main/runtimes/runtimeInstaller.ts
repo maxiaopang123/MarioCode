@@ -50,7 +50,6 @@ import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { app } from "electron";
 import {
   IPC,
-  RUNTIME_MIN_LOCAL_VERSIONS,
   type RuntimeAgentId,
   type RuntimeAgentState,
   type RuntimeProgressPayload,
@@ -66,11 +65,10 @@ import {
   type RuntimeSource,
 } from "./runtimeAvailability.js";
 import {
+  compareCoreVersions,
   discoverExternalRuntimes,
   getRuntimeSelection,
   newestTooOld,
-  validateStoredExternalSelection,
-  resolvePiRuntimeLaunch,
 } from "./runtimeSelection.js";
 import { ensureManagedNodeRuntime, managedNpmCli } from "./managedNodeRuntime.js";
 
@@ -388,6 +386,31 @@ export function isRuntimeInstalling(agent: RuntimeAgentId): boolean {
   return installing.get(agent) ?? false;
 }
 
+/** True once per process per agent, so the auto-update trigger below fires
+ *  only once (listRuntimes is called on every panel mount / progress push). */
+const autoUpdateInitiated = new Set<RuntimeAgentId>();
+
+/** AUTO mode: the managed copy auto-updates to the registry's latest version
+ *  in the background (TODO-057). Runs off the turn path from listRuntimes(),
+ *  strictly best-effort: offline / failed checks and failed installs are
+ *  logged and retried on the next fresh latest-version lookup (the TTL
+ *  cache means a once-per-launch cadence in practice). A failed install
+ *  never disturbs the existing copy (finalizeInstall swaps atomically). */
+function triggerAutoUpdate(agent: RuntimeAgentId, installedVersion: string | null): void {
+  if (autoUpdateInitiated.has(agent) || installing.get(agent)) return;
+  if (installedVersion === null) return; // nothing installed — the panel's install button covers that
+  const latest = latestCache.get(agent)?.version ?? null;
+  if (!latest) return; // offline / latest check failed — skip silently
+  if (compareCoreVersions(installedVersion, latest) >= 0) return; // already current
+  autoUpdateInitiated.add(agent);
+  log.info(`runtime auto-update: ${agent} ${installedVersion} -> ${latest} (background)`);
+  void installRuntime(agent, latest).then((result) => {
+    if (!result.ok) {
+      log.warn(`runtime auto-update failed (${agent}): ${result.error ?? "unknown"}`);
+    }
+  });
+}
+
 export async function listRuntimes(): Promise<RuntimeAgentState[]> {
   const expected = loadExpectedVersions();
   const agents: RuntimeAgentId[] = ["claude", "codex", "pi"];
@@ -403,55 +426,27 @@ export async function listRuntimes(): Promise<RuntimeAgentState[]> {
   );
   return await Promise.all(agents.map(async (agent) => {
     const selection = getRuntimeSelection(agent);
-    const auto = selection.mode === "auto";
     const managed = installedManagedPayload(agent);
     const installedVersion = managed?.version ?? null;
+    if (selection.mode === "auto") triggerAutoUpdate(agent, installedVersion);
+    // Local installations are probed for the panel's info display only —
+    // since TODO-057 no resolver ever loads from them.
     const candidates = await discoverExternalRuntimes(agent);
-    // AUTO: with no managed copy, a detected local install is what the
-    // resolvers use next (same pick as autoLocalRuntimeSync / Pi's launch).
-    const autoLocal = auto && !managed
-      ? candidates.find((candidate) => candidate.available && existsSync(candidate.path)) ?? null
-      : null;
-    // Effective source: managed first, (auto) local next, else the fallback
-    // the resolvers would use (dev node_modules / legacy bundled). The panel
-    // displays THIS — a dev checkout must not read "not installed" while
-    // every agent works.
-    const fallback = managed || autoLocal ? null : probeRuntimeAvailability(agent);
-    let external = selection.mode === "external" && selection.path
-      ? await validateStoredExternalSelection(agent)
-      : null;
-    let piLaunchDiagnostic: string | null = null;
-    if (agent === "pi") {
-      try { await resolvePiRuntimeLaunch(); }
-      catch (error) { piLaunchDiagnostic = error instanceof Error ? error.message : String(error); }
-      if (piLaunchDiagnostic && selection.mode === "external" && external) {
-        external = { ...external, available: false, compatibility: "incompatible", diagnostic: piLaunchDiagnostic };
-      }
-    }
-    // Update reminder: external mode → the stored selection itself is too
-    // old; auto/managed → newest too-old detected install, but only when no
-    // usable local candidate exists (a newer one being used makes it moot).
-    const localTooOld = selection.mode === "external"
-      ? (external?.tooOld
-        ? { path: external.path, version: external.version, minVersion: external.minVersion ?? RUNTIME_MIN_LOCAL_VERSIONS[agent] }
-        : null)
-      : candidates.some((candidate) => candidate.available) ? null : newestTooOld(candidates);
-    const activeVersion = selection.mode === "external"
-      ? external?.version ?? null
-      : managed?.version ?? autoLocal?.version ?? fallback?.version ?? null;
-    const source: RuntimeSource | "external" | "local" | null = selection.mode === "external"
-      ? (external?.available ? "external" : null)
-      : managed ? "managed" : autoLocal ? "local" : fallback?.source ?? null;
-    let available = selection.mode === "external"
-      ? external?.available === true
-      : source !== null;
-    if (agent === "pi" && piLaunchDiagnostic) available = false;
-    const diagnostic = agent === "pi" && piLaunchDiagnostic ? piLaunchDiagnostic : selection.mode === "external"
-      ? external?.diagnostic ?? "External mode is selected but no runtime path is configured."
-      : autoLocal ? autoLocal.diagnostic
-        : available ? "Managed runtime selection is available."
-          : auto ? "No managed, local, development, or bundled runtime is available."
-            : "No managed, development, or bundled runtime is available.";
+    // Effective source: managed first, else the fallback the resolvers would
+    // use (dev node_modules / legacy bundled). The panel displays THIS — a
+    // dev checkout must not read "not installed" while every agent works.
+    const fallback = managed ? null : probeRuntimeAvailability(agent);
+    // Newest too-old detected install, but only when no usable local
+    // candidate exists (a newer one being shown makes it moot). Info only.
+    const localTooOld = candidates.some((candidate) => candidate.available)
+      ? null
+      : newestTooOld(candidates);
+    const activeVersion = managed?.version ?? fallback?.version ?? null;
+    const source: RuntimeSource | null = managed ? "managed" : fallback?.source ?? null;
+    const available = source !== null;
+    const diagnostic = available
+      ? "Managed runtime selection is available."
+      : "No managed, development, or bundled runtime is available.";
     return {
       agent,
       selectedMode: selection.mode,
@@ -461,19 +456,18 @@ export async function listRuntimes(): Promise<RuntimeAgentState[]> {
       installedVersion,
       source,
       activeVersion,
-      activePath: selection.mode === "external"
-        ? (external?.available ? external.path : null)
-        : managed?.entry ?? autoLocal?.path ?? fallback?.path ?? null,
+      activePath: managed?.entry ?? fallback?.path ?? null,
       available,
-      compatibility: selection.mode === "external" ? external?.compatibility ?? "incompatible" : available ? "unknown" : "incompatible",
+      compatibility: available ? "unknown" : "incompatible",
       diagnostic,
       candidates,
       localTooOld,
       latestVersion: latestCache.get(agent)?.version ?? null,
       installed: managed !== null,
-      // Auto mode never nags about a user-owned local copy's version — only
-      // the managed (or dev/bundled) copy is ours to update.
-      updateAvailable: (selection.mode === "managed" || (auto && !autoLocal))
+      // The ACTIVE copy differs from the version this MarioCode build
+      // expects. Managed mode surfaces a badge; auto mode self-heals via
+      // the background auto-update to latest, so it doesn't nag.
+      updateAvailable: selection.mode === "managed"
         && activeVersion !== null && activeVersion !== expected[agent],
       installing: installing.get(agent) ?? false,
       lastError: lastErrors.get(agent) ?? "",
@@ -577,8 +571,13 @@ function extractedVersion(stagingDir: string, fallback: string): string {
 }
 
 /** Download + install (or update / reinstall) one runtime. Resolves when the
- *  install fully finished (or failed — check `ok`/`error`). */
-export async function installRuntime(agent: RuntimeAgentId): Promise<{ ok: boolean; error?: string }> {
+ *  install fully finished (or failed — check `ok`/`error`). Without a
+ *  `version` the build-pinned expected version is installed; pass an explicit
+ *  version (e.g. the registry's latest) for update / auto-update flows. */
+export async function installRuntime(
+  agent: RuntimeAgentId,
+  version?: string,
+): Promise<{ ok: boolean; error?: string }> {
   if (installing.get(agent)) {
     return { ok: false, error: `runtime ${agent} is already being installed` };
   }
@@ -587,8 +586,8 @@ export async function installRuntime(agent: RuntimeAgentId): Promise<{ ok: boole
   let stagingDir: string | null = null;
   emitProgress(agent, "downloading", -1);
   try {
-    const expected = loadExpectedVersions()[agent];
-    const pkg = npmPackageFor(agent, expected);
+    const target = (version ?? loadExpectedVersions()[agent]).trim();
+    const pkg = npmPackageFor(agent, target);
     // pi has no prepacked tarball: skip the registry lookup and always
     // assemble the official package's closure locally with the managed npm.
     const meta = agent === "pi" ? null : await fetchPackageMeta(pkg.name, pkg.version);
@@ -603,7 +602,7 @@ export async function installRuntime(agent: RuntimeAgentId): Promise<{ ok: boole
       try {
         emitProgress(agent, "extracting", -1);
         const root = getManagedRuntimeRoot() ?? join(app.getPath("userData"), "runtimes");
-        stagingDir = join(root, agent, `.${expected}.staging-${Date.now()}`);
+        stagingDir = join(root, agent, `.${target}.staging-${Date.now()}`);
         mkdirSync(stagingDir, { recursive: true });
         const { extract } = await import("tar");
         // npm tarballs root everything under package/ — strip that prefix.
@@ -612,15 +611,15 @@ export async function installRuntime(agent: RuntimeAgentId): Promise<{ ok: boole
         rmSync(tmpTarball, { force: true });
       }
     } else {
-      // pi: install @earendil-works/pi-coding-agent@<expected> with the
+      // pi: install @earendil-works/pi-coding-agent@<target> with the
       // managed npm into the staging dir (flat node_modules closure).
       emitProgress(agent, "downloading", -1);
       const root = getManagedRuntimeRoot() ?? join(app.getPath("userData"), "runtimes");
-      stagingDir = join(root, agent, `.${expected}.staging-${Date.now()}`);
+      stagingDir = join(root, agent, `.${target}.staging-${Date.now()}`);
       mkdirSync(stagingDir, { recursive: true });
-      log.info(`runtime install: pi assembling ${pkg.name}@${expected} with managed npm`);
+      log.info(`runtime install: pi assembling ${pkg.name}@${target} with managed npm`);
       try {
-        await assemblePiClosureWithNpm(stagingDir, expected, root);
+        await assemblePiClosureWithNpm(stagingDir, target, root);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         throw new Error(
@@ -633,14 +632,14 @@ export async function installRuntime(agent: RuntimeAgentId): Promise<{ ok: boole
     if (agent === "pi") {
       await ensureManagedNodeRuntime(getManagedRuntimeRoot() ?? join(app.getPath("userData"), "runtimes"));
     }
-    const { finalDir } = finalizeInstall(agent, stagingDir, expected, {
+    const { finalDir } = finalizeInstall(agent, stagingDir, target, {
       npmName: pkg.name,
       source: "registry",
     });
     stagingDir = null;
     lastErrors.set(agent, "");
     emitProgress(agent, "done", 1);
-    log.info(`runtime installed: ${agent}@${expected} -> ${finalDir}`);
+    log.info(`runtime installed: ${agent}@${target} -> ${finalDir}`);
     return { ok: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

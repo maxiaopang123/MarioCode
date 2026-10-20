@@ -249,7 +249,9 @@ export class CodexAgentSdkProvider implements AgentProvider {
 
     // Materialize config.toml (model_providers) + AGENTS.md into the isolated
     // CODEX_HOME. Cleartext keys never land here — they ride the env.
-    const providers = await CodexModelsStore.listPublic();
+    // Shared providers only: legacy local providers stay in settings for the
+    // migration panel but never reach a Codex turn (TODO-062).
+    const providers = await CodexModelsStore.listShared();
     if (providers.length === 0) {
       return failTurn(ctx, req.sessionId, "CODEX_NO_MODEL", "Codex 未配置任何模型:请先在「设置 → 模型配置 → Codex」中添加模型端点后再发送。");
     }
@@ -282,7 +284,10 @@ export class CodexAgentSdkProvider implements AgentProvider {
         } else if (p.startsWith("shared_")) {
           return failTurn(ctx, req.sessionId, "CODEX_SHARED_PROVIDER_MISSING", `共享提供商配置不存在或已被删除: ${p}`);
         } else {
-          ctx.log.warn(`codex: model "${req.model}" names unconfigured provider "${p}", falling back to the first configured provider`);
+          // Not a shared runtime id and not in the engine-facing list: the
+          // session is pinned to a legacy local provider (TODO-062). Failing
+          // beats silently switching the user's model to the first shared one.
+          return failTurn(ctx, req.sessionId, "CODEX_LEGACY_MODEL_DISABLED", "该会话使用的本地 Codex Provider 已停用：请到「设置 → 模型」把该 Provider 复制为公共提供商，然后重新选择模型。");
         }
       }
     }
@@ -663,7 +668,9 @@ async function buildCodexEnv(ctx: ProviderContext): Promise<Record<string, strin
     ...(process.env as Record<string, string>),
     CODEX_HOME: codexHomePath(),
   };
-  const providers = await CodexModelsStore.listPublic();
+  // Shared providers only: legacy local providers stay in settings for the
+  // migration panel but never reach a Codex turn (TODO-062).
+  const providers = await CodexModelsStore.listShared();
   for (const p of providers) {
     if (!p.hasApiKey) continue;
     const key = CodexModelsStore.resolveApiKey(p.id);

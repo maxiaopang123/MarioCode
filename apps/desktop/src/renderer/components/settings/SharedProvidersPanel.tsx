@@ -53,7 +53,10 @@ function supports(agent: SharedProviderAgent, protocols: SharedProviderProtocol[
   return models.some((model) => resolveSharedModelProtocol(agent, protocols, model.interfaces) !== undefined);
 }
 function fresh(): SharedProviderSaveInput {
-  return { name: "", baseUrl: "", protocols: ["chat-completions"], models: [{ id: "", interfaces: ["chat-completions"] }], enabledAgents: ["claude", "pi"], apiKey: "", endpointOverrides: {} };
+  // New providers default to all three engines: shared providers are now the
+  // only provider system an engine may select from (TODO-062), so opting a new
+  // one out of Codex by default would leave Codex with nothing to run.
+  return { name: "", baseUrl: "", protocols: ["chat-completions"], models: [{ id: "", interfaces: ["chat-completions"] }], enabledAgents: ["claude", "codex", "pi"], apiKey: "", endpointOverrides: {} };
 }
 function draftOf(p: SharedProviderPublic): SharedProviderSaveInput {
   return { id: p.id, name: p.name, baseUrl: p.baseUrl, modelsEndpoint: p.modelsEndpoint, protocols: [...p.protocols], models: p.models.map((m) => ({ ...m, interfaces: resolveSharedModelInterfaces(p.protocols, m.interfaces) })), enabledAgents: [...p.enabledAgents], endpointOverrides: { ...p.endpointOverrides }, apiKey: "" };

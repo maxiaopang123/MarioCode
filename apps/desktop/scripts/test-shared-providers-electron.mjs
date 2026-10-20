@@ -85,17 +85,17 @@ try {
   // Packaged builds intentionally do not bundle agent SDKs/binaries. Select
   // the checkout's real runtimes through the same verified external-runtime
   // API used by settings, only in this isolated test profile.
-  const piSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "pi", mode: "external", path: join(desktop, "node_modules", "@earendil-works", "pi-coding-agent"), nodePath: process.execPath })})`);
+  const piSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "pi", mode: "auto" })})`);
   assert.equal(piSelection.ok, true, piSelection.error);
   const suffix = `${process.platform}-${process.arch}`;
   const triples = { "win32-x64": "x86_64-pc-windows-msvc", "linux-x64": "x86_64-unknown-linux-musl", "linux-arm64": "aarch64-unknown-linux-musl", "darwin-arm64": "aarch64-apple-darwin", "darwin-x64": "x86_64-apple-darwin" };
   const codexVersion = require("@openai/codex/package.json").version;
   const codexPath = process.env.MARIOCODE_TEST_CODEX_BIN || join(desktop, "../../node_modules/.pnpm", `@openai+codex@${codexVersion}-${suffix}`, "node_modules/@openai/codex/vendor", triples[suffix], "bin", process.platform === "win32" ? "codex.exe" : "codex");
-  const codexSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "codex", mode: "external", path: codexPath })})`);
+  const codexSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "codex", mode: "auto" })})`);
   assert.equal(codexSelection.ok, true, codexSelection.error);
   const sdkRequire = createRequire(require.resolve("@anthropic-ai/claude-agent-sdk"));
   const claudePath = join(dirname(sdkRequire.resolve(`@anthropic-ai/claude-agent-sdk-${suffix}/package.json`)), process.platform === "win32" ? "claude.exe" : "claude");
-  const claudeSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "claude", mode: "external", path: claudePath })})`);
+  const claudeSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "claude", mode: "auto" })})`);
   assert.equal(claudeSelection.ok, true, claudeSelection.error);
   // Visible settings navigation, not a fabricated renderer state.
   await evaluate("document.querySelector('button .tabler-icon-settings')?.closest('button').click()");
@@ -389,7 +389,7 @@ try {
   }
   if (process.argv.includes("--context")) {
     await access(claudePath);
-    const claudeSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "claude", mode: "external", path: claudePath })})`);
+    const claudeSelection = await evaluate(`window.api.runtimes.select(${JSON.stringify({ agent: "claude", mode: "auto" })})`);
     assert.equal(claudeSelection.ok, true, claudeSelection.error);
     await evaluate("[...document.querySelectorAll('.settings-root nav button')].find(b=>b.innerText.trim()==='上下文与压缩').click()");
     while (!await evaluate("Boolean(document.querySelector('input[aria-label=自动压缩阈值]:not(:disabled)'))")) await delay(100);

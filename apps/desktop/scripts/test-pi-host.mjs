@@ -134,11 +134,11 @@ async function testRuntime(runtime) {
     // overrides. Run real turns, not just listing registration metadata.
     const sharedId = "shared_0123456789abcdef0123456789abcdef";
     const wireModels = [
-      { id: "vendor/chat-model", api: "openai-completions", route: "chat", suffix: "/chat/completions" },
-      { id: "messages-model", api: "anthropic-messages", route: "messages", suffix: "/messages" },
-      { id: "responses-model", api: "openai-responses", route: "responses", suffix: "/responses" },
+      { id: "vendor/chat-model", api: "openai-completions", route: "chat", suffix: "/chat/completions", reasoning: true },
+      { id: "messages-model", api: "anthropic-messages", route: "messages", suffix: "/messages", reasoning: true },
+      { id: "responses-model", api: "openai-responses", route: "responses", suffix: "/responses", reasoning: true },
     ];
-    const wireProviders = { [sharedId]: { ...fixtureProviders[sharedId], baseUrl: `http://127.0.0.1:${upstream.port}/chat/v1`, models: wireModels.map(({ id, api, route }) => ({ id, api, baseUrl: `http://127.0.0.1:${upstream.port}/${route}/v1` })) } };
+    const wireProviders = { [sharedId]: { ...fixtureProviders[sharedId], baseUrl: `http://127.0.0.1:${upstream.port}/chat/v1`, models: wireModels.map(({ id, api, route, reasoning }) => ({ id, api, reasoning, baseUrl: `http://127.0.0.1:${upstream.port}/${route}/v1` })) } };
     let resumeProviderSessionId;
     for (const [index, model] of [...wireModels, wireModels[0]].entries()) {
       const turnId = `wire-${index}`;
@@ -151,6 +151,14 @@ async function testRuntime(runtime) {
       const request = upstream.requests.at(-1);
       if (request.path !== `/${model.route}/v1${model.suffix}` || request.body.model !== model.id) throw new Error(`Pi model route incorrect: ${request.path}, model=${request.body.model}`);
       if (request.authorization !== "Bearer fixture-secret-never-return" && request.apiKey !== "fixture-secret-never-return") throw new Error("Pi runtime API key was not sent");
+      // A reasoning model must keep the system prompt on the legacy `system`
+      // role: third-party gateways front upstreams that reject `developer`
+      // (see normalizePiRegisteredModel). This is the regression guard for
+      // the `400 ... developer is not one of [...]` failure.
+      if (JSON.stringify(request.body).includes('"developer"')) throw new Error(`Pi sent a developer role on ${model.route}: ${JSON.stringify(request.body).slice(0, 400)}`);
+      const firstRole = model.route === "chat" ? request.body.messages?.[0]?.role
+        : model.route === "responses" ? request.body.input?.[0]?.role : undefined;
+      if (firstRole !== undefined && firstRole !== "system") throw new Error(`Pi system prompt used role ${firstRole} on ${model.route}`);
       resumeProviderSessionId = messages.find((m) => m.type === "providerSessionId" && m.turnId === turnId)?.value;
     }
 

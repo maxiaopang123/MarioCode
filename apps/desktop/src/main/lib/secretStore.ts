@@ -338,7 +338,18 @@ function assertLegacyCustomModelId(id: string): void {
 }
 
 export const CustomModelStore = {
-  /** List all configs (desensitized — tokens masked, never cleartext). */
+  /** Engine-facing projection: shared providers only.
+   *
+   * Legacy local endpoints (`customModels`) are kept verbatim on disk so the
+   * shared-provider center can still offer to copy them, but no engine may
+   * select or run one anymore — the model picker, the renderer state and the
+   * turn pipeline all consume this list. */
+  listShared(): CustomModelPublic[] {
+    return sharedClaudeProjection();
+  },
+
+  /** List all configs (desensitized — tokens masked, never cleartext).
+   *  Includes legacy local endpoints for the migration panel. */
   listPublic(): CustomModelPublic[] {
     const metas = readMeta();
     const keys = readKeyMap();

@@ -84,6 +84,6 @@ export function registerRuntimesHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle(IPC.RUNTIMES_SELECT, async (_evt, raw) => {
     const input = RuntimesSelectSchema.parse(raw);
-    return await mutate(input.agent, () => selectRuntime(input.agent, input.mode, input.path, input.nodePath));
+    return await mutate(input.agent, () => selectRuntime(input.agent, input.mode));
   });
 }

@@ -46,6 +46,20 @@ export function normalizePiRegisteredModel(model: PiModelDefinition): PiRegister
       : {}),
     name: model.name ?? model.id,
     reasoning: model.reasoning ?? false,
+    // The Pi SDK sends a reasoning model's system prompt as the OpenAI
+    // `developer` role unless the model opts out. It decides that from the
+    // base URL: anything it doesn't recognize as a non-standard vendor counts
+    // as standard OpenAI, which includes every third-party gateway. Those
+    // gateways usually front vLLM/DeepSeek/Kimi upstreams whose role
+    // vocabulary stops at `system`, so the request dies with
+    // `400 ... developer is not one of ['system', 'assistant', 'user', 'tool',
+    // 'function']` — reported to the user as `upstream returned 400`. Shared
+    // providers are always third-party endpoints, so pin the conservative
+    // role; an explicit compat in the model definition still wins.
+    compat: {
+      supportsDeveloperRole: false,
+      ...(model.compat as Record<string, unknown> | undefined),
+    },
     input: model.input ?? ["text"],
     cost: (model.cost as PiRegisteredModelCost | undefined) ?? { ...ZERO_COST },
     contextWindow: model.contextWindow ?? PI_SDK_DEFAULT_CONTEXT_WINDOW,

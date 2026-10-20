@@ -78,6 +78,9 @@ async function main() {
       try {
         const pending = BrowserManager.screenshot(id);
         await waitFor(() => entered);
+        // While the capture is in flight the view must still rest off-screen:
+        // parking it over the workspace is what covered the user's work.
+        assert.equal(view.getBounds().x, -9999, "Capture never moves the view over the workspace");
         change();
         release();
         const result = await pending;
@@ -103,6 +106,19 @@ async function main() {
     await captureWhile(() => {});
     assert.equal(view.getBounds().x, -9999, "Capture without a UI change restores hidden presentation");
     assert.equal(view.getBounds().width, original.width);
+
+    // A capture that never settles (Chromium not producing frames) must time out
+    // and still park the view off-screen, not leave it in the capture geometry.
+    BrowserManager.hide(id);
+    const realCapture = wc.capturePage.bind(wc);
+    wc.capturePage = () => new Promise(() => {});
+    try {
+      const started = Date.now();
+      const stuck = await BrowserManager.screenshot(id);
+      assert.equal(stuck.ok, false, "A capture that never settles reports failure");
+      assert.ok(Date.now() - started < 8000, "A stuck capture gives up at the deadline");
+      assert.equal(view.getBounds().x, -9999, "A stuck capture still restores hidden presentation");
+    } finally { wc.capturePage = realCapture; }
     BrowserManager.show(id);
     await delay(100);
     const image = await BrowserManager.screenshot(id);

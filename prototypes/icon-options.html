@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MarioCode 图标方案</title>
+<style>
+  :root { --paper:#faf9f5; --ink:#2b2a27; --muted:#76726a; --line:#e8e5da; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:32px 40px 56px; background:var(--paper); color:var(--ink);
+         font:14px/1.6 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; font-weight:650; }
+  .sub { color:var(--muted); margin:0 0 28px; }
+  .row { display:grid; grid-template-columns:repeat(3, 1fr); gap:24px; }
+  .card { border:1px solid var(--line); border-radius:16px; padding:20px; background:#fff; }
+  .card h2 { margin:0 0 2px; font-size:15px; }
+  .card p { margin:0 0 16px; color:var(--muted); font-size:12.5px; }
+  .big { display:flex; justify-content:center; padding:8px 0 18px; }
+  .big svg { width:220px; height:220px; }
+  .sizes { display:flex; align-items:flex-end; gap:16px; padding:14px; border-radius:12px; }
+  .sizes.light { background:#f0eee6; }
+  .sizes.dark { background:#1f1e1d; margin-top:10px; }
+  .sizes svg.s64 { width:64px; height:64px; }
+  .sizes svg.s32 { width:32px; height:32px; }
+  .sizes svg.s16 { width:16px; height:16px; }
+  .tag { margin-left:auto; align-self:center; font-size:11px; color:var(--muted); }
+  .dark .tag { color:#aaa69a; }
+</style>
+</head>
+<body>
+<h1>MarioCode 图标方案</h1>
+<p class="sub">配色沿用新基准:暖石墨 #2B2A27、奶油白 #FAF9F5、陶土橙 #D97757。每个方案展示大图、64 / 32 / 16 像素,以及浅色和深色背景下的样子。</p>
+
+<div class="row">
+
+  <!-- A · 一笔 M:陶土橙底,奶油白单线 -->
+  <div class="card">
+    <h2>A · 一笔 M</h2>
+    <p>陶土橙底,一笔写成的 M,像签名。最接近 Claude 的气质,辨识度靠颜色。</p>
+    <div class="big">
+      <svg viewBox="0 0 1024 1024" aria-label="方案 A">
+        <defs><linearGradient id="a" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#E58A63"/><stop offset="1" stop-color="#C96442"/></linearGradient></defs>
+        <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#a)"/>
+        <path d="M300 712 V330 L512 580 L724 330 V712" fill="none" stroke="#FAF9F5"
+              stroke-width="112" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="sizes light">
+      <svg class="s64" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#a)"/><path d="M300 712 V330 L512 580 L724 330 V712" fill="none" stroke="#FAF9F5" stroke-width="112" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg class="s32" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#a)"/><path d="M300 712 V330 L512 580 L724 330 V712" fill="none" stroke="#FAF9F5" stroke-width="112" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg class="s16" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#a)"/><path d="M300 712 V330 L512 580 L724 330 V712" fill="none" stroke="#FAF9F5" stroke-width="112" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="tag">浅色背景</span>
+    </div>
+    <div class="sizes dark">
+      <svg class="s64" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#a)"/><path d="M300 712 V330 L512 580 L724 330 V712" fill="none" stroke="#FAF9F5" stroke-width="112" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg class="s32" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#a)"/><path d="M300 712 V330 L512 580 L724 330 V712" fill="none" stroke="#FAF9F5" stroke-width="112" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg class="s16" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#a)"/><path d="M300 712 V330 L512 580 L724 330 V712" fill="none" stroke="#FAF9F5" stroke-width="112" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="tag">深色背景</span>
+    </div>
+  </div>
+
+  <!-- B · 像素 M:Mario 的 8-bit 致意 -->
+  <div class="card">
+    <h2>B · 像素 M</h2>
+    <p>暖石墨底,用方块拼出 M,中间的 V 用陶土橙。是对 Mario 名字的 8-bit 致意,小尺寸下最清晰。</p>
+    <div class="big">
+      <svg viewBox="0 0 1024 1024" aria-label="方案 B">
+        <defs><linearGradient id="b" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#3A3935"/><stop offset="1" stop-color="#22211F"/></linearGradient>
+          <g id="pm">
+            <!-- 7 列 x 6 行,单格 96,间隙 8;左上角 (176,224) -->
+            <g fill="#FAF9F5">
+              <rect x="176" y="224" width="88" height="88" rx="14"/><rect x="176" y="320" width="88" height="88" rx="14"/><rect x="176" y="416" width="88" height="88" rx="14"/><rect x="176" y="512" width="88" height="88" rx="14"/><rect x="176" y="608" width="88" height="88" rx="14"/><rect x="176" y="704" width="88" height="88" rx="14"/>
+              <rect x="680" y="224" width="88" height="88" rx="14"/><rect x="680" y="320" width="88" height="88" rx="14"/><rect x="680" y="416" width="88" height="88" rx="14"/><rect x="680" y="512" width="88" height="88" rx="14"/><rect x="680" y="608" width="88" height="88" rx="14"/><rect x="680" y="704" width="88" height="88" rx="14"/>
+              <rect x="272" y="320" width="88" height="88" rx="14"/><rect x="584" y="320" width="88" height="88" rx="14"/>
+            </g>
+            <g fill="#D97757">
+              <rect x="368" y="416" width="88" height="88" rx="14"/><rect x="480" y="512" width="88" height="88" rx="14"/><rect x="584" y="416" width="88" height="88" rx="14"/>
+            </g>
+          </g>
+        </defs>
+        <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#b)"/>
+        <use href="#pm"/>
+      </svg>
+    </div>
+    <div class="sizes light">
+      <svg class="s64" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#b)"/><use href="#pm"/></svg>
+      <svg class="s32" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#b)"/><use href="#pm"/></svg>
+      <svg class="s16" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#b)"/><use href="#pm"/></svg>
+      <span class="tag">浅色背景</span>
+    </div>
+    <div class="sizes dark">
+      <svg class="s64" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#b)"/><use href="#pm"/></svg>
+      <svg class="s32" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#b)"/><use href="#pm"/></svg>
+      <svg class="s16" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#b)"/><use href="#pm"/></svg>
+      <span class="tag">深色背景</span>
+    </div>
+  </div>
+
+  <!-- C · 双拱 m:圆润友好 -->
+  <div class="card">
+    <h2>C · 双拱 m</h2>
+    <p>暖石墨底,两道圆拱撑起的 m,第二道拱用陶土橙。线条最圆润,偏亲和。</p>
+    <div class="big">
+      <svg viewBox="0 0 1024 1024" aria-label="方案 C">
+        <defs><linearGradient id="c" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#3A3935"/><stop offset="1" stop-color="#22211F"/></linearGradient>
+          <g id="dm" fill="none" stroke-width="104" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M292 720 V470 A110 110 0 0 1 512 470 V720" stroke="#FAF9F5"/>
+            <path d="M512 470 A110 110 0 0 1 732 470 V720" stroke="#D97757"/>
+          </g>
+        </defs>
+        <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#c)"/>
+        <use href="#dm"/>
+      </svg>
+    </div>
+    <div class="sizes light">
+      <svg class="s64" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#c)"/><use href="#dm"/></svg>
+      <svg class="s32" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#c)"/><use href="#dm"/></svg>
+      <svg class="s16" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#c)"/><use href="#dm"/></svg>
+      <span class="tag">浅色背景</span>
+    </div>
+    <div class="sizes dark">
+      <svg class="s64" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#c)"/><use href="#dm"/></svg>
+      <svg class="s32" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#c)"/><use href="#dm"/></svg>
+      <svg class="s16" viewBox="0 0 1024 1024"><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#c)"/><use href="#dm"/></svg>
+      <span class="tag">深色背景</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

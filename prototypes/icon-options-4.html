@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MarioCode 图标方案 第四轮</title>
+<style>
+  :root { --paper:#faf9f5; --ink:#2b2a27; --muted:#76726a; --line:#e8e5da; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px 32px 48px; background:var(--paper); color:var(--ink);
+         font:14px/1.6 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; font-weight:650; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px; }
+  .card { border:1px solid var(--line); border-radius:16px; padding:18px; background:#fff; }
+  .card h2 { margin:0 0 2px; font-size:15px; }
+  .card p { margin:0 0 14px; color:var(--muted); font-size:12.5px; min-height:40px; }
+  .big { display:flex; justify-content:center; padding:4px 0 16px; }
+  .big svg { width:200px; height:200px; }
+  .sizes { display:flex; align-items:flex-end; gap:14px; padding:12px; border-radius:12px; }
+  .sizes.light { background:#f0eee6; }
+  .sizes.dark { background:#1f1e1d; margin-top:8px; }
+  .sizes svg.a { width:64px; height:64px; }
+  .sizes svg.b { width:32px; height:32px; }
+  .sizes svg.c { width:16px; height:16px; }
+  .tag { margin-left:auto; align-self:center; font-size:11px; color:var(--muted); }
+  .dark .tag { color:#aaa69a; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="gd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A3935"/><stop offset="1" stop-color="#22211F"/></linearGradient>
+
+    <!-- A:左环的裁剪区,用来填交集 -->
+    <clipPath id="cEllL"><ellipse cx="400" cy="520" rx="215" ry="150" transform="rotate(-14 400 520)"/></clipPath>
+
+    <!-- C:左半胡子的裁剪区(整体右移 34),用来填交集 -->
+    <clipPath id="cLobeL"><path transform="translate(34 0)" d="M512 500 C470 440 380 430 320 470 C260 510 220 580 200 640 C270 600 330 600 390 620 C450 640 490 600 512 560 Z"/></clipPath>
+  </defs>
+
+  <!-- A · 双环胡子:两个压扁并向外下垂的环,交集填橙色 -->
+  <symbol id="k1" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#gd)"/>
+    <ellipse cx="624" cy="520" rx="215" ry="150" transform="rotate(14 624 520)" fill="#D97757" clip-path="url(#cEllL)"/>
+    <ellipse cx="400" cy="520" rx="215" ry="150" transform="rotate(-14 400 520)" fill="none" stroke="#FAF9F5" stroke-width="30"/>
+    <ellipse cx="624" cy="520" rx="215" ry="150" transform="rotate(14 624 520)" fill="none" stroke="#D97757" stroke-width="30"/>
+  </symbol>
+
+  <!-- B · 一笔胡子:细线一笔写成,两端下垂卷起,中间一个 M 形的凹口,下方橙点 -->
+  <symbol id="k2" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#gd)"/>
+    <path d="M214 612 C190 560 230 500 290 478 C380 446 470 470 512 560 C554 470 644 446 734 478 C794 500 834 560 810 612"
+          fill="none" stroke="#FAF9F5" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="512" cy="690" r="30" fill="#D97757"/>
+  </symbol>
+
+  <!-- C · 两瓣胡子:左瓣奶油白、右瓣橙色,中间重叠处是浅橙 -->
+  <symbol id="k3" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#gd)"/>
+    <path transform="translate(34 0)" fill="#FAF9F5" d="M512 500 C470 440 380 430 320 470 C260 510 220 580 200 640 C270 600 330 600 390 620 C450 640 490 600 512 560 Z"/>
+    <path transform="translate(990 0) scale(-1 1)" fill="#D97757" d="M512 500 C470 440 380 430 320 470 C260 510 220 580 200 640 C270 600 330 600 390 620 C450 640 490 600 512 560 Z"/>
+    <g clip-path="url(#cLobeL)">
+      <path transform="translate(990 0) scale(-1 1)" fill="#F0AA8A" d="M512 500 C470 440 380 430 320 470 C260 510 220 580 200 640 C270 600 330 600 390 620 C450 640 490 600 512 560 Z"/>
+    </g>
+  </symbol>
+
+  <!-- D · 徽章:奶油白细环里放一笔橙色胡子,三个元素都用上 -->
+  <symbol id="k4" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#gd)"/>
+    <circle cx="512" cy="512" r="330" fill="none" stroke="#FAF9F5" stroke-width="28"/>
+    <path transform="translate(512 512) scale(.72) translate(-512 -530)"
+          d="M214 612 C190 560 230 500 290 478 C380 446 470 470 512 560 C554 470 644 446 734 478 C794 500 834 560 810 612"
+          fill="none" stroke="#D97757" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>
+
+<h1>MarioCode 图标方案 · 第四轮(糅合)</h1>
+<p class="sub">把第三轮的 1 流线、2 胡子、4 双环糅合。胡子两端都做成下垂卷起的尖,不再是竖腿,避免像金拱门。注意看 16 像素那一格。</p>
+
+<div class="row">
+
+  <div class="card">
+    <h2>A · 双环胡子</h2>
+    <p>用 2 + 4。两个环压扁、向外下垂,合起来就是胡子;交集处填橙色,既是双引擎相交,也是胡子中间的凹口。</p>
+    <div class="big"><svg><use href="#k1"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#k1"/></svg><svg class="b"><use href="#k1"/></svg><svg class="c"><use href="#k1"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#k1"/></svg><svg class="b"><use href="#k1"/></svg><svg class="c"><use href="#k1"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>B · 一笔胡子</h2>
+    <p>用 1 + 2。保留流线的细线一笔,但两端卷起下垂成胡子尖,中间的凹口仍带一点 M 的影子,下方橙点是光标。</p>
+    <div class="big"><svg><use href="#k2"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#k2"/></svg><svg class="b"><use href="#k2"/></svg><svg class="c"><use href="#k2"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#k2"/></svg><svg class="b"><use href="#k2"/></svg><svg class="c"><use href="#k2"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>C · 两瓣胡子</h2>
+    <p>用 2 + 4。胡子拆成左右两瓣,左奶油白、右橙色,互相叠一小段,叠出来的浅橙就是交汇。实心剪影,小尺寸最稳。</p>
+    <div class="big"><svg><use href="#k3"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#k3"/></svg><svg class="b"><use href="#k3"/></svg><svg class="c"><use href="#k3"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#k3"/></svg><svg class="b"><use href="#k3"/></svg><svg class="c"><use href="#k3"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>D · 徽章</h2>
+    <p>1 + 2 + 4 全用。奶油白细环里放一笔橙色胡子,像一枚印章。层次最多,小尺寸下环会抢走胡子。</p>
+    <div class="big"><svg><use href="#k4"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#k4"/></svg><svg class="b"><use href="#k4"/></svg><svg class="c"><use href="#k4"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#k4"/></svg><svg class="b"><use href="#k4"/></svg><svg class="c"><use href="#k4"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+</div>
+</body>
+</html>

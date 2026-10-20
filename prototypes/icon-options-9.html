@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MarioCode 图标方案 第九轮</title>
+<style>
+  :root { --paper:#faf9f5; --ink:#2b2a27; --muted:#76726a; --line:#e8e5da; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px 32px 48px; background:var(--paper); color:var(--ink);
+         font:14px/1.6 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; font-weight:650; }
+  .sub { color:var(--muted); margin:0 0 24px; max-width:900px; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px; }
+  .card { border:1px solid var(--line); border-radius:16px; padding:18px; background:#fff; }
+  .card h2 { margin:0 0 2px; font-size:15px; }
+  .card p { margin:0 0 14px; color:var(--muted); font-size:12.5px; min-height:40px; }
+  .big { display:flex; justify-content:center; padding:4px 0 16px; }
+  .big svg { width:200px; height:200px; }
+  .sizes { display:flex; align-items:flex-end; gap:14px; padding:12px; border-radius:12px; }
+  .sizes.light { background:#f0eee6; }
+  .sizes.dark { background:#1f1e1d; margin-top:8px; }
+  .sizes svg.a { width:64px; height:64px; }
+  .sizes svg.b { width:32px; height:32px; }
+  .sizes svg.c { width:16px; height:16px; }
+  .tag { margin-left:auto; align-self:center; font-size:11px; color:var(--muted); }
+  .dark .tag { color:#aaa69a; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="gClay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EA946E"/><stop offset="1" stop-color="#C86443"/></linearGradient>
+    <linearGradient id="gIvory" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FDFBF5"/><stop offset="1" stop-color="#E9E2D0"/></linearGradient>
+    <linearGradient id="gDeep" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A9553A"/><stop offset="1" stop-color="#6C301E"/></linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/></linearGradient>
+
+    <!-- 不规则圆:8 个锚点,相邻切线共线(光滑),左右不对称 -->
+    <path id="blob" d="M512 44 C700 40 880 140 950 320 C1010 470 990 650 900 790 C810 930 640 990 480 980 C300 968 130 880 70 700 C20 550 40 380 130 250 C220 120 360 48 512 44 Z"/>
+    <!-- 流线 M:一笔细曲线,两峰一谷 -->
+    <path id="flowM" d="M252 724 C252 560 280 296 380 296 C460 296 490 560 512 604 C534 560 564 296 644 296 C744 296 772 560 772 724"
+          fill="none" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+  </defs>
+
+  <!-- 1 · 陶土:橙色不规则圆,奶油白线条,暖石墨圆点 -->
+  <symbol id="r1" viewBox="0 0 1024 1024">
+    <use href="#blob" fill="url(#gClay)"/><use href="#blob" fill="url(#sheen)"/>
+    <use href="#flowM" stroke="#FFFDF8"/>
+    <circle cx="512" cy="760" r="38" fill="#2B2A27"/>
+  </symbol>
+
+  <!-- 2 · 象牙:象牙白不规则圆,暖石墨线条,陶土橙圆点 -->
+  <symbol id="r2" viewBox="0 0 1024 1024">
+    <use href="#blob" fill="url(#gIvory)"/>
+    <use href="#blob" fill="none" stroke="#3C3214" stroke-opacity=".16" stroke-width="6"/>
+    <use href="#flowM" stroke="#2B2A27"/>
+    <circle cx="512" cy="760" r="38" fill="#D97757"/>
+  </symbol>
+
+  <!-- 3 · 赤陶:深赤陶不规则圆,奶油白线条,浅橙圆点 -->
+  <symbol id="r3" viewBox="0 0 1024 1024">
+    <use href="#blob" fill="url(#gDeep)"/><use href="#blob" fill="url(#sheen)"/>
+    <use href="#flowM" stroke="#FFFDF8"/>
+    <circle cx="512" cy="760" r="38" fill="#F0AA8A"/>
+  </symbol>
+</svg>
+
+<h1>MarioCode 图标方案 · 第九轮(流线 M + 不规则圆底)</h1>
+<p class="sub">造型回到第三轮的细线流线 M,背景改成不规则圆(左右不对称的圆润斑块)。线条略加粗到 52,小尺寸下更稳。三种配色供选,橙色、象牙、赤陶都避开了红黄组合。</p>
+
+<div class="row">
+
+  <div class="card">
+    <h2>1 · 陶土</h2>
+    <p>陶土橙的不规则圆,奶油白线条,暖石墨圆点。最醒目,在任务栏里最容易找到。</p>
+    <div class="big"><svg><use href="#r1"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#r1"/></svg><svg class="b"><use href="#r1"/></svg><svg class="c"><use href="#r1"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#r1"/></svg><svg class="b"><use href="#r1"/></svg><svg class="c"><use href="#r1"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · 象牙</h2>
+    <p>象牙白的不规则圆,暖石墨线条,陶土橙圆点。最安静,和暖纸界面最搭;代价是浅色任务栏上会融掉。</p>
+    <div class="big"><svg><use href="#r2"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#r2"/></svg><svg class="b"><use href="#r2"/></svg><svg class="c"><use href="#r2"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#r2"/></svg><svg class="b"><use href="#r2"/></svg><svg class="c"><use href="#r2"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>3 · 赤陶</h2>
+    <p>深赤陶的不规则圆,奶油白线条,浅橙圆点。比陶土沉稳,深浅背景下都清楚。</p>
+    <div class="big"><svg><use href="#r3"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#r3"/></svg><svg class="b"><use href="#r3"/></svg><svg class="c"><use href="#r3"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#r3"/></svg><svg class="b"><use href="#r3"/></svg><svg class="c"><use href="#r3"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+</div>
+</body>
+</html>

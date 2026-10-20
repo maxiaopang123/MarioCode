@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MarioCode 图标方案 第五轮</title>
+<style>
+  :root { --paper:#faf9f5; --ink:#2b2a27; --muted:#76726a; --line:#e8e5da; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px 32px 48px; background:var(--paper); color:var(--ink);
+         font:14px/1.6 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; font-weight:650; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px; }
+  .card { border:1px solid var(--line); border-radius:16px; padding:18px; background:#fff; }
+  .card h2 { margin:0 0 2px; font-size:15px; }
+  .card p { margin:0 0 14px; color:var(--muted); font-size:12.5px; min-height:40px; }
+  .big { display:flex; justify-content:center; padding:4px 0 16px; }
+  .big svg { width:200px; height:200px; }
+  .sizes { display:flex; align-items:flex-end; gap:14px; padding:12px; border-radius:12px; }
+  .sizes.light { background:#f0eee6; }
+  .sizes.dark { background:#1f1e1d; margin-top:8px; }
+  .sizes svg.a { width:64px; height:64px; }
+  .sizes svg.b { width:32px; height:32px; }
+  .sizes svg.c { width:16px; height:16px; }
+  .tag { margin-left:auto; align-self:center; font-size:11px; color:var(--muted); }
+  .dark .tag { color:#aaa69a; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- 左瓣:右边缘越过中线 30,和镜像的右瓣叠出交汇区 -->
+    <path id="lobeL" d="M542 570 C500 470 430 330 360 296 C322 278 282 292 262 332 C222 416 176 560 156 712 C150 758 176 786 214 770 C290 736 352 700 430 692 C480 686 520 668 542 640 Z"/>
+    <clipPath id="clipL"><use href="#lobeL"/></clipPath>
+
+    <!-- 底色 -->
+    <linearGradient id="tInk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A3834"/><stop offset="1" stop-color="#1A1917"/></linearGradient>
+    <linearGradient id="tClay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E58A63"/><stop offset="1" stop-color="#BF5B3B"/></linearGradient>
+    <linearGradient id="tIvory" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FBF8F0"/><stop offset="1" stop-color="#E6DFCD"/></linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".14"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+
+    <!-- 瓣的颜色 -->
+    <linearGradient id="cream" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFDF8"/><stop offset="1" stop-color="#EBE4D4"/></linearGradient>
+    <linearGradient id="clay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EF9F7A"/><stop offset="1" stop-color="#C85F3F"/></linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3B3935"/><stop offset="1" stop-color="#1F1E1C"/></linearGradient>
+    <!-- 交汇区 -->
+    <linearGradient id="champ" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F8DCC4"/><stop offset="1" stop-color="#EDB48F"/></linearGradient>
+    <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F3D2B6"/><stop offset="1" stop-color="#E0A97F"/></linearGradient>
+    <linearGradient id="terra" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A24A2B"/><stop offset="1" stop-color="#7A321C"/></linearGradient>
+  </defs>
+
+  <!-- 1 · 墨夜:暖石墨底,奶油白 + 陶土橙,交汇处是香槟色 -->
+  <symbol id="m1" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#tInk)"/>
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#sheen)"/>
+    <rect x="34" y="34" width="956" height="956" rx="222" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="3"/>
+    <g transform="translate(0 -24)">
+      <use href="#lobeL" fill="url(#cream)"/>
+      <use href="#lobeL" transform="translate(1024 0) scale(-1 1)" fill="url(#clay)"/>
+      <g clip-path="url(#clipL)"><use href="#lobeL" transform="translate(1024 0) scale(-1 1)" fill="url(#champ)"/></g>
+    </g>
+  </symbol>
+
+  <!-- 2 · 陶土:橙底,奶油白 + 深墨,交汇处是沙色 -->
+  <symbol id="m2" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#tClay)"/>
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#sheen)"/>
+    <rect x="34" y="34" width="956" height="956" rx="222" fill="none" stroke="#fff" stroke-opacity=".16" stroke-width="3"/>
+    <g transform="translate(0 -24)">
+      <use href="#lobeL" fill="url(#cream)"/>
+      <use href="#lobeL" transform="translate(1024 0) scale(-1 1)" fill="url(#ink)"/>
+      <g clip-path="url(#clipL)"><use href="#lobeL" transform="translate(1024 0) scale(-1 1)" fill="url(#sand)"/></g>
+    </g>
+  </symbol>
+
+  <!-- 3 · 象牙:浅色底,深墨 + 陶土橙,交汇处是深赤陶,适合浅色界面里的应用内 logo -->
+  <symbol id="m3" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#tIvory)"/>
+    <rect x="35" y="35" width="954" height="954" rx="221" fill="none" stroke="#3C3214" stroke-opacity=".16" stroke-width="5"/>
+    <g transform="translate(0 -24)">
+      <use href="#lobeL" fill="url(#ink)"/>
+      <use href="#lobeL" transform="translate(1024 0) scale(-1 1)" fill="url(#clay)"/>
+      <g clip-path="url(#clipL)"><use href="#lobeL" transform="translate(1024 0) scale(-1 1)" fill="url(#terra)"/></g>
+    </g>
+  </symbol>
+
+  <!-- 对照:上一版 C(更小、更扁) -->
+  <symbol id="m0" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#tInk)"/>
+    <path transform="translate(34 0)" fill="#FAF9F5" d="M512 500 C470 440 380 430 320 470 C260 510 220 580 200 640 C270 600 330 600 390 620 C450 640 490 600 512 560 Z"/>
+    <path transform="translate(990 0) scale(-1 1)" fill="#D97757" d="M512 500 C470 440 380 430 320 470 C260 510 220 580 200 640 C270 600 330 600 390 620 C450 640 490 600 512 560 Z"/>
+  </symbol>
+</svg>
+
+<h1>MarioCode 图标方案 · 第五轮(C 放大、更像 M)</h1>
+<p class="sub">在上一版 C 上做三处改动:整体放大约 1.6 倍;两瓣加高,峰在上、谷在中、腿向外下探,读起来更像 M;配色加入渐变、顶部微光和细描边,交汇处换成香槟 / 沙 / 赤陶色。最后一张是上一版,方便对比大小。</p>
+
+<div class="row">
+
+  <div class="card">
+    <h2>1 · 墨夜</h2>
+    <p>暖石墨底,奶油白加陶土橙,交汇处是香槟色。延续现在的基调,最沉稳。</p>
+    <div class="big"><svg><use href="#m1"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#m1"/></svg><svg class="b"><use href="#m1"/></svg><svg class="c"><use href="#m1"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#m1"/></svg><svg class="b"><use href="#m1"/></svg><svg class="c"><use href="#m1"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · 陶土</h2>
+    <p>橙色底,奶油白加深墨,交汇处是沙色。最亮、最醒目,和 Claude 的气质最近,在任务栏里最显眼。</p>
+    <div class="big"><svg><use href="#m2"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#m2"/></svg><svg class="b"><use href="#m2"/></svg><svg class="c"><use href="#m2"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#m2"/></svg><svg class="b"><use href="#m2"/></svg><svg class="c"><use href="#m2"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>3 · 象牙</h2>
+    <p>象牙白底,深墨加陶土橙,交汇处是深赤陶。适合浅色界面里的应用内 logo,和暖纸基调最搭。</p>
+    <div class="big"><svg><use href="#m3"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#m3"/></svg><svg class="b"><use href="#m3"/></svg><svg class="c"><use href="#m3"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#m3"/></svg><svg class="b"><use href="#m3"/></svg><svg class="c"><use href="#m3"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>对照 · 上一版 C</h2>
+    <p>只用来比大小,不是备选。</p>
+    <div class="big"><svg><use href="#m0"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#m0"/></svg><svg class="b"><use href="#m0"/></svg><svg class="c"><use href="#m0"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#m0"/></svg><svg class="b"><use href="#m0"/></svg><svg class="c"><use href="#m0"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,25 +1,25 @@
 """Generate every MarioCode icon from code (no source artwork needed).
 
-Two variants of the same geometric M (graphite strokes + sage-mint diagonal):
-  - dark  (A): graphite rounded tile, near-white M, mint gradient diagonal.
-               Used for the APP icon everywhere the OS draws it (taskbar,
-               installer, exe, dock, notifications) and the dark-theme logo.
-  - light (C): white→mist tile with a hairline border, graphite M, mint
-               diagonal. Used for the in-app logo under the light theme.
+One design everywhere (2026-10-21): a deep-terracotta irregular round blob with
+a soft top sheen, a cream single-stroke "flow M" (two arches, one valley) and a
+light-orange dot under the valley. The same image is used for the OS app icon
+and the in-app logo under both themes - the dark terracotta reads on light and
+dark grounds alike, so there is no separate light variant.
 
-The geometry matches build/icon-dark.svg / build/icon-light.svg (1024 space):
-tile x/y 32..992, rx 224; strokes 124 wide with round caps/joins;
-left stem (318,330)->(318,694), left diagonal (318,330)->(512,620),
-mint diagonal (512,620)->(706,330), right stem (706,330)->(706,694).
+Geometry (1024 space; prototypes/icon-options-9.html option 3 is the visual
+reference):
+  blob  - five cubic segments, left/right asymmetric, smooth at every join
+  M     - one stroke, width 52, round caps/joins:
+          (252,724) -> (380,296) -> (512,604) -> (644,296) -> (772,724)
+  dot   - centre (512,760) r 38
 Rendered at 4x and downscaled so edges are anti-aliased while everything
-outside the tile stays fully transparent.
+outside the blob stays fully transparent.
 
 Outputs:
-  build/icon-source.png, build/icon-source-light.png   1024 masters
-  build/icon.png (1024), build/icon.ico, build/icon.icns   app icon (dark)
-  src/renderer/brand-logo.png        in-app logo, dark theme
-  src/renderer/brand-logo-light.png  in-app logo, light theme
-  src/renderer/favicon.png (64)      dark
+  build/icon-source.png (1024 master)
+  build/icon.png (1024), build/icon.ico, build/icon.icns   app icon
+  src/renderer/brand-logo.png (512)   in-app logo, both themes
+  src/renderer/favicon.png (64)
 
 Run from the repo root:
     python apps/desktop/build/gen_icon.py
@@ -38,40 +38,55 @@ SIZE = 1024
 SS = 4  # supersampling factor
 BIG = SIZE * SS
 
-TILE = (32, 32, 992, 992)
-RADIUS = 224
-STROKE = 124
-LEFT = [(318, 330), (318, 694)]
-LEFT_DIAG = [(318, 330), (512, 620)]
-MINT_DIAG = [(512, 620), (706, 330)]
-RIGHT = [(706, 330), (706, 694)]
+# Blob: start point + cubic segments (c1, c2, end).
+BLOB_START = (512, 44)
+BLOB_SEGMENTS = [
+    ((700, 40), (880, 140), (950, 320)),
+    ((1010, 470), (990, 650), (900, 790)),
+    ((810, 930), (640, 990), (480, 980)),
+    ((300, 968), (130, 880), (70, 700)),
+    ((20, 550), (40, 380), (130, 250)),
+    ((220, 120), (360, 48), (512, 44)),
+]
+BLOB_Y0, BLOB_Y1 = 40, 985  # vertical extent used by the gradients
 
-VARIANTS = {
-    "dark": {
-        "bg_top": (0x2B, 0x3F, 0x39),
-        "bg_bottom": (0x15, 0x20, 0x1D),
-        "ink": (0xF4, 0xF7, 0xF5),
-        # mint gradient along the diagonal: light at the top-right end,
-        # deeper at the bottom-left end
-        "mint_top": (0xB5, 0xEB, 0xCF),
-        "mint_bottom": (0x7F, 0xD1, 0xA8),
-        "shine": True,
-        "border": None,
-    },
-    "light": {
-        "bg_top": (0xFF, 0xFF, 0xFF),
-        "bg_bottom": (0xEA, 0xF1, 0xED),
-        "ink": (0x22, 0x33, 0x2E),
-        "mint_top": (0x6F, 0xBF, 0x97),
-        "mint_bottom": (0x6F, 0xBF, 0x97),
-        "shine": False,
-        "border": ((0xD5, 0xE0, 0xDA), 6),
-    },
-}
+BG_TOP = (0xA9, 0x55, 0x3A)
+BG_BOTTOM = (0x6C, 0x30, 0x1E)
+SHEEN_ALPHA = 0.16  # white, fading to 0 by 55% of the blob's height
+
+# Flow M: one stroke through these cubic segments.
+M_START = (252, 724)
+M_SEGMENTS = [
+    ((252, 560), (280, 296), (380, 296)),
+    ((460, 296), (490, 560), (512, 604)),
+    ((534, 560), (564, 296), (644, 296)),
+    ((744, 296), (772, 560), (772, 724)),
+]
+M_STROKE = 52
+M_COLOR = (0xFF, 0xFD, 0xF8)
+
+DOT = (512, 760, 38)
+DOT_COLOR = (0xF0, 0xAA, 0x8A)
 
 
 def _s(v: float) -> int:
     return int(round(v * SS))
+
+
+def _sample(start, segments, n: int = 96):
+    """Sample chained cubic beziers into one dense point list."""
+    pts = [start]
+    p0 = start
+    for c1, c2, p3 in segments:
+        for i in range(1, n + 1):
+            t = i / n
+            u = 1 - t
+            pts.append((
+                u**3 * p0[0] + 3 * u**2 * t * c1[0] + 3 * u * t**2 * c2[0] + t**3 * p3[0],
+                u**3 * p0[1] + 3 * u**2 * t * c1[1] + 3 * u * t**2 * c2[1] + t**3 * p3[1],
+            ))
+        p0 = p3
+    return pts
 
 
 def _vertical_gradient(top, bottom, y0: float, y1: float) -> Image.Image:
@@ -85,70 +100,60 @@ def _vertical_gradient(top, bottom, y0: float, y1: float) -> Image.Image:
     return strip.resize((BIG, BIG), Image.NEAREST)
 
 
-def _tile_mask() -> Image.Image:
+def _blob_mask() -> Image.Image:
     mask = Image.new("L", (BIG, BIG), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        [_s(TILE[0]), _s(TILE[1]), _s(TILE[2]) - 1, _s(TILE[3]) - 1],
-        radius=_s(RADIUS), fill=255,
+    pts = [(_s(x), _s(y)) for x, y in _sample(BLOB_START, BLOB_SEGMENTS)]
+    ImageDraw.Draw(mask).polygon(pts, fill=255)
+    return mask
+
+
+def _stroke_mask() -> Image.Image:
+    """The M as a round-capped, round-joined stroke: a disc at every sample."""
+    mask = Image.new("L", (BIG, BIG), 0)
+    d = ImageDraw.Draw(mask)
+    r = _s(M_STROKE) / 2
+    for x, y in _sample(M_START, M_SEGMENTS, n=160):
+        cx, cy = _s(x), _s(y)
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=255)
+    return mask
+
+
+def _dot_mask() -> Image.Image:
+    mask = Image.new("L", (BIG, BIG), 0)
+    cx, cy, r = DOT
+    ImageDraw.Draw(mask).ellipse(
+        [_s(cx - r), _s(cy - r), _s(cx + r), _s(cy + r)], fill=255
     )
     return mask
 
 
-def _stroke_mask(*polylines) -> Image.Image:
-    """Round-capped, round-joined thick polylines as an L mask."""
-    mask = Image.new("L", (BIG, BIG), 0)
-    d = ImageDraw.Draw(mask)
-    w = _s(STROKE)
-    r = w / 2
-    for line in polylines:
-        pts = [(_s(x), _s(y)) for x, y in line]
-        d.line(pts, fill=255, width=w)
-        for x, y in pts:
-            d.ellipse([x - r, y - r, x + r, y + r], fill=255)
-    return mask
-
-
-def render(variant: str) -> Image.Image:
-    v = VARIANTS[variant]
+def render() -> Image.Image:
     img = Image.new("RGBA", (BIG, BIG), (0, 0, 0, 0))
-    tile = _tile_mask()
+    blob = _blob_mask()
 
-    # Tile background.
-    img.paste(_vertical_gradient(v["bg_top"], v["bg_bottom"], TILE[1], TILE[3]), (0, 0), tile)
+    # Terracotta blob.
+    img.paste(_vertical_gradient(BG_TOP, BG_BOTTOM, BLOB_Y0, BLOB_Y1), (0, 0), blob)
 
-    # Subtle top sheen (dark variant): white 10% → 0 over the top half.
-    if v["shine"]:
-        sheen_alpha = Image.new("L", (1, BIG))
-        px = sheen_alpha.load()
-        top, mid = _s(TILE[1]), _s(TILE[1] + (TILE[3] - TILE[1]) / 2)
-        for y in range(BIG):
-            t = 0.0 if y <= top else 1.0 if y >= mid else (y - top) / (mid - top)
-            px[0, y] = int(255 * 0.10 * (1 - t))
-        sheen_alpha = sheen_alpha.resize((BIG, BIG), Image.NEAREST)
-        sheen_alpha = Image.composite(sheen_alpha, Image.new("L", (BIG, BIG), 0), tile)
-        sheen = Image.new("RGBA", (BIG, BIG), (255, 255, 255, 0))
-        sheen.putalpha(sheen_alpha)
-        img.alpha_composite(sheen)
+    # Top sheen: white SHEEN_ALPHA -> 0 over the top 55% of the blob.
+    top = _s(BLOB_Y0)
+    end = _s(BLOB_Y0 + (BLOB_Y1 - BLOB_Y0) * 0.55)
+    sheen = Image.new("L", (1, BIG))
+    px = sheen.load()
+    for y in range(BIG):
+        t = 0.0 if y <= top else 1.0 if y >= end else (y - top) / (end - top)
+        px[0, y] = int(255 * SHEEN_ALPHA * (1 - t))
+    sheen = sheen.resize((BIG, BIG), Image.NEAREST)
+    sheen = Image.composite(sheen, Image.new("L", (BIG, BIG), 0), blob)
+    white = Image.new("RGBA", (BIG, BIG), (255, 255, 255, 0))
+    white.putalpha(sheen)
+    img.alpha_composite(white)
 
-    # Hairline border (light variant).
-    if v["border"]:
-        color, width = v["border"]
-        ImageDraw.Draw(img).rounded_rectangle(
-            [_s(TILE[0]), _s(TILE[1]), _s(TILE[2]) - 1, _s(TILE[3]) - 1],
-            radius=_s(RADIUS), outline=color + (255,), width=_s(width),
-        )
+    # Cream flow-M stroke and the light-orange dot.
+    img.paste(Image.new("RGB", (BIG, BIG), M_COLOR), (0, 0), _stroke_mask())
+    img.paste(Image.new("RGB", (BIG, BIG), DOT_COLOR), (0, 0), _dot_mask())
 
-    ink = Image.new("RGBA", (BIG, BIG), v["ink"] + (255,))
-    # 1) left stem + left diagonal
-    img.paste(ink, (0, 0), _stroke_mask(LEFT, LEFT_DIAG))
-    # 2) mint diagonal (gradient from its top end to its bottom end)
-    mint = _vertical_gradient(v["mint_top"], v["mint_bottom"], 330 - STROKE / 2, 620 + STROKE / 2)
-    img.paste(mint, (0, 0), _stroke_mask(MINT_DIAG))
-    # 3) right stem on top, so it cleanly overlaps the mint stroke's end
-    img.paste(ink, (0, 0), _stroke_mask(RIGHT))
-
-    # Keep everything outside the tile fully transparent.
-    alpha = Image.composite(img.getchannel("A"), Image.new("L", (BIG, BIG), 0), tile)
+    # Keep everything outside the blob fully transparent.
+    alpha = Image.composite(img.getchannel("A"), Image.new("L", (BIG, BIG), 0), blob)
     img.putalpha(alpha)
     return img.resize((SIZE, SIZE), Image.LANCZOS)
 
@@ -187,17 +192,14 @@ def write_icns(img: Image.Image, path: Path) -> None:
 
 
 def main() -> None:
-    dark = render("dark")
-    light = render("light")
-    dark.save(OUT_DIR / "icon-source.png", "PNG", optimize=True)
-    light.save(OUT_DIR / "icon-source-light.png", "PNG", optimize=True)
-    write_png(dark, OUT_DIR / "icon.png", 1024)
-    write_ico(dark, OUT_DIR / "icon.ico")
-    write_icns(dark, OUT_DIR / "icon.icns")
-    write_png(dark, RENDERER_DIR / "brand-logo.png", 512)
-    write_png(light, RENDERER_DIR / "brand-logo-light.png", 512)
-    write_png(dark, RENDERER_DIR / "favicon.png", 64)
-    print("OK: app icon (dark), in-app logos (dark + light), favicon")
+    icon = render()
+    icon.save(OUT_DIR / "icon-source.png", "PNG", optimize=True)
+    write_png(icon, OUT_DIR / "icon.png", 1024)
+    write_ico(icon, OUT_DIR / "icon.ico")
+    write_icns(icon, OUT_DIR / "icon.icns")
+    write_png(icon, RENDERER_DIR / "brand-logo.png", 512)
+    write_png(icon, RENDERER_DIR / "favicon.png", 64)
+    print("OK: app icon, in-app logo, favicon")
 
 
 if __name__ == "__main__":

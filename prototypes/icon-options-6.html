@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MarioCode 图标方案 第六轮</title>
+<style>
+  :root { --paper:#faf9f5; --ink:#2b2a27; --muted:#76726a; --line:#e8e5da; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px 32px 48px; background:var(--paper); color:var(--ink);
+         font:14px/1.6 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; font-weight:650; }
+  .sub { color:var(--muted); margin:0 0 24px; max-width:900px; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px; }
+  .card { border:1px solid var(--line); border-radius:16px; padding:18px; background:#fff; }
+  .card h2 { margin:0 0 2px; font-size:15px; }
+  .card p { margin:0 0 14px; color:var(--muted); font-size:12.5px; min-height:40px; }
+  .big { display:flex; justify-content:center; padding:4px 0 16px; }
+  .big svg { width:200px; height:200px; }
+  .sizes { display:flex; align-items:flex-end; gap:14px; padding:12px; border-radius:12px; }
+  .sizes.light { background:#f0eee6; }
+  .sizes.dark { background:#1f1e1d; margin-top:8px; }
+  .sizes svg.a { width:64px; height:64px; }
+  .sizes svg.b { width:32px; height:32px; }
+  .sizes svg.c { width:16px; height:16px; }
+  .tag { margin-left:auto; align-self:center; font-size:11px; color:var(--muted); }
+  .dark .tag { color:#aaa69a; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="tInk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A3834"/><stop offset="1" stop-color="#1C1B19"/></linearGradient>
+    <linearGradient id="tClay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E58A63"/><stop offset="1" stop-color="#C86443"/></linearGradient>
+    <linearGradient id="cream" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFDF8"/><stop offset="1" stop-color="#F0EADB"/></linearGradient>
+    <linearGradient id="clay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EA946E"/><stop offset="1" stop-color="#CF6A48"/></linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".12"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+
+    <!-- 基本 M:竖腿 112 宽,斜笔水平宽 100,V 的下尖几乎落到底线;全部是直边尖角 -->
+    <path id="mBase" d="M252 732 V292 H330 L512 566 L694 292 H772 V732 H660 V494 L512 717 L364 494 V732 Z"/>
+    <!-- 切角 M:左上、右下两个对角切成斜角 -->
+    <path id="mChamfer" d="M252 732 V370 L330 292 L512 566 L694 292 H772 V654 L694 732 H660 V494 L512 717 L364 494 V732 Z"/>
+    <!-- 两色 M 的左右半 -->
+    <path id="mLeft" d="M252 732 V292 H330 L512 566 V717 L364 494 V732 Z"/>
+    <path id="mRight" d="M512 566 L694 292 H772 V732 H660 V494 L512 717 Z"/>
+  </defs>
+
+  <!-- 1 · 陶土 M:Claude 的做法,橙底一个奶油白图形 -->
+  <symbol id="n1" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#tClay)"/>
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#sheen)"/>
+    <use href="#mBase" fill="url(#cream)"/>
+  </symbol>
+
+  <!-- 2 · 切角 M:暖石墨底(ZCode 的做法),对角切角带出动势 -->
+  <symbol id="n2" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#tInk)"/>
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#sheen)"/>
+    <use href="#mChamfer" fill="url(#cream)"/>
+  </symbol>
+
+  <!-- 3 · 两色 M:左半奶油白、右半陶土橙,延续你选过的"两瓣"思路,这次是真正的 M -->
+  <symbol id="n3" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#tInk)"/>
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#sheen)"/>
+    <use href="#mLeft" fill="url(#cream)"/>
+    <use href="#mRight" fill="url(#clay)"/>
+  </symbol>
+
+  <!-- 4 · 光点 M:奶油白 M,V 口上方一个陶土橙光点(光标 / 日出) -->
+  <symbol id="n4" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#tInk)"/>
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#sheen)"/>
+    <use href="#mBase" fill="url(#cream)"/>
+    <circle cx="512" cy="446" r="46" fill="url(#clay)"/>
+  </symbol>
+</svg>
+
+<h1>MarioCode 图标方案 · 第六轮(以 M 为主,参考 Claude / ZCode 的做法)</h1>
+<p class="sub">共同点:纯色圆角底、只有一个图形、居中、占满约 55%。M 全部是直边尖角,和前几轮的粗圆笔画区分开。这轮不再加气泡、双环、胡子这类额外元素。</p>
+
+<div class="row">
+
+  <div class="card">
+    <h2>1 · 陶土 M</h2>
+    <p>橙底一个奶油白 M,和 Claude 的做法最接近。最干净,也最容易被说"没创意"。</p>
+    <div class="big"><svg><use href="#n1"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#n1"/></svg><svg class="b"><use href="#n1"/></svg><svg class="c"><use href="#n1"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#n1"/></svg><svg class="b"><use href="#n1"/></svg><svg class="c"><use href="#n1"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · 切角 M</h2>
+    <p>暖石墨底,和 ZCode 的深底白字同一路。左上、右下两个对角切成斜角,多一点动势,仍然是清楚的 M。</p>
+    <div class="big"><svg><use href="#n2"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#n2"/></svg><svg class="b"><use href="#n2"/></svg><svg class="c"><use href="#n2"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#n2"/></svg><svg class="b"><use href="#n2"/></svg><svg class="c"><use href="#n2"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>3 · 两色 M</h2>
+    <p>左半奶油白、右半陶土橙。延续你前面看中的"两瓣"思路,这次是真正的 M。</p>
+    <div class="big"><svg><use href="#n3"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#n3"/></svg><svg class="b"><use href="#n3"/></svg><svg class="c"><use href="#n3"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#n3"/></svg><svg class="b"><use href="#n3"/></svg><svg class="c"><use href="#n3"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>4 · 光点 M</h2>
+    <p>奶油白 M,V 口上方一个陶土橙光点,像光标也像日出。多一个记忆点。</p>
+    <div class="big"><svg><use href="#n4"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#n4"/></svg><svg class="b"><use href="#n4"/></svg><svg class="c"><use href="#n4"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#n4"/></svg><svg class="b"><use href="#n4"/></svg><svg class="c"><use href="#n4"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+</div>
+</body>
+</html>

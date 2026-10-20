@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MarioCode 图标方案 第八轮</title>
+<style>
+  :root { --paper:#faf9f5; --ink:#2b2a27; --muted:#76726a; --line:#e8e5da; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px 32px 48px; background:var(--paper); color:var(--ink);
+         font:14px/1.6 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; font-weight:650; }
+  .sub { color:var(--muted); margin:0 0 24px; max-width:900px; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px; }
+  .card { border:1px solid var(--line); border-radius:16px; padding:18px; background:#fff; }
+  .card h2 { margin:0 0 2px; font-size:15px; }
+  .card p { margin:0 0 14px; color:var(--muted); font-size:12.5px; min-height:40px; }
+  .big { display:flex; justify-content:center; padding:4px 0 16px; }
+  .big svg { width:200px; height:200px; }
+  .sizes { display:flex; align-items:flex-end; gap:14px; padding:12px; border-radius:12px; }
+  .sizes.light { background:#f0eee6; }
+  .sizes.dark { background:#1f1e1d; margin-top:8px; }
+  .sizes svg.a { width:64px; height:64px; }
+  .sizes svg.b { width:32px; height:32px; }
+  .sizes svg.c { width:16px; height:16px; }
+  .tag { margin-left:auto; align-self:center; font-size:11px; color:var(--muted); }
+  .dark .tag { color:#aaa69a; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="tClay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E58A63"/><stop offset="1" stop-color="#C86443"/></linearGradient>
+    <linearGradient id="cream" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFDF8"/><stop offset="1" stop-color="#F0EADB"/></linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".14"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="drop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4A4640"/><stop offset="1" stop-color="#1F1D1B"/></linearGradient>
+
+    <!-- M:直边尖角,和第六、七轮相同 -->
+    <path id="mBase" d="M252 732 V292 H330 L512 566 L694 292 H772 V732 H660 V494 L512 717 L364 494 V732 Z"/>
+
+    <!-- 水滴:尖朝上,圆底在下。以 (0,0) 为圆心的底圆半径 52,尖在 (0,-96) -->
+    <path id="dropShape" d="M0 -96 C20 -62 52 -26 52 0 A52 52 0 0 1 -52 0 C-52 -26 -20 -62 0 -96 Z"/>
+    <!-- 水滴高光:左上一道月牙 -->
+    <path id="dropGloss" d="M-30 6 C-34 -10 -24 -28 -12 -42 C-18 -22 -18 -4 -12 10 C-18 12 -26 12 -30 6 Z"/>
+
+    <!-- 圆形底 + 奶油白 M(三个方案共用) -->
+    <g id="base">
+      <circle cx="512" cy="512" r="480" fill="url(#tClay)"/>
+      <circle cx="512" cy="512" r="480" fill="url(#sheen)"/>
+      <use href="#mBase" fill="url(#cream)"/>
+    </g>
+  </defs>
+
+  <!-- 1 · 直立水滴:放在 V 口正中,带高光 -->
+  <symbol id="q1" viewBox="0 0 1024 1024">
+    <use href="#base"/>
+    <g transform="translate(512 462)">
+      <use href="#dropShape" fill="url(#drop)"/>
+      <use href="#dropGloss" fill="#fff" opacity=".42"/>
+    </g>
+  </symbol>
+
+  <!-- 2 · 倾斜水滴:向右倾 18°,放大一点,更有动势 -->
+  <symbol id="q2" viewBox="0 0 1024 1024">
+    <use href="#base"/>
+    <g transform="translate(514 466) rotate(18) scale(1.08)">
+      <use href="#dropShape" fill="url(#drop)"/>
+      <use href="#dropGloss" fill="#fff" opacity=".42"/>
+    </g>
+  </symbol>
+
+  <!-- 3 · 一大一小:主水滴 + 右上一颗小水滴,像刚溅起来 -->
+  <symbol id="q3" viewBox="0 0 1024 1024">
+    <use href="#base"/>
+    <g transform="translate(496 468) rotate(-10)">
+      <use href="#dropShape" fill="url(#drop)"/>
+      <use href="#dropGloss" fill="#fff" opacity=".42"/>
+    </g>
+    <g transform="translate(588 386) rotate(24) scale(.36)">
+      <use href="#dropShape" fill="url(#drop)"/>
+    </g>
+  </symbol>
+</svg>
+
+<h1>MarioCode 图标方案 · 第八轮(水滴光点 + 圆形底)</h1>
+<p class="sub">底色改为圆形,光点改为水滴形并加高光。其余沿用上一轮:陶土橙底、奶油白 M、暖石墨水滴。三个方案只在水滴的姿态上不同。</p>
+
+<div class="row">
+
+  <div class="card">
+    <h2>1 · 直立水滴</h2>
+    <p>水滴尖朝上,放在 V 口正中,带一道高光。最稳,但动感最少。</p>
+    <div class="big"><svg><use href="#q1"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#q1"/></svg><svg class="b"><use href="#q1"/></svg><svg class="c"><use href="#q1"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#q1"/></svg><svg class="b"><use href="#q1"/></svg><svg class="c"><use href="#q1"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · 倾斜水滴</h2>
+    <p>水滴向右倾 18°,略放大。像刚从上方滑落,最不"呆"。</p>
+    <div class="big"><svg><use href="#q2"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#q2"/></svg><svg class="b"><use href="#q2"/></svg><svg class="c"><use href="#q2"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#q2"/></svg><svg class="b"><use href="#q2"/></svg><svg class="c"><use href="#q2"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>3 · 一大一小</h2>
+    <p>主水滴加右上一颗小水滴,像刚溅起来。最活泼,代价是小水滴在 16 像素下会消失。</p>
+    <div class="big"><svg><use href="#q3"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#q3"/></svg><svg class="b"><use href="#q3"/></svg><svg class="c"><use href="#q3"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#q3"/></svg><svg class="b"><use href="#q3"/></svg><svg class="c"><use href="#q3"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+</div>
+</body>
+</html>

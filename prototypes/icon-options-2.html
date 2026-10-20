@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MarioCode 图标方案 第二轮</title>
+<style>
+  :root { --paper:#faf9f5; --ink:#2b2a27; --muted:#76726a; --line:#e8e5da; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px 32px 48px; background:var(--paper); color:var(--ink);
+         font:14px/1.6 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; font-weight:650; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px; }
+  .card { border:1px solid var(--line); border-radius:16px; padding:18px; background:#fff; }
+  .card h2 { margin:0 0 2px; font-size:15px; }
+  .card p { margin:0 0 14px; color:var(--muted); font-size:12.5px; min-height:40px; }
+  .big { display:flex; justify-content:center; padding:4px 0 16px; }
+  .big svg { width:200px; height:200px; }
+  .sizes { display:flex; align-items:flex-end; gap:14px; padding:12px; border-radius:12px; }
+  .sizes.light { background:#f0eee6; }
+  .sizes.dark { background:#1f1e1d; margin-top:8px; }
+  .sizes svg.a { width:64px; height:64px; }
+  .sizes svg.b { width:32px; height:32px; }
+  .sizes svg.c { width:16px; height:16px; }
+  .tag { margin-left:auto; align-self:center; font-size:11px; color:var(--muted); }
+  .dark .tag { color:#aaa69a; }
+</style>
+</head>
+<body>
+
+<!-- 图标定义:每个方案一个 symbol,下面的卡片只引用 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="go" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E58A63"/><stop offset="1" stop-color="#C96442"/></linearGradient>
+    <linearGradient id="gd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A3935"/><stop offset="1" stop-color="#22211F"/></linearGradient>
+  </defs>
+
+  <!-- 1 · 砖块 M:橙色砖块,四角铆钉,奶油白 M -->
+  <symbol id="i1" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#go)"/>
+    <rect x="92" y="92" width="840" height="840" rx="176" fill="none" stroke="#B5553A" stroke-width="16" opacity=".55"/>
+    <g fill="#B5553A" opacity=".8"><circle cx="172" cy="172" r="28"/><circle cx="852" cy="172" r="28"/><circle cx="172" cy="852" r="28"/><circle cx="852" cy="852" r="28"/></g>
+    <path d="M318 712 V340 L512 592 L706 340 V712" fill="none" stroke="#FAF9F5" stroke-width="116" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- 2 · 山与日出:M 是两座山峰,朝阳从中间升起 -->
+  <symbol id="i2" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#gd)"/>
+    <circle cx="512" cy="372" r="64" fill="#D97757"/>
+    <path d="M296 752 V312 L512 612 L728 312 V752" fill="none" stroke="#FAF9F5" stroke-width="116" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="6"/>
+  </symbol>
+
+  <!-- 3 · 光标 M:右边一竖是终端里闪烁的光标块 -->
+  <symbol id="i3" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#gd)"/>
+    <path d="M330 752 V300 L512 600 L694 360" fill="none" stroke="#FAF9F5" stroke-width="120" stroke-linecap="butt" stroke-linejoin="round"/>
+    <rect x="636" y="268" width="120" height="484" rx="14" fill="#D97757"/>
+  </symbol>
+
+  <!-- 4 · 拼接 M:三块积木拼成,中间 V 形块是橙色 -->
+  <symbol id="i4" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#gd)"/>
+    <rect x="262" y="280" width="128" height="472" rx="44" fill="#FAF9F5"/>
+    <rect x="634" y="280" width="128" height="472" rx="44" fill="#E8E5DA"/>
+    <path d="M452 340 L512 560 L572 340" fill="none" stroke="#D97757" stroke-width="96" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>
+
+<h1>MarioCode 图标方案 · 第二轮</h1>
+<p class="sub">配色不变(暖石墨、奶油白、陶土橙),这一轮只重想 M 的造型:让 M 带一个故事,而不只是一个好看的字母。</p>
+
+<div class="row">
+
+  <div class="card">
+    <h2>1 · 砖块 M</h2>
+    <p>橙色砖块,四角铆钉,奶油白的 M 像压在砖面上。是通用的积木砖,不照搬任天堂的问号砖。</p>
+    <div class="big"><svg><use href="#i1"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#i1"/></svg><svg class="b"><use href="#i1"/></svg><svg class="c"><use href="#i1"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#i1"/></svg><svg class="b"><use href="#i1"/></svg><svg class="c"><use href="#i1"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · 山与日出</h2>
+    <p>M 的两个尖角是两座山峰,陶土橙的太阳从中间升起。寓意"从零开始写出东西"。</p>
+    <div class="big"><svg><use href="#i2"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#i2"/></svg><svg class="b"><use href="#i2"/></svg><svg class="c"><use href="#i2"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#i2"/></svg><svg class="b"><use href="#i2"/></svg><svg class="c"><use href="#i2"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>3 · 光标 M</h2>
+    <p>M 的右边一竖换成终端里的光标块,点出"编程 Agent"的身份。橙色块像在闪烁。</p>
+    <div class="big"><svg><use href="#i3"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#i3"/></svg><svg class="b"><use href="#i3"/></svg><svg class="c"><use href="#i3"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#i3"/></svg><svg class="b"><use href="#i3"/></svg><svg class="c"><use href="#i3"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+  <div class="card">
+    <h2>4 · 拼接 M</h2>
+    <p>M 由三块积木拼成,中间的 V 形块是橙色。对应 MarioCode 把多个引擎和工具拼在一起。</p>
+    <div class="big"><svg><use href="#i4"/></svg></div>
+    <div class="sizes light"><svg class="a"><use href="#i4"/></svg><svg class="b"><use href="#i4"/></svg><svg class="c"><use href="#i4"/></svg><span class="tag">浅色背景</span></div>
+    <div class="sizes dark"><svg class="a"><use href="#i4"/></svg><svg class="b"><use href="#i4"/></svg><svg class="c"><use href="#i4"/></svg><span class="tag">深色背景</span></div>
+  </div>
+
+</div>
+</body>
+</html>

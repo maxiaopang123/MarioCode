@@ -4642,7 +4642,7 @@ function UserMessageEditor({
           className={cn(
             "inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors",
             canSubmit
-              ? "bg-accent text-white hover:bg-accent/90"
+              ? "bg-primary text-primary-on hover:bg-primary-hover"
               : "cursor-not-allowed bg-surface-hover text-content-subtle",
           )}
         >

@@ -72,7 +72,7 @@ console.log("[1] model id parsing");
     ["deepseek-flash", "claude-sonnet-4-5", "gpt-5.6-sol", "glm-4.6"].map(modelAvatarColor),
   ).size;
   check("different models use different colors", distinct >= 3, { distinct });
-  for (const [id, family] of Object.entries({ "custom/claude-opus-4-6": "claude", "gateway/gpt-5.4": "openai", "deepseek-v3": "deepseek", "gemini-2.5-pro": "gemini", "qwen3-coder": "qwen", "kimi-k2": "kimi", "mistral-large": "mistral", "private/company-model": "unknown" })) {
+  for (const [id, family] of Object.entries({ "custom/claude-opus-4-6": "claude", "gateway/gpt-5.4": "openai", "deepseek-v3": "deepseek", "gemini-2.5-pro": "gemini", "qwen3-coder": "qwen", "kimi-k2": "kimi", "mistral-large": "mistral", "grok-4": "grok", "xai/grok-code-fast": "grok", "doubao-seed-1.6": "doubao", "ernie-4.5": "ernie", "glm-4.6": "unknown", "private/company-model": "unknown" })) {
     check(`${id} resolves model family`, modelFamily(id) === family);
   }
   check("unknown hierarchical name is preserved", modelDisplayName("private/company/model-v2") === "private/company/model-v2");

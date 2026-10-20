@@ -73,7 +73,7 @@ export function PickedElementsBar({ items, onRemove, onClear, onAdd }: PickedEle
         title={t("browser.addAndReturn")}
         className={cn(
           "flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
-          "bg-accent text-white hover:bg-accent/90",
+          "bg-primary text-primary-on hover:bg-primary-hover",
         )}
       >
         {t("browser.add")}

@@ -43,7 +43,9 @@ export function modelDisplayName(model: string | undefined | null): string | nul
   return name || null;
 }
 
-export type ModelFamily = "claude" | "openai" | "gemini" | "deepseek" | "qwen" | "kimi" | "mistral" | "unknown";
+export type ModelFamily =
+  | "claude" | "openai" | "gemini" | "deepseek" | "qwen" | "kimi" | "mistral"
+  | "grok" | "doubao" | "ernie" | "unknown";
 
 /** Resolve from the model id, never from its execution engine or endpoint. */
 export function modelFamily(model: string | null | undefined): ModelFamily {
@@ -55,6 +57,9 @@ export function modelFamily(model: string | null | undefined): ModelFamily {
   if (/^(qwen|qwq)(?:[- .\d]|$)/.test(name)) return "qwen";
   if (/^(kimi|moonshot)(?:[- .]|$)/.test(name)) return "kimi";
   if (/^(mistral|mixtral|codestral|ministral|devstral)(?:[- .]|$)/.test(name)) return "mistral";
+  if (/^grok(?:[- .\d]|$)/.test(name)) return "grok";
+  if (/^doubao(?:[- .]|$)/.test(name)) return "doubao";
+  if (/^ernie(?:[- .]|$)/.test(name)) return "ernie";
   return "unknown";
 }
 

@@ -64,6 +64,10 @@ export function listManagedVersions(agent: RuntimeAgentId): string[] {
   }
   const versions: string[] = [];
   for (const entry of entries) {
+    // Only real release directories. Crash leftovers (`0.83.0.backup-<ts>-<pid>`,
+    // `.0.83.0.staging-<ts>`) must never be offered to the resolvers: the
+    // backup name sorts NEWER than the true version in compareVersions.
+    if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(entry)) continue;
     try {
       if (!statSync(join(dir, entry)).isDirectory()) continue;
     } catch {

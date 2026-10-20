@@ -222,15 +222,16 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
    *  survives and re-shows on return). */
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
   const canvasOpen = useSessionStore((s) => s.canvasOpen);
+  const toolPageOpen = useSessionStore((s) => s.toolPage !== null);
   const rightOpen = useSessionStore((s) => s.rightOpen);
   const rightPanelTab = useSessionStore((s) => s.rightPanelTab);
-  const isActive = !settingsOpen && !canvasOpen && (mode === "overlay" ? open : !open && rightOpen && rightPanelTab === "browser");
+  const isActive = !settingsOpen && !canvasOpen && !toolPageOpen && (mode === "overlay" ? open : !open && rightOpen && rightPanelTab === "browser");
   // Delayed captures / animation frames must read CURRENT ownership, not
   // the render that scheduled them. An unmounted or hidden panel owns no view.
   const ownsSurface = useCallback(() => {
     if (!mountedRef.current) return false;
     const state = useSessionStore.getState();
-    return !state.settingsOpen && !state.canvasOpen && (mode === "overlay"
+    return !state.settingsOpen && !state.canvasOpen && state.toolPage === null && (mode === "overlay"
       ? state.browserPanelOpen
       : !state.browserPanelOpen && state.rightOpen && state.rightPanelTab === "browser");
   }, [mode]);
@@ -244,7 +245,7 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
     // On a container handover the new owner sets bounds + shows the SAME
     // native view. The outgoing container must not hide it afterward.
     const state = useSessionStore.getState();
-    const handedOver = !state.settingsOpen && !state.canvasOpen && (mode === "overlay"
+    const handedOver = !state.settingsOpen && !state.canvasOpen && state.toolPage === null && (mode === "overlay"
       ? !state.browserPanelOpen && state.rightOpen && state.rightPanelTab === "browser"
       : state.browserPanelOpen);
     if (handedOver) return;

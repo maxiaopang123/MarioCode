@@ -38,8 +38,8 @@ import { FontPickerDialog } from "./FontPickerDialog.js";
 /** Default font size shown when no override is set (matches styles.css). */
 const DEFAULT_FONT_SIZE = 14;
 
-/** Hex of the default accent color (emerald-600). Used as the picker fallback. */
-const DEFAULT_ACCENT_HEX = "#5ca080";
+/** Hex of the default accent color (clay, = --accent in styles.css). Used as the picker fallback. */
+const DEFAULT_ACCENT_HEX = "#d97757";
 
 /** Hex of the default user-message bg color (zinc-500, neutral gray). Used as
  *  the picker fallback. Matches the --user-bubble default in styles.css. */
@@ -65,7 +65,8 @@ const USER_BUBBLE_PRESETS: { nameKey: MessageId; triplet: string; hex: string }[
  *  the eyes in dark mode. Trade-off: very soft accents reduce white-on-accent
  *  legibility on filled buttons (those prefer a darker accent). */
 const ACCENT_PRESETS: { nameKey: MessageId; triplet: string; hex: string }[] = [
-  { nameKey: "settings.appearance.colorMint", triplet: "92 160 128", hex: "#5ca080" }, // icon mint (= theme default)
+  { nameKey: "settings.appearance.colorClay", triplet: "217 119 87", hex: "#d97757" }, // clay (= light theme default)
+  { nameKey: "settings.appearance.colorMint", triplet: "92 160 128", hex: "#5ca080" }, // icon mint (former default)
   { nameKey: "settings.appearance.colorEmerald", triplet: "5 150 105", hex: "#059669" }, // emerald-600 (former default)
   { nameKey: "settings.appearance.colorSky", triplet: "111 182 224", hex: "#6fb6e0" }, // soft sky
   { nameKey: "settings.appearance.colorIndigo", triplet: "139 151 232", hex: "#8b97e8" }, // soft indigo

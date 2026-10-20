@@ -144,6 +144,8 @@ function ProjectSidebarBase() {
   const overrides = useSessionStore((s) => s.shortcutOverrides);
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
   const canvasOpen = useSessionStore((s) => s.canvasOpen);
+  const toolPage = useSessionStore((s) => s.toolPage);
+  const setToolPage = useSessionStore((s) => s.setToolPage);
   const streamScope = useSessionStore((s) => s.streamScope);
   const streamDirty = useSessionStore((s) => s.streamDirty);
   const attention = useAttention();
@@ -611,8 +613,9 @@ function ProjectSidebarBase() {
         <div className="rounded-[14px] border border-edge bg-surface p-1">
           <button
             type="button"
-            onClick={() => setSettingsOpen(true, "skills")}
-            className={cn(SIDEBAR_NAV_ITEM, "text-content hover:bg-surface-hover")}
+            onClick={() => setToolPage(toolPage === "skills" ? null : "skills")}
+            data-nav="skills"
+            className={cn(SIDEBAR_NAV_ITEM, "text-content hover:bg-surface-hover", toolPage === "skills" && "bg-surface-hover font-semibold")}
           >
             <IconBlocks size={16} className="shrink-0 text-content-muted" />
             <span className="flex-1 truncate text-left">{t("layout.sidebar.skills")}</span>
@@ -628,8 +631,9 @@ function ProjectSidebarBase() {
           </button>
           <button
             type="button"
-            onClick={() => setSettingsOpen(true, "scheduled-tasks")}
-            className={cn(SIDEBAR_NAV_ITEM, "text-content hover:bg-surface-hover")}
+            onClick={() => setToolPage(toolPage === "scheduled" ? null : "scheduled")}
+            data-nav="scheduled"
+            className={cn(SIDEBAR_NAV_ITEM, "text-content hover:bg-surface-hover", toolPage === "scheduled" && "bg-surface-hover font-semibold")}
           >
             <IconCalendar size={16} className="shrink-0 text-content-muted" />
             <span className="flex-1 truncate text-left">{t("layout.scheduledTasks")}</span>

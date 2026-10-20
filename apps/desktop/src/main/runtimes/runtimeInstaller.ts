@@ -57,6 +57,7 @@ import {
 import { sendToRenderer } from "@main/window.js";
 import { log } from "@main/lib/logger.js";
 import { getManagedRuntimeRoot, listManagedVersions } from "./managedRuntimeRoots.js";
+import { hasRunningTurn } from "./runtimeMutation.js";
 import { codexVendorTriple, findCodexBinaryInPackage } from "@main/providers/codex-sdk/codexBinaryResolve.js";
 import {
   installedManagedPayload,
@@ -86,6 +87,14 @@ const REGISTRIES = ["https://registry.npmmirror.com", "https://registry.npmjs.or
 
 const META_TIMEOUT_MS = 15_000;
 const LATEST_TIMEOUT_MS = 6_000;
+
+/** A plain release version. Registry responses and package metadata are
+ *  untrusted until they pass this: the string is later joined into a staging
+ *  path and interpolated into registry URLs and an npm spec. */
+const RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+export function isReleaseVersion(value: string): boolean {
+  return RELEASE_VERSION.test(value);
+}
 const LATEST_TTL_MS = 10 * 60_000;
 const DISK_TTL_MS = 30_000;
 const PROGRESS_EMIT_INTERVAL_MS = 150;
@@ -220,7 +229,7 @@ async function fetchLatestVersion(agent: RuntimeAgentId): Promise<string | null>
       });
       if (!res.ok) continue;
       const manifest = (await res.json()) as { version?: string };
-      if (typeof manifest.version === "string" && manifest.version) return manifest.version;
+      if (typeof manifest.version === "string" && isReleaseVersion(manifest.version)) return manifest.version;
     } catch {
       continue;
     }
@@ -386,23 +395,29 @@ export function isRuntimeInstalling(agent: RuntimeAgentId): boolean {
   return installing.get(agent) ?? false;
 }
 
-/** True once per process per agent, so the auto-update trigger below fires
- *  only once (listRuntimes is called on every panel mount / progress push). */
-const autoUpdateInitiated = new Set<RuntimeAgentId>();
+/** Last auto-update attempt per agent. listRuntimes runs on every panel mount
+ *  and progress push, so a failed attempt is retried at most this often. A
+ *  successful update needs no entry: the next listRuntimes sees installed ==
+ *  latest and returns early. */
+const autoUpdateAttemptedAt = new Map<RuntimeAgentId, number>();
+const AUTO_UPDATE_RETRY_MS = 30 * 60_000;
 
 /** AUTO mode: the managed copy auto-updates to the registry's latest version
  *  in the background (TODO-057). Runs off the turn path from listRuntimes(),
  *  strictly best-effort: offline / failed checks and failed installs are
- *  logged and retried on the next fresh latest-version lookup (the TTL
- *  cache means a once-per-launch cadence in practice). A failed install
- *  never disturbs the existing copy (finalizeInstall swaps atomically). */
+ *  logged and retried after AUTO_UPDATE_RETRY_MS. A failed install never
+ *  disturbs the existing copy (finalizeInstall swaps atomically), and a
+ *  background install never deletes older versions while a turn is running
+ *  (see pruneOldVersions). */
 function triggerAutoUpdate(agent: RuntimeAgentId, installedVersion: string | null): void {
-  if (autoUpdateInitiated.has(agent) || installing.get(agent)) return;
+  if (installing.get(agent)) return;
   if (installedVersion === null) return; // nothing installed — the panel's install button covers that
   const latest = latestCache.get(agent)?.version ?? null;
   if (!latest) return; // offline / latest check failed — skip silently
   if (compareCoreVersions(installedVersion, latest) >= 0) return; // already current
-  autoUpdateInitiated.add(agent);
+  const last = autoUpdateAttemptedAt.get(agent);
+  if (last !== undefined && Date.now() - last < AUTO_UPDATE_RETRY_MS) return;
+  autoUpdateAttemptedAt.set(agent, Date.now());
   log.info(`runtime auto-update: ${agent} ${installedVersion} -> ${latest} (background)`);
   void installRuntime(agent, latest).then((result) => {
     if (!result.ok) {
@@ -467,8 +482,10 @@ export async function listRuntimes(): Promise<RuntimeAgentState[]> {
       // The ACTIVE copy differs from the version this MarioCode build
       // expects. Managed mode surfaces a badge; auto mode self-heals via
       // the background auto-update to latest, so it doesn't nag.
+      // Only OLDER than the build-pinned version counts: an auto-updated copy
+      // is newer than `expected`, and offering "update" there would downgrade.
       updateAvailable: selection.mode === "managed"
-        && activeVersion !== null && activeVersion !== expected[agent],
+        && activeVersion !== null && compareCoreVersions(activeVersion, expected[agent]) < 0,
       installing: installing.get(agent) ?? false,
       lastError: lastErrors.get(agent) ?? "",
       diskBytes: managed ? dirSizeCached(managed.dir) : 0,
@@ -481,6 +498,50 @@ export async function listRuntimes(): Promise<RuntimeAgentState[]> {
  *  binary permissions, atomically move staging into place, write the install
  *  record and prune other versions. Throws on layout mismatch; on success the
  *  caller must NOT clean up stagingDir anymore (it was renamed). */
+/** Delete every managed version of `agent` except `keep`. Skipped while any
+ *  session has a running turn: that turn may be executing from (or about to
+ *  spawn from) an older directory, and on Windows a locked exe makes the
+ *  delete fail halfway, leaving a broken copy. Skipped prunes are retried by
+ *  sweepManagedRuntimes() once the app is idle. Only strict semver directory
+ *  names are touched — never node/, staging or backup dirs. */
+function pruneOldVersions(agent: RuntimeAgentId, keep: string): void {
+  if (hasRunningTurn()) return;
+  const root = getManagedRuntimeRoot() ?? join(app.getPath("userData"), "runtimes");
+  for (const other of listManagedVersions(agent)) {
+    if (other === keep || !isReleaseVersion(other)) continue;
+    try {
+      rmSync(join(root, agent, other), { recursive: true, force: true });
+    } catch (error) {
+      log.warn(`runtime prune: could not remove ${agent}/${other}: ${String(error)}`);
+    }
+  }
+}
+
+/** Idle-time cleanup: drop superseded versions that an earlier install could
+ *  not prune (a turn was running), and leftovers of interrupted installs
+ *  (`.x.staging-*`, `x.backup-*`). Never runs while an install for the agent
+ *  is in flight (its staging dir is live) or while a turn is running. */
+export function sweepManagedRuntimes(): void {
+  if (hasRunningTurn()) return;
+  const root = getManagedRuntimeRoot();
+  if (!root) return;
+  for (const agent of ["claude", "codex", "pi"] as const) {
+    if (installing.get(agent)) continue;
+    const newest = listManagedVersions(agent)[0];
+    if (newest) pruneOldVersions(agent, newest);
+    let entries: string[] = [];
+    try { entries = readdirSync(join(root, agent)); } catch { continue; }
+    for (const entry of entries) {
+      if (!/^\.[^/\\]+\.staging-\d+$/.test(entry) && !/\.backup-\d+-\d+$/.test(entry)) continue;
+      try {
+        rmSync(join(root, agent, entry), { recursive: true, force: true });
+      } catch (error) {
+        log.warn(`runtime sweep: could not remove ${agent}/${entry}: ${String(error)}`);
+      }
+    }
+  }
+}
+
 function finalizeInstall(
   agent: RuntimeAgentId,
   stagingDir: string,
@@ -489,7 +550,7 @@ function finalizeInstall(
 ): { finalDir: string; entry: string } {
   // Version comes from local package metadata as well as the registry. It
   // must never be interpreted as a filesystem path during swap/cleanup.
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
+  if (!isReleaseVersion(version)) {
     throw new Error(`Invalid runtime version: ${version}`);
   }
   const entry = payloadEntryPath(agent, stagingDir);
@@ -531,14 +592,14 @@ function finalizeInstall(
     }
     throw error;
   }
-  if (backedUp) rmSync(backupDir, { recursive: true, force: true });
-  // Prune only semantic-version directories returned inside this agent's
-  // managed root. Never touch node/, staging/backup dirs, or external paths.
-  const legalVersion = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
-  for (const other of listManagedVersions(agent)) {
-    if (other === version || !legalVersion.test(other)) continue;
-    rmSync(join(root, agent, other), { recursive: true, force: true });
+  // The new copy is in place; everything below is housekeeping and must never
+  // turn a completed install into a reported failure (a locked file on
+  // Windows makes rmSync throw, but the swap already succeeded).
+  if (backedUp) {
+    try { rmSync(backupDir, { recursive: true, force: true }); }
+    catch (error) { log.warn(`runtime install: could not remove ${backupDir}: ${String(error)}`); }
   }
+  pruneOldVersions(agent, version);
   const finalEntry = payloadEntryPath(agent, finalDir);
   if (!finalEntry) throw new Error(`installed runtime payload disappeared after swap: ${finalDir}`);
   return { finalDir, entry: finalEntry };
@@ -587,6 +648,8 @@ export async function installRuntime(
   emitProgress(agent, "downloading", -1);
   try {
     const target = (version ?? loadExpectedVersions()[agent]).trim();
+    // Validate before the string reaches a URL, an npm spec or a staging path.
+    if (!isReleaseVersion(target)) throw new Error(`Invalid runtime version: ${target}`);
     const pkg = npmPackageFor(agent, target);
     // pi has no prepacked tarball: skip the registry lookup and always
     // assemble the official package's closure locally with the managed npm.

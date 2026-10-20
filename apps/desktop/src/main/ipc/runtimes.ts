@@ -34,7 +34,7 @@ import {
   discoverExternalRuntimes,
   selectRuntime,
 } from "@main/runtimes/runtimeSelection.js";
-import { withRuntimeMutation } from "@main/runtimes/runtimeMutation.js";
+import { setRuntimeTurnProbe, withRuntimeMutation } from "@main/runtimes/runtimeMutation.js";
 
 function runningTurnError(): string | null {
   const count = runtimeManager.runningSessionIds().length;
@@ -57,6 +57,10 @@ async function mutate<T extends { ok: boolean; error?: string }>(
 }
 
 export function registerRuntimesHandlers(ipcMain: IpcMain): void {
+  // Background work (auto-update pruning, idle sweep) must not delete a
+  // version directory a running turn may be executing from.
+  setRuntimeTurnProbe(() => runtimeManager.runningSessionIds().length > 0);
+
   // list takes no input (mirrors lsp.list) — nothing to parse.
   ipcMain.handle(IPC.RUNTIMES_LIST, async () => {
     return { runtimes: await listRuntimes() };

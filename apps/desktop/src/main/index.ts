@@ -29,6 +29,7 @@ import { clawBotService } from "@main/clawbot/ClawBotService.js";
 import { clawBotChatGateway } from "@main/clawbot/ClawBotChatGateway.js";
 import { setManagedRuntimeRoot } from "@main/runtimes/managedRuntimeRoots.js";
 import { warmRuntimeDiscovery } from "@main/runtimes/runtimeSelection.js";
+import { sweepManagedRuntimes } from "@main/runtimes/runtimeInstaller.js";
 import { startSkillSyncEngine, setSkillSyncChangeListener } from "@main/lib/skillSync.js";
 import { startMcpSyncEngine, setMcpSyncChangeListener } from "@main/lib/mcpSync.js";
 import { join } from "node:path";
@@ -248,9 +249,17 @@ app.whenReady().then(async () => {
   // critical path. Fire-and-forget; failures surface on real first use.
   preloadClaudeSdk();
 
-  // Warm the local-install discovery cache so AUTO runtime mode can pick an
-  // existing claude/codex/pi install on the very first turn (fire-and-forget).
+  // Warm the local-install discovery cache. Since TODO-057 engines never use
+  // local installs; this only feeds the settings panel's info block, so the
+  // first panel open is instant (fire-and-forget).
   warmRuntimeDiscovery();
+
+  // Drop superseded runtime versions and leftovers of interrupted installs.
+  // Delayed so it never competes with window creation, and a no-op while any
+  // turn is running (see sweepManagedRuntimes).
+  setTimeout(() => {
+    try { sweepManagedRuntimes(); } catch (error) { log.warn(`runtime sweep failed: ${String(error)}`); }
+  }, 30_000).unref();
 
   // Start the auto-updater (no-op in dev; only active in packaged builds).
   // Fire-and-forget: the first check is delayed 10s anyway, and the updater

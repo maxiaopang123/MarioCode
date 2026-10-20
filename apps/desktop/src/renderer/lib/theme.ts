@@ -116,10 +116,11 @@ export function initFoucGuard(): void {
   }
   // Colour-tone FOUC guard: no OS media query to guess from, so read the
   // localStorage mirror; first-paint hydration corrects it from SQLite.
+  // Warm is the default - only an explicit "neutral" mirror opts out.
   try {
-    if (localStorage.getItem(THEME_TONE_CACHE_KEY) === "warm") applyThemeTone("warm");
+    applyThemeTone(localStorage.getItem(THEME_TONE_CACHE_KEY) === "neutral" ? "neutral" : "warm");
   } catch {
-    // localStorage unavailable - neutral stands; hydration fixes.
+    applyThemeTone("warm"); // localStorage unavailable - warm default; hydration fixes.
   }
   // Custom UI font: same localStorage-mirror pattern (no OS media query to
   // guess from). applyUiFontFamily sanitizes, so a stale/corrupt cache value

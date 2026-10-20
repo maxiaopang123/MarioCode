@@ -134,7 +134,7 @@ function validateProvider(id: string, cfg: CodexProviderConfig): string | null {
 /** Escape a TOML basic string (lazy but correct for our value alphabet:
  *  backslash, double quote, and the C0 control characters). */
 function tomlStr(v: string): string {
-  return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\x00-\x1f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)}"`;
+  return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\x00-\x1f\x7f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)}"`;
 }
 
 /** Serialize one MCP server config into TOML lines (codex field names:
@@ -144,7 +144,12 @@ function tomlStr(v: string): string {
 function mcpServerToml(name: string, raw: unknown): string | null {
   if (!raw || typeof raw !== "object") return null;
   const cfg = raw as Record<string, unknown>;
-  const lines: string[] = [`[mcp_servers.${name}]`];
+  // Names mirrored from other tools' configs or a project .mcp.json are not
+  // validated upstream. A bare TOML key may only hold [A-Za-z0-9_-]; anything
+  // else (a dot, a space, a newline) must be quoted or it splits the table
+  // path / breaks the whole file, failing every Codex turn.
+  const key = /^[A-Za-z0-9_-]+$/.test(name) ? name : tomlStr(name);
+  const lines: string[] = [`[mcp_servers.${key}]`];
   const type = cfg.type;
   if (type === "http" || type === "sse") {
     if (typeof cfg.url !== "string" || !cfg.url) return null;

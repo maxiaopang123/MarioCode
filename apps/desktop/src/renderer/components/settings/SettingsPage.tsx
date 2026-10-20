@@ -21,6 +21,7 @@ import {
   IconCalendar,
   IconMessageChatbot,
   IconPlugConnected,
+  IconPuzzle,
   IconWorldSearch,
   IconChevronDown,
   IconSearch,
@@ -34,6 +35,7 @@ import { RuntimesPanel } from "./RuntimesPanel.js";
 import { NetworkPanel } from "./NetworkPanel.js";
 import { SkillsPanel } from "./SkillsPanel.js";
 import { McpPanel } from "./McpPanel.js";
+import { PluginsPanel } from "./PluginsPanel.js";
 import { BuiltinToolsPanel } from "./BuiltinToolsPanel.js";
 import { AppearancePanel } from "./AppearancePanel.js";
 import { ShortcutsPanel } from "./ShortcutsPanel.js";
@@ -64,7 +66,7 @@ import { SystemPromptPanel } from "./SystemPromptPanel.js";
  * Note: the legacy “Claude CLI 路径” panel was removed - the Agent SDK bundles
  * its own claude binary, so an externally-configured path is no longer used.
  */
-type SectionId = "general" | "runtimes" | "network" | "custom-models" | "context" | "system-prompt" | "skills" | "mcp" | "builtin-tools" | "appearance" | "shortcuts" | "gestures" | "voice" | "notifications" | "scheduled-tasks" | "git" | "terminal" | "browser" | "lsp-languages" | "usage" | "about";
+type SectionId = "general" | "runtimes" | "network" | "custom-models" | "context" | "system-prompt" | "skills" | "mcp" | "plugins" | "builtin-tools" | "appearance" | "shortcuts" | "gestures" | "voice" | "notifications" | "scheduled-tasks" | "git" | "terminal" | "browser" | "lsp-languages" | "usage" | "about";
 
 interface NavItem {
   id: SectionId;
@@ -98,6 +100,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "network", labelKey: "settings.nav.network", icon: IconPlugConnected },
       { id: "skills", labelKey: "settings.nav.skills", icon: IconSparkles },
       { id: "mcp", labelKey: "settings.nav.mcp", icon: McpIcon },
+      { id: "plugins", labelKey: "settings.nav.plugins", icon: IconPuzzle },
       { id: "builtin-tools", labelKey: "settings.nav.builtinTools", icon: IconWorldSearch },
     ],
   },
@@ -296,6 +299,7 @@ export function SettingsPage() {
           {active === "runtimes" && <RuntimesPanel />}
           {active === "network" && <NetworkPanel />}
           {active === "mcp" && <McpPanel />}
+          {active === "plugins" && <PluginsPanel />}
           {active === "builtin-tools" && <BuiltinToolsPanel />}
           {active === "notifications" && <NotificationsPanel />}
           {active === "scheduled-tasks" && <ScheduledTasksPanel />}

@@ -891,6 +891,10 @@ export interface SessionState {
    *  切换会话(selectSession/openTab 改 activeSessionId)时由 App 根的订阅关闭。
    *  NOT persisted. */
   canvasOpen: boolean;
+  /** V4 工具整页(技能与 MCP / 定时任务):和画布一样占满主区,工作区 CSS
+   *  隐藏保活。与 canvasOpen / settingsOpen 互斥,切换会话时由 App 根的订阅
+   *  关闭。NOT persisted. */
+  toolPage: "skills" | "scheduled" | null;
   /** Initial settings section to land on when the modal opens. Callers that
    *  know which section the user wants (e.g. the composer's "管理模型…"
    *  entry → "custom-models" / "pi-models") pass it to setSettingsOpen; null
@@ -1565,6 +1569,8 @@ export interface SessionState {
   setSettingsOpen: (open: boolean, section?: string) => void;
   /** 打开/关闭画布工作台(打开时顺带收起设置浮窗,避免两层覆盖)。 */
   setCanvasOpen: (open: boolean) => void;
+  /** 打开/关闭工具整页(null = 关闭);打开时收起画布与设置浮窗。 */
+  setToolPage: (page: "skills" | "scheduled" | null) => void;
   /** Toggle the "尚未配置模型" dialog open/closed (send-time guard). */
   setModelConfigPromptOpen: (open: boolean) => void;
   /** Toggle the Cmd/Ctrl+K command palette open/closed. */
@@ -4526,7 +4532,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // Custom UI font family ("" = stylesheet default). Persisted under
   // ui.uiFontFamily; init() overwrites from the DB.
   uiFontFamily: "",
-  themeTone: "neutral",
+  themeTone: "warm",
   // Center focus for the unified tab bar (`tabs` displayMode). UI-only.
   centerTabFocus: "chat",
   // UI language. Persisted in `settings` table; init() overwrites from the
@@ -4595,6 +4601,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   claudeInstalled: null,
   settingsOpen: false,
   canvasOpen: false,
+  toolPage: null,
   settingsSection: null,
   modelConfigPromptOpen: false,
   modelGuardPulse: 0,
@@ -4821,10 +4828,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
 
     // Colour tone: reconciles the FOUC guard's localStorage guess with the
-    // SQLite source of truth; anything but "warm" (incl. a corrupt row) is neutral.
+    // SQLite source of truth; anything but an explicit "neutral" (incl. an
+    // unset or corrupt row) is the warm default.
     try {
       const value = fp[THEME_TONE_SETTING_KEY];
-      set({ themeTone: value === "warm" ? "warm" : "neutral" });
+      set({ themeTone: value === "neutral" ? "neutral" : "warm" });
     } catch (err) {
       console.error("apply(themeTone) failed:", err);
     }
@@ -8439,7 +8447,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   setSettingsOpen: (open, section) => {
-    set(open ? { settingsOpen: true, settingsSection: section ?? null } : { settingsOpen: false, settingsSection: null });
+    set(open ? { settingsOpen: true, settingsSection: section ?? null, toolPage: null } : { settingsOpen: false, settingsSection: null });
     // Closing the settings dialog may have changed the voice model setup
     // (download / select / remove in 语音输入) — re-check so the composer mic
     // appears/disappears without a restart.
@@ -8449,7 +8457,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setModelConfigPromptOpen: (open) => set({ modelConfigPromptOpen: open }),
 
   setCanvasOpen: (open) =>
-    set(open ? { canvasOpen: true, settingsOpen: false, settingsSection: null } : { canvasOpen: false }),
+    set(open ? { canvasOpen: true, toolPage: null, settingsOpen: false, settingsSection: null } : { canvasOpen: false }),
+
+  setToolPage: (page) =>
+    set(page ? { toolPage: page, canvasOpen: false, settingsOpen: false, settingsSection: null } : { toolPage: null }),
 
   setWindowFocused: (focused) => {
     set({ isWindowFocused: focused });

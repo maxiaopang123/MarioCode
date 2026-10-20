@@ -52,6 +52,18 @@ import {
   type SharedProviderDiscoveredModel,
   type SharedProviderDiscoveryResult,
 } from "./sharedProvider.js";
+import {
+  PluginsSetEnabledSchema,
+  type PluginsListResult,
+  type PluginsSetEnabledInput,
+} from "./plugin.js";
+export { PluginsSetEnabledSchema };
+export type {
+  PluginsListResult,
+  PluginsSetEnabledInput,
+  PluginState,
+  PluginComponentItem,
+} from "./plugin.js";
 export {
   ScheduledTaskCreateSchema,
   ScheduledTaskUpdateSchema,
@@ -5383,6 +5395,9 @@ export interface RpcMap {
   "sharedProviders.save": (input: SharedProviderSaveInput) => Promise<{ providers: SharedProviderPublic[] }>;
   "sharedProviders.remove": (input: SharedProviderRemoveInput) => Promise<{ providers: SharedProviderPublic[] }>;
   "sharedProviders.discoverModels": (input: SharedProviderDiscoverInput) => Promise<SharedProviderDiscoveryResult>;
+  // Claude Code plugins: read the CLI's own install state, flip enabledPlugins.
+  "plugins.list": () => Promise<PluginsListResult>;
+  "plugins.setEnabled": (input: PluginsSetEnabledInput) => Promise<{ ok: boolean; error?: string }>;
   // Scheduled tasks (run while MarioCode is open).
   "scheduler.list": () => Promise<{ tasks: ScheduledTask[] }>;
   "scheduler.create": (input: ScheduledTaskCreateInput) => Promise<{ task: ScheduledTask }>;
@@ -5755,6 +5770,8 @@ export const IPC = {
   SHARED_PROVIDERS_SAVE: "sharedProviders:save",
   SHARED_PROVIDERS_REMOVE: "sharedProviders:remove",
   SHARED_PROVIDERS_DISCOVER_MODELS: "sharedProviders:discoverModels",
+  PLUGINS_LIST: "plugins:list",
+  PLUGINS_SET_ENABLED: "plugins:setEnabled",
   SCHEDULER_LIST: "scheduler:list",
   SCHEDULER_CREATE: "scheduler:create",
   SCHEDULER_UPDATE: "scheduler:update",

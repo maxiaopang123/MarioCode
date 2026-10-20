@@ -707,6 +707,13 @@ const api = {
     remove: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_REMOVE, input)) as RpcMap["sharedProviders.remove"],
     discoverModels: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_DISCOVER_MODELS, input)) as RpcMap["sharedProviders.discoverModels"],
   },
+  /** Claude Code plugins (settings → 插件): the CLI owns install state; this
+   *  only lists it and flips `enabledPlugins`. */
+  plugins: {
+    list: (() => ipcRenderer.invoke(IPC.PLUGINS_LIST)) as RpcMap["plugins.list"],
+    setEnabled: ((input) =>
+      ipcRenderer.invoke(IPC.PLUGINS_SET_ENABLED, input)) as RpcMap["plugins.setEnabled"],
+  },
   sshCatalog: {
     get:(()=>ipcRenderer.invoke(IPC.SSH_CATALOG_GET)) as RpcMap["sshCatalog.get"],
     setEnabled:((input)=>ipcRenderer.invoke(IPC.SSH_CATALOG_SET_ENABLED,input)) as RpcMap["sshCatalog.setEnabled"],

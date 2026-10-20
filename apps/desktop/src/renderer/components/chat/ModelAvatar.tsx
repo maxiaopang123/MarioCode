@@ -1,17 +1,23 @@
 import { cn } from "@renderer/lib/cn.js";
 import { modelDisplayName, modelFamily } from "@renderer/lib/modelAvatar.js";
 import { OpenAIBrandIcon, SiClaude, IconCpu } from "@renderer/lib/icons.js";
-import { SiGooglegemini, SiDeepseek, SiAlibabacloud, SiMoonshotai, SiMistralai } from "react-icons/si";
+import {
+  SiGooglegemini, SiDeepseek, SiAlibabacloud, SiMoonshotai, SiMistralai,
+  SiX, SiBytedance, SiBaidu,
+} from "react-icons/si";
 
+// GLM (Zhipu) has no glyph in react-icons, so it stays on the neutral chip.
 const MODEL_ICONS = {
   claude: SiClaude, openai: OpenAIBrandIcon, gemini: SiGooglegemini,
   deepseek: SiDeepseek, qwen: SiAlibabacloud, kimi: SiMoonshotai,
-  mistral: SiMistralai, unknown: IconCpu,
+  mistral: SiMistralai, grok: SiX, doubao: SiBytedance, ernie: SiBaidu,
+  unknown: IconCpu,
 };
 const MODEL_COLORS = {
   claude: "#D97757", openai: "currentColor", gemini: "#4285F4",
   deepseek: "#4D6BFE", qwen: "#615CED", kimi: "currentColor",
-  mistral: "#F59E0B", unknown: "currentColor",
+  mistral: "#F59E0B", grok: "currentColor", doubao: "#3C8CFF",
+  ernie: "#2932E1", unknown: "currentColor",
 };
 
 /**
@@ -25,6 +31,35 @@ const MODEL_COLORS = {
  * Parsing lives in lib/modelAvatar.ts (pure, smoke-tested); this file is the
  * view only.
  */
+
+/** Bare brand glyph for a model id (no chip, no tooltip). Families without an
+ *  official mark fall back to the neutral chip icon, so callers can use it
+ *  wherever a generic model icon used to be. `inherit` drops the brand colour
+ *  and follows the surrounding text colour (e.g. the accent "pick a model"
+ *  nudge on the composer pill). */
+export function ModelBrandIcon({
+  model,
+  size = 14,
+  inherit,
+  className,
+}: {
+  model?: string | null;
+  size?: number;
+  inherit?: boolean;
+  className?: string;
+}) {
+  const family = modelFamily(model);
+  const Icon = MODEL_ICONS[family];
+  return (
+    <span
+      className={cn("inline-flex shrink-0 items-center justify-center", className)}
+      style={inherit ? undefined : { color: MODEL_COLORS[family] }}
+      aria-hidden="true"
+    >
+      <Icon size={size} />
+    </span>
+  );
+}
 
 export function ModelAvatar({
   model,

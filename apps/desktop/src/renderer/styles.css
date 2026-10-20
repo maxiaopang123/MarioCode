@@ -155,12 +155,12 @@ div:has(> [role="menu"]) {
    * diff tallies, status labels). Dark keeps its 400/500 shades, which pass
    * from the other side on near-black. Icons/dots only need the 3:1
    * non-text bar, but sharing the darker token keeps light chrome coherent. */
-  --accent: 92 160 128; /* mint (icon #8BC0A3 one stop deeper) — brand fills, icons, focus rings */
-  --accent-strong: 44 112 83; /* #2C7053 — small accent TEXT (≈5.9:1 on white) */
-  /* Primary action (send, 新建, primary buttons): the icon's graphite in
-   * light, the icon's mint in dark (with ink-green text on top). */
-  --primary: 40 56 51;
-  --primary-hover: 28 41 37;
+  --accent: 217 119 87; /* clay #D97757 (V4 / Claude Desktop base) — brand fills, icons, focus rings. White on it is only ≈3.3:1, so filled buttons use --primary instead */
+  --accent-strong: 162 74 38; /* #A24A26 — small accent TEXT (≈5.6:1 on warm paper) */
+  /* Primary action (send, 新建, primary buttons): warm graphite in light,
+   * clay in dark (with dark brown text on top). */
+  --primary: 43 42 39;
+  --primary-hover: 26 25 23;
   --on-primary: 255 255 255;
   /* Left project rail ground — one step below the window ground. */
   --rail: 238 238 236;
@@ -260,11 +260,11 @@ div:has(> [role="menu"]) {
   --panel-edge: 40 41 39; /* mirrors dark --edge — the lighter structural
                            * divider is a light-mode-only concern */
   --input-edge: 62 63 60; /* composer outline, the strongest border */
-  --accent: 120 184 150; /* mint — fills stay legible under both white and ink text */
-  --accent-strong: 170 215 190; /* small accent TEXT on near-black */
-  --primary: 139 192 163; /* the icon's mint */
-  --primary-hover: 162 209 183;
-  --on-primary: 18 31 25;
+  --accent: 229 138 99; /* clay #E58A63 — fills stay legible under both white and ink text */
+  --accent-strong: 240 170 138; /* small accent TEXT on near-black */
+  --primary: 217 119 87; /* clay #D97757 */
+  --primary-hover: 233 150 115;
+  --on-primary: 28 15 9;
   --rail: 13 14 13;
   --danger: 248 113 113; /* red-400 */
   --warning: 251 191 36; /* amber-400 */
@@ -351,6 +351,21 @@ div:has(> [role="menu"]) {
 }
 .settings-panel-actions > div {
   flex-wrap: wrap;
+}
+/* 工具整页(ToolPage)的外壳头部已经写了页面标题,面板自带的标题行只留右侧
+ * 动作槽,避免同一个标题出现两次。 */
+.tool-page .settings-panel-header {
+  justify-content: flex-end;
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding-block: 12px;
+}
+.tool-page .settings-panel-header > :first-child {
+  display: none;
+}
+/* 没有动作按钮的面板:整条头部隐藏,不留空白条。 */
+.tool-page .settings-panel-header:not(:has(.settings-panel-actions)) {
+  display: none;
 }
 .setting-row > :first-child {
   overflow-wrap: anywhere;

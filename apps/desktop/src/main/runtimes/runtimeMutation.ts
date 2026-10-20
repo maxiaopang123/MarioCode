@@ -20,3 +20,18 @@ export async function withRuntimeMutation<T>(agent: RuntimeAgentId, fn: () => Pr
     activeAgent = null;
   }
 }
+
+/**
+ * "Is any session mid-turn?" without importing RuntimeManager (which already
+ * depends on this module). ipc/runtimes.ts registers the real probe at
+ * startup; until then, and in headless smoke bundles, nothing is running.
+ */
+let turnProbe: () => boolean = () => false;
+
+export function setRuntimeTurnProbe(probe: () => boolean): void {
+  turnProbe = probe;
+}
+
+export function hasRunningTurn(): boolean {
+  return turnProbe();
+}

@@ -61,17 +61,18 @@ export function getThemePreference(): ThemeName {
   return "system";
 }
 
-/** Read the persisted colour-TONE preference (default "neutral"). Main uses it
+/** Read the persisted colour-TONE preference (default "warm", the V4 /
+ *  Claude Desktop base; only an explicit "neutral" opts out). Main uses it
  *  only for native chrome colours (window background / title-bar overlay) that
- *  a CSS attribute can't reach. Safe before DB init: any failure → "neutral",
+ *  a CSS attribute can't reach. Safe before DB init: any failure → "warm",
  *  and the post-DB updateTitleBarOverlay() corrects it at startup. */
 export function getThemeTonePreference(): ThemeTone {
   try {
-    if (SettingRepo.get(THEME_TONE_SETTING_KEY) === "warm") return "warm";
+    if (SettingRepo.get(THEME_TONE_SETTING_KEY) === "neutral") return "neutral";
   } catch {
-    // DB not ready yet — neutral stands until initTheme syncs.
+    // DB not ready yet — warm stands until initTheme syncs.
   }
-  return "neutral";
+  return "warm";
 }
 
 /** Current resolved theme (what's actually rendering). */

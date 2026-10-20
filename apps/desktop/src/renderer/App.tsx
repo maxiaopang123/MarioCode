@@ -47,6 +47,9 @@ const PlanViewer = lazy(() =>
   import("./components/chat/PlanViewer.js").then((m) => ({ default: m.PlanViewer })),
 );
 // 画布工作台自身体积不小(蒙版画布 / 切图交互),懒加载保持首屏轻量。
+const ToolPage = lazy(() =>
+  import("./components/layout/ToolPage.js").then((m) => ({ default: m.ToolPage })),
+);
 const CanvasWorkbench = lazy(() =>
   import("./components/canvas/CanvasWorkbench.js").then((m) => ({ default: m.CanvasWorkbench })),
 );
@@ -137,15 +140,17 @@ export function App() {
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
   const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
   const canvasOpen = useSessionStore((s) => s.canvasOpen);
+  const toolPageOpen = useSessionStore((s) => s.toolPage !== null);
 
-  // 画布工作台打开时,切换会话(任何入口:会话列 / 命令面板 / 快捷键)自动
-  // 退出画布回到聊天 —— 否则点了会话行界面毫无反应。订阅而不挂在
+  // 画布 / 工具整页打开时,切换会话(任何入口:会话列 / 命令面板 / 快捷键)
+  // 自动退出回到聊天 —— 否则点了会话行界面毫无反应。订阅而不挂在
   // selectSession/openTab/startSession 的多分支 set() 上:一处覆盖全部路径。
   useEffect(() => {
     let prevActive = useSessionStore.getState().activeSessionId;
     return useSessionStore.subscribe((s) => {
-      if (s.canvasOpen && s.activeSessionId !== prevActive) {
-        useSessionStore.getState().setCanvasOpen(false);
+      if (s.activeSessionId !== prevActive) {
+        if (s.canvasOpen) useSessionStore.getState().setCanvasOpen(false);
+        if (s.toolPage) useSessionStore.getState().setToolPage(null);
       }
       prevActive = s.activeSessionId;
     });
@@ -337,7 +342,7 @@ export function App() {
             restores the snapshot on exit), so RightPanel — file tree, git
             scan, browser view ownership — is never torn down.
           */}
-          <div className={cn("flex min-h-0 min-w-0 flex-1", canvasOpen && "hidden")}>
+          <div className={cn("flex min-h-0 min-w-0 flex-1", (canvasOpen || toolPageOpen) && "hidden")}>
             <ThreePaneLayout
               left={null}
               center={<CenterPane wide={widePanelOpen} />}
@@ -360,6 +365,12 @@ export function App() {
           {canvasOpen && (
             <Suspense fallback={null}>
               <CanvasWorkbench />
+            </Suspense>
+          )}
+          {/* 工具整页(V4):技能与 MCP / 定时任务,同画布占满面版行。 */}
+          {toolPageOpen && (
+            <Suspense fallback={null}>
+              <ToolPage />
             </Suspense>
           )}
           {/* Git diff dialog (the "dialog" open-mode). Portaled to <body>;

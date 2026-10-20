@@ -10,6 +10,7 @@ import {
   IconCpu,
   IconPlus,
 } from "@renderer/lib/icons.js";
+import { ModelBrandIcon } from "@renderer/components/chat/ModelAvatar.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { useSuppressBrowserView } from "@renderer/hooks/useSuppressBrowserView.js";
 import { useNarrowViewport } from "@renderer/hooks/useNarrowViewport.js";
@@ -165,6 +166,10 @@ export function ModelDropdown({
   const chipLabel = activeCustom
     ? (activeEntry?.id ?? t("chat.model.unselected"))
     : piModel?.label ?? codexModel?.label ?? builtin?.label ?? t("chat.model.unselected");
+  // Id the brand icon is resolved from. Nothing picked → null (neutral chip).
+  // Only the id is read, never the endpoint/engine: a "gemini-*" model served
+  // through an OpenAI-protocol gateway still shows the Gemini mark.
+  const chipModelId = unselected ? null : activeCustom ? activeEntry?.id : (piModel ?? codexModel ?? builtin)?.id;
 
   // Send-time "no model picked" guard: the store bumps `modelGuardPulse`
   // instead of firing a global toast, and the chip answers in place — a short
@@ -245,7 +250,7 @@ export function ModelDropdown({
         {stacked ? (
           <>
             <span className="flex min-w-0 items-center gap-2">
-              <IconCpu size={14} className="shrink-0 opacity-80" />
+              <ModelBrandIcon model={chipModelId} size={14} inherit={unselected} />
               <span className="shrink-0 font-medium text-content">{t("chat.model.rowLabel")}</span>
             </span>
             <span className="flex min-w-0 items-center gap-1">
@@ -255,7 +260,7 @@ export function ModelDropdown({
           </>
         ) : (
           <>
-            <IconCpu size={13} className="shrink-0 opacity-80" />
+            <ModelBrandIcon model={chipModelId} size={13} inherit={unselected} />
             <span className="composer-lblwrap">
               <span className="max-w-[120px] truncate">{chipLabel}</span>
             </span>

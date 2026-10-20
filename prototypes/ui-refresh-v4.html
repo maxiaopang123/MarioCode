@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light" data-tone="neutral" data-accent="mint">
+<html lang="zh-CN" data-theme="light" data-tone="warm" data-accent="clay">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -32,7 +32,7 @@
   --shadow:0 1px 2px rgb(0 0 0/.04),0 8px 24px -12px rgb(0 0 0/.14);
   --pop:0 12px 40px -10px rgb(0 0 0/.25);color-scheme:light}
 [data-theme="light"][data-tone="warm"]{
-  --bg:#faf9f5;--side:#f0eee6;--soft:#f0eee6;--ink:#2b2a27;--c2:#76726a;--c3:#a29e94;
+  --bg:#faf9f5;--side:#f0eee6;--soft:#e8e5da;--ink:#2b2a27;--c2:#5c5a52;--c3:#76726a;
   --line:#e8e5da;--line2:#d8d4c6;--hover:rgb(60 50 20/.05);--active:rgb(60 50 20/.085)}
 [data-theme="dark"]{
   --bg:#181918;--side:#121312;--soft:#212221;--ink:#ecece9;--c2:#a1a19c;--c3:#6f6f6b;
@@ -42,14 +42,15 @@
   --pop:0 14px 44px -10px rgb(0 0 0/.7);color-scheme:dark}
 [data-theme="dark"][data-tone="warm"]{
   --bg:#262624;--side:#1f1e1d;--soft:#30302d;--ink:#eeece4;--c2:#aaa69a;--c3:#78746a;
+  --add-bg:#16261d;--del-bg:#2b1a17;--warn-bg:#2b2112;
   --line:#34332f;--line2:#44433e}
 /* 强调色:只负责 焦点 / 运行中 / 选中 / 链接;「主按钮」用 --primary */
 [data-theme="light"][data-accent="mint"]{--accent:#12a37f;--accent-soft:#e6f5f0;--accent-ink:#0b7a5e;--primary:#1d2723;--on-primary:#fff}
 [data-theme="light"][data-accent="blue"]{--accent:#2f6fe4;--accent-soft:#e9f0fd;--accent-ink:#1f55b8;--primary:#1a1a19;--on-primary:#fff}
-[data-theme="light"][data-accent="clay"]{--accent:#c8643c;--accent-soft:#faece5;--accent-ink:#a24a26;--primary:#2b2a27;--on-primary:#fff}
+[data-theme="light"][data-accent="clay"]{--accent:#d97757;--accent-soft:#faece5;--accent-ink:#a24a26;--primary:#2b2a27;--on-primary:#fff}
 [data-theme="dark"][data-accent="mint"]{--accent:#4cc9a4;--accent-soft:#14302a;--accent-ink:#7fe0c3;--primary:#4cc9a4;--on-primary:#0b1a15}
 [data-theme="dark"][data-accent="blue"]{--accent:#7aa7ff;--accent-soft:#17233d;--accent-ink:#a9c6ff;--primary:#7aa7ff;--on-primary:#0b1220}
-[data-theme="dark"][data-accent="clay"]{--accent:#e58a63;--accent-soft:#33211a;--accent-ink:#f0aa8a;--primary:#e58a63;--on-primary:#1c0f09}
+[data-theme="dark"][data-accent="clay"]{--accent:#e58a63;--accent-soft:#33211a;--accent-ink:#f0aa8a;--primary:#d97757;--on-primary:#1c0f09}
 
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:13px/1.5 var(--font);-webkit-font-smoothing:antialiased}
@@ -1015,7 +1016,7 @@ details.pg[open]>summary .ch{transform:rotate(90deg)}
       <div class="setrow"><div class="l"><b>配色基调</b><span>中性偏 Codex;暖纸偏 Claude,正文使用衬线体</span></div><div class="seg" id="sToneSeg"><button data-v="neutral" class="on">中性</button><button data-v="warm">暖纸</button></div></div>
       <div class="setrow"><div class="l"><b>明暗</b><span>跟随系统或固定</span></div><div class="seg" id="sThemeSeg"><button data-v="system">跟随系统</button><button data-v="light" class="on">浅色</button><button data-v="dark">深色</button></div></div>
       <div class="setrow"><div class="l"><b>强调色</b><span>只用于焦点、运行状态、选中与链接</span></div>
-        <div class="sw" id="sAccent"><button data-v="mint" class="on" style="background:#12a37f"></button><button data-v="blue" style="background:#2f6fe4"></button><button data-v="clay" style="background:#c8643c"></button></div></div>
+        <div class="sw" id="sAccent"><button data-v="mint" class="on" style="background:#12a37f"></button><button data-v="blue" style="background:#2f6fe4"></button><button data-v="clay" style="background:#d97757"></button></div></div>
       <div class="setrow"><div class="l"><b>对话字号</b><span>当前 14.5px</span></div><div class="seg" id="sSize"><button data-v="13.5">小</button><button data-v="14.5" class="on">默认</button><button data-v="16">大</button></div></div>
       <div class="setrow"><div class="l"><b>手绘风格</b><span>V4 中作为可选风格,与基调、明暗正交</span></div><div class="seg"><button class="on">关</button><button>开</button></div></div>
       </div>
@@ -1065,7 +1066,7 @@ details.pg[open]>summary .ch{transform:rotate(90deg)}
 <div class="ctxm" id="ctx-pj">
   <button class="pi"><svg class="i"><use href="#file"/></svg>重命名项目</button>
   <button class="pi"><svg class="i"><use href="#folder"/></svg>加入分组…</button>
-  <div class="sw-row"><i style="background:#12a37f" class="on"></i><i style="background:#4a7be8"></i><i style="background:#c8643c"></i><i style="background:#8b5cf6"></i><i style="background:#d9a21b"></i><i style="background:#6b7280"></i></div>
+  <div class="sw-row"><i style="background:#12a37f" class="on"></i><i style="background:#4a7be8"></i><i style="background:#d97757"></i><i style="background:#8b5cf6"></i><i style="background:#d9a21b"></i><i style="background:#6b7280"></i></div>
   <hr>
   <button class="pi"><svg class="i"><use href="#folder"/></svg>在资源管理器中显示</button>
   <button class="pi"><svg class="i"><use href="#folder"/></svg>归档项目</button>
@@ -1171,8 +1172,8 @@ const hs=location.hash.slice(1).split(/[,&]/).filter(Boolean);
 setScene(hs.find(h=>['welcome','approve','ask','cards','global','editor','plan','notes','coverage','canvas','schedule','skills','chat'].includes(h))||'chat');
 if(hs.includes('dark'))themePref='dark';
 applyTheme();
-if(hs.includes('warm'))setTone('warm');
-if(hs.includes('blue'))setAccent('blue');if(hs.includes('clay'))setAccent('clay');
+setTone(hs.includes('neutral')?'neutral':'warm');
+setAccent(hs.includes('blue')?'blue':hs.includes('mint')?'mint':'clay');
 setPane(hs.find(h=>['files','git','browser','terminal'].includes(h))||'diff');
 if(hs.includes('cvt2i'))cvGo('t2i');if(hs.includes('cvedit'))cvGo('edit');
 {const m={pmodel:'pop-model',pperm:'pop-perm',pplus:'pop-plus',pat:'pop-at',pslash:'pop-slash'};hs.forEach(h=>{if(m[h])$('#'+m[h]).classList.add('on')})}

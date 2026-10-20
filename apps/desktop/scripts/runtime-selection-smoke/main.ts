@@ -109,4 +109,37 @@ release();
 await held;
 check("runtime mutation lock clears after settlement", !isRuntimeMutationActive());
 
+// ── TODO-064 hardening: version validation, leftovers, guarded pruning ──────
+const { isReleaseVersion, sweepManagedRuntimes } = await import("@main/runtimes/runtimeInstaller.js");
+const { listManagedVersions } = await import("@main/runtimes/managedRuntimeRoots.js");
+const { setRuntimeTurnProbe, hasRunningTurn } = await import("@main/runtimes/runtimeMutation.js");
+
+check("plain and prerelease versions are accepted", ["1.2.3", "0.153.4", "1.0.0-rc.1", "1.0.0+build.5"].every(isReleaseVersion));
+check("path-like or malformed versions are rejected", ["9.9.9/../../x", "..\\1.0.0", "1.0", "latest", "", "1.0.0 ", "1.0.0\n"].every((v) => !isReleaseVersion(v)));
+
+// Crash leftovers sit next to the real version dirs. The backup name sorts
+// NEWER than the real version in compareVersions, so it must never be listed.
+const sweepRoot = join(root, "sweep");
+setManagedRuntimeRoot(sweepRoot);
+const agentDir = join(sweepRoot, "claude");
+for (const name of ["0.3.250", "0.3.258", "0.3.258.backup-1700000000000-42", ".0.3.259.staging-1700000000001"]) {
+  mkdirSync(join(agentDir, name), { recursive: true });
+  writeFileSync(join(agentDir, name, "claude.exe"), name);
+}
+writeFileSync(join(agentDir, "stray-file.txt"), "not a directory");
+check("only release directories are listed, newest first", JSON.stringify(listManagedVersions("claude")) === JSON.stringify(["0.3.258", "0.3.250"]), listManagedVersions("claude"));
+
+setRuntimeTurnProbe(() => true);
+check("turn probe is visible", hasRunningTurn());
+sweepManagedRuntimes();
+check("sweep is a no-op while a turn is running", existsSync(join(agentDir, "0.3.250")) && existsSync(join(agentDir, "0.3.258.backup-1700000000000-42")));
+
+setRuntimeTurnProbe(() => false);
+sweepManagedRuntimes();
+check("idle sweep keeps the newest release", existsSync(join(agentDir, "0.3.258", "claude.exe")));
+check("idle sweep prunes superseded releases", !existsSync(join(agentDir, "0.3.250")));
+check("idle sweep clears backup and staging leftovers", !existsSync(join(agentDir, "0.3.258.backup-1700000000000-42")) && !existsSync(join(agentDir, ".0.3.259.staging-1700000000001")));
+check("sweep never touches files it does not own", existsSync(join(agentDir, "stray-file.txt")));
+check("sweep ignores the user-owned program", existsSync(external));
+
 process.stdout.write(`runtime-selection smoke passed (${checks} checks)\n`);

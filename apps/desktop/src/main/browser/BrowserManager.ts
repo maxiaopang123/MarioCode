@@ -88,6 +88,22 @@ function chromeLikeUserAgent(ua: string): string {
   return ua.replace(/\s*[\w.-]+\/[\d.]+\s+Electron\/[\d.]+\s*$|\s+Electron\/[\d.]+\s*$/, "").trim();
 }
 
+/** Resolve after the renderer has produced one frame — the cheapest reliable
+ *  "the widget has processed the state change I just asked for" signal. Bounded
+ *  (a fully throttled/hidden page may never paint) so input is still sent. */
+async function waitForRenderFrame(wc: Electron.WebContents, timeoutMs = 150): Promise<void> {
+  if (wc.isDestroyed()) return;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs);
+    wc.mainFrame
+      .executeJavaScript("new Promise((r) => requestAnimationFrame(() => r(1)))", true)
+      .then(
+        () => { clearTimeout(timer); resolve(); },
+        () => { clearTimeout(timer); resolve(); },
+      );
+  });
+}
+
 /** Metadata for a live browser view, returned by `list()` for agent discovery. */
 export interface BrowserInfo {
   browserId: string;
@@ -151,6 +167,20 @@ function normalizeKeyName(raw: string): string | null {
  *  schemes) would be handed to another program on the user's machine. */
 function isWebProtocol(proto: string): boolean {
   return proto === "http:" || proto === "https:" || proto === "file:";
+}
+
+/** Schemes an agent-owned view may navigate to. `about:` and `blob:` are
+ *  limited to renderer-internal documents and are never accepted as a
+ *  top-level tool/popup URL. */
+export function isAllowedAgentNavigationUrl(rawUrl: string, allowInternal = false): boolean {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  if (isWebProtocol(url.protocol)) return true;
+  return allowInternal && (url.protocol === "about:" || url.protocol === "blob:");
 }
 
 function parseKeyCombo(
@@ -401,6 +431,8 @@ interface LiveBrowser {
    *  isLoading() raced with the cookie-vault wait that precedes loadURL and
    *  lagged on hidden views. */
   pendingLoad: { done: boolean; promise: Promise<LoadOutcome> } | null;
+  /** URL rejected by the Agent scheme guard during the current top-level load. */
+  blockedNavigationUrl: string | null;
   /** Current device emulation preset (desktop = no emulation). */
   device: BrowserDevicePreset;
   /** Current viewport config (custom dims + orientation). Mirrors what was
@@ -649,8 +681,8 @@ class BrowserManagerImpl {
   private reapTimer: NodeJS.Timeout | null = null;
 
   /** The invisible window agent views rest in (see AGENT_HOST_*). Created
-   *  lazily with the first agent view; null if the window cannot be made, in
-   *  which case agent views fall back to the old off-screen-in-main parking. */
+   *  lazily with the first agent view. Agent views fail closed if it cannot be
+   *  created; they must never fall back into the user's main window. */
   private agentHost: BrowserWindow | null = null;
 
   private ensureAgentHost(): BrowserWindow | null {
@@ -705,16 +737,23 @@ class BrowserManagerImpl {
     }
   }
 
-  create(projectPath: string, initialDevice?: BrowserDevicePreset, opts?: { agentSessionId?: string }): BrowserCreateResult {
-    // Per-session cap: make room BEFORE spawning so the new view never
-    // pushes the session over the limit.
-    if (opts?.agentSessionId) this.evictForNewAgentView(opts.agentSessionId);
-    const spawned = this.spawnView(projectPath, !!opts?.agentSessionId);
+  create(projectPath: string, initialDevice?: BrowserDevicePreset, opts?: {
+    agentSessionId?: string;
+    protectBrowserId?: string;
+    deferAgentEviction?: boolean;
+  }): BrowserCreateResult {
+    const agentSessionId = opts?.agentSessionId;
+    const spawned = this.spawnView(projectPath, !!agentSessionId);
     if ("error" in spawned) return { ok: false, error: spawned.error };
     const live = spawned.live;
-    if (opts?.agentSessionId) {
+    if (agentSessionId) {
+      // Spawn first. If construction or host creation fails, the existing
+      // views remain untouched; evict only after a usable view exists.
       live.owner = "agent";
-      live.agentSessionId = opts.agentSessionId;
+      live.agentSessionId = agentSessionId;
+      if (!opts?.deferAgentEviction) {
+        this.evictForNewAgentView(agentSessionId, opts?.protectBrowserId, live.id);
+      }
       this.ensureReapTimer();
     }
 
@@ -744,9 +783,12 @@ class BrowserManagerImpl {
     if (!mainWin || mainWin.isDestroyed()) {
       return { error: "主窗口未就绪，无法创建浏览器" };
     }
-    // Agent views start in the invisible host; if it cannot be created they
-    // degrade to the legacy off-screen parking in the main window.
+    // Agent views must always start in the hidden host. Falling back to the
+    // main window creates a native surface that could cover the user's work.
     const hostWin = forAgent ? this.ensureAgentHost() : null;
+    if (forAgent && (!hostWin || hostWin.isDestroyed())) {
+      return { error: "Agent 浏览器隔离窗口不可用，已拒绝创建视图" };
+    }
     const win = hostWin ?? mainWin;
     const parent: "main" | "host" = hostWin ? "host" : "main";
 
@@ -815,6 +857,7 @@ class BrowserManagerImpl {
       idleSince: 0,
       lastUsedAt: Date.now(),
       pendingLoad: null,
+      blockedNavigationUrl: null,
       device: "desktop",
       viewport: { device: "desktop", orientation: "portrait" },
       defaultUserAgent: desktopUserAgent || rawUserAgent,
@@ -844,18 +887,20 @@ class BrowserManagerImpl {
     // either: block it navigating itself to mailto: / app protocols. User tabs
     // are not guarded (clicking a mailto: link there is the user's own act),
     // and take-over flips `owner`, which lifts the guard with it.
-    view.webContents.on("will-navigate", (event, url) => {
-      if (live.owner !== "agent") return;
+    const guardAgentNavigation = (event: { preventDefault(): void }, url: string, kind: "navigation" | "redirect") => {
+      if (live.owner !== "agent" || isAllowedAgentNavigationUrl(url, true)) return;
+      live.blockedNavigationUrl = url;
+      event.preventDefault();
       let proto = "";
       try {
         proto = new URL(url).protocol;
       } catch {
         /* unparseable: blocked below */
       }
-      if (isWebProtocol(proto) || proto === "about:" || proto === "blob:") return;
-      event.preventDefault();
-      log.info(`browser navigation blocked for agent view ${live.id}: ${proto || "unparseable"} url`);
-    });
+      log.info(`browser ${kind} blocked for agent view ${live.id}: ${proto || "unparseable"} url`);
+    };
+    view.webContents.on("will-navigate", (event, url) => guardAgentNavigation(event, url, "navigation"));
+    view.webContents.on("will-redirect", (event, url) => guardAgentNavigation(event, url, "redirect"));
 
     log.info(`browser created: ${id} project=${projectPath}`);
     void this.pinColorScheme(live);
@@ -870,7 +915,7 @@ class BrowserManagerImpl {
    *  other protocols, unparseable URLs, spawn failures — falls back to the
    *  system browser. An agent view never reaches the system: its web popups
    *  become hidden agent views and the rest is dropped (see below). */
-  private handleWindowOpen(parent: LiveBrowser, rawUrl: string, disposition: string): void {
+  private async handleWindowOpen(parent: LiveBrowser, rawUrl: string, disposition: string): Promise<void> {
     if (!rawUrl) return;
     let proto = "";
     try {
@@ -883,14 +928,31 @@ class BrowserManagerImpl {
     // main-window view the panel adopts and shows), and anything else (mailto:,
     // app protocols) is dropped rather than handed to the system.
     if (parent.owner === "agent") {
-      if (isWebProtocol(proto)) {
-        const created = this.create(parent.projectPath, undefined, { agentSessionId: parent.agentSessionId });
-        if (created.ok) {
-          this.loadUrl(created.browserId, rawUrl);
-          log.info(`browser window-open → hidden agent tab: ${created.browserId} url=${rawUrl} (from ${parent.id})`);
-        } else {
+      if (isAllowedAgentNavigationUrl(rawUrl)) {
+        const created = this.create(parent.projectPath, undefined, {
+          agentSessionId: parent.agentSessionId,
+          protectBrowserId: parent.id,
+          deferAgentEviction: true,
+        });
+        if (!created.ok) {
           log.warn(`browser window-open agent tab spawn failed: ${created.error}`);
+          return;
         }
+        const childId = created.browserId;
+        const loaded = this.loadUrl(childId, rawUrl);
+        if (!loaded.ok) {
+          this.close(childId);
+          log.warn(`browser window-open agent tab load rejected: ${loaded.error}`);
+          return;
+        }
+        const outcome = await this.waitForLoad(childId);
+        if (!outcome.ok) {
+          this.close(childId);
+          log.warn(`browser window-open agent tab load failed: ${outcome.error}`);
+          return;
+        }
+        this.evictForNewAgentView(parent.agentSessionId, parent.id, childId);
+        log.info(`browser window-open → hidden agent tab: ${childId} url=${rawUrl} (from ${parent.id})`);
       } else {
         log.info(`browser window-open dropped for agent view ${parent.id}: ${proto || "unparseable"} url`);
       }
@@ -1050,6 +1112,10 @@ class BrowserManagerImpl {
   loadUrl(id: string, url: string): BrowserOpResult {
     const live = this.get(id);
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
+    if (live.owner === "agent" && !isAllowedAgentNavigationUrl(url)) {
+      return { ok: false, error: "Agent 浏览器只允许导航到 http/https/file 页面" };
+    }
+    live.blockedNavigationUrl = null;
     try {
       const wc = live.view.webContents;
       // Navigation waits for the cookie vault restore so login state (which
@@ -1088,6 +1154,16 @@ class BrowserManagerImpl {
     const live = this.get(id);
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
     const wc = live.view.webContents;
+    // A redirect the agent guard refused aborts the navigation with the same
+    // ERR_ABORTED a superseded load produces, so the guard's own record is the
+    // only way to tell "blocked" from "replaced" — without it a page bouncing
+    // through a blocked 30x would be reported as loaded.
+    const blocked = () => {
+      const url = live.blockedNavigationUrl;
+      return url
+        ? { ok: false as const, error: `页面跳转被拦截(Agent 浏览器仅允许 http/https/file): ${url.slice(0, 120)}` }
+        : null;
+    };
     // A loadUrl()-initiated navigation: wait for ITS promise (authoritative —
     // the navigation may not even have started yet while the cookie vault is
     // restoring, and hidden views report isLoading() late).
@@ -1102,11 +1178,15 @@ class BrowserManagerImpl {
       ]);
       if (timer) clearTimeout(timer);
       // Backstop (permanent spinners / streaming pages): report what we have.
-      if (outcome === "timeout" || outcome.ok) return { ok: true, url: wc.getURL(), title: wc.getTitle() };
+      if (outcome === "timeout" || outcome.ok) {
+        return blocked() ?? { ok: true, url: wc.getURL(), title: wc.getTitle() };
+      }
       // ERR_ABORTED (-3): a newer navigation superseded this one — fall through
-      // and wait for whatever is loading now.
-      if (!/(-3)/.test(outcome.error)) {
-        const m = /^(ERR_[A-Z_]+) ((-?d+))/.exec(outcome.error);
+      // and wait for whatever is loading now (unless our own guard cancelled it).
+      const refusal = blocked();
+      if (refusal) return refusal;
+      if (!/\b-3\b|ERR_ABORTED/.test(outcome.error)) {
+        const m = /^(ERR_[A-Z_]+) \((-?\d+)\)/.exec(outcome.error);
         return { ok: false, error: m ? `页面加载失败(${m[2]}): ${m[1]}` : `页面加载失败: ${outcome.error}` };
       }
     }
@@ -1114,7 +1194,7 @@ class BrowserManagerImpl {
       let settled = false;
       let graceTimer: NodeJS.Timeout | null = null;
       let backstop: NodeJS.Timeout | null = null;
-      const current = () => ({ ok: true, url: wc.getURL(), title: wc.getTitle() });
+      const current = () => blocked() ?? { ok: true, url: wc.getURL(), title: wc.getTitle() };
       const finish = (result: { ok: boolean; url?: string; title?: string; error?: string }) => {
         if (settled) return;
         settled = true;
@@ -1125,8 +1205,13 @@ class BrowserManagerImpl {
         resolve(result);
       };
       const onLoad = () => finish(current());
-      const onFail = (_e: unknown, errorCode: number, errorDesc: string) =>
+      // did-fail-load also fires for cancelled subframes (ads, aborted fetches)
+      // and for navigations a newer one replaced; neither means this page is
+      // broken, so only a real main-frame failure settles here.
+      const onFail = (_e: unknown, errorCode: number, errorDesc: string, _url: string, isMainFrame: boolean) => {
+        if (!isMainFrame || errorCode === -3 || blocked()) return;
         finish({ ok: false, error: `页面加载失败(${errorCode}): ${errorDesc}` });
+      };
       // Listen FIRST, then look at isLoading(). The old order (check, sleep
       // 200ms, then listen) missed did-finish-load for fast local pages that
       // finished inside the grace window while a hidden view still reported
@@ -1218,6 +1303,9 @@ class BrowserManagerImpl {
   show(id: string): BrowserOpResult {
     const live = this.get(id);
     if (!live) return { ok: false, error: "浏览器不存在或已关闭" };
+    if (live.owner === "agent" && (!live.hostable || !live.presented)) {
+      return { ok: false, error: "Agent 浏览器只能在已呈现给用户时显示" };
+    }
     live.presentationVersion += 1;
     const win = getMainWindow();
     if (!win || win.isDestroyed()) return { ok: false, error: "主窗口未就绪" };
@@ -2050,18 +2138,16 @@ class BrowserManagerImpl {
 
   /** Make room for one more agent view of this session: evict the least
    *  recently used non-presented views until the session is under the cap. */
-  private evictForNewAgentView(agentSessionId: string): void {
+  private evictForNewAgentView(agentSessionId: string, protectBrowserId?: string, newBrowserId?: string): void {
     const mine = [...this.browsers.values()].filter(
       (l) => l.owner === "agent" && l.agentSessionId === agentSessionId,
     );
-    if (mine.length < AGENT_VIEWS_PER_SESSION_MAX) return;
-    const evictable = mine.filter((l) => !l.presented).sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-    let over = mine.length - AGENT_VIEWS_PER_SESSION_MAX + 1;
-    for (const live of evictable) {
-      if (over <= 0) break;
-      this.closeAgentView(live, "over-cap");
-      over--;
-    }
+    const over = mine.length - AGENT_VIEWS_PER_SESSION_MAX;
+    if (over <= 0) return;
+    const evictable = mine
+      .filter((l) => !l.presented && l.id !== protectBrowserId && l.id !== newBrowserId)
+      .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+    for (const live of evictable.slice(0, over)) this.closeAgentView(live, "over-cap");
   }
 
   /** Close an agent view; when the renderer adopted it (presented), tell it
@@ -2139,9 +2225,10 @@ class BrowserManagerImpl {
     // viewport and takes real input (v0.2.43), so it must NOT be show()n: that
     // moves it into the main window at a guessed rect (right 42%, full height)
     // and leaves it there until the turn ends - the "page pinned over the
-    // workspace" bug. Only a view with no host (host window could not be
-    // created) still needs the on-screen fallback to receive input at all.
-    if (!live.visible && !live.hostable) this.show(id);
+    // workspace" bug. Agent views are always hosted now (creation fails
+    // closed otherwise), and show() refuses them unless presented, so this
+    // only ever escalates a USER view to receive input.
+    if (live.owner === "user" && !live.visible) this.show(id);
     try {
       const center = (await wc.mainFrame.executeJavaScript(buildElementCenterScript(selector), true)) as {
         ok?: boolean;
@@ -2196,7 +2283,7 @@ class BrowserManagerImpl {
     const wc = live.view.webContents;
     if (wc.isDestroyed()) return { ok: false, error: "浏览器已销毁" };
     // Hosted views take input in the host window; see click() for why no show().
-    if (!live.visible && !live.hostable) this.show(id);
+    if (live.owner === "user" && !live.visible) this.show(id);
     wc.focus();
     const base = { x: Math.round(x), y: Math.round(y), button: "left" as const, clickCount: 1 };
     wc.sendInputEvent({ type: "mouseDown", ...base });
@@ -2323,6 +2410,12 @@ class BrowserManagerImpl {
     if (wc.isDestroyed()) return { ok: false, error: "浏览器已销毁" };
     try {
       wc.focus();
+      // focus() only asks the renderer widget to become focused; the widget
+      // acknowledges on a later frame, and key events sent before that are
+      // dropped. Back-to-back browser_type → browser_keys({keys:"Enter"}) is the
+      // most common sequence there is, and without this grace period the submit
+      // silently never happened.
+      await waitForRenderFrame(wc);
       const mods = parsed.modifiers.length ? parsed.modifiers : undefined;
       wc.sendInputEvent({ type: "keyDown", keyCode: parsed.key, modifiers: mods });
       wc.sendInputEvent({ type: "keyUp", keyCode: parsed.key, modifiers: mods });

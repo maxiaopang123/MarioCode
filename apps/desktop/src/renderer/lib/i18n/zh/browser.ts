@@ -90,4 +90,5 @@ export const zh = {
   "browser.presented.continue": "继续",
   "browser.presented.takeover": "接管",
   "browser.presented.takeoverHint": "把这个页面留作你自己的标签页;Agent 之后会另开新的后台视图",
+  "browser.presented.takeoverFailed": "接管失败: {error}",
 } as const;

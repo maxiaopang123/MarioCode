@@ -88,14 +88,36 @@ await electronTest("agent-browser-panel", async data => {
   await evaluate("window.panelTestStore.setState({rightOpen:true,rightPanelTab:'browser'})");
   await delay(300);
 
-  // 5. presented again, take over → banner gone, the page stays as an ordinary tab.
+  // 5. take-over now waits for main's verdict: a refused takeover must NOT drop
+  //    the banner (the view is still the agent's) and must tell the user why.
   await push("presented", "agent-view-3", { url: "https://example.test/2fa", title: "2FA", note: "输入验证码" });
+  await wait("window.panelTestStore.getState().browserTabs.length===2");
+  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='接管').click()");
+  await wait("document.body.textContent.includes('接管失败')");
+  await delay(300);
+  assert.equal(await banner(), true, "a refused takeover keeps the hand-off banner");
+  assert.equal(await tabCount(), 2, "a refused takeover keeps the presented tab");
+  assert.ok((await ids()).includes("agent-view-3"));
+  assert.equal(
+    await evaluate("window.panelTestStore.getState().presentedBrowser?.browserId"),
+    "agent-view-3",
+    "the store still holds the presented view",
+  );
+
+  // 5b. …and an accepted takeover (a REAL view, so the real IPC runs) clears the
+  //     banner and keeps the page as an ordinary user tab.
+  await push("closed", "agent-view-3", { reason: "test-cleanup" });
+  await wait("window.panelTestStore.getState().browserTabs.length===1");
+  const real = await evaluate(`window.api.browser.create({projectPath:${JSON.stringify(join(data, "work"))}})`);
+  assert.ok(real && real.ok, "created a real browser view: " + JSON.stringify(real));
+  await push("presented", real.browserId, { url: "https://example.test/2fa", title: "2FA", note: "输入验证码" });
   await wait("window.panelTestStore.getState().browserTabs.length===2");
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='接管').click()");
   await wait("!document.body.textContent.includes('Agent 需要你操作')");
   await delay(200);
   assert.equal(await tabCount(), 2, "taken-over page stays as the user's tab");
-  assert.ok((await ids()).includes("agent-view-3"));
+  assert.ok((await ids()).includes(real.browserId));
+  assert.equal(await evaluate("window.panelTestStore.getState().presentedBrowser"), null, "presented cleared on success");
 
   assert.deepEqual(errors, [], "No renderer exceptions");
 }, { mainInspector: true });

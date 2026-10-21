@@ -30,7 +30,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { app } from "electron";
-import { BrowserManager, type BrowserDownloadEntry, type BrowserSnapshotResult } from "./BrowserManager.js";
+import { BrowserManager, isAllowedAgentNavigationUrl, type BrowserDownloadEntry, type BrowserSnapshotResult } from "./BrowserManager.js";
 import {
   SNAPSHOT_DISPLAY_CAP,
   SNAPSHOT_DISPLAY_CAP_INTERACTIVE,
@@ -202,12 +202,11 @@ export function savePdfToDisk(
   }
 }
 
-/** Allowed URL schemes for `browser_navigate`: http(s) pages and local
- *  `file:` pages (a rendered local file exposes no more than the Read tool
- *  already does). `javascript:` / `data:` stay rejected — unsafe under agent
- *  control. */
+/** `browser_navigate` accepts only explicit web and local-file URLs. Internal
+ *  about:/blob: documents are allowed only for in-page navigation, not as
+ *  model-supplied destinations. */
 function isAllowedUrl(url: string): boolean {
-  return /^(https?|file):\/\//i.test(url.trim());
+  return isAllowedAgentNavigationUrl(url.trim());
 }
 
 // ── Search-engine guard ──────────────────────────────────────────────

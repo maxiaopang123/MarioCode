@@ -8,6 +8,7 @@ import {
   getOcclusionVersion,
 } from "@renderer/lib/browserOcclusion.js";
 import { useSessionStore } from "@renderer/stores/sessionStore.js";
+import { useToastStore } from "@renderer/stores/toastStore.js";
 import type { BrowserTab } from "@renderer/stores/sessionStore.js";
 import { localPathToFileUrl } from "@renderer/lib/browserUrl.js";
 import {
@@ -1250,12 +1251,29 @@ export function BrowserPanel({ mode }: BrowserPanelProps) {
 
   /** Presented banner「接管」: keep the page as an ordinary user tab. Main
    *  flips the owner to user, so the agent can no longer touch it and will open
-   *  a fresh hidden view next time. */
+   *  a fresh hidden view next time. The banner is cleared only once main has
+   *  actually transferred the view — clearing it first would drop the hand-off
+   *  UI while the view is still agent-owned, leaving the user with a tab the
+   *  agent may still drive. */
   const handlePresentTakeover = useCallback(() => {
     if (!presented) return;
-    void api.browser.takeover({ browserId: presented.browserId });
-    clearPresented();
-  }, [presented, clearPresented]);
+    const browserId = presented.browserId;
+    // A toast, not the stage error slot: the presented view covers the stage
+    // at OS level, so in-stage text would be invisible exactly when it matters.
+    const fail = (error: string) => {
+      useToastStore.getState().push({
+        kind: "error",
+        title: t("browser.presented.takeoverFailed", { error }),
+      });
+    };
+    void api.browser
+      .takeover({ browserId })
+      .then((res) => {
+        if (res?.ok) clearPresented();
+        else fail(res?.error ?? "unknown");
+      })
+      .catch((err: unknown) => fail(err instanceof Error ? err.message : String(err)));
+  }, [presented, clearPresented, t]);
 
   /** Select a tab: hide the old active view, show the new one. */
   const handleSelectTab = useCallback(

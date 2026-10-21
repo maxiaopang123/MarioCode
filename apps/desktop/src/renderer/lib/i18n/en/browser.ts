@@ -87,4 +87,5 @@ export const en = {
   "browser.presented.continue": "Continue",
   "browser.presented.takeover": "Take over",
   "browser.presented.takeoverHint": "Keep this page as your own tab; the agent will open a new background view next time",
+  "browser.presented.takeoverFailed": "Could not take over: {error}",
 } as const;

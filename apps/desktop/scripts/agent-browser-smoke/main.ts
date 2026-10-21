@@ -6,7 +6,10 @@
  * Covers: user tab untouched · session isolation · list scoped to the session ·
  * per-session cap (LRU eviction) · idle TTL reaper · touch revives · presented
  * views survive the reaper · session removal closes views and tells the
- * renderer · take-over turns a view into a user tab the agent can no longer use.
+ * renderer · take-over turns a view into a user tab the agent can no longer use ·
+ * continue returns a view to the hidden host · no host → fail closed · popups
+ * (including ones that fail to load) stay off the workspace · app-protocol
+ * navigations and 30x redirects are blocked and never reach the system.
  */
 import { app, BrowserWindow, shell } from "electron";
 import assert from "node:assert/strict";
@@ -47,13 +50,33 @@ async function main() {
   await app.whenReady();
   await initDb();
   const server = createServer((req, res) => {
-    const name = (req.url ?? "/").replace(/^\//, "") || "root";
+    const reqUrl = new URL(req.url ?? "/", `http://${req.headers.host ?? "127.0.0.1"}`);
+    const name = reqUrl.pathname.replace(/^\//, "") || "root";
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     // A search-site shaped page: a JS handler opens the result in a NEW tab on
     // Enter - the user-reported trigger. (A plain <form> would not do here:
     // sendKeys sends keyDown/keyUp without a char event, so no implicit submit.)
     if (name === "search-form") {
       res.end(`<html><body><input id="q" onkeydown="if(event.key==='Enter'){window.open('/search-result?q='+encodeURIComponent(this.value),'_blank')}"></body></html>`);
+      return;
+    }
+    if (name === "search-result") {
+      // Echoes the submitted query so the test can prove Enter actually submitted.
+      res.end(`<html><body><h1>Result ${reqUrl.searchParams.get("q") ?? ""}</h1></body></html>`);
+      return;
+    }
+    // Server-side 30x: the blocked one leaves for an app protocol, the control
+    // one stays on the web.
+    if (name === "redirect-to-proto") {
+      res.statusCode = 302;
+      res.setHeader("Location", "mariocode-smoke://redirect");
+      res.end();
+      return;
+    }
+    if (name === "redirect-to-web") {
+      res.statusCode = 302;
+      res.setHeader("Location", `${reqUrl.origin}/redirect-target`);
+      res.end();
       return;
     }
     res.end(`<html><body><h1>Fixture page ${name}</h1><button id="b">go</button></body></html>`);
@@ -170,6 +193,36 @@ async function main() {
       "renderer is told to drop the adopted tab",
     );
 
+    // ── 5b. "继续": control goes back to the agent, the view goes back home ──
+    await browserNavigate({ url: `${base}/login-2` }, data, "S3b");
+    const s3b = agentViews("S3b")[0].browserId;
+    const s3bUrl = BrowserManager.list().find(i => i.browserId === s3b)!.url;
+    const childrenBeforeContinue = window.contentView.children.length;
+    assert.ok(!textOf(await browserPresent({ note: "请登录" }, "S3b")).startsWith("❌"));
+    assert.ok(BrowserManager.show(s3b).ok);
+    assert.equal(parentOf(s3b), "main", "a presented view is shown in the main window");
+    sentMessages.length = 0;
+    assert.ok(BrowserManager.continueBrowser(s3b).ok);
+    assert.equal(parentOf(s3b), "host", "continue sends the view back to the hidden host");
+    assert.equal(BrowserManager.list().find(i => i.browserId === s3b)!.presented, false, "continue clears the hand-off state");
+    assert.equal(
+      BrowserManager.list().find(i => i.browserId === s3b)!.url,
+      s3bUrl,
+      "continue keeps the same page and session",
+    );
+    assert.ok(
+      sentMessages.some(m => (m as { type?: string; browserId?: string }).type === "continued" && (m as { browserId?: string }).browserId === s3b),
+      "the renderer is told the hand-off ended",
+    );
+    assert.equal(window.contentView.children.length, childrenBeforeContinue, "the view left the workspace");
+    // The boundary the click paths rely on: an agent view that is not presented
+    // must never be promotable onto the workspace.
+    const refusedShow = BrowserManager.show(s3b);
+    assert.equal(refusedShow.ok, false, "a hidden agent view cannot be shown unless it is presented");
+    assert.equal(parentOf(s3b), "host", "the refused show changed nothing");
+    assert.equal(window.contentView.children.length, childrenBeforeContinue, "the refused show added nothing");
+    assert.ok(!textOf(await browserSnapshot({}, "S3b")).startsWith("❌"), "the agent keeps driving its view after a hand-off");
+
     // ── 6. take-over: the view becomes the user's; the agent opens a fresh one ──
     await browserNavigate({ url: `${base}/oauth` }, data, "S4");
     const s4 = agentViews("S4")[0].browserId;
@@ -204,6 +257,24 @@ async function main() {
     const popup = agentViews("S5").find(i => i.browserId !== s5)!.browserId;
     assert.equal(parentOf(popup), "host", "the popup rests in the host window");
 
+    // A popup whose page cannot load must cost nothing: the child is reclaimed
+    // and no live view is evicted for it. (It used to evict up front, then leave
+    // a broken tab holding a slot.)
+    for (let i = 0; i < AGENT_VIEWS_PER_SESSION_MAX + 2 && agentViews("S5").length < AGENT_VIEWS_PER_SESSION_MAX; i++) {
+      await browserNavigate({ url: `${base}/popup-fill-${i}`, newTab: true }, data, "S5");
+    }
+    assert.equal(agentViews("S5").length, AGENT_VIEWS_PER_SESSION_MAX, "S5 is full before the failing popup");
+    const atCap = agentViews("S5").map(i => i.browserId).sort();
+    // Port 1 is refused instantly on loopback - no outside network involved.
+    await wcOf(s5).mainFrame.executeJavaScript(`window.open("http://127.0.0.1:1/failing-popup", "_blank")`, true);
+    await delay(2000);
+    assert.deepEqual(
+      agentViews("S5").map(i => i.browserId).sort(),
+      atCap,
+      "a failing popup neither survives nor evicts a live view at the cap",
+    );
+    assert.equal(parentOf(popup), "host", "the earlier popup view is untouched");
+
     // ── 8. the reported sequence: open -> type -> Enter -> read, result opens in a new tab ──
     await browserNavigate({ url: `${base}/search-form` }, data, "S6");
     const s6 = agentViews("S6")[0].browserId;
@@ -212,11 +283,22 @@ async function main() {
     await browserSnapshot({}, "S6");
     const typed = textOf(await browserType({ selector: "#q", text: "芯片" }, "S6"));
     assert.ok(!typed.startsWith("❌"), typed);
-    await delay(400); // a model takes seconds between two tool calls; back-to-back calls race the focus handoff
     const entered = textOf(await browserKeys({ keys: "Enter" }, "S6"));
     assert.ok(!entered.startsWith("❌"), entered);
     for (let i = 0; i < 100 && agentViews("S6").length < 2; i++) await delay(50);
     assert.equal(agentViews("S6").length, 2, "the result tab opened as another AGENT view");
+    // The typed value really was submitted: the result tab carries the query.
+    const resultId = agentViews("S6").find(v => v.browserId !== s6)!.browserId;
+    for (let i = 0; i < 100; i++) {
+      const u = BrowserManager.list().find(v => v.browserId === resultId)?.url ?? "";
+      if (u.includes("/search-result?q=")) break;
+      await delay(50);
+    }
+    const resultUrl = BrowserManager.list().find(v => v.browserId === resultId)!.url;
+    assert.ok(resultUrl.includes("/search-result?q="), "the result tab navigated to the query URL: " + resultUrl);
+    assert.ok(decodeURIComponent(resultUrl).includes("q=芯片"), "the result tab carries the typed value: " + resultUrl);
+    const readResult = textOf(await browserSnapshot({ browserId: resultId }, "S6"));
+    assert.ok(readResult.includes("Result 芯片"), "the result page rendered the submitted query: " + readResult);
     const read = textOf(await browserSnapshot({}, "S6"));
     assert.ok(!read.startsWith("❌"), read);
     assert.equal(window.contentView.children.length, childrenBeforeSearch, "type + Enter + read never put a view on the workspace");
@@ -246,6 +328,25 @@ async function main() {
       assert.ok(seen.find(s => s.url.startsWith("mariocode-smoke://"))?.prevented, "agent navigation to an app protocol is blocked");
       assert.equal(agentViews("S7").length, 1, "a dropped popup spawns no view");
       assert.equal(parentOf(s7), "host");
+      // Server-side 30x to an app protocol: blocked before it leaves the app,
+      // reported as a failure, and the view stays where it was.
+      const blockedRedirect = textOf(await browserNavigate({ url: `${base}/redirect-to-proto` }, data, "S7"));
+      assert.ok(blockedRedirect.startsWith("❌"), "a 30x to an app protocol fails the navigation: " + blockedRedirect);
+      assert.ok(blockedRedirect.includes("拦截"), "the failure names the blocked redirect: " + blockedRedirect);
+      assert.equal(
+        BrowserManager.list().find(i => i.browserId === s7)!.url,
+        `${base}/proto-page`,
+        "the view stayed on the previous page after the blocked redirect",
+      );
+      assert.deepEqual(handedToSystem, [], "a blocked redirect never reaches the system");
+      assert.equal(agentViews("S7").length, 1, "a blocked redirect spawns no view");
+      // Control: an ordinary http→http redirect still works.
+      const okRedirect = textOf(await browserNavigate({ url: `${base}/redirect-to-web` }, data, "S7"));
+      assert.ok(!okRedirect.startsWith("❌"), "an http→http redirect still loads: " + okRedirect);
+      assert.ok(
+        BrowserManager.list().find(i => i.browserId === s7)!.url.endsWith("/redirect-target"),
+        "the control redirect followed to its target",
+      );
       // Control: the user's own tab keeps handing such links to the system.
       await wcOf(userId).mainFrame.executeJavaScript(`window.open("mariocode-smoke://user", "_blank")`, true);
       await delay(300);
@@ -253,6 +354,27 @@ async function main() {
     } finally {
       shell.openExternal = realOpenExternal;
     }
+
+    // ── 10. no hidden host → fail closed, never on the user's workspace ──
+    // Without its host the agent view has no safe home and no real viewport; it
+    // must refuse to exist rather than land in the main window.
+    const childrenBeforeNoHost = window.contentView.children.length;
+    const hostSeam = BrowserManager as unknown as Record<string, unknown>;
+    const realEnsureHost = hostSeam.ensureAgentHost;
+    hostSeam.ensureAgentHost = () => null;
+    try {
+      const refusedNav = textOf(await browserNavigate({ url: `${base}/no-host` }, data, "S8"));
+      assert.ok(refusedNav.startsWith("❌"), "agent navigation fails closed without a host: " + refusedNav);
+      assert.equal(agentViews("S8").length, 0, "no agent view is created");
+      assert.equal(window.contentView.children.length, childrenBeforeNoHost, "nothing landed on the workspace");
+    } finally {
+      hostSeam.ensureAgentHost = realEnsureHost;
+    }
+    // …and the manager recovers once the host is available again.
+    const recovered = textOf(await browserNavigate({ url: `${base}/recovered` }, data, "S8"));
+    assert.ok(!recovered.startsWith("❌"), "navigation works again once the host is back: " + recovered);
+    assert.equal(agentViews("S8").length, 1);
+    assert.equal(parentOf(agentViews("S8")[0].browserId), "host", "the recovered view rests in the host window");
 
     console.log("PASS: agent-browser isolation and recycling");
   } finally {

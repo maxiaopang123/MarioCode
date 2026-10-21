@@ -60,11 +60,13 @@ import { getManagedRuntimeRoot, listManagedVersions } from "./managedRuntimeRoot
 import { hasRunningTurn } from "./runtimeMutation.js";
 import { codexVendorTriple, findCodexBinaryInPackage } from "@main/providers/codex-sdk/codexBinaryResolve.js";
 import {
+  brokenManagedPayloads,
   installedManagedPayload,
   payloadEntryPath,
   probeRuntimeAvailability,
   type RuntimeSource,
 } from "./runtimeAvailability.js";
+import { MIN_PLAUSIBLE_BINARY_BYTES, payloadPlatformMatches } from "./payloadGuard.js";
 import {
   compareCoreVersions,
   discoverExternalRuntimes,
@@ -459,9 +461,16 @@ export async function listRuntimes(): Promise<RuntimeAgentState[]> {
     const activeVersion = managed?.version ?? fallback?.version ?? null;
     const source: RuntimeSource | null = managed ? "managed" : fallback?.source ?? null;
     const available = source !== null;
+    // A downloaded copy that exists but cannot launch (truncated or a binary
+    // for another OS) is otherwise invisible here: the panel would claim
+    // "nothing available" while a broken install sits on disk, and the SDK
+    // would blame the C library when a turn starts. Name the real problem.
+    const broken = available ? [] : brokenManagedPayloads(agent);
     const diagnostic = available
       ? "Managed runtime selection is available."
-      : "No managed, development, or bundled runtime is available.";
+      : broken.length > 0
+        ? `已下载的运行时文件不完整(${agent} ${broken[0].version}${broken[0].size >= 0 ? `,只有 ${broken[0].size} 字节` : ""}),请重新安装(the downloaded payload is incomplete — reinstall to re-download)`
+        : "No managed, development, or bundled runtime is available.";
     return {
       agent,
       selectedMode: selection.mode,
@@ -564,6 +573,30 @@ function finalizeInstall(
       chmodSync(entry, 0o755);
     } catch {
       // best-effort
+    }
+  }
+  // Payload sanity check BEFORE the swap. A torn/truncated extraction, or a
+  // tarball carrying a binary for another OS, passes existsSync everywhere yet
+  // cannot launch — and the Agent SDK reports that as an unrelated "binary
+  // does not match this system's libc" error (see payloadGuard.ts). Refusing
+  // here leaves the previous working version in place instead of replacing it
+  // with a copy that will fail at every turn start.
+  if (agent !== "pi") {
+    let size = -1;
+    try {
+      size = statSync(entry).size;
+    } catch {
+      size = -1;
+    }
+    if (size >= 0 && size < MIN_PLAUSIBLE_BINARY_BYTES) {
+      throw new Error(
+        `installed ${agent}@${version} but the binary is only ${size} bytes — the download was truncated; please retry the install`,
+      );
+    }
+    if (!payloadPlatformMatches(entry)) {
+      throw new Error(
+        `installed ${agent}@${version} but the binary is not a ${process.platform} executable — the registry/mirror served a package for another platform; please retry, or install from a local copy`,
+      );
     }
   }
   const root = getManagedRuntimeRoot() ?? join(app.getPath("userData"), "runtimes");
@@ -670,6 +703,17 @@ export async function installRuntime(
         const { extract } = await import("tar");
         // npm tarballs root everything under package/ — strip that prefix.
         await extract({ file: tmpTarball, cwd: stagingDir, strip: 1 });
+        // Guard against a truncated/torn extraction: if the expected payload
+        // isn't there, fail NOW and leave staging for the finally-cleaner —
+        // never let finalizeInstall swap a partial tree into place (a swap
+        // that half-fails leaves the entry file present but the rest of the
+        // payload missing, and resolvers then spawn a broken binary).
+        const stagedEntry = payloadEntryPath(agent, stagingDir);
+        if (!stagedEntry || !existsSync(stagedEntry)) {
+          throw new Error(
+            `extracted ${pkg.name}@${pkg.version} but the expected payload is missing — download was likely interrupted; please retry the install`,
+          );
+        }
       } finally {
         rmSync(tmpTarball, { force: true });
       }
@@ -774,6 +818,16 @@ export async function installRuntimeFromLocalPath(
       } else {
         cpSync(localPath, stagingDir, { recursive: true });
       }
+      // Same payload assertion as the registry path — a picked directory can
+      // match the layout sniff yet still miss the real payload (e.g. a dir
+      // containing a claude binary at the root but nothing else the agent
+      // needs, or a codex dir whose vendored triple isn't this machine's).
+      const stagedEntry = payloadEntryPath(agent, stagingDir);
+      if (!stagedEntry || !existsSync(stagedEntry)) {
+        throw new Error(
+          `所选目录缺少 ${agent} 运行所需的完整文件(the picked directory is missing the full ${agent} payload — expected ${stagedEntry ?? "the payload entry"})`,
+        );
+      }
     }
 
     const version = normalizeInstalledVersion(
@@ -849,10 +903,21 @@ function installSingleBinary(agent: RuntimeAgentId, file: string, stagingDir: st
       `"${name}" 不是 ${agent} 的可执行文件(is not the ${agent} executable — expected ${expectedNames.join(" / ")})`,
     );
   }
-  const dest =
-    agent === "claude"
-      ? join(stagingDir, name)
-      : join(stagingDir, "vendor", codexVendorTriple() ?? "unknown-triple", "bin", name);
+  let dest: string;
+  if (agent === "claude") {
+    dest = join(stagingDir, name);
+  } else {
+    // A single codex binary must land exactly where the resolver looks it up;
+    // without a known triple the layout can never be found, so refuse here
+    // rather than installing a copy that silently never loads.
+    const triple = codexVendorTriple();
+    if (!triple) {
+      throw new Error(
+        `当前平台(${process.platform}-${process.arch})没有对应的 codex 目录布局(this platform has no known codex vendor layout)`,
+      );
+    }
+    dest = join(stagingDir, "vendor", triple, "bin", name);
+  }
   mkdirSync(dirname(dest), { recursive: true });
   cpSync(file, dest);
 }

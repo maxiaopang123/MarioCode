@@ -17,9 +17,9 @@ import { isRuntimeMutationActive, withRuntimeMutation } from "@main/runtimes/run
 import { snapshotSettings } from "./stub-repositories.js";
 
 let checks = 0;
-function check(name: string, condition: boolean): void {
+function check(name: string, condition: boolean, detail?: string): void {
   checks++;
-  if (!condition) throw new Error(`FAILED: ${name}`);
+  if (!condition) throw new Error(`FAILED: ${name}${detail === undefined ? "" : `\n  got: ${detail}`}`);
   process.stdout.write(`  ✓ ${name}\n`);
 }
 
@@ -141,5 +141,145 @@ check("idle sweep prunes superseded releases", !existsSync(join(agentDir, "0.3.2
 check("idle sweep clears backup and staging leftovers", !existsSync(join(agentDir, "0.3.258.backup-1700000000000-42")) && !existsSync(join(agentDir, ".0.3.259.staging-1700000000001")));
 check("sweep never touches files it does not own", existsSync(join(agentDir, "stray-file.txt")));
 check("sweep ignores the user-owned program", existsSync(external));
+
+// ── torn payloads (interrupted install) must never count as installed ───────
+// An app quit / kill mid-extract can leave `<version>/claude` PRESENT but
+// truncated. existsSync used to say "fine", the resolver handed the path to
+// the SDK, and spawn failed with its misleading "binary does not match this
+// system's libc" message. See payloadGuard.ts.
+const { installedManagedPayload, dropBrokenManagedVersions, brokenManagedPayloads } = await import(
+  "@main/runtimes/runtimeAvailability.js"
+);
+const guardRoot = join(root, "guard");
+setManagedRuntimeRoot(guardRoot);
+const guardAgentDir = join(guardRoot, "claude");
+const claudeName = process.platform === "win32" ? "claude.exe" : "claude";
+
+/** A plausible 2MB "binary" whose container matches the host OS, so the guard
+ *  accepts it (payloadGuard also rejects foreign-platform payloads). */
+function fakeBinary(): Buffer {
+  const buf = Buffer.alloc(2_000_000);
+  if (process.platform === "win32") buf.write("MZ", 0, "latin1");
+  else if (process.platform === "linux") buf.set([0x7f, 0x45, 0x4c, 0x46], 0);
+  else buf.set([0xcf, 0xfa, 0xed, 0xfe], 0); // Mach-O 64, little endian
+  return buf;
+}
+
+mkdirSync(join(guardAgentDir, "0.3.306"), { recursive: true });
+writeFileSync(join(guardAgentDir, "0.3.306", claudeName), "truncated");
+check("a truncated managed binary is not reported as installed", installedManagedPayload("claude") === null);
+check(
+  "the panel can name the incomplete payload instead of \"nothing available\"",
+  brokenManagedPayloads("claude").length === 1 &&
+    brokenManagedPayloads("claude")[0].version === "0.3.306" &&
+    brokenManagedPayloads("claude")[0].size === "truncated".length,
+  JSON.stringify(brokenManagedPayloads("claude")),
+);
+
+mkdirSync(join(guardAgentDir, "0.3.258"), { recursive: true });
+writeFileSync(join(guardAgentDir, "0.3.258", claudeName), fakeBinary());
+check(
+  "a torn newer version is skipped in favour of a healthy older one",
+  installedManagedPayload("claude")?.version === "0.3.258",
+  installedManagedPayload("claude")?.version,
+);
+check(
+  "broken version dirs are dropped so the panel offers a reinstall",
+  dropBrokenManagedVersions("claude").join(",") === "0.3.306" && !existsSync(join(guardAgentDir, "0.3.306")),
+);
+check("dropping broken dirs keeps the healthy version", existsSync(join(guardAgentDir, "0.3.258", claudeName)));
+
+// A complete binary for ANOTHER OS (e.g. a Linux ELF inside the macOS
+// package) spawns with ENOEXEC and the SDK blames the libc — reject it here.
+if (process.platform !== "linux") {
+  mkdirSync(join(guardAgentDir, "0.3.400"), { recursive: true });
+  const elf = Buffer.alloc(2_000_000);
+  elf.set([0x7f, 0x45, 0x4c, 0x46], 0);
+  writeFileSync(join(guardAgentDir, "0.3.400", claudeName), elf);
+  check(
+    "a foreign-platform payload is never offered as installed",
+    installedManagedPayload("claude")?.version === "0.3.258",
+    installedManagedPayload("claude")?.version,
+  );
+  check(
+    "the foreign-platform version dir is dropped",
+    dropBrokenManagedVersions("claude").join(",") === "0.3.400" && !existsSync(join(guardAgentDir, "0.3.400")),
+  );
+}
+
+// pi is a JS library — its payload marker is a legitimately tiny package.json.
+mkdirSync(join(guardRoot, "pi", "0.83.0", "node_modules", "@earendil-works", "pi-coding-agent"), {
+  recursive: true,
+});
+writeFileSync(
+  join(guardRoot, "pi", "0.83.0", "node_modules", "@earendil-works", "pi-coding-agent", "package.json"),
+  '{"version":"0.83.0"}',
+);
+check("a tiny library payload is still usable (pi)", installedManagedPayload("pi")?.version === "0.83.0");
+check("the pi payload is never dropped by the size guard", dropBrokenManagedVersions("pi").length === 0);
+
+// ── the SDK's launch-failure text is a Linux-only guess ─────────────────────
+// Whenever existsSync accepts the path but spawn fails, the Agent SDK answers
+// with one hardcoded explanation: "the binary does not match this system's
+// libc — e.g. spawning a musl-linked binary on a glibc Linux host". macOS and
+// Windows have neither, so that "clue" is impossible there while the real
+// cause (torn install, payload for another OS/arch, quarantined file) goes
+// unmentioned. We must never relay it. See launchFailure.ts.
+const { humanizeLaunchFailure, launchFailureCauses } = await import("@main/providers/claude-sdk/launchFailure.js");
+const sdkLaunchText = (path: string): string =>
+  `Claude Code native binary at ${path} exists but failed to launch. This usually means the binary does not match this system's libc — e.g. spawning a musl-linked binary on a glibc Linux host fails because the musl dynamic loader (/lib/ld-musl-*) is missing. Specify a matching binary with options.pathToClaudeCodeExecutable.`;
+
+const msgRoot = join(root, "launch-guard");
+setManagedRuntimeRoot(msgRoot);
+const deadVersion = "9.9.9";
+const deadDir = join(msgRoot, "claude", deadVersion);
+mkdirSync(deadDir, { recursive: true });
+const deadBinary = join(deadDir, claudeName);
+writeFileSync(deadBinary, "truncated payload, exists but cannot exec");
+const dropped = humanizeLaunchFailure(sdkLaunchText(deadBinary));
+check("the SDK's libc guess is never relayed to the user", !/libc|musl/i.test(dropped), dropped);
+check(
+  "an unlaunchable managed copy is removed so the panel can reinstall",
+  dropped.includes(`已移除损坏的副本 ${deadVersion}`) && !existsSync(deadDir),
+  dropped,
+);
+check("…and the user is pointed at the install button", dropped.includes("设置 → Agent"), dropped);
+
+const notManagedPath = join(root, "elsewhere", claudeName);
+const notManaged = humanizeLaunchFailure(sdkLaunchText(notManagedPath));
+check(
+  "a binary outside the managed root still gets an actionable message",
+  notManaged.includes(notManagedPath) && notManaged.includes("设置 → Agent"),
+  notManaged,
+);
+check(
+  "…and never repeats the impossible explanation",
+  !/does not match this system's libc|musl dynamic loader/i.test(notManaged),
+  notManaged,
+);
+if (process.platform !== "linux") {
+  // The one platform where musl is real is Linux; nowhere else may we claim it.
+  check("no libc/musl claim on a platform that has neither", !/musl|glibc/i.test(notManaged), notManaged);
+}
+
+// No parsable path (an error class or a reworded message) must not fall back to
+// the guess either — that is exactly the macOS case.
+const pathless = humanizeLaunchFailure("Claude Code native binary exists but failed to launch (executable_launch_failed).");
+check(
+  "a pathless launch failure does not fall back to the guess",
+  !/does not match this system's libc/i.test(pathless) && pathless.includes("设置 → Agent"),
+  pathless,
+);
+check("ordinary errors pass through untouched", humanizeLaunchFailure("fetch failed: ECONNRESET") === "fetch failed: ECONNRESET");
+
+// Every platform's wording is asserted here, from one machine: the macOS branch
+// can otherwise ship untested and it is the one this bug was reported on.
+const darwinCauses = launchFailureCauses("darwin");
+const winCauses = launchFailureCauses("win32");
+const linuxCauses = launchFailureCauses("linux");
+check("macOS wording never blames the libc/musl", !/libc|musl|glibc/i.test(darwinCauses), darwinCauses);
+check("Windows wording never blames the libc/musl", !/libc|musl|glibc/i.test(winCauses), winCauses);
+check("macOS wording names the real candidates (arch / exec bit)", /架构|Rosetta/.test(darwinCauses) && /执行权限/.test(darwinCauses), darwinCauses);
+check("Linux keeps the libc hint, where it can actually be true", /libc/.test(linuxCauses), linuxCauses);
 
 process.stdout.write(`runtime-selection smoke passed (${checks} checks)\n`);

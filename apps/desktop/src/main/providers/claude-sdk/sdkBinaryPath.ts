@@ -20,10 +20,15 @@
  * The canonical mapping (per Electron docs) is to replace the `app.asar`
  * segment with `app.asar.unpacked` in the resolved path.
  */
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { getManagedRuntimeRoot, listManagedVersions } from "@main/runtimes/managedRuntimeRoots.js";
+import {
+  binaryEntryUsable,
+  dropUnusableManagedVersions,
+  type PayloadProbe,
+} from "@main/runtimes/payloadGuard.js";
 import {
   getRuntimeSelection,
   noteAutoPick,
@@ -46,6 +51,30 @@ function toUnpackedPath(p: string): string {
   return p.includes("app.asar") ? p.replace("app.asar", "app.asar.unpacked") : p;
 }
 
+/** Payload probe for a managed claude version dir (see payloadGuard.ts). */
+const claudePayloadProbe: PayloadProbe = (dir) => {
+  const entry = join(dir, process.platform === "win32" ? "claude.exe" : "claude");
+  return { entry, isBinary: true };
+};
+
+/** Cheap "would this actually launch?" gate for the MANAGED binary. Beyond
+ *  existsSync: plausible size (a torn install leaves a truncated file that
+ *  exists yet cannot spawn) and, on posix, the execute bit. A broken managed
+ *  copy is skipped so the caller falls through to the bundled/dev source — or
+ *  the friendly "not installed" error — instead of handing the SDK a dead path
+ *  and getting back its misleading "these binaries do not match this system's
+ *  libc" message. */
+function managedBinaryUsable(candidate: string): boolean {
+  if (!binaryEntryUsable(candidate)) return false;
+  if (process.platform === "win32") return true;
+  try {
+    accessSync(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Resolve the SDK binary path. "auto" (default) and "managed" share this
  * order (TODO-057: external mode and local-install detection were removed):
@@ -64,10 +93,13 @@ export function resolveSdkBinaryPath(): string | null {
   const auto = selection.mode === "auto";
   const managedRoot = getManagedRuntimeRoot();
   if (managedRoot) {
+    // Drop torn installs first (a truncated binary exists but cannot spawn),
+    // then pick the newest copy that is actually runnable.
+    dropUnusableManagedVersions("claude", claudePayloadProbe);
     for (const version of listManagedVersions("claude")) {
       for (const name of binaryNames()) {
         const candidate = join(managedRoot, "claude", version, name);
-        if (existsSync(candidate)) {
+        if (existsSync(candidate) && managedBinaryUsable(candidate)) {
           if (auto) noteAutoPick("claude", "managed", candidate);
           return candidate;
         }

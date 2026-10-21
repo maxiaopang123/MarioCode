@@ -18,15 +18,18 @@
  * Pure node — no electron import (shares modules with the headless codex
  * smoke chain).
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RuntimeAgentId } from "@contracts/ipc";
+import { getManagedRuntimeRoot, listManagedVersions } from "./managedRuntimeRoots.js";
 import {
-  getManagedRuntimeRoot,
-  listManagedVersions,
-} from "./managedRuntimeRoots.js";
+  dropUnusableManagedVersions,
+  newestUsableManagedVersion,
+  payloadUsable,
+  type PayloadProbe,
+} from "./payloadGuard.js";
 import {
   findCodexBinaryInPackage,
   resolveBundledCodexBinaryPath,
@@ -76,18 +79,59 @@ export function payloadEntryPath(agent: RuntimeAgentId, packageDir: string): str
   }
 }
 
-/** The newest managed version dir whose payload exists. */
+/** Payload probe for one agent, derived from the canonical layout above.
+ *  Binary agents are size-checked (a torn install leaves a truncated file that
+ *  exists yet cannot spawn — see payloadGuard.ts); pi's marker is a tiny
+ *  package.json, so it only has to exist. */
+function managedPayloadProbe(agent: RuntimeAgentId): PayloadProbe {
+  const isBinary = agent !== "pi";
+  return (dir) => {
+    const entry = payloadEntryPath(agent, dir);
+    return entry ? { entry, isBinary } : null;
+  };
+}
+
+/** The newest managed version dir whose payload exists AND looks usable. */
 export function installedManagedPayload(
   agent: RuntimeAgentId,
 ): { version: string; dir: string; entry: string } | null {
+  return newestUsableManagedVersion(agent, managedPayloadProbe(agent));
+}
+
+/** Remove managed version dirs whose payload exists but is unusable (torn
+ *  install). Called by the resolvers before they pick a version, so a broken
+ *  copy is never spawned — and, because it's gone from disk, the settings
+ *  panel stops reporting it as installed and the install button performs a
+ *  real reinstall (same-version reinstall would otherwise be a no-op). */
+export function dropBrokenManagedVersions(agent: RuntimeAgentId): string[] {
+  return dropUnusableManagedVersions(agent, managedPayloadProbe(agent));
+}
+
+/** Managed version dirs whose payload is present but unusable. Read-only, so
+ *  the settings panel can explain WHY a downloaded runtime cannot run
+ *  ("incomplete download, size N bytes") instead of the generic "nothing is
+ *  available" line — the SDK's own error for this state blames the libc. */
+export function brokenManagedPayloads(
+  agent: RuntimeAgentId,
+): { version: string; dir: string; entry: string; size: number }[] {
   const root = getManagedRuntimeRoot();
-  if (!root) return null;
+  if (!root) return [];
+  const probe = managedPayloadProbe(agent);
+  const out: { version: string; dir: string; entry: string; size: number }[] = [];
   for (const version of listManagedVersions(agent)) {
     const dir = join(root, agent, version);
-    const entry = payloadEntryPath(agent, dir);
-    if (entry && existsSync(entry)) return { version, dir, entry };
+    const found = probe(dir);
+    if (!found || !existsSync(found.entry)) continue;
+    if (payloadUsable(probe, dir)) continue;
+    let size = -1;
+    try {
+      size = statSync(found.entry).size;
+    } catch {
+      size = -1;
+    }
+    out.push({ version, dir, entry: found.entry, size });
   }
-  return null;
+  return out;
 }
 
 /* ── fallback probes (dev node_modules / legacy bundled) ── */

@@ -37,6 +37,7 @@ import {
   normalizeToolFilePath,
 } from "@main/lib/fileSnapshot.js";
 import { resolveSdkBinaryPath } from "./sdkBinaryPath.js";
+import { humanizeLaunchFailure } from "./launchFailure.js";
 import { resolveGitBash } from "@main/lib/binaryResolve.js";
 import { samePath } from "@main/lib/pathGuard.js";
 import { getMcpManagement, readProjectMcpServers } from "@main/lib/mcpConfig.js";
@@ -816,6 +817,13 @@ function isRetryableTransportError(err: unknown): boolean {
   if (/429|rate limit|overloaded|too many requests|5\d{2}|server error|service unavailable|bad gateway|gateway timeout/.test(msg)) return true;
   return false;
 }
+
+/** The Agent SDK reports EVERY spawn failure as "the binary does not match
+ *  this system's libc — e.g. spawning a musl-linked binary on a glibc Linux
+ *  host", which is a Linux guess no desktop user can act on (macOS/Windows
+ *  have neither). humanizeLaunchFailure (launchFailure.ts) recognizes that
+ *  message, drops the managed copy that just proved it cannot launch, and says
+ *  what can actually be wrong on this OS. */
 
 /** Promise-based sleep that rejects early if the signal aborts, so a user
  *  stop during a retry backoff doesn't wait out the full delay. The rejecting
@@ -1607,11 +1615,15 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
               continue;
             }
             // Non-retryable, content already started, or retries exhausted.
-            ctx.log.error(`claude SDK error: ${(err as Error).message}`);
+            const rawError = (err as Error).message;
+            ctx.log.error(`claude SDK error: ${rawError}`);
             ctx.emit({
               type: "error",
               sessionId: req.sessionId,
-              message: (err as Error).message,
+              // Runtime launch failures get an actionable message (and the
+              // unlaunchable managed copy is dropped) instead of the SDK's
+              // libc guess. See humanizeLaunchFailure.
+              message: humanizeLaunchFailure(rawError),
               code: "SDK_ERROR",
             });
             // Finalize through flushFinal (NOT a bare turn.done emit): the
@@ -1664,7 +1676,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
       }
       return { ok: false, error: "No system/init message received" };
     } catch (err) {
-      return { ok: false, error: (err as Error).message };
+      return { ok: false, error: humanizeLaunchFailure((err as Error).message) };
     }
   }
 }

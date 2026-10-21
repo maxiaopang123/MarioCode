@@ -25,6 +25,10 @@ import { createRequire } from "node:module";
 import { basename as pathBasename, join } from "node:path";
 import { getManagedRuntimeRoot, listManagedVersions } from "@main/runtimes/managedRuntimeRoots.js";
 import {
+  dropUnusableManagedVersions,
+  type PayloadProbe,
+} from "@main/runtimes/payloadGuard.js";
+import {
   getRuntimeSelection,
   noteAutoPick,
 } from "@main/runtimes/runtimeSelection.js";
@@ -81,6 +85,12 @@ export function codexVendorTriple(): string | null {
   return vendorTriple();
 }
 
+/** Payload probe for a managed codex version dir (see payloadGuard.ts). */
+const codexPayloadProbe: PayloadProbe = (dir) => {
+  const entry = findBinaryInPackage(dir);
+  return entry ? { entry, isBinary: true } : null;
+};
+
 /**
  * Resolve the codex binary path. "auto" (default) and "managed" share this
  * order (TODO-057: external mode and local-install detection were removed):
@@ -98,6 +108,10 @@ export function resolveCodexBinaryPath(): string | null {
   const auto = selection.mode === "auto";
   const managedRoot = getManagedRuntimeRoot();
   if (managedRoot) {
+    // Drop torn installs (a truncated binary exists but cannot spawn) so the
+    // resolver never hands a dead path to spawn and the panel offers a real
+    // reinstall. Same guard as sdkBinaryPath.ts for Claude.
+    dropUnusableManagedVersions("codex", codexPayloadProbe);
     for (const version of listManagedVersions("codex")) {
       const dir = join(managedRoot, "codex", version);
       const found = findBinaryInPackage(dir);

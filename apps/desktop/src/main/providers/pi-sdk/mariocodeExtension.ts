@@ -64,6 +64,7 @@ import {
 } from "@main/lib/askQuestion.js";
 import { PI_IDENTITY_PROMPT, joinPromptSections } from "@main/lib/systemPrompt.js";
 import {
+  BROWSER_PARAM_DESC,
   BUILTIN_TOOL_SPECS,
   NO_BUILTIN_TOOLS,
   builtinToolNeedsApproval,
@@ -963,6 +964,7 @@ function registerBuiltinTools(
       parameters: Type.Object({
         query: Type.String({ description: "搜索关键词" }),
         count: Type.Optional(Type.Number({ description: "返回条数,1–10,默认按设置" })),
+        browser: Type.Optional(Type.Boolean({ description: BROWSER_PARAM_DESC })),
       }),
       async execute(toolCallId, params) {
         return run(BUILTIN_TOOL_SPECS.mario_web_search.name, toolCallId, params);

@@ -101,6 +101,7 @@ import {
   browserToolsUsagePrompt,
 } from "@main/browser/agentBrowserTools.js";
 import {
+  BROWSER_PARAM_DESC,
   BUILTIN_TOOL_SPECS,
   builtinToolNeedsApproval,
   builtinToolsUsagePrompt,
@@ -999,6 +1000,7 @@ function buildDynamicTools(browserToolsEnabled: boolean, builtinFlags: BuiltinTo
           properties: {
             query: { type: "string", description: "搜索关键词" },
             count: { type: "number", description: "返回条数,1–10,默认按设置" },
+            browser: { type: "boolean", description: BROWSER_PARAM_DESC },
           },
           required: ["query"],
         },

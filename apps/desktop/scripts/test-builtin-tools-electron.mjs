@@ -130,7 +130,13 @@ try {
 
   const mcp = await evaluate("window.api.mcp.list({})");
   const builtins = mcp.servers.filter((s) => s.scope === "builtin").map((s) => `${s.name}:${s.enabled}`);
-  assert.deepEqual(builtins, ["mariocode-browser:true", "mariocode-image:true", "mariocode-web:true"]);
+  assert.deepEqual(builtins, [
+    "mariocode-browser:true",
+    "mariocode-image:true",
+    "mariocode-schedule:true",
+    "mariocode-web:true",
+    "mariocode-wechat:true",
+  ]);
   ok(`MCP built-in rows: ${builtins.join(", ")}`);
 
   await evaluate("window.api.mcp.toggle({ name: 'mariocode-web', scope: 'builtin', enabled: false })");

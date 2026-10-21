@@ -29,7 +29,7 @@ export async function invokeBuiltinTool(
   switch (name) {
     case BUILTIN_TOOL_SPECS.mario_web_search.name:
       return flags.web
-        ? webSearch(args)
+        ? webSearch(args, { sessionId: ctx.sessionId })
         : refusal(`${BUILTIN_TOOL_SPECS.mario_web_search.name}(网页搜索)已停用(设置 → MarioTool)。`);
     case BUILTIN_TOOL_SPECS.mario_web_fetch.name:
       return flags.web

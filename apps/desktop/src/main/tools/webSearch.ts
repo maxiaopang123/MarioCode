@@ -3,19 +3,25 @@
  * mario_web_fetch's job, so a search costs a few hundred tokens instead of a
  * results page's 10K+.
  *
- * Backends: Bing (default) and Baidu read the engine's own results page in a
- * hidden window and need no key. 博查 / 智谱 / Tavily / Exa / Brave are
- * optional search APIs that need the user's key (Brave may need a proxy from
- * mainland networks). A keyed backend that fails (missing / bad key, quota,
- * network) falls back to Bing and the result says so, rather than leaving the
- * model with nothing.
+ * Order of attempts: the search APIs first (博查 / 智谱 / Tavily / Exa / Brave,
+ * each needs the user's key; Brave may need a proxy from mainland networks) -
+ * the chosen one, then every other API that has a saved key. Only an error
+ * moves on to the next: a valid answer with zero hits is returned as is, so
+ * one search never turns into several requests.
+ *
+ * Bing / Baidu (read from the engine's own results page in a hidden window)
+ * are the last resort and only run when the model passes `browser: true`,
+ * which its prompt allows only after the user agreed in the conversation. The
+ * code cannot check that agreement, but it never touches the browser without
+ * the flag, and refuses the flag in unattended runs where nobody can answer.
  */
 import type { WebContents } from "electron";
-import type { WebSearchBackend, WebSearchKeyedBackend } from "@contracts/ipc";
+import { WEB_SEARCH_KEYED_BACKENDS, type WebSearchBackend, type WebSearchKeyedBackend } from "@contracts/ipc";
 import { engineFetch } from "@main/network/engineProxy.js";
 import { matchSearchEngine } from "@main/browser/searchEngines.js";
 import { log } from "@main/lib/logger.js";
 import { readBuiltinToolSecret, readBuiltinToolsConfig } from "./builtinToolsConfig.js";
+import { isUnattendedSession } from "./unattended.js";
 import { evalInPage, withHiddenPage } from "./webPage.js";
 import { WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_SNIPPET_CHARS, type BuiltinToolResult } from "./builtinToolSpecs.js";
 
@@ -29,9 +35,24 @@ export interface SearchHit {
 
 export interface SearchOutcome {
   hits: SearchHit[];
+  /** The backend that actually answered (an API, or Bing / Baidu in the browser). */
   backend: WebSearchBackend;
-  /** Set when the configured keyed backend failed and Bing answered instead. */
+  /** Set when the first backend tried failed and another one answered. */
   fallback?: { from: WebSearchBackend; error: string };
+}
+
+/** No search API could answer (none has a key, or every one failed) and the
+ *  browser fallback was not allowed. The tool turns this into a message that
+ *  tells the model to ask the user before retrying with `browser: true`. */
+export class SearchApiUnavailable extends Error {
+  constructor(readonly attempts: Array<{ backend: WebSearchBackend; error: string }>) {
+    super(
+      attempts.length
+        ? `搜索 API 都失败了:${attempts.map((a) => `${a.backend}:${a.error}`).join(";")}`
+        : "没有可用的搜索 API(还没有填 Key)",
+    );
+    this.name = "SearchApiUnavailable";
+  }
 }
 
 export const WEB_SEARCH_BACKEND_LABEL: Record<WebSearchBackend, string> = {
@@ -330,27 +351,58 @@ function tidy(hits: SearchHit[], count: number): SearchHit[] {
   return out;
 }
 
-/** Run a search with the configured backend (or `backend`), falling back to
- *  Bing when a keyed backend fails. Cached for 10 minutes per query unless
- *  `noCache` (the settings page's test button, right after a key change). */
+/** The search APIs to try, in order: the chosen one (when it is an API and has
+ *  a key), then every other API that has a saved key. */
+function apiOrder(chosen: WebSearchBackend): WebSearchKeyedBackend[] {
+  const withKey = WEB_SEARCH_KEYED_BACKENDS.filter((id) => !!readBuiltinToolSecret(id));
+  const first = withKey.filter((id) => id === chosen);
+  return [...first, ...withKey.filter((id) => id !== chosen)];
+}
+
+/** Run a search: the APIs in `apiOrder` first, each only after the previous
+ *  one errored; with `opts.browser` the Bing / Baidu results page as the last
+ *  resort (the engine named in the setting first, the other one if it fails).
+ *  Without `opts.browser` and with no API answering this throws
+ *  SearchApiUnavailable. Cached for 10 minutes per query unless `noCache`
+ *  (the settings page's test button, right after a key change). */
 export async function runWebSearch(
   query: string,
   count: number,
   backend?: WebSearchBackend,
-  opts: { noCache?: boolean } = {},
+  opts: { noCache?: boolean; browser?: boolean } = {},
 ): Promise<SearchOutcome> {
   const chosen = backend ?? readBuiltinToolsConfig().search.backend;
-  const cacheKey = `${chosen}\u0000${count}\u0000${query}`;
+  const cacheKey = `${chosen}\u0000${count}\u0000${opts.browser ? "b" : "a"}\u0000${query}`;
   const cached = opts.noCache ? undefined : cache.get(cacheKey);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.outcome;
-  let outcome: SearchOutcome;
-  try {
-    outcome = { hits: tidy(await searchOnce(chosen, query, count), count), backend: chosen };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    if (chosen === "bing" || chosen === "baidu") throw new Error(`${WEB_SEARCH_BACKEND_LABEL[chosen]}搜索失败:${error}`);
-    log.warn(`mario_web_search: ${chosen} failed (${error}); falling back to bing`);
-    outcome = { hits: tidy(await searchOnce("bing", query, count), count), backend: "bing", fallback: { from: chosen, error } };
+
+  const failures: Array<{ backend: WebSearchBackend; error: string }> = [];
+  let outcome: SearchOutcome | null = null;
+  const attempt = async (id: WebSearchBackend): Promise<boolean> => {
+    try {
+      const hits = tidy(await searchOnce(id, query, count), count);
+      outcome = { hits, backend: id, ...(failures[0] ? { fallback: { from: failures[0].backend, error: failures[0].error } } : {}) };
+      return true;
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      log.warn(`mario_web_search: ${id} failed (${error})`);
+      failures.push({ backend: id, error });
+      return false;
+    }
+  };
+
+  for (const id of apiOrder(chosen)) {
+    if (await attempt(id)) break;
+  }
+  if (!outcome) {
+    if (!opts.browser) throw new SearchApiUnavailable(failures);
+    const engines: Array<"bing" | "baidu"> = chosen === "baidu" ? ["baidu", "bing"] : ["bing", "baidu"];
+    for (const id of engines) {
+      if (await attempt(id)) break;
+    }
+  }
+  if (!outcome) {
+    throw new Error(failures.map((f) => `${WEB_SEARCH_BACKEND_LABEL[f.backend]}搜索失败:${f.error}`).join(";"));
   }
   cache.set(cacheKey, { at: Date.now(), outcome });
   if (cache.size > CACHE_MAX) {
@@ -364,8 +416,28 @@ function text(t: string): BuiltinToolResult {
   return { content: [{ type: "text", text: t }] };
 }
 
-/** The mario_web_search tool. */
-export async function webSearch(args: { query?: unknown; count?: unknown }): Promise<BuiltinToolResult> {
+/** What the model is told when no search API could answer. The browser
+ *  fallback needs the user's yes in the conversation first; in an unattended
+ *  run (scheduled task / ClawBot DM) nobody can answer, so it is not offered. */
+function apiUnavailableMessage(err: SearchApiUnavailable, unattended: boolean): string {
+  const cause = err.attempts.length ? err.message : "还没有填任何搜索 API 的 Key";
+  if (unattended) {
+    return `❌ 搜索 API 不可用(${cause})。这是无人值守的运行,没有人可以确认,不能改用浏览器搜索。请如实告知查不到,并建议在 设置 → MarioTool 里填一个搜索 API 的 Key。不要换关键词重试。`;
+  }
+  return (
+    `❌ 搜索 API 不可用(${cause})。` +
+    "可以改用浏览器读取搜索引擎结果页,但必须先问用户是否接受(用户在本会话里已经同意过就不必再问);" +
+    "用户同意后,带 browser=true 再调用一次本工具。用户没同意或拒绝,就如实告诉用户暂时查不到,并建议在 设置 → MarioTool 里填一个搜索 API 的 Key。" +
+    "不要在用户回答之前换关键词重试。"
+  );
+}
+
+/** The mario_web_search tool. `ctx.sessionId` lets it tell an unattended run
+ *  (where nobody can agree to the browser fallback) from an interactive one. */
+export async function webSearch(
+  args: { query?: unknown; count?: unknown; browser?: unknown },
+  ctx: { sessionId?: string } = {},
+): Promise<BuiltinToolResult> {
   const query = clean(args.query).slice(0, 300);
   if (!query) return text("❌ query 不能为空");
   const config = readBuiltinToolsConfig();
@@ -373,18 +445,25 @@ export async function webSearch(args: { query?: unknown; count?: unknown }): Pro
     typeof args.count === "number" && Number.isFinite(args.count)
       ? Math.min(WEB_SEARCH_MAX_RESULTS, Math.max(1, Math.floor(args.count)))
       : config.search.maxResults;
+  const unattended = isUnattendedSession(ctx.sessionId);
+  const browser = args.browser === true && !unattended;
   let outcome: SearchOutcome;
   try {
-    outcome = await runWebSearch(query, count, config.search.backend);
+    outcome = await runWebSearch(query, count, config.search.backend, { browser });
   } catch (err) {
-    return text(`❌ ${err instanceof Error ? err.message : String(err)}。可以换个关键词重试,或告诉用户暂时无法联网搜索。`);
+    if (err instanceof SearchApiUnavailable) return text(apiUnavailableMessage(err, unattended));
+    return text(`❌ ${err instanceof Error ? err.message : String(err)}。不要反复重试,如实告诉用户暂时无法联网搜索。`);
   }
   const lines: string[] = [];
   if (outcome.fallback) {
-    lines.push(`(${WEB_SEARCH_BACKEND_LABEL[outcome.fallback.from]}搜索失败:${outcome.fallback.error};以下是必应的结果)`);
+    lines.push(
+      `(${WEB_SEARCH_BACKEND_LABEL[outcome.fallback.from]}搜索失败:${outcome.fallback.error};以下是${WEB_SEARCH_BACKEND_LABEL[outcome.backend]}的结果)`,
+    );
   }
   if (outcome.hits.length === 0) {
-    lines.push(`搜索「${query}」(${WEB_SEARCH_BACKEND_LABEL[outcome.backend]})没有结果。可以换个说法或更短的关键词再试。`);
+    lines.push(
+      `搜索「${query}」(${WEB_SEARCH_BACKEND_LABEL[outcome.backend]})没有结果。最多换一个说法再试一次,仍然没有就告诉用户查不到,不要继续换词。`,
+    );
     return text(lines.join("\n"));
   }
   lines.push(`搜索「${query}」(${WEB_SEARCH_BACKEND_LABEL[outcome.backend]},${outcome.hits.length} 条):`);
@@ -394,6 +473,6 @@ export async function webSearch(args: { query?: unknown; count?: unknown }): Pro
     if (h.snippet) lines.push(`   ${h.snippet}`);
     if (meta) lines.push(`   (${meta})`);
   });
-  lines.push("", "需要详细内容时用 mario_web_fetch 读取对应链接;引用时注明来源。");
+  lines.push("", "摘要够回答就直接回答;引用时注明来源。");
   return text(lines.join("\n"));
 }

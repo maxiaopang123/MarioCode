@@ -74,6 +74,7 @@ import {
   MCP_WECHAT_SERVER_NAME,
 } from "@contracts/ipc";
 import {
+  BROWSER_PARAM_DESC,
   BUILTIN_TOOL_SPECS,
   SCHEDULE_FLOW,
   WEB_TOOLS_FLOW,
@@ -576,8 +577,9 @@ async function buildBuiltinToolServers(flags: BuiltinToolFlags, sessionId: strin
           inputSchema: {
             query: z.string().describe("搜索关键词"),
             count: z.number().optional().describe("返回条数,1–10,默认按设置"),
+            browser: z.boolean().optional().describe(BROWSER_PARAM_DESC),
           },
-          handler: async (args: Record<string, unknown>) => webSearch(args),
+          handler: async (args: Record<string, unknown>) => webSearch(args, { sessionId }),
         },
         {
           name: BUILTIN_TOOL_SPECS.mario_web_fetch.name,

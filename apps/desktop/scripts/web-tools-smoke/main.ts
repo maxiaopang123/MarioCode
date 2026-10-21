@@ -65,12 +65,21 @@ async function main(): Promise<void> {
   parserChecks();
   marioToolPolicyChecks();
 
-  // Bing, no key.
+  // No API key and no browser flag: the tool must NOT touch the browser; it
+  // tells the model to ask the user first (offline - nothing is fetched).
   useBackend("bing");
+  const noApi = textOf(await webSearch({ query: "Electron BrowserWindow 文档" }));
+  check(
+    "no API key, no browser flag: nothing is searched, the model is told to ask the user",
+    noApi.startsWith("❌") && noApi.includes("先问用户") && noApi.includes("browser=true") && !/^\d+\. /m.test(noApi),
+    noApi.slice(0, 80),
+  );
+
+  // Browser search (Bing): only when the model passes browser: true.
   let started = Date.now();
-  const bing = textOf(await webSearch({ query: "Electron BrowserWindow 文档" }));
+  const bing = textOf(await webSearch({ query: "Electron BrowserWindow 文档", browser: true }));
   const bingHits = (bing.match(/^\d+\. /gm) ?? []).length;
-  check("mario_web_search via Bing returns results", bingHits >= 3, `${bingHits} hits, ${bing.length} chars, ${Date.now() - started}ms`);
+  check("mario_web_search via Bing (browser: true) returns results", bingHits >= 3, `${bingHits} hits, ${bing.length} chars, ${Date.now() - started}ms`);
   console.log(bing.split("\n").slice(0, 9).map((l) => `    ${l}`).join("\n"));
 
   // Baidu, no key.
@@ -78,18 +87,26 @@ async function main(): Promise<void> {
   started = Date.now();
   let baiduLink: string | undefined;
   try {
-    const outcome = await runWebSearch("Electron 教程", 5, "baidu", { noCache: true });
+    const outcome = await runWebSearch("Electron 教程", 5, "baidu", { noCache: true, browser: true });
     baiduLink = outcome.hits.find((h) => /baidu\.com\/link\?/.test(h.url))?.url;
     report(outcome.hits.length >= 3 ? "PASS" : "WARN", "mario_web_search via Baidu returns results", `${outcome.hits.length} hits, ${Date.now() - started}ms`);
   } catch (err) {
     report("WARN", "mario_web_search via Baidu", err instanceof Error ? err.message : String(err));
   }
 
-  // A keyed backend with a bad key falls back to Bing and says so.
+  // A keyed backend with a bad key: without the browser flag the model is told
+  // to ask the user; with it, Bing answers and the result says so.
   useBackend("bocha");
   writeBuiltinToolSecret("bocha", "sk-invalid-smoke-key");
-  const bocha = textOf(await webSearch({ query: "Electron 版本发布" }));
-  check("bad 博查 key falls back to Bing", bocha.includes("博查搜索失败") && /^\d+\. /m.test(bocha), bocha.split("\n")[0]);
+  const bochaNoBrowser = textOf(await webSearch({ query: "Electron 版本发布" }));
+  check(
+    "bad 博查 key, no browser flag: the API failure is reported and the model is told to ask the user",
+    bochaNoBrowser.startsWith("❌") && bochaNoBrowser.includes("先问用户") && !/^\d+\. /m.test(bochaNoBrowser),
+    bochaNoBrowser.slice(0, 100),
+  );
+  const bocha = textOf(await webSearch({ query: "Electron 版本发布", browser: true }));
+  check("bad 博查 key + browser: true falls back to Bing and says so", bocha.includes("博查搜索失败") && /^\d+\. /m.test(bocha), bocha.split("\n")[0]);
+  writeBuiltinToolSecret("bocha", "");
   useBackend("bing");
 
   // mario_web_fetch: a JS-heavy docs page, then read on from the cache.

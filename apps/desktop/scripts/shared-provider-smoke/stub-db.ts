@@ -29,3 +29,12 @@ export const SettingRepo = {
   get: (key: string): string | null => settings.get(key) ?? null,
   set: (key: string, value: string): void => { settings.set(key, value); },
 };
+// Modules pulled in transitively (canvasStore, tools/unattended) import these;
+// the smokes never reach them, so inert stand-ins are enough.
+export const SessionRepo = {
+  get: (_id: string): undefined => undefined,
+  listByProject: (_projectId: string): never[] => [],
+};
+export const ScheduledTaskRepo = {
+  hasRunningSession: (_sessionId: string): boolean => false,
+};

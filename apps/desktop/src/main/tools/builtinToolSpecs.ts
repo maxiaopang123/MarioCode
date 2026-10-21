@@ -25,6 +25,10 @@ export const WEB_SEARCH_SNIPPET_CHARS = 200;
 export const WEB_FETCH_MIN_CHARS = 1000;
 export const WEB_FETCH_MAX_CHARS = 20000;
 
+/** `browser` parameter of mario_web_search, shared by the three engines' schemas. */
+export const BROWSER_PARAM_DESC =
+  "true=改用浏览器读取搜索引擎结果页。只有搜索 API 不可用、并且用户在对话里同意之后才能传 true;第一次调用不要传";
+
 /** A text content block (MCP TextContent's minimal shape). */
 export interface BuiltinTextBlock {
   type: "text";
@@ -80,8 +84,10 @@ export const BUILTIN_TOOL_SPECS = {
       `联网搜索网页,返回结果的标题、链接和摘要(每条摘要不超过 ${WEB_SEARCH_SNIPPET_CHARS} 字),不返回网页正文。` +
       `适合查最新信息、官方文档地址、报错原因、版本发布情况等。count 可选(1–${WEB_SEARCH_MAX_RESULTS},默认用设置里的条数)。` +
       `需要某条结果的详细内容时,再用 ${FETCH} 读取它的链接。` +
+      "默认通过搜索 API 查询(用户在设置里填的 Key)。API 都不可用时工具会说明,此时要先问用户是否接受浏览器读取搜索引擎结果页," +
+      "用户同意后再带 browser=true 调用;不要未经同意就传 browser=true。" +
       "由 MarioCode 在本机执行,不依赖模型端点:引擎自带的搜索工具不可用、报错或没有结果时,用它顶上。只读。",
-    promptSnippet: `${SEARCH}({query, count?}): 联网搜索,只回标题/链接/摘要(自带搜索不可用时用它)`,
+    promptSnippet: `${SEARCH}({query, count?, browser?}): 联网搜索,只回标题/链接/摘要;走搜索 API,API 不可用时先问用户再带 browser=true`,
   },
   mario_web_fetch: {
     name: FETCH,
@@ -213,9 +219,13 @@ export const NO_BUILTIN_TOOLS: BuiltinToolFlags = { web: false, image: false, sc
  *  prompt section below. The engine's own WebSearch / WebFetch keep their
  *  native names. */
 export const WEB_TOOLS_FLOW =
-  "与引擎自带联网工具的分工:如果你还有引擎自带的搜索 / 网页读取工具(如 WebSearch、WebFetch),可以先用它们;" +
-  `自带工具不存在、报错、返回空结果或明显不可用(很多第三方模型端点不支持)时,改用这里的 ${SEARCH} / ${FETCH} 顶上,不要放弃搜索、也不要凭记忆作答。` +
-  `使用 MarioTool 时:先 ${SEARCH} 看摘要,只对真正需要的一两条结果调用 ${FETCH},不要一次抓很多网页;长文按结果末尾给出的 offset 续读,不要调大 maxChars 一次读完。` +
+  "联网搜索的顺序:先用你自带的搜索(如 WebSearch,或模型端点自带的联网能力);" +
+  `自带搜索不存在、报错或返回空结果时,改用这里的 ${SEARCH},不要对同一个问题两套都搜,也不要放弃搜索、凭记忆作答。` +
+  `${SEARCH} 默认走搜索 API。API 不可用时工具会告诉你:这时必须先问用户是否接受浏览器读取搜索引擎结果页` +
+  "(用户在本会话里已经同意过就不必再问),同意后才带 browser=true 再调用;用户没同意,就如实告知查不到,不要自行改用浏览器搜索。" +
+  "无人值守的运行(定时任务、微信)没有人能回答,不能用浏览器搜索。" +
+  `摘要够回答就直接回答;只对真正需要原文的一两条结果调用 ${FETCH},不要一次抓很多网页;长文按结果末尾给出的 offset 续读,不要调大 maxChars 一次读完。` +
+  "同一问题换词最多再试一次,仍然没有就告诉用户查不到,不要继续换词。" +
   `回答里用到网上的信息时附上来源链接。不要用浏览器工具打开搜索引擎代替 ${SEARCH}。`;
 
 /** Scheduled-task flow guidance (prompt section + mariocode-schedule instructions). */

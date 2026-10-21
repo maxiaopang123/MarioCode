@@ -22,7 +22,7 @@ import {
   writeBuiltinToolSecret,
   writeBuiltinToolsConfig,
 } from "@main/tools/builtinToolsConfig.js";
-import { runWebSearch } from "@main/tools/webSearch.js";
+import { runWebSearch, SearchApiUnavailable } from "@main/tools/webSearch.js";
 
 export function registerBuiltinToolsHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(IPC.BUILTIN_TOOLS_GET, () => builtinToolsState());
@@ -65,8 +65,12 @@ export function registerBuiltinToolsHandlers(ipcMain: IpcMain): void {
     const { query } = BuiltinToolsTestSearchSchema.parse(raw);
     const backend = readBuiltinToolsConfig().search.backend;
     const started = Date.now();
+    // The button tests what the setting names: Bing / Baidu run the browser on
+    // purpose, an API is tried without the browser fallback so a missing or
+    // bad key shows up instead of being papered over.
+    const browser = backend === "bing" || backend === "baidu";
     try {
-      const outcome = await runWebSearch(query, 5, backend, { noCache: true });
+      const outcome = await runWebSearch(query, 5, backend, { noCache: true, browser });
       const first = outcome.hits[0];
       return {
         ok: outcome.hits.length > 0 && !outcome.fallback,
@@ -77,7 +81,13 @@ export function registerBuiltinToolsHandlers(ipcMain: IpcMain): void {
         ms: Date.now() - started,
       };
     } catch (err) {
-      return { ok: false, backend, count: 0, error: err instanceof Error ? err.message : String(err), ms: Date.now() - started };
+      const error =
+        err instanceof SearchApiUnavailable && err.attempts.length === 0
+          ? "还没有保存 Key"
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      return { ok: false, backend, count: 0, error, ms: Date.now() - started };
     }
   });
 }

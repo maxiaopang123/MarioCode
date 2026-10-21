@@ -53,6 +53,14 @@ import {
   type SharedProviderDiscoveryResult,
 } from "./sharedProvider.js";
 import {
+  BuiltinRelaySetAdminTokenInputSchema,
+  BuiltinRelayPushInputSchema,
+  type BuiltinRelayStatus,
+  type BuiltinRelayPushResult,
+  type BuiltinRelaySetAdminTokenInput,
+} from "./builtinRelay.js";
+export { BuiltinRelaySetAdminTokenInputSchema, BuiltinRelayPushInputSchema };
+import {
   PluginsSetEnabledSchema,
   type PluginsListResult,
   type PluginsSetEnabledInput,
@@ -5395,6 +5403,15 @@ export interface RpcMap {
   "sharedProviders.save": (input: SharedProviderSaveInput) => Promise<{ providers: SharedProviderPublic[] }>;
   "sharedProviders.remove": (input: SharedProviderRemoveInput) => Promise<{ providers: SharedProviderPublic[] }>;
   "sharedProviders.discoverModels": (input: SharedProviderDiscoverInput) => Promise<SharedProviderDiscoveryResult>;
+  /** Built-in relay (TODO-074): current config, provenance and admin state. */
+  "builtinRelay.status": () => Promise<BuiltinRelayStatus>;
+  /** Fetch `/relay-config.json` now; failures leave the cached list in place. */
+  "builtinRelay.refresh": () => Promise<BuiltinRelayStatus>;
+  /** Store the admin token encrypted; only `hasAdminToken` is ever returned. */
+  "builtinRelay.setAdminToken": (input: BuiltinRelaySetAdminTokenInput) => Promise<BuiltinRelayStatus>;
+  "builtinRelay.clearAdminToken": () => Promise<BuiltinRelayStatus>;
+  /** Push an edited config to the relay server (overwrites the published one). */
+  "builtinRelay.push": (input: { config: BuiltinRelayStatus["config"] }) => Promise<BuiltinRelayPushResult>;
   // Claude Code plugins: read the CLI's own install state, flip enabledPlugins.
   "plugins.list": () => Promise<PluginsListResult>;
   "plugins.setEnabled": (input: PluginsSetEnabledInput) => Promise<{ ok: boolean; error?: string }>;
@@ -5770,6 +5787,11 @@ export const IPC = {
   SHARED_PROVIDERS_SAVE: "sharedProviders:save",
   SHARED_PROVIDERS_REMOVE: "sharedProviders:remove",
   SHARED_PROVIDERS_DISCOVER_MODELS: "sharedProviders:discoverModels",
+  BUILTIN_RELAY_STATUS: "builtinRelay:status",
+  BUILTIN_RELAY_REFRESH: "builtinRelay:refresh",
+  BUILTIN_RELAY_SET_ADMIN_TOKEN: "builtinRelay:setAdminToken",
+  BUILTIN_RELAY_CLEAR_ADMIN_TOKEN: "builtinRelay:clearAdminToken",
+  BUILTIN_RELAY_PUSH: "builtinRelay:push",
   PLUGINS_LIST: "plugins:list",
   PLUGINS_SET_ENABLED: "plugins:setEnabled",
   SCHEDULER_LIST: "scheduler:list",

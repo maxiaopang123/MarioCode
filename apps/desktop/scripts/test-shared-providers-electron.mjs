@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { DatabaseSync } from "node:sqlite";
-import { mkdir, mkdtemp, readFile, writeFile, access } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, writeFile, access } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { spawn } from "node:child_process";
 import { startSharedProviderFixture } from "./shared-provider-http-fixture.mjs";
@@ -18,6 +18,23 @@ const data = await mkdtemp(join(base, "run-"));
 const localPiDir = join(data, ".pi", "agent");
 await mkdir(localPiDir, { recursive: true });
 const localModels = JSON.stringify({ providers: {}, preservationMarker: "unchanged" });
+// A packaged-style run (no ELECTRON_RENDERER_URL) resolves Claude's native
+// binary from the managed runtime dir `<userData>/runtimes/claude/<version>`,
+// and this profile is brand new. Seed it from the checkout's platform package
+// so the protocol-wire turns below do not depend on the machine's own
+// MarioCode profile having a downloaded runtime.
+const binarySuffix = `${process.platform}-${process.arch}`;
+const sdkPkgDir = dirname(createRequire(require.resolve("@anthropic-ai/claude-agent-sdk")).resolve(`@anthropic-ai/claude-agent-sdk-${binarySuffix}/package.json`));
+const sdkPkgVersion = JSON.parse(await readFile(join(sdkPkgDir, "package.json"), "utf8")).version;
+const claudeRuntimeDir = join(data, "runtimes", "claude", sdkPkgVersion);
+const claudeBinaryName = process.platform === "win32" ? "claude.exe" : "claude";
+await mkdir(claudeRuntimeDir, { recursive: true });
+await cp(join(sdkPkgDir, claudeBinaryName), join(claudeRuntimeDir, claudeBinaryName));
+await writeFile(join(claudeRuntimeDir, "install.json"), JSON.stringify({ agent: "claude", version: sdkPkgVersion, installedAt: new Date().toISOString(), npmName: `@anthropic-ai/claude-agent-sdk-${binarySuffix}`, source: "test-seed" }, null, 2));
+/** TODO-074: the built-in relay is prepended to every shared-provider list, so
+ *  "the provider this test created" is always the first row that is NOT it. */
+const BUILTIN_RELAY_ID = "00000000-0000-4000-8000-000000000001";
+const userProviderOf = (list) => list.providers.find((provider) => provider.id !== BUILTIN_RELAY_ID);
 await writeFile(join(localPiDir, "models.json"), localModels);
 const fixtureKey = "test-only-shared-key-not-a-real-credential";
 const fixture = await startSharedProviderFixture({ metrics: process.argv.includes("--metrics") });
@@ -119,7 +136,32 @@ try {
   } while (Date.now() < settingsDeadline);
   await writeFile(join(data, "settings-dom.txt"), text);
   assert.ok(text.includes("公用模型提供商"), "Shared providers is the default model settings page");
-  await evaluate("[...document.querySelectorAll('button')].find(b=>b.innerText.trim()==='新增提供商').click()");
+
+  // 内置中转站: offered to everyone, address locked in code, key-only editing.
+  const relayList = await evaluate("window.api.sharedProviders.list()");
+  assert.equal(relayList.providers[0].id, BUILTIN_RELAY_ID, "built-in relay heads the provider list");
+  assert.equal(relayList.providers[0].baseUrl, "https://ai.marioya.cc.cd", "relay address comes from the code constant");
+  assert.equal(relayList.providers[0].hasApiKey, false, "a fresh install has no relay key");
+  await evaluate(`[...document.querySelectorAll('.settings-provider-list button')].find(b=>b.textContent.includes(${JSON.stringify(relayList.providers[0].name)}))?.click()`);
+  await delay(250);
+  assert.equal(
+    await evaluate("[...document.querySelectorAll('input')].find(i=>i.value==='https://ai.marioya.cc.cd')?.disabled"),
+    true,
+    "the relay address is read-only in the UI",
+  );
+  assert.ok(
+    !await evaluate("[...document.querySelectorAll('button')].some(b=>b.innerText.trim()==='删除')"),
+    "the relay card cannot be deleted",
+  );
+  assert.ok(
+    await evaluate("[...document.querySelectorAll('button')].some(b=>b.innerText.trim()==='保存并测试')"),
+    "the relay card offers save + test for the personal key",
+  );
+  await evaluate("window.api.sharedProviders.remove({id:'" + BUILTIN_RELAY_ID + "'}).catch(()=>{})");
+  assert.equal((await evaluate("window.api.sharedProviders.list()")).providers[0].id, BUILTIN_RELAY_ID, "the relay survives a delete attempt");
+  // The relay card is now selected, so the list header's short 「新增」 button is
+  // the one that opens a blank draft (the empty-state 「新增提供商」 is gone).
+  await evaluate("[...document.querySelectorAll('.settings-provider-list button')].find(b=>b.innerText.trim()==='新增').click()");
   await delay(250);
   async function fill(label, value) {
     await evaluate(`[...document.querySelectorAll('label')].find(l=>l.textContent.trim().startsWith(${JSON.stringify(label)})).querySelector('input').focus()`);
@@ -127,6 +169,15 @@ try {
   }
   async function check(label) {
     await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)}).click()`);
+    await delay(80);
+  }
+  // A blank draft already enables every engine (TODO-062 default), so assert a
+  // target state instead of assuming the chip starts off.
+  async function setPressed(label, pressed) {
+    await evaluate(`(() => {
+      const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)});
+      if (b && b.getAttribute('aria-pressed') !== ${JSON.stringify(pressed)}) b.click();
+    })()`);
     await delay(80);
   }
   await fill("提供商名称", "共享验证（仅测试配置）");
@@ -140,7 +191,7 @@ try {
   assert.equal(await evaluate("[...document.querySelectorAll('li')].find(l=>l.querySelector('input[aria-label=\"模型 ID（与服务商一致）\"]'))?.textContent.includes('Pi：Chat')"), true);
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Codex').disabled"), false, "Codex supports the model's Chat interface through the bridge");
   await evaluate("[...[...document.querySelectorAll('li')].find(l=>l.querySelector('input[aria-label=\"模型 ID（与服务商一致）\"]')).querySelectorAll('button')].find(b=>b.textContent.trim()==='Responses').click()");
-  await check("Codex");
+  await setPressed("Codex", "true");
   await check("OpenAI Responses");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Codex').getAttribute('aria-pressed')"), "true", "Protocol edits must preserve engine choice");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='保存公用配置').disabled"), false, "Disabling Responses still permits the selected Chat interface");
@@ -166,11 +217,11 @@ try {
   let saved;
   do {
     saved = await evaluate("window.api.sharedProviders.list()");
-    if (saved.providers.length === 1) break;
+    if (saved.providers.length === 2) break;
     await delay(200);
   } while (Date.now() < saveUntil);
-  assert.equal(saved.providers.length, 1, `UI save failed: ${await evaluate("document.body.innerText")}`);
-  const provider = saved.providers[0];
+  assert.equal(saved.providers.length, 2, `UI save failed: ${await evaluate("document.body.innerText")}`);
+  const provider = userProviderOf(saved);
   assert.equal(provider.hasApiKey, true);
   assert.ok(!JSON.stringify(saved).includes(fixtureKey));
   const runtimeId = `shared_${provider.id.replaceAll("-", "")}`;
@@ -205,11 +256,11 @@ try {
   await delay(150);
   assert.ok(await evaluate("[...document.querySelectorAll('input')].some(i=>i.value==='http-discovered-model')"), "Discovery selection merges into the form");
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.innerText.trim()==='保存公用配置').click()");
-  while (!(await evaluate("window.api.sharedProviders.list()")).providers[0]?.models.some((model) => model.id === "http-discovered-model")) {
+  while (!userProviderOf(await evaluate("window.api.sharedProviders.list()"))?.models.some((model) => model.id === "http-discovered-model")) {
     if (Date.now() > discoveryUntil) throw new Error("Discovered HTTP model was not saved");
     await delay(100);
   }
-  const afterDiscovery = (await evaluate("window.api.sharedProviders.list()")).providers[0];
+  const afterDiscovery = userProviderOf(await evaluate("window.api.sharedProviders.list()"));
   assert.deepEqual(afterDiscovery.models.find((m) => m.id === "http-discovered-model").interfaces, ["chat-completions"]);
   assert.deepEqual(afterDiscovery.models.find((m) => m.id === "fixture-model").interfaces, ["chat-completions", "responses"], "Existing model interfaces survive discovery");
 

@@ -30,6 +30,7 @@ import { registerMobileHandlers } from "./mobile.js";
 import { registerRelayHandlers } from "./relay.js";
 import { registerVoiceHandlers } from "./voice.js";
 import { registerSharedProviderHandlers } from "./sharedProviders.js";
+import { registerBuiltinRelayHandlers } from "./builtinRelay.js";
 import { registerSchedulerHandlers } from "./scheduler.js";
 import { registerClawBotHandlers } from "./clawbot.js";
 import { registerNetworkHandlers } from "./network.js";
@@ -92,6 +93,7 @@ export function registerIpcHandlers(): void {
   registerRelayHandlers(ipc);
   registerVoiceHandlers(ipc);
   registerSharedProviderHandlers(ipc);
+  registerBuiltinRelayHandlers(ipc);
   registerSchedulerHandlers(ipc);
   registerClawBotHandlers(ipc);
   registerNetworkHandlers(ipc);

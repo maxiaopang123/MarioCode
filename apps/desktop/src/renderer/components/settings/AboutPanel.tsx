@@ -5,6 +5,7 @@ import { formatBytes } from "@renderer/lib/format.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
 import { Button } from "@renderer/components/ui/index.js";
 import { PanelHeader } from "./PanelHeader.js";
+import { RelayAdminPanel } from "./RelayAdminPanel.js";
 import {
   IconCopy,
   IconCheck,
@@ -355,6 +356,12 @@ export function AboutPanel() {
           </Button>
         )}
       </div>
+
+      {/* 中转站管理 (TODO-074): publish the built-in relay's model list.
+          Same width as the identity column above so the page stays a single
+          column. Only useful to whoever holds the admin token; useless (and
+          harmless) for everyone else — the push button stays disabled. */}
+      <RelayAdminPanel />
 
       {/* Footer note */}
       <p className="mt-8 flex w-full max-w-md items-center justify-center gap-1.5 text-center text-[0.7143em] leading-relaxed text-content-subtle">

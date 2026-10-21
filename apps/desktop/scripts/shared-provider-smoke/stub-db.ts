@@ -18,7 +18,11 @@ export function getDb() {
           );
           return undefined;
         },
-        run(key: string, value: string) { settings.set(key, value); },
+        run(key: string, value: string) {
+          // DELETE is used by the relay config store (admin token / cache).
+          if (sql.startsWith("DELETE FROM settings")) settings.delete(key);
+          else settings.set(key, value);
+        },
       };
     },
     transaction<T extends () => unknown>(fn: T): T { return fn; },

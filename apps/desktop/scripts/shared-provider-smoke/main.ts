@@ -1,4 +1,12 @@
 import { sharedRuntimeId, SharedProviderSaveInputSchema, resolveSharedModelProtocol } from "@contracts/sharedProvider.js";
+import {
+  BUILTIN_RELAY_AGENTS,
+  BUILTIN_RELAY_BASE_URL,
+  BUILTIN_RELAY_ID,
+  BUILTIN_RELAY_PROTOCOLS,
+  RelayConfigSchema,
+} from "@contracts/builtinRelay.js";
+import { RelayConfigStore } from "@main/lib/relayConfigStore.js";
 import { anthropicToOpenAI, translateReasoningEffort } from "@main/providers/bridge/requestTranslator.js";
 import { anthropicToResponses } from "@main/providers/bridge/responsesRequestTranslator.js";
 import { ResponsesToAnthropicSse } from "@main/providers/bridge/responsesResponseTranslator.js";
@@ -75,19 +83,100 @@ check("Pi Messages preserves a hostname named v1", normalizePiRegisteredModel({ 
 check("Pi Chat preserves versioned API base", normalizePiRegisteredModel({ id: "m", api: "openai-completions", baseUrl: "https://example.invalid/v1" }).baseUrl === "https://example.invalid/v1");
 check("Pi Responses preserves versioned API base", normalizePiRegisteredModel({ id: "m", api: "openai-responses", baseUrl: "https://example.invalid/v1" }).baseUrl === "https://example.invalid/v1");
 const saved = SharedProviderStore.save({ ...base, apiKey: "TEST_SECRET_DO_NOT_PERSIST" });
-check("saving freezes inherited model interfaces", JSON.stringify(saved[0]!.models[0]!.interfaces) === JSON.stringify(base.protocols));
+// TODO-074: the built-in relay is prepended to every listing, so the row this
+// test created is the second entry, not the first.
+const userProvider = (): NonNullable<ReturnType<typeof SharedProviderStore.listPublic>[number]> =>
+  SharedProviderStore.listPublic().find((provider) => provider.id !== BUILTIN_RELAY_ID)!;
+/** Stable id, so assertions after a remove() can still name the provider. */
+const userProviderId = userProvider().id;
+check("saving freezes inherited model interfaces", JSON.stringify(userProvider().models[0]!.interfaces) === JSON.stringify(base.protocols));
 check("duplicate per-model interfaces are rejected", !SharedProviderSaveInputSchema.safeParse({ ...base, models: [{ id: "duplicates", interfaces: ["responses", "responses"] }] }).success);
 check("Codex can enable a chat-only endpoint", SharedProviderSaveInputSchema.safeParse({ ...base, protocols: ["chat-completions"], endpointOverrides: {}, enabledAgents: ["codex"] }).success);
 check("URL query secrets cannot enter public metadata", !SharedProviderSaveInputSchema.safeParse({ ...base, baseUrl: "https://example.invalid/v1?api_key=secret" }).success);
 check("duplicate model IDs are rejected", !SharedProviderSaveInputSchema.safeParse({ ...base, models: [{ id: "same" }, { id: "same" }] }).success);
-check("new provider is saved", saved.length === 1 && saved[0]!.hasApiKey);
+check("new provider is saved", saved.length === 2 && userProvider().hasApiKey);
 check("metadata never contains plaintext key", !rawSettings().includes("TEST_SECRET_DO_NOT_PERSIST"));
-check("runtime id is stable and slash-free", /^shared_[0-9a-f]{32}$/.test(sharedRuntimeId(saved[0]!.id)));
-check("metadata API does not expose key", !("apiKey" in saved[0]!));
-check("key resolves only in main store", SharedProviderStore.resolveApiKey(saved[0]!.id) === "TEST_SECRET_DO_NOT_PERSIST");
-check("endpoint without override falls back to baseUrl", SharedProviderStore.endpointUrl(saved[0]!, "chat-completions") === base.baseUrl);
-check("endpoint override wins", SharedProviderStore.endpointUrl(saved[0]!, "anthropic") === base.endpointOverrides.anthropic);
-const runtimeId = sharedRuntimeId(saved[0]!.id);
+check("runtime id is stable and slash-free", /^shared_[0-9a-f]{32}$/.test(sharedRuntimeId(userProvider().id)));
+check("metadata API does not expose key", !("apiKey" in userProvider()));
+check("key resolves only in main store", SharedProviderStore.resolveApiKey(userProvider().id) === "TEST_SECRET_DO_NOT_PERSIST");
+check("endpoint without override falls back to baseUrl", SharedProviderStore.endpointUrl(userProvider(), "chat-completions") === base.baseUrl);
+check("endpoint override wins", SharedProviderStore.endpointUrl(userProvider(), "anthropic") === base.endpointOverrides.anthropic);
+
+// ── 内置中转站 (TODO-074) ──────────────────────────────────────────────────
+// One reserved provider row: address/protocols/engines fixed in code, models
+// delivered by the relay's published config, and the user's own key as the
+// only editable field.
+const relayRow = SharedProviderStore.listPublic()[0]!;
+check("built-in relay is listed first", relayRow.id === BUILTIN_RELAY_ID);
+check("relay address is the code constant", relayRow.baseUrl === BUILTIN_RELAY_BASE_URL);
+check("relay exposes all three protocols", JSON.stringify(relayRow.protocols) === JSON.stringify(BUILTIN_RELAY_PROTOCOLS));
+check("relay is offered to all three engines", JSON.stringify(relayRow.enabledAgents) === JSON.stringify(BUILTIN_RELAY_AGENTS));
+check("relay starts without a user key", relayRow.hasApiKey === false);
+check("relay ships a bundled model list", relayRow.models.length > 0);
+const relayDraft = {
+  name: relayRow.name,
+  baseUrl: relayRow.baseUrl,
+  protocols: [...relayRow.protocols],
+  models: relayRow.models,
+  enabledAgents: [...relayRow.enabledAgents],
+};
+const afterRelayKey = SharedProviderStore.save({ ...relayDraft, id: BUILTIN_RELAY_ID, apiKey: "RELAY_USER_SECRET" });
+check("relay key is stored against the reserved id", SharedProviderStore.resolveApiKey(BUILTIN_RELAY_ID) === "RELAY_USER_SECRET");
+check("relay save adds no provider row", afterRelayKey.length === 2 && afterRelayKey[0]!.id === BUILTIN_RELAY_ID && afterRelayKey[0]!.hasApiKey);
+check("relay key never lands in plaintext metadata", !rawSettings().includes("RELAY_USER_SECRET"));
+let relayRedirectBlocked = false;
+try {
+  SharedProviderStore.save({ ...relayDraft, id: BUILTIN_RELAY_ID, baseUrl: "https://attacker.example.invalid" });
+} catch (error) {
+  relayRedirectBlocked = error instanceof Error && error.message.includes("不能修改");
+}
+check("relay address cannot be redirected", relayRedirectBlocked);
+let relayRemoveBlocked = false;
+try { SharedProviderStore.remove(BUILTIN_RELAY_ID); } catch { relayRemoveBlocked = true; }
+check("relay cannot be deleted", relayRemoveBlocked && SharedProviderStore.listPublic()[0]!.id === BUILTIN_RELAY_ID);
+
+// The published document may decide the model list and nothing else.
+check("relay config rejects a document that names an address",
+  !RelayConfigSchema.safeParse({ version: 1, baseUrl: "https://attacker.example.invalid", models: [{ id: "m" }] }).success);
+check("relay config rejects duplicate model ids",
+  !RelayConfigSchema.safeParse({ version: 1, models: [{ id: "m" }, { id: "m" }] }).success);
+check("relay config accepts a plain model list",
+  RelayConfigSchema.safeParse({ version: 1, name: "中转站", models: [{ id: "m", interfaces: ["chat-completions"] }] }).success);
+
+const fetched = await RelayConfigStore.refresh({
+  fetch: async () => new Response(JSON.stringify({ version: 1, models: [{ id: "remote-model", label: "Remote" }] }), { status: 200 }),
+});
+check("relay refresh adopts the published list", fetched.config.models[0]!.id === "remote-model" && fetched.source === "remote");
+check("the shared-provider list reflects the refreshed models",
+  SharedProviderStore.listPublic()[0]!.models[0]!.id === "remote-model");
+let relayAddressMoveRejected = false;
+try {
+  await RelayConfigStore.refresh({
+    fetch: async () => new Response(JSON.stringify({ version: 1, baseUrl: "https://attacker.example.invalid", models: [{ id: "m" }] }), { status: 200 }),
+  });
+} catch { relayAddressMoveRejected = true; }
+check("relay refresh rejects a document that tries to move the address",
+  relayAddressMoveRejected && SharedProviderStore.listPublic()[0]!.models[0]!.id === "remote-model");
+
+let relayPushWithoutToken = false;
+try {
+  await RelayConfigStore.push({ version: 1, models: [{ id: "pushed-model" }] as never });
+} catch (error) {
+  relayPushWithoutToken = error instanceof Error && error.message.includes("管理员令牌");
+}
+check("relay push requires an admin token", relayPushWithoutToken);
+RelayConfigStore.setAdminToken("ADMIN_TEST_TOKEN");
+check("admin token is stored encrypted", RelayConfigStore.hasAdminToken() && !rawSettings().includes("ADMIN_TEST_TOKEN"));
+const pushed = await RelayConfigStore.push(
+  { version: 1, models: [{ id: "pushed-model", interfaces: ["chat-completions"] }] },
+  { fetch: async () => new Response("{}", { status: 200 }) },
+);
+check("relay push adopts the accepted config",
+  pushed.status.config.models[0]!.id === "pushed-model" && pushed.added === 1 && pushed.removed === 1);
+RelayConfigStore.clearAdminToken();
+check("admin token can be cleared", !RelayConfigStore.hasAdminToken());
+
+const runtimeId = sharedRuntimeId(userProvider().id);
 const claudeProjection = CustomModelStore.listPublic().find((provider) => provider.id === runtimeId);
 check("Claude projection prefers chat completions", claudeProjection?.protocol === "openai" && claudeProjection.baseUrl === base.baseUrl);
 const codexProjection = (await CodexModelsStore.listPublic()).find((provider) => provider.id === runtimeId);
@@ -134,7 +223,7 @@ check("model interfaces must be enabled by the provider", !SharedProviderSaveInp
 }).success);
 SharedProviderStore.save({
   ...base,
-  id: saved[0]!.id,
+  id: userProvider().id,
   models: [
     { id: "chat-model", interfaces: ["chat-completions"] },
     { id: "responses-model", interfaces: ["responses"] },
@@ -149,18 +238,18 @@ check("Claude receives models with compatible interfaces including Responses", J
 check("Codex receives compatible models", JSON.stringify(scopedCodex?.models.map((model) => model.id)) === JSON.stringify(["chat-model", "responses-model"]));
 check("Pi keeps the interface on each projected model", scopedPi?.models?.find((model) => model.id === "responses-model")?.api === "openai-responses");
 check("engine Pi list keeps the Pi-enabled shared provider", Object.keys(PiModelsStore.listShared()).includes(runtimeId));
-SharedProviderStore.save({ ...base, id: saved[0]!.id, apiKey: "TEST_SECRET_DO_NOT_PERSIST" });
+SharedProviderStore.save({ ...base, id: userProvider().id, apiKey: "TEST_SECRET_DO_NOT_PERSIST" });
 let legacyWriteRefused = false;
 try { CustomModelStore.remove(runtimeId); } catch { legacyWriteRefused = true; }
-check("legacy Claude API cannot delete a shared provider", legacyWriteRefused && SharedProviderStore.listPublic().length === 1);
+check("legacy Claude API cannot delete a shared provider", legacyWriteRefused && SharedProviderStore.listPublic().length === 2);
 
 SharedProviderStore.save({
   ...base,
-  id: saved[0]!.id,
+  id: userProvider().id,
   enabledAgents: ["claude", "codex", "pi"],
   apiKey: "ROTATED_TEST_SECRET",
 });
-check("key rotation replaces rather than duplicates plaintext", SharedProviderStore.resolveApiKey(saved[0]!.id) === "ROTATED_TEST_SECRET"
+check("key rotation replaces rather than duplicates plaintext", SharedProviderStore.resolveApiKey(userProvider().id) === "ROTATED_TEST_SECRET"
   && !rawSettings().includes("TEST_SECRET_DO_NOT_PERSIST") && !rawSettings().includes("ROTATED_TEST_SECRET"));
 const piProjection = (await PiModelsStore.listPublic())[runtimeId];
 const piModel = piProjection?.models?.[0];
@@ -168,7 +257,7 @@ check("Pi projection supplies the extension-required model shape", piModel?.name
   && piModel.reasoning === false && JSON.stringify(piModel.input) === JSON.stringify(["text"])
   && piModel.contextWindow === 1_000_000 && piModel.maxTokens === 16_384
   && JSON.stringify(piModel.cost) === JSON.stringify({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }));
-check("shared public schema remains pricing-free", !("cost" in SharedProviderStore.listPublic()[0]!.models[0]!));
+check("shared public schema remains pricing-free", !("cost" in userProvider().models[0]!));
 
 check("models URL appends /models to a versioned base", resolveSharedProviderModelsUrl({
   baseUrl: "https://gateway.example/v1", protocol: "chat-completions",
@@ -235,7 +324,7 @@ check("explicit HTTP gateway models endpoints are supported", customHttpFetched 
 
 let storedAuth = "";
 const discoveredWithStoredKey = await discoverSharedProviderModels({
-  id: saved[0]!.id,
+  id: userProviderId,
   baseUrl: base.baseUrl,
   protocol: "chat-completions",
 }, {
@@ -254,7 +343,7 @@ let changedEndpointFetched = false;
 let changedEndpointBlocked = false;
 try {
   await discoverSharedProviderModels({
-    id: saved[0]!.id,
+    id: userProviderId,
     baseUrl: "https://changed.example.invalid/v1",
     protocol: "chat-completions",
   }, { fetch: async () => { changedEndpointFetched = true; return new Response("{}"); } });
@@ -265,7 +354,7 @@ check("saved key is not reused after an unsaved base URL change", changedEndpoin
 let changedModelsEndpointBlocked = false;
 try {
   await discoverSharedProviderModels({
-    id: saved[0]!.id,
+    id: userProviderId,
     baseUrl: base.baseUrl,
     protocol: "chat-completions",
     modelsEndpoint: "https://example.invalid/different-models",
@@ -279,19 +368,19 @@ let routeSaveBlocked = false;
 try {
   SharedProviderStore.save({
     ...base,
-    id: saved[0]!.id,
+    id: userProviderId,
     baseUrl: "https://changed.example.invalid/v1",
   });
 } catch (error) {
   routeSaveBlocked = error instanceof Error && error.message.includes("API Key");
 }
 check("saving a changed route cannot retain the old encrypted key", routeSaveBlocked
-  && SharedProviderStore.getPublic(saved[0]!.id)?.baseUrl === base.baseUrl
-  && SharedProviderStore.resolveApiKey(saved[0]!.id) === "ROTATED_TEST_SECRET");
+  && SharedProviderStore.getPublic(userProviderId)?.baseUrl === base.baseUrl
+  && SharedProviderStore.resolveApiKey(userProviderId) === "ROTATED_TEST_SECRET");
 let rejectedSaveDiscoveryFetched = false;
 try {
   await discoverSharedProviderModels({
-    id: saved[0]!.id,
+    id: userProviderId,
     baseUrl: "https://changed.example.invalid/v1",
     protocol: "chat-completions",
   }, { fetch: async () => { rejectedSaveDiscoveryFetched = true; return new Response("{}"); } });
@@ -299,13 +388,13 @@ try {
 check("the rejected save cannot be followed by discovery with the old key", !rejectedSaveDiscoveryFetched);
 SharedProviderStore.save({
   ...base,
-  id: saved[0]!.id,
+  id: userProviderId,
   baseUrl: "https://changed.example.invalid/v1",
   apiKey: "NEW_ROUTE_SECRET",
 });
-check("saving a changed route succeeds with an explicitly re-entered key", SharedProviderStore.getPublic(saved[0]!.id)?.baseUrl === "https://changed.example.invalid/v1"
-  && SharedProviderStore.resolveApiKey(saved[0]!.id) === "NEW_ROUTE_SECRET");
-SharedProviderStore.save({ ...base, id: saved[0]!.id, apiKey: "ROTATED_TEST_SECRET" });
+check("saving a changed route succeeds with an explicitly re-entered key", SharedProviderStore.getPublic(userProviderId)?.baseUrl === "https://changed.example.invalid/v1"
+  && SharedProviderStore.resolveApiKey(userProviderId) === "NEW_ROUTE_SECRET");
+SharedProviderStore.save({ ...base, id: userProviderId, apiKey: "ROTATED_TEST_SECRET" });
 const protectedRouteMutations = [
   { modelsEndpoint: "https://models.example.invalid/v1/models" },
   { endpointOverrides: { ...base.endpointOverrides, responses: "https://new-codex.example.invalid/v1" } },
@@ -313,17 +402,17 @@ const protectedRouteMutations = [
 ];
 let protectedRouteChanges = 0;
 for (const mutation of protectedRouteMutations) {
-  try { SharedProviderStore.save({ ...base, id: saved[0]!.id, ...mutation }); }
+  try { SharedProviderStore.save({ ...base, id: userProviderId, ...mutation }); }
   catch (error) { if (error instanceof Error && error.message.includes("API Key")) protectedRouteChanges++; }
 }
 check("new model hosts, override hosts and HTTPS-to-HTTP downgrades require a new key", protectedRouteChanges === protectedRouteMutations.length);
 SharedProviderStore.save({
   ...base,
-  id: saved[0]!.id,
+  id: userProviderId,
   modelsEndpoint: "https://example.invalid/v1/models",
 });
-check("adding a models path on the existing origin keeps the stored key", SharedProviderStore.resolveApiKey(saved[0]!.id) === "ROTATED_TEST_SECRET");
-SharedProviderStore.save({ ...base, id: saved[0]!.id });
+check("adding a models path on the existing origin keeps the stored key", SharedProviderStore.resolveApiKey(userProviderId) === "ROTATED_TEST_SECRET");
+SharedProviderStore.save({ ...base, id: userProviderId });
 const interfaceFingerprintProvider = SharedProviderStore.save({
   ...base,
   name: "Interface Fingerprint Provider",
@@ -341,11 +430,11 @@ check("model and interface edits keep the saved key without re-entry", SharedPro
 SharedProviderStore.remove(interfaceFingerprintProvider.id);
 SharedProviderStore.save({
   ...base,
-  id: saved[0]!.id,
+  id: userProviderId,
   protocols: ["responses", "chat-completions", "anthropic"],
   endpointOverrides: { responses: base.endpointOverrides.responses, anthropic: base.endpointOverrides.anthropic },
 });
-check("route comparison ignores protocol and override object ordering", SharedProviderStore.resolveApiKey(saved[0]!.id) === "ROTATED_TEST_SECRET");
+check("route comparison ignores protocol and override object ordering", SharedProviderStore.resolveApiKey(userProviderId) === "ROTATED_TEST_SECRET");
 
 let temporaryAuth = "";
 const temporaryResult = await discoverSharedProviderModels({
@@ -433,19 +522,19 @@ addSession("session-pi", null, `${runtimeId}/synthetic-model`);
 addSession("session-codex", null, `${runtimeId}/synthetic-model`);
 SharedProviderStore.save({
   ...base,
-  id: saved[0]!.id,
+  id: userProviderId,
   enabledAgents: ["claude"],
   models: [{ id: "replacement-model" }],
 });
-check("referenced provider can still drop models and agents", SharedProviderStore.getPublic(saved[0]!.id)?.models[0]?.id === "replacement-model");
+check("referenced provider can still drop models and agents", SharedProviderStore.getPublic(userProviderId)?.models[0]?.id === "replacement-model");
 
-corruptSharedKey(saved[0]!.id);
-check("corrupt ciphertext reports no usable key", SharedProviderStore.listPublic()[0]!.hasApiKey === false);
+corruptSharedKey(userProviderId);
+check("corrupt ciphertext reports no usable key", SharedProviderStore.listPublic().find((provider) => provider.id === userProviderId)!.hasApiKey === false);
 let corruptSaveBlocked = false;
-try { SharedProviderStore.save({ ...base, id: saved[0]!.id }); } catch { corruptSaveBlocked = true; }
+try { SharedProviderStore.save({ ...base, id: userProviderId }); } catch { corruptSaveBlocked = true; }
 check("corrupt saved key requires replacement on save", corruptSaveBlocked);
-SharedProviderStore.remove(saved[0]!.id);
-check("provider referenced by sessions can be removed", SharedProviderStore.getPublic(saved[0]!.id) === null);
+SharedProviderStore.remove(userProviderId);
+check("provider referenced by sessions can be removed", SharedProviderStore.getPublic(userProviderId) === null);
 
 // Bridge reasoning_effort translation
 check("default request has no reasoning_effort", anthropicToOpenAI({ model: "test", messages: [], max_tokens: 1000 }).reasoning_effort === undefined);

@@ -32,6 +32,7 @@ import { warmRuntimeDiscovery } from "@main/runtimes/runtimeSelection.js";
 import { sweepManagedRuntimes } from "@main/runtimes/runtimeInstaller.js";
 import { startSkillSyncEngine, setSkillSyncChangeListener } from "@main/lib/skillSync.js";
 import { startMcpSyncEngine, setMcpSyncChangeListener } from "@main/lib/mcpSync.js";
+import { RelayConfigStore } from "@main/lib/relayConfigStore.js";
 import { join } from "node:path";
 import { HTML_PREVIEW_SCHEME, registerHtmlPreviewScheme, registerHtmlPreviewProtocol } from "@main/lib/htmlPreview.js";
 
@@ -202,6 +203,12 @@ app.whenReady().then(async () => {
   void awaitDb().then(() => startMcpSyncEngine()).catch((err) =>
     log.error(`mcp sync engine failed to start: ${(err as Error).message}`),
   );
+  // 内置中转站 (TODO-074): refresh the published model list in the background.
+  // The bundled/cached list is already in use by the time this runs, so a slow
+  // or blocked network never delays startup or the settings page.
+  void awaitDb()
+    .then(() => RelayConfigStore.refreshQuietly())
+    .catch((err) => log.error(`relay config refresh failed: ${(err as Error).message}`));
   clawBotStartupPromise = awaitDb().then(async () => {
     if (clawBotQuitRequested) return;
     await clawBotChatGateway.start(app.getPath("userData"), clawBotService);

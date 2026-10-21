@@ -10,7 +10,9 @@ import {
   type SharedProviderPublic,
   type SharedProviderSaveInput,
 } from "@contracts/sharedProvider";
+import { BUILTIN_RELAY_ID, builtinRelayProvider, isBuiltinRelayId } from "@contracts/builtinRelay";
 import { getDb } from "@main/store/db.js";
+import { currentConfig as currentRelayConfig } from "@main/lib/relayConfigStore.js";
 
 const META_KEY = "sharedProviders.meta";
 const SECRET_KEY = "sharedProviders.keys";
@@ -58,7 +60,15 @@ function encryptRequired(value: string): string {
 
 export function listPublic(): SharedProviderPublic[] {
   const keys = parseKeys();
-  return parseMeta().map((provider) => ({ ...provider, hasApiKey: decryptCipher(keys[provider.id]) !== null }));
+  // The built-in relay (TODO-074) is prepended and NEVER persisted as a
+  // provider row: its address/protocols/engines are constants in
+  // @contracts/builtinRelay and its model list comes from the remote config.
+  // Only the user's personal key is stored, under the reserved id.
+  const builtin = builtinRelayProvider(currentRelayConfig(), decryptCipher(keys[BUILTIN_RELAY_ID]) !== null);
+  const stored = parseMeta()
+    .filter((provider) => !isBuiltinRelayId(provider.id))
+    .map((provider) => ({ ...provider, hasApiKey: decryptCipher(keys[provider.id]) !== null }));
+  return [builtin, ...stored];
 }
 
 export function getPublic(id: string): SharedProviderPublic | null {
@@ -85,8 +95,37 @@ export function endpointUrl(provider: SharedProviderPublic, protocol: SharedProv
   return provider.endpointOverrides?.[protocol] ?? provider.baseUrl;
 }
 
+/**
+ * The built-in relay accepts exactly one edit: the user's own API key. The
+ * address, protocols and engines are constants (`@contracts/builtinRelay`) and
+ * the model list is delivered by the remote config, so a draft that carries a
+ * different address is either a stale renderer or a hostile one. Refuse it
+ * loudly instead of ignoring the field — a silently-dropped address would also
+ * mean a key stored for a host the user did not intend.
+ */
+function saveBuiltinRelayKey(value: SharedProviderSaveInput): SharedProviderPublic[] {
+  const expected = builtinRelayProvider(currentRelayConfig(), false);
+  if (value.baseUrl !== expected.baseUrl) {
+    throw new Error("内置中转站的接口地址由程序固定，不能修改");
+  }
+  if (value.modelsEndpoint) throw new Error("内置中转站不支持自定义模型接口地址");
+  if (value.endpointOverrides && Object.keys(value.endpointOverrides).length > 0) {
+    throw new Error("内置中转站不支持按协议自定义接口地址");
+  }
+  const apiKey = (value.apiKey ?? "").trim();
+  if (apiKey.length === 0) throw new Error("请填写你的中转站 API Key");
+  const keys = parseKeys();
+  keys[BUILTIN_RELAY_ID] = encryptRequired(apiKey);
+  writeBoth(
+    parseMeta().filter((provider) => !isBuiltinRelayId(provider.id)),
+    keys,
+  );
+  return listPublic();
+}
+
 export function save(input: SharedProviderSaveInput): SharedProviderPublic[] {
   const value = SharedProviderSaveInputSchema.parse(input);
+  if (isBuiltinRelayId(value.id)) return saveBuiltinRelayKey(value);
   const providers = parseMeta();
   const keys = parseKeys();
   const id = value.id ?? randomUUID();
@@ -127,6 +166,9 @@ export function save(input: SharedProviderSaveInput): SharedProviderPublic[] {
 }
 
 export function remove(id: string): SharedProviderPublic[] {
+  // The relay card is part of the app, not user data. Deleting it would just
+  // resurrect on the next list() call, so say so instead of pretending.
+  if (isBuiltinRelayId(id)) throw new Error("内置中转站不能删除");
   const providers = parseMeta();
   if (!providers.some((provider) => provider.id === id)) throw new Error(`Shared provider not found: ${id}`);
   // Sessions still pointing at a removed provider fail their next turn with

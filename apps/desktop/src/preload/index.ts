@@ -707,6 +707,15 @@ const api = {
     remove: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_REMOVE, input)) as RpcMap["sharedProviders.remove"],
     discoverModels: ((input) => ipcRenderer.invoke(IPC.SHARED_PROVIDERS_DISCOVER_MODELS, input)) as RpcMap["sharedProviders.discoverModels"],
   },
+  /** 内置中转站 (TODO-074): remote model list + admin push. The user's relay
+   *  key is saved through `sharedProviders.save`, not here. */
+  builtinRelay: {
+    status: (() => ipcRenderer.invoke(IPC.BUILTIN_RELAY_STATUS)) as RpcMap["builtinRelay.status"],
+    refresh: (() => ipcRenderer.invoke(IPC.BUILTIN_RELAY_REFRESH)) as RpcMap["builtinRelay.refresh"],
+    setAdminToken: ((input) => ipcRenderer.invoke(IPC.BUILTIN_RELAY_SET_ADMIN_TOKEN, input)) as RpcMap["builtinRelay.setAdminToken"],
+    clearAdminToken: (() => ipcRenderer.invoke(IPC.BUILTIN_RELAY_CLEAR_ADMIN_TOKEN)) as RpcMap["builtinRelay.clearAdminToken"],
+    push: ((input) => ipcRenderer.invoke(IPC.BUILTIN_RELAY_PUSH, input)) as RpcMap["builtinRelay.push"],
+  },
   /** Claude Code plugins (settings → 插件): the CLI owns install state; this
    *  only lists it and flips `enabledPlugins`. */
   plugins: {

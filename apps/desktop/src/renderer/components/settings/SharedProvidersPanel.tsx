@@ -31,6 +31,8 @@ import { cn } from "@renderer/lib/cn.js";
 import { getProviderIcon } from "@renderer/lib/providerIcon.js";
 import { projectAvatarColor } from "@renderer/lib/projectAvatar.js";
 import { ProjectAvatar } from "@renderer/components/layout/ProjectAvatar.js";
+import { BuiltinRelaySection } from "./BuiltinRelaySection.js";
+import { isBuiltinRelayId } from "@contracts/builtinRelay";
 import { PanelHeader } from "./PanelHeader.js";
 
 /**
@@ -267,6 +269,18 @@ export function SharedProvidersPanel() {
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
+  /** The relay card saved its personal key (or re-fetched its model list).
+   *  Re-seed the draft from the returned row so the form shows 「已配置」 and
+   *  the engine catalogs pick up the (possibly changed) model list. */
+  async function relaySaved(next: SharedProviderPublic[]) {
+    setProviders(next);
+    setError(null);
+    setDiscoveryError(null);
+    setDirty(false);
+    const relay = next.find((p) => isBuiltinRelayId(p.id));
+    if (relay) setDraft(draftOf(relay));
+    await reloadConsumers();
+  }
   async function importOld(entry: LegacyProviderEntry) {
     setBusy(true); setError(null);
     try {
@@ -499,6 +513,14 @@ export function SharedProvidersPanel() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       <span className="min-w-0 truncate text-[13px] font-medium text-content">{p.name}</span>
+                      {isBuiltinRelayId(p.id) && (
+                        <span
+                          className="shrink-0 rounded bg-accent/12 px-1 py-px text-[10px] font-medium leading-tight text-accent-strong"
+                          title={t("settings.shared.relay.badgeHint")}
+                        >
+                          {t("settings.shared.relay.badge")}
+                        </span>
+                      )}
                       <span
                         className={cn("ml-auto h-1.5 w-1.5 shrink-0 rounded-full", p.hasApiKey ? "bg-accent" : "bg-warning")}
                         title={t(p.hasApiKey ? "settings.shared.keyStored" : "settings.shared.noKey")}
@@ -533,6 +555,10 @@ export function SharedProvidersPanel() {
               <IconPlus size={14} />{t("settings.shared.add")}
             </Button>
           </div>
+        ) : selected && isBuiltinRelayId(selected.id) ? (
+          /* 内置中转站: address/protocols/engines/models are fixed; only the
+             user's own API Key is editable. */
+          <BuiltinRelaySection provider={selected} busy={busy} onSaved={(next) => void relaySaved(next)} />
         ) : (
           <form className="flex min-w-0 flex-col" onSubmit={(e) => { e.preventDefault(); void save(); }}>
             {/* Form header: identity + actions. Kept at the top (not a sticky

@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="zh" class="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MarioCode 中转站 · 用户端 + 管理端原型</title>
+<!--
+  MarioCode 内置中转站 · 原型稿
+  ─────────────────────────────────────────────────────────────
+  页面 1 · 用户端:设置 → 模型 → 公共提供商里的「MarioCode 中转站」
+         用户唯一要填的是 Key;地址 / 协议 / 模型 / 引擎均只读。
+  页面 2 · 管理端:设置 → 系统 → 关于 → 「中转站配置」
+         编辑地址、协议、引擎、模型表格,推送前看差异,一键直推服务器。
+
+  配色与圆角取自 settings-pages-redesign.html 的同名令牌。
+-->
+<style>
+/* ── 令牌 ─────────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box}
+html.light{
+  --surface:255 255 255;
+  --surface-muted:240 242 246;
+  --surface-hover:226 229 235;
+  --content:9 9 11;
+  --content-muted:63 63 70;
+  --content-subtle:113 113 122;
+  --edge:213 216 222;
+  --panel-edge:222 225 231;
+  --input-edge:202 205 212;
+  --accent:5 150 105;
+  --accent-strong:4 120 87;
+  --danger:220 38 38;
+  --warning:180 83 9;
+  --info:124 58 237;
+  --success:4 120 87;
+  color-scheme:light;
+}
+html.dark{
+  --surface:26 29 36;
+  --surface-muted:44 49 60;
+  --surface-hover:58 64 78;
+  --content:231 232 236;
+  --content-muted:188 191 198;
+  --content-subtle:158 162 171;
+  --edge:45 51 64;
+  --panel-edge:45 51 64;
+  --input-edge:95 99 110;
+  --accent:16 185 129;
+  --accent-strong:16 185 129;
+  --danger:248 113 113;
+  --warning:251 191 36;
+  --info:167 139 250;
+  --success:16 185 129;
+  color-scheme:dark;
+}
+html{
+  --right-panel-font-size:14px;
+  --rp-fs-md:calc(var(--right-panel-font-size) * 0.9286);
+  --rp-fs-sm:calc(var(--right-panel-font-size) * 0.8571);
+  --rp-fs-xs:calc(var(--right-panel-font-size) * 0.7857);
+  --rp-fs-xxs:calc(var(--right-panel-font-size) * 0.7143);
+  --r-card:8px;
+  --r-ctl:6px;
+  --sh-card:0 1px 2px rgb(0 0 0 / .04);
+  --sh-pop:0 10px 30px rgb(0 0 0 / .13),0 2px 8px rgb(0 0 0 / .07);
+  --app-font:-apple-system,blinkmacsystemfont,"SF Pro Text","Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono-font:ui-monospace,SFMono-Regular,Menlo,Consolas,"Cascadia Mono",monospace;
+}
+body{
+  margin:0;
+  background:rgb(var(--surface-muted));
+  color:rgb(var(--content));
+  font-family:var(--app-font);
+  font-size:var(--right-panel-font-size);
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input,textarea{font:inherit;color:inherit}
+svg.i{flex:none;display:block}
+:focus-visible{outline:2px solid rgb(var(--accent) / .65);outline-offset:1px;border-radius:4px}
+.mono{font-family:var(--mono-font)}
+.num{font-variant-numeric:tabular-nums}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:rgb(var(--content-subtle) / .28);border-radius:99px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ── 控制条(原型工具,不是产品 UI) ─────────────────────────────────── */
+.tools{
+  position:sticky;top:0;z-index:50;height:44px;display:flex;align-items:center;gap:14px;
+  padding:0 14px;background:#14161c;color:#c9cdd6;font-family:var(--mono-font);font-size:11.5px;
+  border-bottom:1px solid #2a2e38;
+}
+.tools .brand{color:#e7e9ee;font-weight:600;letter-spacing:.02em}
+.tools .sep{width:1px;height:20px;background:#2a2e38}
+.tools label{color:#8b93a3}
+.seg{display:flex;align-items:center;gap:2px;background:#1e222b;border:1px solid #2f3440;border-radius:6px;padding:2px}
+.seg button{color:#98a0b0;padding:3px 9px;border-radius:4px;font-size:11.5px}
+.seg button[data-on]{background:#303643;color:#fff}
+.tools .grow{flex:1}
+.tools .hint{color:#6c7484}
+
+/* ── 应用框架 ─────────────────────────────────────────────────────── */
+.settings-root{display:flex;height:calc(100vh - 44px);background:rgb(var(--surface-muted))}
+.nav{width:240px;flex:none;background:rgb(var(--surface-muted));overflow-y:auto;padding:12px 8px}
+.nav .grp{font-size:var(--rp-fs-xxs);font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:rgb(var(--content-subtle));padding:14px 12px 4px}
+.nav .grp:first-child{padding-top:4px}
+.nav .ni{
+  position:relative;display:flex;width:100%;align-items:center;gap:8px;padding:7px 12px;border-radius:6px;
+  text-align:left;color:rgb(var(--content-muted));font-size:var(--rp-fs-md);
+}
+.nav .ni:hover{background:rgb(var(--surface-hover));color:rgb(var(--content))}
+.nav .ni[data-on]{background:rgb(var(--surface-hover));color:rgb(var(--content));font-weight:500}
+.nav .ni[data-on]::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:2px;height:16px;border-radius:99px;background:rgb(var(--accent))}
+.nav .ni svg{color:rgb(var(--content-subtle))}
+.nav .ni[data-on] svg{color:rgb(var(--accent))}
+
+.stage{
+  flex:1;min-width:0;background:rgb(var(--surface));border-top-left-radius:24px;border-bottom-left-radius:24px;
+  padding:0 24px 24px;overflow-y:auto;
+}
+.panel{max-width:920px;margin:0 auto;height:100%;display:flex;flex-direction:column;min-height:0}
+
+/* ── 页头 ─────────────────────────────────────────────────────────── */
+.phead{
+  position:sticky;top:0;z-index:10;margin-top:20px;padding:10px 0;display:flex;align-items:center;gap:16px;
+  border-bottom:1px solid rgb(var(--edge));background:rgb(var(--surface));
+}
+.phead h2{margin:0;font-size:var(--rp-fs-md);font-weight:600;display:flex;align-items:center;gap:8px;min-width:0}
+.phead h2 svg{color:rgb(var(--accent))}
+.phead .act{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+
+/* ── 卡片 ─────────────────────────────────────────────────────────── */
+.stack{display:flex;flex-direction:column;gap:14px;padding-top:14px}
+.card{
+  border:1px solid rgb(var(--edge));border-radius:var(--r-card);background:rgb(var(--surface));box-shadow:var(--sh-card);
+}
+.chead{display:flex;align-items:flex-start;gap:10px;padding:13px 14px 0}
+.cico{width:26px;height:26px;flex:none;display:grid;place-items:center;border-radius:8px;background:rgb(var(--surface-muted));color:rgb(var(--content-muted))}
+.ctitle{flex:1;min-width:0;font-size:var(--rp-fs-md);font-weight:600}
+.cdesc{margin-top:3px;font-size:var(--rp-fs-xs);line-height:1.55;color:rgb(var(--content-subtle))}
+.cbody{padding-top:10px}
+.cbody.divided>*+*{border-top:1px solid rgb(var(--edge))}
+.cfoot{border-top:1px solid rgb(var(--edge));padding:9px 14px;display:flex;align-items:center;gap:8px;font-size:var(--rp-fs-xs);color:rgb(var(--content-subtle))}
+
+/* ── 行(标签左 / 控件右) ──────────────────────────────────────────── */
+.row{display:grid;grid-template-columns:minmax(0,1fr) 260px;align-items:center;gap:24px;padding:12px 14px}
+.row .rt{font-size:var(--rp-fs-sm);font-weight:500;color:rgb(var(--content))}
+.row .rd{margin-top:2px;font-size:var(--rp-fs-xs);line-height:1.55;color:rgb(var(--content-subtle))}
+.row .rc{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
+
+/* ── 控件 ─────────────────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;
+  border:1px solid rgb(var(--edge));border-radius:var(--r-ctl);background:rgb(var(--surface));
+  font-size:var(--rp-fs-sm);font-weight:600;color:rgb(var(--content-muted));white-space:nowrap;
+  transition:background .14s,color .14s,border-color .14s;
+}
+.btn:hover{background:rgb(var(--surface-hover)/.7);color:rgb(var(--content))}
+.btn.primary{background:rgb(var(--accent));border-color:rgb(var(--accent));color:#fff}
+.btn.primary:hover{background:rgb(var(--accent)/.88);color:#fff}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:rgb(var(--surface-hover)/.7)}
+.btn.danger{color:rgb(var(--danger));border-color:rgb(var(--danger)/.35)}
+.btn.danger:hover{background:rgb(var(--danger)/.08);color:rgb(var(--danger))}
+.btn.sm{height:26px;padding:0 9px;font-size:var(--rp-fs-xs)}
+.btn.icon{width:28px;padding:0;border-color:transparent;background:transparent;color:rgb(var(--content-subtle))}
+.btn.icon:hover{background:rgb(var(--surface-hover));color:rgb(var(--content))}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.inp{
+  width:100%;height:30px;padding:0 10px;border:1px solid rgb(var(--input-edge));border-radius:var(--r-ctl);
+  background:rgb(var(--surface));font-size:1em;color:rgb(var(--content));outline:none;min-width:0;
+}
+.inp:focus{border-color:rgb(var(--accent))}
+.inp.mono{font-family:var(--mono-font)}
+.inp::placeholder{color:rgb(var(--content-subtle))}
+.inp[readonly]{background:rgb(var(--surface-muted)/.6);color:rgb(var(--content-muted))}
+.badge{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 6px;border-radius:5px;font-size:var(--rp-fs-xxs);font-weight:600;white-space:nowrap}
+.badge.neutral{background:rgb(var(--surface-muted));color:rgb(var(--content-subtle))}
+.badge.accent{background:rgb(var(--accent)/.12);color:rgb(var(--accent))}
+.badge.warn{background:rgb(var(--warning)/.14);color:rgb(var(--warning))}
+.badge.danger{background:rgb(var(--danger)/.12);color:rgb(var(--danger))}
+.badge.info{background:rgb(var(--info)/.14);color:rgb(var(--info))}
+.badge.success{background:rgb(var(--success)/.14);color:rgb(var(--success))}
+.badge.builtin{background:rgb(var(--accent)/.1);color:rgb(var(--accent));border:1px solid rgb(var(--accent)/.25)}
+
+/* ── 密钥输入 ─────────────────────────────────────────────────────── */
+.secret{position:relative;flex:1;min-width:0;display:flex}
+.secret .inp{padding-right:32px}
+.secret .eye{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:26px;height:26px;display:grid;place-items:center;border-radius:4px;color:rgb(var(--content-subtle))}
+.secret .eye:hover{background:rgb(var(--surface-hover));color:rgb(var(--content))}
+
+/* ── 模型表格 ─────────────────────────────────────────────────────── */
+.mtable{border:1px solid rgb(var(--edge));border-radius:var(--r-ctl);overflow:hidden}
+.mhead,.mrow{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) 72px 72px 88px 40px;gap:8px;align-items:center;padding:7px 12px;font-size:var(--rp-fs-xs)}
+.mhead{background:rgb(var(--surface-muted));color:rgb(var(--content-subtle));font-weight:600;font-size:var(--rp-fs-xxs);text-transform:uppercase;letter-spacing:.05em}
+.mrow{border-top:1px solid rgb(var(--edge))}
+.mrow:first-of-type{border-top:0}
+.mrow .mid{font-family:var(--mono-font);font-size:var(--rp-fs-xs);color:rgb(var(--content))}
+.mrow .mlabel{font-size:var(--rp-fs-xs);color:rgb(var(--content-muted))}
+.mrow .mnum{font-family:var(--mono-font);font-size:var(--rp-fs-xs);color:rgb(var(--content-muted));text-align:right;font-variant-numeric:tabular-nums}
+.mrow .mtag{display:flex;gap:4px;flex-wrap:wrap}
+.mtag .badge{height:16px;padding:0 5px;font-size:10px}
+
+/* ── 用户端 · 中转站卡片 ──────────────────────────────────────────── */
+.relay-hero{display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid rgb(var(--edge))}
+.relay-logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,rgb(var(--accent)),rgb(var(--accent-strong)));display:grid;place-items:center;color:#fff;flex:none}
+.relay-meta{flex:1;min-width:0}
+.relay-name{font-size:var(--rp-fs-md);font-weight:600;display:flex;align-items:center;gap:8px}
+.relay-sub{margin-top:2px;font-size:var(--rp-fs-xs);color:rgb(var(--content-subtle))}
+.kv{display:grid;grid-template-columns:minmax(90px,120px) minmax(0,1fr);gap:6px 14px;padding:12px 14px;font-size:var(--rp-fs-xs)}
+.kv dt{color:rgb(var(--content-subtle));font-weight:500}
+.kv dd{margin:0;color:rgb(var(--content-muted))}
+.kv dd .mono{font-size:var(--rp-fs-xxs)}
+
+.hide{display:none !important;visibility:hidden !important;opacity:0 !important;pointer-events:none !important}
+
+/* ── 管理端 · 差异预览 ────────────────────────────────────────────── */
+.diff{border:1px solid rgb(var(--edge));border-radius:var(--r-ctl);overflow:hidden;font-size:var(--rp-fs-xs)}
+.diff .drow{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid rgb(var(--edge))}
+.diff .drow:first-child{border-top:0}
+.diff .drow.add{background:rgb(var(--success)/.06)}
+.diff .drow.del{background:rgb(var(--danger)/.05)}
+.diff .drow.mod{background:rgb(var(--warning)/.05)}
+.diff .dtag{width:44px;flex:none;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+.diff .add .dtag{color:rgb(var(--success))}
+.diff .del .dtag{color:rgb(var(--danger))}
+.diff .mod .dtag{color:rgb(var(--warning))}
+.diff .dcontent{flex:1;min-width:0;color:rgb(var(--content-muted))}
+.diff .dcontent .mono{color:rgb(var(--content))}
+
+/* ── 管理端 · 推送确认弹层 ────────────────────────────────────────── */
+.overlay{position:fixed;inset:0;background:rgb(0 0 0/.4);display:grid;place-items:center;z-index:100;padding:20px}
+.dialog{background:rgb(var(--surface));border-radius:var(--r-card);box-shadow:var(--sh-pop);max-width:560px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden}
+.dialog .dhead{padding:14px 16px;border-bottom:1px solid rgb(var(--edge));display:flex;align-items:center;gap:8px}
+.dialog .dhead h3{margin:0;font-size:var(--rp-fs-md);font-weight:600}
+.dialog .dbody{padding:14px 16px;overflow-y:auto;flex:1}
+.dialog .dfoot{padding:12px 16px;border-top:1px solid rgb(var(--edge));display:flex;align-items:center;gap:8px;justify-content:flex-end}
+
+/* ── 管理员 token 状态 ────────────────────────────────────────────── */
+.token-ok{display:flex;align-items:center;gap:6px;font-size:var(--rp-fs-xs);color:rgb(var(--success))}
+.token-missing{display:flex;align-items:center;gap:6px;font-size:var(--rp-fs-xs);color:rgb(var(--warning))}
+</style>
+</head>
+<body>
+
+<!-- ── 原型控制条 ─────────────────────────────────────────────────── -->
+<div class="tools">
+  <span class="brand">中转站原型</span>
+  <span class="sep"></span>
+  <div class="seg">
+    <button data-on data-view="user">用户端</button>
+    <button data-view="admin">管理端</button>
+  </div>
+  <span class="sep"></span>
+  <div class="seg">
+    <button data-on data-theme="light">浅色</button>
+    <button data-theme="dark">深色</button>
+  </div>
+  <span class="grow"></span>
+  <span class="hint">v0.2.53+ · TODO-074 方案稿</span>
+</div>
+
+<!-- ── 应用框架 ───────────────────────────────────────────────────── -->
+<div class="settings-root">
+  <aside class="nav" id="nav">
+    <!-- 导航由 JS 渲染 -->
+  </aside>
+  <main class="stage">
+    <div class="panel" id="panel">
+      <!-- 页面由 JS 渲染 -->
+    </div>
+  </main>
+</div>
+
+<!-- ── 管理端 · 推送确认弹层(默认隐藏) ────────────────────────────── -->
+<div class="overlay hide" id="pushDialog">
+  <div class="dialog">
+    <div class="dhead">
+      <svg class="i" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1L2 5v6l6 4 6-4V5L8 1z"/><path d="M2 5l6 4 6-4M8 9v6"/></svg>
+      <h3>推送中转站配置</h3>
+    </div>
+    <div class="dbody">
+      <p style="margin:0 0 12px;font-size:var(--rp-fs-sm);color:rgb(var(--content-muted))">
+        将以下更改推送到 <span class="mono">https://api.marioya.cc.cd</span>,线上立即生效,所有用户下次启动应用时获取最新配置。
+      </p>
+      <div class="diff">
+        <div class="drow add">
+          <span class="dtag">新增</span>
+          <span class="dcontent">模型 <span class="mono">claude-opus-5-5</span>(显示名「Claude Opus 5.5」,窗口 1M,推理)</span>
+        </div>
+        <div class="drow add">
+          <span class="dtag">新增</span>
+          <span class="dcontent"><span class="mono">gpt-5-codex</span>(显示名「GPT-5 Codex」,窗口 400k,推理)</span>
+        </div>
+        <div class="drow mod">
+          <span class="dtag">修改</span>
+          <span class="dcontent"><span class="mono">deepseek-v4-pro</span> 窗口 128k → <strong>256k</strong></span>
+        </div>
+        <div class="drow del">
+          <span class="dtag">删除</span>
+          <span class="dcontent"><span class="mono">qwen-3-coder</span>(该模型已下线)</span>
+        </div>
+      </div>
+      <p style="margin:12px 0 0;font-size:var(--rp-fs-xs);color:rgb(var(--content-subtle))">
+        本次推送共 4 处变更。推送后无法撤销,如出错请重新编辑再推一次。
+      </p>
+    </div>
+    <div class="dfoot">
+      <button class="btn ghost" data-close>取消</button>
+      <button class="btn primary" data-close>
+        <svg class="i" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12V4M8 4L4 8M8 4l4 4"/><path d="M2 14h12"/></svg>
+        确认推送
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── 图标 ─────────────────────────────────────────────────────────── */
+const ICONS = {
+  key: '<svg class="i" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2a4 4 0 0 0-3.9 4.9L2 11v3h3l1-1v-2h2l1-1h2v-2h2l1.1-1.1A4 4 0 0 0 10 2z"/><circle cx="11" cy="5" r="1"/></svg>',
+  box: '<svg class="i" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1L2 5v6l6 4 6-4V5L8 1z"/><path d="M2 5l6 4 6-4M8 9v6"/></svg>',
+  check: '<svg class="i" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l4 4 8-8"/></svg>',
+  alert: '<svg class="i" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L1 14h14L8 2z"/><path d="M8 6v4M8 12h.01"/></svg>',
+  info: '<svg class="i" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="7"/><path d="M8 7v5M8 4h.01"/></svg>',
+  eye: '<svg class="i" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2.5"/></svg>',
+  refresh: '<svg class="i" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 8a6 6 0 1 1-2-4.5"/><path d="M14 1v4h-4"/></svg>',
+  plus: '<svg class="i" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v12M2 8h12"/></svg>',
+  trash: '<svg class="i" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M4 4l1 10h6l1-10"/></svg>',
+  robot: '<svg class="i" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="12" height="9" rx="2"/><path d="M8 4V2M5 8h.01M11 8h.01"/><circle cx="8" cy="1" r="1"/></svg>',
+  settings: '<svg class="i" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3"/><path d="M14 8a6 6 0 0 0-.1-1.2l1.6-1.2-1.5-2.6-1.9.8a6 6 0 0 0-2-1.2L9.6.5H6.4l-.5 2.1a6 6 0 0 0-2 1.2l-1.9-.8-1.5 2.6 1.6 1.2A6 6 0 0 0 2 8c0 .4 0 .8.1 1.2l-1.6 1.2 1.5 2.6 1.9-.8a6 6 0 0 0 2 1.2l.5 2.1h3.2l.5-2.1a6 6 0 0 0 2-1.2l1.9.8 1.5-2.6-1.6-1.2c.1-.4.1-.8.1-1.2z"/></svg>',
+  upload: '<svg class="i" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12V4M8 4L4 8M8 4l4 4"/><path d="M2 14h12"/></svg>',
+  shield: '<svg class="i" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1L2 4v5c0 3.5 2.5 5.8 6 7 3.5-1.2 6-3.5 6-7V4L8 1z"/></svg>',
+};
+const ico = (n) => ICONS[n] || '';
+
+/* ── 状态 ─────────────────────────────────────────────────────────── */
+const state = { view: 'user', theme: 'light' };
+
+/* ── 导航 ─────────────────────────────────────────────────────────── */
+const NAV = [
+  { g: '通用', items: [
+    { id: 'appearance', label: '外观', icon: 'settings' },
+    { id: 'notifications', label: '通知', icon: 'settings' },
+  ]},
+  { g: '模型', items: [
+    { id: 'models', label: '模型', icon: 'robot' },
+    { id: 'builtin-tools', label: '内置工具', icon: 'box' },
+  ]},
+  { g: '系统', items: [
+    { id: 'usage', label: '用量统计', icon: 'settings' },
+    { id: 'about', label: '关于', icon: 'info' },
+  ]},
+];
+
+function renderNav() {
+  const active = state.view === 'user' ? 'models' : 'about';
+  document.getElementById('nav').innerHTML = NAV.map((g) =>
+    `<div class="grp">${g.g}</div>` +
+    g.items.map((it) =>
+      `<button class="ni" ${it.id === active ? 'data-on' : ''}>${ico(it.icon)}<span>${it.label}</span></button>`
+    ).join('')
+  ).join('');
+}
+
+/* ── 用户端 · 中转站卡片 ──────────────────────────────────────────── */
+function pageUser() {
+  return `
+    <div class="phead">
+      <h2>${ico('robot')}模型</h2>
+      <div class="act">
+        <button class="btn ghost sm">${ico('plus')}添加提供商</button>
+      </div>
+    </div>
+    <div class="stack">
+      <!-- 内置中转站 -->
+      <section class="card">
+        <div class="relay-hero">
+          <div class="relay-logo">${ico('box')}</div>
+          <div class="relay-meta">
+            <div class="relay-name">MarioCode 中转站 <span class="badge builtin">内置</span></div>
+            <div class="relay-sub">由 MarioCode 官方维护的中转站,预填好模型与协议,填 Key 即用</div>
+          </div>
+          <div style="flex:none;display:flex;align-items:center;gap:8px">
+            <span class="badge success">${ico('check')}已配置</span>
+          </div>
+        </div>
+        <div class="cbody">
+          <div class="kv">
+            <dt>地址</dt>
+            <dd><span class="mono">https://api.marioya.cc.cd</span></dd>
+            <dt>协议</dt>
+            <dd>Anthropic · OpenAI 聊天 · OpenAI Responses</dd>
+            <dt>引擎</dt>
+            <dd>Claude · Codex · Pi</dd>
+            <dt>模型</dt>
+            <dd>12 个,最近更新 2026-10-22</dd>
+          </div>
+          <div class="row" style="border-top:1px solid rgb(var(--edge))">
+            <div>
+              <div class="rt">API Key</div>
+              <div class="rd">你的专属 Key,仅保存在本机,经系统安全存储加密。</div>
+            </div>
+            <div class="rc" style="grid-template-columns:minmax(0,1fr) auto auto">
+              <div class="secret">
+                <input class="inp mono" value="sk-relay-••••••••••••••••" readonly />
+                <button class="eye" title="显示明文">${ico('eye')}</button>
+              </div>
+              <button class="btn sm">重新填写</button>
+              <button class="btn primary sm">${ico('check')}测试连接</button>
+            </div>
+          </div>
+        </div>
+        <div class="cfoot">
+          ${ico('info')}可用模型由应用远程下发,无需手动维护。模型清单变更时应用会自动更新。
+        </div>
+      </section>
+
+      <!-- 普通共享提供商(对比用) -->
+      <section class="card">
+        <div class="relay-hero">
+          <div class="cico" style="width:40px;height:40px;border-radius:10px">${ico('key')}</div>
+          <div class="relay-meta">
+            <div class="relay-name">我的 DeepSeek</div>
+            <div class="relay-sub">自定义共享提供商</div>
+          </div>
+          <div style="flex:none;display:flex;align-items:center;gap:8px">
+            <span class="badge neutral">3 个模型</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+/* ── 管理端 · 中转站配置 ──────────────────────────────────────────── */
+function pageAdmin() {
+  return `
+    <div class="phead">
+      <h2>${ico('info')}关于</h2>
+      <div class="act">
+        <span class="token-ok">${ico('check')}管理员 token 已配置</span>
+        <button class="btn ghost sm">更换 token</button>
+      </div>
+    </div>
+    <div class="stack">
+      <!-- 版本信息 -->
+      <section class="card">
+        <div class="chead">
+          <span class="cico">${ico('box')}</span>
+          <div style="flex:1;min-width:0">
+            <div class="ctitle">MarioCode</div>
+            <div class="cdesc">版本 0.2.53 · 2026-10-21</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 中转站配置(管理端) -->
+      <section class="card">
+        <div class="chead">
+          <span class="cico">${ico('box')}</span>
+          <div style="flex:1;min-width:0">
+            <div class="ctitle">中转站配置</div>
+            <div class="cdesc">编辑后推送到服务器,所有用户下次启动时获取最新配置。地址不可在此修改,防止 Key 被劫持。</div>
+          </div>
+        </div>
+        <div class="cbody">
+          <div class="kv">
+            <dt>名称</dt>
+            <dd><input class="inp" value="MarioCode 中转站" style="max-width:220px" /></dd>
+            <dt>地址</dt>
+            <dd>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input class="inp mono" value="https://api.marioya.cc.cd" readonly style="max-width:280px" />
+                <span class="badge neutral">${ico('shield')}锁定</span>
+              </div>
+            </dd>
+            <dt>协议</dt>
+            <dd style="display:flex;gap:6px">
+              <span class="badge accent">Anthropic</span>
+              <span class="badge accent">OpenAI 聊天</span>
+              <span class="badge accent">OpenAI Responses</span>
+            </dd>
+            <dt>引擎</dt>
+            <dd style="display:flex;gap:6px">
+              <span class="badge accent">Claude</span>
+              <span class="badge accent">Codex</span>
+              <span class="badge accent">Pi</span>
+            </dd>
+          </div>
+
+          <div style="padding:0 14px 12px">
+            <div style="display:flex;align-items:center;gap:8px;padding:12px 0 8px">
+              <span style="font-size:var(--rp-fs-sm);font-weight:600">模型清单</span>
+              <span class="badge neutral">12 个</span>
+              <span style="margin-left:auto"></span>
+              <button class="btn ghost sm">${ico('refresh')}从线上拉取</button>
+              <button class="btn ghost sm">${ico('plus')}添加模型</button>
+            </div>
+            <div class="mtable">
+              <div class="mhead">
+                <span>模型 ID</span><span>显示名</span><span style="text-align:right">窗口</span><span style="text-align:right">推理</span><span>接口</span><span></span>
+              </div>
+              <div class="mrow">
+                <span class="mid">claude-sonnet-5-5</span>
+                <span class="mlabel">Claude Sonnet 5.5</span>
+                <span class="mnum">1M</span>
+                <span class="mnum">✓</span>
+                <span class="mtag"><span class="badge neutral">Anthropic</span></span>
+                <button class="btn icon">${ico('trash')}</button>
+              </div>
+              <div class="mrow">
+                <span class="mid">claude-opus-5-5</span>
+                <span class="mlabel">Claude Opus 5.5</span>
+                <span class="mnum">1M</span>
+                <span class="mnum">✓</span>
+                <span class="mtag"><span class="badge neutral">Anthropic</span></span>
+                <button class="btn icon">${ico('trash')}</button>
+              </div>
+              <div class="mrow">
+                <span class="mid">gpt-5-codex</span>
+                <span class="mlabel">GPT-5 Codex</span>
+                <span class="mnum">400k</span>
+                <span class="mnum">✓</span>
+                <span class="mtag"><span class="badge neutral">Responses</span></span>
+                <button class="btn icon">${ico('trash')}</button>
+              </div>
+              <div class="mrow">
+                <span class="mid">deepseek-v4-pro</span>
+                <span class="mlabel">DeepSeek V4 Pro</span>
+                <span class="mnum">256k</span>
+                <span class="mnum">✓</span>
+                <span class="mtag"><span class="badge neutral">OpenAI 聊天</span></span>
+                <button class="btn icon">${ico('trash')}</button>
+              </div>
+              <div class="mrow">
+                <span class="mid">qwen-3-coder</span>
+                <span class="mlabel">Qwen 3 Coder</span>
+                <span class="mnum">128k</span>
+                <span class="mnum">—</span>
+                <span class="mtag"><span class="badge neutral">OpenAI 聊天</span></span>
+                <button class="btn icon">${ico('trash')}</button>
+              </div>
+              <div class="mrow" style="opacity:.5">
+                <span class="mid" style="color:rgb(var(--content-subtle))">… 还有 7 个</span>
+                <span></span><span></span><span></span><span></span><span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cfoot" style="justify-content:space-between">
+          <span>线上版本:2026-10-21 18:32 · 12 个模型</span>
+          <button class="btn primary sm" id="pushBtn">${ico('upload')}推送到线上</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+/* ── 渲染 ─────────────────────────────────────────────────────────── */
+function render() {
+  document.documentElement.className = state.theme;
+  renderNav();
+  document.getElementById('panel').innerHTML = state.view === 'user' ? pageUser() : pageAdmin();
+  // 管理端推送按钮
+  const pushBtn = document.getElementById('pushBtn');
+  if (pushBtn) pushBtn.addEventListener('click', () => document.getElementById('pushDialog').classList.remove('hide'));
+}
+
+/* ── 控制条交互 ───────────────────────────────────────────────────── */
+document.querySelectorAll('[data-view]').forEach((b) =>
+  b.addEventListener('click', () => {
+    state.view = b.dataset.view;
+    document.querySelectorAll('[data-view]').forEach((x) => x.toggleAttribute('data-on', x === b));
+    render();
+  })
+);
+document.querySelectorAll('[data-theme]').forEach((b) =>
+  b.addEventListener('click', () => {
+    state.theme = b.dataset.theme;
+    document.querySelectorAll('[data-theme]').forEach((x) => x.toggleAttribute('data-on', x === b));
+    render();
+  })
+);
+document.querySelectorAll('[data-close]').forEach((b) =>
+  b.addEventListener('click', () => document.getElementById('pushDialog').classList.add('hide'))
+);
+
+render();
+</script>
+</body>
+</html>

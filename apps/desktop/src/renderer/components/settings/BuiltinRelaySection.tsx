@@ -18,6 +18,7 @@ import {
   IconShieldLock,
   IconBrain,
   IconPhoto,
+  IconWand,
 } from "@renderer/lib/icons.js";
 import { cn } from "@renderer/lib/cn.js";
 
@@ -272,6 +273,9 @@ export function BuiltinRelaySection({
                   <span className="flex shrink-0 items-center gap-1 text-content-subtle">
                     {model.input?.includes("image") && <IconPhoto size={14} aria-label={t("settings.shared.vision")} />}
                     {model.reasoning && <IconBrain size={14} aria-label={t("settings.shared.reasoning")} />}
+                    {model.imageGeneration && (
+                      <IconWand size={14} aria-label={t("settings.shared.imageGenerationShort")} />
+                    )}
                   </span>
                 </li>
               ))}

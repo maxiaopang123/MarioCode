@@ -45,8 +45,12 @@ export function isBuiltinRelayId(id: string | undefined | null): boolean {
  * remote config. Changing the relay (or adding a second one) is a code change
  * plus a release, exactly by design: a "provider" whose address a remote
  * document could move is a credential-exfiltration primitive.
+ *
+ * Bare origin, no `/v1`: the per-protocol URL builders append the version and
+ * path themselves (`/v1/chat/completions`, `/v1/messages`, `/v1/responses`),
+ * so a `…/v1` suffix here would only risk doubling it.
  */
-export const BUILTIN_RELAY_BASE_URL = "https://ai.marioya.cc.cd";
+export const BUILTIN_RELAY_BASE_URL = "http://39.109.58.6:8090";
 
 /** Where clients read the published config from, and where the administrator
  *  panel pushes it to. */
@@ -136,38 +140,29 @@ export const BUILTIN_RELAY_FALLBACK_CONFIG: RelayConfig = {
   version: RELAY_CONFIG_VERSION,
   name: BUILTIN_RELAY_NAME,
   models: [
-    {
-      id: "claude-sonnet-5-5",
-      label: "Claude Sonnet 5.5",
-      interfaces: [...BUILTIN_RELAY_PROTOCOLS],
-      contextWindow: 200_000,
-      reasoning: true,
-      input: ["text", "image"],
-    },
-    {
-      id: "claude-opus-5-5",
-      label: "Claude Opus 5.5",
-      interfaces: [...BUILTIN_RELAY_PROTOCOLS],
-      contextWindow: 1_000_000,
-      reasoning: true,
-      input: ["text", "image"],
-    },
-    {
-      id: "gpt-5-codex",
-      label: "GPT-5 Codex",
-      interfaces: [...BUILTIN_RELAY_PROTOCOLS],
-      contextWindow: 400_000,
-      reasoning: true,
-      input: ["text", "image"],
-    },
-    {
-      id: "deepseek-v4-pro",
-      label: "DeepSeek V4 Pro",
-      interfaces: [...BUILTIN_RELAY_PROTOCOLS],
-      contextWindow: 256_000,
-      reasoning: true,
-      input: ["text"],
-    },
+    { id: "claude-opus-5", interfaces: ["chat-completions", "anthropic", "responses"], reasoning: true, input: ["text", "image"] },
+    { id: "claude-opus-5-5", interfaces: ["chat-completions", "anthropic", "responses"], reasoning: true, input: ["text", "image"] },
+    { id: "claude-sonnet-5", interfaces: ["chat-completions", "anthropic", "responses"], reasoning: true, input: ["text", "image"] },
+    { id: "deepseek-v4-flash", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "deepseek-v4-pro", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "deepseek-v4.1-flash", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "gemini-3.1-flash-image", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
+    { id: "gemini-3.7-flash-high", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "gemini-3.8-flash-high", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"], imageGeneration: true },
+    { id: "glm-5.3", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "glm-5.3-flash", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "gpt-5.6-luna", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "gpt-5.6-sol", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "gpt-5.6-terra", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "gpt-6-astra", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "gpt-6-luna", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "gpt-6-sol", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "gpt-image-2", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"], imageGeneration: true },
+    { id: "gpt-image-2.5-flare", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"], imageGeneration: true },
+    { id: "gpt-image-2.5-sunburst", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"], imageGeneration: true },
+    { id: "k3", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "kimi-k3", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "qwen3.8-flash", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
   ],
 };
 

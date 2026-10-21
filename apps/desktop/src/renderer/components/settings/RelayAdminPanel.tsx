@@ -15,6 +15,9 @@ import { Button, Dialog, Input } from "@renderer/components/ui/index.js";
 import {
   IconAlertTriangle,
   IconCheck,
+  IconChevronDown,
+  IconChevronUp,
+  IconKey,
   IconLoader2,
   IconLock,
   IconPlus,
@@ -32,19 +35,54 @@ import { cn } from "@renderer/lib/cn.js";
  * design). The address is displayed but never editable: it is a code constant,
  * so a compromised admin token cannot repoint anyone's key.
  *
+ * What an administrator can decide per model: id, display name, context
+ * window, which of the three interfaces it speaks, and the three capability
+ * flags (思考 / 读图 / 生图). The ROW ORDER IS THE USER-FACING ORDER of the
+ * model list, so rows can be moved instead of only appended.
+ *
  * Everything the user submits is re-validated in the main process with
  * `RelayConfigSchema`; the local checks here exist only to keep obviously
  * broken drafts from making a round trip.
  */
 const PROTOCOLS: SharedProviderProtocol[] = ["anthropic", "chat-completions", "responses"];
 const SHORT: Record<SharedProviderProtocol, string> = { anthropic: "Messages", "chat-completions": "Chat", responses: "Responses" };
+const TEXT_ONLY = ["text"] as const;
+
+/** Stable per-row identity for selection + reordering. Model ids are not
+ *  unique while a draft is being typed, and reordering must move the whole
+ *  row, including its selection. */
+type Row = { key: string; model: RelayConfigModel };
+let rowSeq = 0;
+const nextKey = () => `relay-row-${++rowSeq}`;
+const toRows = (models: RelayConfigModel[]): Row[] => models.map((model) => ({ key: nextKey(), model: { ...model } }));
+
+/** Capability flag helpers. Each returns a NEW model so React state updates
+ *  stay shallow-copy clean, and deletes the key instead of writing
+ *  `undefined` (`exactOptionalPropertyTypes`). */
+function withReasoning(model: RelayConfigModel, on: boolean): RelayConfigModel {
+  const next = { ...model };
+  if (on) next.reasoning = true;
+  else delete next.reasoning;
+  return next;
+}
+function withVision(model: RelayConfigModel, on: boolean): RelayConfigModel {
+  return { ...model, input: on ? ["text", "image"] : [...TEXT_ONLY] };
+}
+function withImageGen(model: RelayConfigModel, on: boolean): RelayConfigModel {
+  const next = { ...model };
+  if (on) next.imageGeneration = true;
+  else delete next.imageGeneration;
+  return next;
+}
 
 export function RelayAdminPanel() {
   const { t } = useI18n();
   const [status, setStatus] = useState<BuiltinRelayStatus | null>(null);
   const [name, setName] = useState("");
-  const [models, setModels] = useState<RelayConfigModel[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [token, setToken] = useState("");
+  const [revealToken, setRevealToken] = useState(false);
   const [busy, setBusy] = useState<"load" | "refresh" | "push" | "token" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingPush, setPendingPush] = useState<ReturnType<typeof diffRelayConfigs> | null>(null);
@@ -52,7 +90,8 @@ export function RelayAdminPanel() {
   function adopt(next: BuiltinRelayStatus) {
     setStatus(next);
     setName(next.config.name ?? BUILTIN_RELAY_FALLBACK_CONFIG.name ?? "");
-    setModels(next.config.models.map((model) => ({ ...model })));
+    setRows(toRows(next.config.models));
+    setSelected(new Set());
   }
 
   useEffect(() => {
@@ -75,10 +114,11 @@ export function RelayAdminPanel() {
   }, []);
 
   /** Build the draft config; null when it cannot be valid (no models, blank or
-   *  duplicate ids, a model with no interface). Main validates again. */
+   *  duplicate ids, a model with no interface). Main validates again. Row
+   *  order is preserved — that IS the published order. */
   const draftConfig: RelayConfig | null = useMemo(() => {
-    const cleaned: RelayConfigModel[] = models
-      .map((model) => {
+    const cleaned: RelayConfigModel[] = rows
+      .map(({ model }) => {
         const next: RelayConfigModel = { ...model, id: model.id.trim() };
         const label = model.label?.trim();
         if (label) next.label = label;
@@ -94,16 +134,71 @@ export function RelayAdminPanel() {
       ...(name.trim() ? { name: name.trim() } : {}),
       models: cleaned,
     };
-  }, [models, name]);
+  }, [rows, name]);
 
   const diff = useMemo(
     () => (status && draftConfig ? diffRelayConfigs(status.config, draftConfig) : null),
     [status, draftConfig],
   );
   const dirty = !!diff && diff.added.length + diff.changed.length + diff.removed.length > 0;
+  const lock = busy !== null;
 
-  function updateModel(index: number, patch: Partial<RelayConfigModel>) {
-    setModels((current) => current.map((model, i) => (i === index ? { ...model, ...patch } : model)));
+  const selectedCount = useMemo(() => rows.filter((row) => selected.has(row.key)).length, [rows, selected]);
+  const allSelected = rows.length > 0 && selectedCount === rows.length;
+
+  function patchRow(key: string, patch: Partial<RelayConfigModel>) {
+    setRows((current) => current.map((row) => (row.key === key ? { ...row, model: { ...row.model, ...patch } } : row)));
+  }
+
+  /** Apply a capability flag to every selected row — the bulk switches exist
+   *  because a 20-model list should not need 20 clicks per flag. */
+  function bulk(update: (model: RelayConfigModel) => RelayConfigModel) {
+    setRows((current) => current.map((row) => (selected.has(row.key) ? { ...row, model: update(row.model) } : row)));
+  }
+
+  function toggleRow(key: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected((current) => (current.size === rows.length ? new Set() : new Set(rows.map((row) => row.key))));
+  }
+
+  /** Move one row by `delta`; the published order is exactly this order. */
+  function moveRow(key: string, delta: -1 | 1) {
+    setRows((current) => {
+      const index = current.findIndex((row) => row.key === key);
+      const target = index + delta;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const next = [...current];
+      const [moved] = next.splice(index, 1);
+      next.splice(target, 0, moved!);
+      return next;
+    });
+  }
+
+  function removeRow(key: string) {
+    setRows((current) => current.filter((row) => row.key !== key));
+    setSelected((current) => {
+      if (!current.has(key)) return current;
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
+  }
+
+  function addRow() {
+    const row: Row = { key: nextKey(), model: { id: "", interfaces: [...PROTOCOLS] } };
+    setRows((current) => [...current, row]);
+  }
+
+  function stripIpcError(raw: string): string {
+    return raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, "");
   }
 
   async function refreshOnline() {
@@ -113,8 +208,7 @@ export function RelayAdminPanel() {
       adopt(await api.builtinRelay.refresh());
       useToastStore.getState().push({ kind: "info", title: t("settings.about.relay.refreshed"), duration: 4_000 });
     } catch (e) {
-      const raw = e instanceof Error ? e.message : String(e);
-      setError(raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, ""));
+      setError(stripIpcError(e instanceof Error ? e.message : String(e)));
     } finally {
       setBusy(null);
     }
@@ -127,13 +221,23 @@ export function RelayAdminPanel() {
     try {
       adopt(await api.builtinRelay.setAdminToken({ token: token.trim() }));
       setToken("");
+      setRevealToken(false);
       useToastStore.getState().push({ kind: "info", title: t("settings.about.relay.tokenSaved"), duration: 4_000 });
     } catch (e) {
-      const raw = e instanceof Error ? e.message : String(e);
-      setError(raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, ""));
+      setError(stripIpcError(e instanceof Error ? e.message : String(e)));
     } finally {
       setBusy(null);
     }
+  }
+
+  /** Generate a strong token locally so the administrator has something to
+   *  configure on the server; it is NOT auto-saved, they must copy it and
+   *  confirm. Same value has to be set as the server's admin token. */
+  function generateToken() {
+    const bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    setToken([...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join(""));
+    setRevealToken(true);
   }
 
   async function clearToken() {
@@ -142,7 +246,7 @@ export function RelayAdminPanel() {
     try {
       adopt(await api.builtinRelay.clearAdminToken());
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(stripIpcError(e instanceof Error ? e.message : String(e)));
     } finally {
       setBusy(null);
     }
@@ -165,15 +269,19 @@ export function RelayAdminPanel() {
       // shared-provider catalogs so the new list is live without a restart.
       await api.sharedProviders.list();
     } catch (e) {
-      const raw = e instanceof Error ? e.message : String(e);
-      setError(raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, ""));
+      setError(stripIpcError(e instanceof Error ? e.message : String(e)));
       setPendingPush(null);
     } finally {
       setBusy(null);
     }
   }
 
-  const locked = busy !== null;
+  const bulkDisabled = lock || selectedCount === 0;
+  const chipClass = (on: boolean) =>
+    cn(
+      "h-6 rounded-md border px-2 transition-colors",
+      on ? "border-accent/45 bg-accent/10 text-content" : "border-edge text-content-subtle hover:text-content",
+    );
 
   return (
     <div className="mt-8 w-full max-w-md space-y-3" data-relay-admin>
@@ -191,38 +299,38 @@ export function RelayAdminPanel() {
         </p>
       )}
 
-      {/* Admin token */}
+      {/* Admin token — generated locally, never shipped with the app. */}
       <div className="rounded-lg border border-edge p-3">
         <div className="mb-2 flex items-center gap-2">
           <span className="text-[12px] font-medium text-content-muted">{t("settings.about.relay.adminToken")}</span>
           <span
-            className={cn(
-              "h-1.5 w-1.5 rounded-full",
-              status?.hasAdminToken ? "bg-accent" : "bg-warning",
-            )}
+            className={cn("h-1.5 w-1.5 rounded-full", status?.hasAdminToken ? "bg-accent" : "bg-warning")}
             aria-hidden
           />
           <span className="text-[11.5px] text-content-subtle">
             {t(status?.hasAdminToken ? "settings.about.relay.tokenSet" : "settings.about.relay.tokenMissing")}
           </span>
           {status?.hasAdminToken && (
-            <Button type="button" size="sm" variant="ghost" className="ml-auto text-danger hover:bg-danger/10" disabled={locked} onClick={() => void clearToken()}>
+            <Button type="button" size="sm" variant="ghost" className="ml-auto text-danger hover:bg-danger/10" disabled={lock} onClick={() => void clearToken()}>
               {t("settings.about.relay.tokenClear")}
             </Button>
           )}
         </div>
         <div className="flex items-center gap-2">
           <Input
-            type="password"
+            type={revealToken ? "text" : "password"}
             autoComplete="new-password"
             spellCheck={false}
             className="min-w-0 flex-1 font-mono"
             value={token}
-            disabled={locked}
+            disabled={lock}
             placeholder={t("settings.about.relay.tokenPlaceholder")}
             onChange={(e) => setToken(e.target.value)}
           />
-          <Button type="button" size="sm" disabled={locked || token.trim().length === 0} onClick={() => void saveToken()}>
+          <Button type="button" size="sm" variant="ghost" disabled={lock} onClick={generateToken}>
+            <IconKey size={13} />{t("settings.about.relay.tokenGenerate")}
+          </Button>
+          <Button type="button" size="sm" disabled={lock || token.trim().length === 0} onClick={() => void saveToken()}>
             {t("settings.about.relay.tokenSave")}
           </Button>
         </div>
@@ -245,121 +353,216 @@ export function RelayAdminPanel() {
       <div className="rounded-lg border border-edge">
         <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
           <span className="text-[12px] font-medium text-content-muted">
-            {t("settings.about.relay.models", { n: models.length })}
+            {t("settings.about.relay.models", { n: rows.length })}
           </span>
           <span className="ml-auto flex items-center gap-1">
-            <Button type="button" size="sm" variant="ghost" disabled={locked} onClick={() => void refreshOnline()}>
+            <Button type="button" size="sm" variant="ghost" disabled={lock} onClick={() => void refreshOnline()}>
               {busy === "refresh" ? <IconLoader2 size={13} className="animate-spin" /> : <IconRefresh size={13} />}
               {t("settings.about.relay.pullOnline")}
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={locked}
-              onClick={() => setModels((current) => [...current, { id: "", interfaces: [...PROTOCOLS] }])}
-            >
+            <Button type="button" size="sm" variant="ghost" disabled={lock} onClick={addRow}>
               <IconPlus size={13} />{t("settings.shared.addModel")}
             </Button>
           </span>
         </div>
-        <ul className="divide-y divide-edge">
-          {models.map((model, index) => (
-            <li key={index} className="space-y-2 px-3 py-2">
-              <div className="flex items-center gap-2">
-                <Input
-                  aria-label={t("settings.shared.modelId")}
-                  placeholder="gpt-5.1"
-                  spellCheck={false}
-                  className="min-w-0 flex-1 font-mono"
-                  value={model.id}
-                  disabled={locked}
-                  onChange={(e) => updateModel(index, { id: e.target.value })}
-                />
-                <Input
-                  aria-label={t("settings.shared.modelLabel")}
-                  placeholder={t("settings.shared.modelLabelShort")}
-                  className="w-[150px] shrink-0"
-                  value={model.label ?? ""}
-                  disabled={locked}
-                  onChange={(e) => updateModel(index, { label: e.target.value })}
-                />
-                <Input
-                  type="number"
-                  min={1}
-                  step={1000}
-                  aria-label={t("settings.shared.contextWindow")}
-                  placeholder="200000"
-                  className="w-[100px] shrink-0"
-                  value={model.contextWindow ?? ""}
-                  disabled={locked}
-                  onChange={(e) => updateModel(index, { contextWindow: e.target.value ? Number(e.target.value) : undefined })}
-                />
+
+        {/* Multi-select toolbar: one switch flips a whole selection at once. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-edge bg-surface-muted/40 px-3 py-2 text-[11.5px] text-content-subtle">
+          <label className="flex cursor-pointer items-center gap-1.5 text-content-muted">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-accent"
+              aria-label={t("settings.about.relay.selectAll")}
+              checked={allSelected}
+              disabled={lock || rows.length === 0}
+              onChange={toggleAll}
+            />
+            {t("settings.about.relay.selectedCount", { n: selectedCount, m: rows.length })}
+          </label>
+          {(
+            [
+              ["reasoning", withReasoning],
+              ["vision", withVision],
+              ["imageGeneration", withImageGen],
+            ] as const
+          ).map(([flag, apply]) => (
+            <span key={flag} className="flex items-center gap-1">
+              <span>{t(`settings.about.relay.bulk.${flag}`)}</span>
+              {[true, false].map((on) => (
                 <button
+                  key={String(on)}
                   type="button"
-                  title={t("settings.shared.removeModel")}
-                  aria-label={t("settings.shared.removeModel")}
-                  disabled={locked}
-                  onClick={() => setModels((current) => current.filter((_, i) => i !== index))}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-content-subtle transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-40"
-                >
-                  <IconTrash size={14} />
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5 pl-1 text-[11.5px] text-content-subtle">
-                {PROTOCOLS.map((protocol) => {
-                  const on = (model.interfaces ?? PROTOCOLS).includes(protocol);
-                  return (
-                    <button
-                      key={protocol}
-                      type="button"
-                      aria-pressed={on}
-                      disabled={locked || (on && (model.interfaces ?? PROTOCOLS).length === 1)}
-                      onClick={() =>
-                        updateModel(index, {
-                          interfaces: on
-                            ? (model.interfaces ?? PROTOCOLS).filter((value) => value !== protocol)
-                            : [...new Set([...(model.interfaces ?? PROTOCOLS), protocol])],
-                        })
-                      }
-                      className={cn(
-                        "h-6 rounded-md border px-2 transition-colors",
-                        on ? "border-accent/45 bg-accent/10 text-content" : "border-edge text-content-subtle hover:text-content",
-                      )}
-                    >
-                      {SHORT[protocol]}
-                    </button>
-                  );
-                })}
-                <span className="mx-0.5 h-4 w-px bg-edge" aria-hidden />
-                <button
-                  type="button"
-                  aria-pressed={model.reasoning ?? false}
-                  disabled={locked}
-                  onClick={() => updateModel(index, { reasoning: model.reasoning ? undefined : true })}
+                  aria-label={t(`settings.about.relay.bulk.${flag}${on ? "On" : "Off"}`)}
+                  disabled={bulkDisabled}
+                  onClick={() => bulk((model) => apply(model, on))}
                   className={cn(
-                    "h-6 rounded-md border px-2 transition-colors",
-                    model.reasoning ? "border-accent/45 bg-accent/10 text-content" : "border-edge text-content-subtle hover:text-content",
+                    "h-6 rounded-md border border-edge px-1.5 transition-colors hover:text-content disabled:opacity-40",
                   )}
                 >
-                  {t("settings.shared.reasoning")}
+                  {t(on ? "settings.about.relay.on" : "settings.about.relay.off")}
                 </button>
-                <button
-                  type="button"
-                  aria-pressed={model.input?.includes("image") ?? false}
-                  disabled={locked}
-                  onClick={() => updateModel(index, { input: model.input?.includes("image") ? ["text"] : ["text", "image"] })}
-                  className={cn(
-                    "h-6 rounded-md border px-2 transition-colors",
-                    model.input?.includes("image") ? "border-accent/45 bg-accent/10 text-content" : "border-edge text-content-subtle hover:text-content",
-                  )}
-                >
-                  {t("settings.shared.vision")}
-                </button>
-              </div>
-            </li>
+              ))}
+            </span>
           ))}
+        </div>
+
+        <ul className="divide-y divide-edge">
+          {rows.map((row, index) => {
+            const model = row.model;
+            const interfaces = model.interfaces ?? PROTOCOLS;
+            const isSelected = selected.has(row.key);
+            return (
+              <li key={row.key} className={cn("space-y-2 px-3 py-2", isSelected && "bg-accent/[0.04]")}>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-accent"
+                    aria-label={t("settings.about.relay.selectModel", { id: model.id || t("settings.shared.newProvider") })}
+                    checked={isSelected}
+                    disabled={lock}
+                    onChange={() => toggleRow(row.key)}
+                  />
+                  <span className="flex shrink-0 flex-col">
+                    <button
+                      type="button"
+                      aria-label={t("settings.about.relay.moveUp")}
+                      disabled={lock || index === 0}
+                      onClick={() => moveRow(row.key, -1)}
+                      className="grid h-4 w-4 place-items-center rounded text-content-subtle transition-colors hover:text-content disabled:opacity-30"
+                    >
+                      <IconChevronUp size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={t("settings.about.relay.moveDown")}
+                      disabled={lock || index === rows.length - 1}
+                      onClick={() => moveRow(row.key, 1)}
+                      className="grid h-4 w-4 place-items-center rounded text-content-subtle transition-colors hover:text-content disabled:opacity-30"
+                    >
+                      <IconChevronDown size={12} />
+                    </button>
+                  </span>
+                  <Input
+                    aria-label={t("settings.shared.modelId")}
+                    placeholder="gpt-5.1"
+                    spellCheck={false}
+                    className="min-w-0 flex-1 font-mono"
+                    value={model.id}
+                    disabled={lock}
+                    onChange={(e) => patchRow(row.key, { id: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    title={t("settings.shared.removeModel")}
+                    aria-label={t("settings.shared.removeModel")}
+                    disabled={lock}
+                    onClick={() => removeRow(row.key)}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-content-subtle transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-40"
+                  >
+                    <IconTrash size={14} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    aria-label={t("settings.shared.modelLabel")}
+                    placeholder={t("settings.shared.modelLabelShort")}
+                    className="min-w-0 flex-1"
+                    value={model.label ?? ""}
+                    disabled={lock}
+                    onChange={(e) => patchRow(row.key, { label: e.target.value })}
+                  />
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1000}
+                    aria-label={t("settings.shared.contextWindow")}
+                    placeholder="200000"
+                    className="w-[110px] shrink-0"
+                    value={model.contextWindow ?? ""}
+                    disabled={lock}
+                    onChange={(e) => patchRow(row.key, { contextWindow: e.target.value ? Number(e.target.value) : undefined })}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 pl-1 text-[11.5px] text-content-subtle">
+                  {PROTOCOLS.map((protocol) => {
+                    const on = interfaces.includes(protocol);
+                    return (
+                      <button
+                        key={protocol}
+                        type="button"
+                        aria-pressed={on}
+                        disabled={lock || (on && interfaces.length === 1)}
+                        onClick={() =>
+                          patchRow(row.key, {
+                            interfaces: on
+                              ? interfaces.filter((value) => value !== protocol)
+                              : [...new Set([...interfaces, protocol])],
+                          })
+                        }
+                        className={chipClass(on)}
+                      >
+                        {SHORT[protocol]}
+                      </button>
+                    );
+                  })}
+                  <span className="mx-0.5 h-4 w-px bg-edge" aria-hidden />
+                  <button
+                    type="button"
+                    aria-pressed={model.reasoning ?? false}
+                    disabled={lock}
+                    onClick={() =>
+                      setRows((current) =>
+                        current.map((item) =>
+                          item.key === row.key ? { ...item, model: withReasoning(item.model, !item.model.reasoning) } : item,
+                        ),
+                      )
+                    }
+                    className={chipClass(model.reasoning ?? false)}
+                  >
+                    {t("settings.shared.reasoning")}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={model.input?.includes("image") ?? false}
+                    disabled={lock}
+                    onClick={() =>
+                      setRows((current) =>
+                        current.map((item) =>
+                          item.key === row.key
+                            ? { ...item, model: withVision(item.model, !item.model.input?.includes("image")) }
+                            : item,
+                        ),
+                      )
+                    }
+                    className={chipClass(model.input?.includes("image") ?? false)}
+                  >
+                    {t("settings.shared.vision")}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={model.imageGeneration ?? false}
+                    disabled={lock}
+                    onClick={() =>
+                      setRows((current) =>
+                        current.map((item) =>
+                          item.key === row.key
+                            ? { ...item, model: withImageGen(item.model, !item.model.imageGeneration) }
+                            : item,
+                        ),
+                      )
+                    }
+                    className={chipClass(model.imageGeneration ?? false)}
+                  >
+                    {t("settings.shared.imageGenerationShort")}
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
+        <p className="border-t border-edge px-3 py-1.5 text-[11px] text-content-subtle">
+          {t("settings.about.relay.orderHint")}
+        </p>
         <div className="flex items-center gap-2 border-t border-edge px-3 py-2">
           <span className="min-w-0 flex-1 truncate text-[11.5px] text-content-subtle">
             {status?.updatedAt
@@ -370,7 +573,7 @@ export function RelayAdminPanel() {
             type="button"
             size="sm"
             variant="primary"
-            disabled={locked || !draftConfig || !status?.hasAdminToken}
+            disabled={lock || !draftConfig || !status?.hasAdminToken}
             onClick={() => draftConfig && setPendingPush(diffRelayConfigs(status?.config ?? BUILTIN_RELAY_FALLBACK_CONFIG, draftConfig))}
           >
             {busy === "push" && <IconLoader2 size={13} className="animate-spin" />}

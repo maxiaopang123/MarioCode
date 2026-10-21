@@ -140,12 +140,18 @@ try {
   // 内置中转站: offered to everyone, address locked in code, key-only editing.
   const relayList = await evaluate("window.api.sharedProviders.list()");
   assert.equal(relayList.providers[0].id, BUILTIN_RELAY_ID, "built-in relay heads the provider list");
-  assert.equal(relayList.providers[0].baseUrl, "https://ai.marioya.cc.cd", "relay address comes from the code constant");
+  assert.equal(relayList.providers[0].baseUrl, "http://39.109.58.6:8090", "relay address comes from the code constant");
   assert.equal(relayList.providers[0].hasApiKey, false, "a fresh install has no relay key");
   await evaluate(`[...document.querySelectorAll('.settings-provider-list button')].find(b=>b.textContent.includes(${JSON.stringify(relayList.providers[0].name)}))?.click()`);
-  await delay(250);
+  // The read-only panel mounts only after the adapter answers its status call,
+  // so wait for the address field instead of assuming a fixed delay.
+  const relayPanelUntil = Date.now() + 15000;
+  while (!await evaluate("Boolean([...document.querySelectorAll('input')].find(i=>i.value==='http://39.109.58.6:8090'))")) {
+    if (Date.now() > relayPanelUntil) throw new Error(`Relay panel did not open: ${await evaluate("document.body.innerText.slice(0,600)")}`);
+    await delay(150);
+  }
   assert.equal(
-    await evaluate("[...document.querySelectorAll('input')].find(i=>i.value==='https://ai.marioya.cc.cd')?.disabled"),
+    await evaluate("[...document.querySelectorAll('input')].find(i=>i.value==='http://39.109.58.6:8090')?.disabled"),
     true,
     "the relay address is read-only in the UI",
   );
@@ -159,6 +165,55 @@ try {
   );
   await evaluate("window.api.sharedProviders.remove({id:'" + BUILTIN_RELAY_ID + "'}).catch(()=>{})");
   assert.equal((await evaluate("window.api.sharedProviders.list()")).providers[0].id, BUILTIN_RELAY_ID, "the relay survives a delete attempt");
+
+  // 中转站管理 (设置 → 系统 → 关于): multi-select bulk capability switches and
+  // row reordering, both of which decide what every user's list looks like.
+  const modelIdInput = 'input[aria-label="模型 ID（与服务商一致）"]';
+  /** Open a settings page by label, expanding its group first when the entry
+   *  is not rendered (groups are collapsible and remember their state). */
+  async function openSettingsPage(group, label) {
+    const clickLabel = () => evaluate(`[...document.querySelectorAll('.settings-root nav button')].find(b=>b.textContent.trim()===${JSON.stringify(label)})?.click()`);
+    if (!await evaluate(`[...document.querySelectorAll('.settings-root nav button')].some(b=>b.textContent.trim()===${JSON.stringify(label)})`)) {
+      await evaluate(`[...document.querySelectorAll('.settings-root nav button')].find(b=>b.textContent.trim()===${JSON.stringify(group)})?.click()`);
+      await delay(250);
+    }
+    await clickLabel();
+  }
+  await openSettingsPage("系统", "关于");
+  const adminUntil = Date.now() + 20000;
+  while (!await evaluate("Boolean(document.querySelector('[data-relay-admin] li'))")) {
+    if (Date.now() > adminUntil) throw new Error(`Relay admin panel missing: ${await evaluate("document.body.innerText.slice(0,600)")}`);
+    await delay(150);
+  }
+  const adminRows = await evaluate(`document.querySelectorAll('[data-relay-admin] li').length`);
+  assert.equal(adminRows, relayList.providers[0].models.length, "admin panel lists every published model");
+  const allRowsFlag = (label) =>
+    `[...document.querySelectorAll('[data-relay-admin] li')].every(li => [...li.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)})?.getAttribute('aria-pressed') === 'true')`;
+  // 全选 → 批量开启生图 / 关闭思考: one switch flips the whole selection.
+  await evaluate("document.querySelector('[data-relay-admin] input[aria-label=\"全选\"]').click()");
+  await delay(120);
+  await evaluate("[...document.querySelectorAll('[data-relay-admin] button')].find(b=>b.getAttribute('aria-label')==='批量开启生图').click()");
+  await delay(120);
+  assert.equal(await evaluate(allRowsFlag("生图")), true, "bulk 生图 sets the flag on every selected row");
+  await evaluate("[...document.querySelectorAll('[data-relay-admin] button')].find(b=>b.getAttribute('aria-label')==='批量关闭思考').click()");
+  await delay(120);
+  assert.equal(await evaluate(allRowsFlag("思考")), false, "bulk 思考 off clears the flag on every selected row");
+  // Row order is the user-facing order, so it has to be movable.
+  const firstId = await evaluate(`document.querySelector('[data-relay-admin] li ${modelIdInput}').value`);
+  const secondId = await evaluate(`document.querySelectorAll('[data-relay-admin] li ${modelIdInput}')[1].value`);
+  await evaluate("document.querySelectorAll('[data-relay-admin] li')[0].querySelector('button[aria-label=\"下移\"]').click()");
+  await delay(120);
+  assert.equal(await evaluate(`document.querySelectorAll('[data-relay-admin] li ${modelIdInput}')[0].value`), secondId, "move-down puts the second model on top");
+  assert.equal(await evaluate(`document.querySelectorAll('[data-relay-admin] li ${modelIdInput}')[1].value`), firstId, "move-down pushes the first model down");
+  // Back to the model settings page; the provider list must still be there.
+  await openSettingsPage("AI 能力", "模型配置");
+  const backUntil = Date.now() + 20000;
+  while (!await evaluate("Boolean(document.querySelector('.settings-provider-list'))")) {
+    if (Date.now() > backUntil) throw new Error("Model settings page did not come back after the About detour");
+    await delay(150);
+  }
+  await evaluate(`[...document.querySelectorAll('.settings-provider-list button')].find(b=>b.textContent.includes(${JSON.stringify(relayList.providers[0].name)}))?.click()`);
+  await delay(250);
   // The relay card is now selected, so the list header's short 「新增」 button is
   // the one that opens a blank draft (the empty-state 「新增提供商」 is gone).
   await evaluate("[...document.querySelectorAll('.settings-provider-list button')].find(b=>b.innerText.trim()==='新增').click()");

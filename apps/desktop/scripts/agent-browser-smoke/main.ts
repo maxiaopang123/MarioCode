@@ -8,7 +8,7 @@
  * views survive the reaper · session removal closes views and tells the
  * renderer · take-over turns a view into a user tab the agent can no longer use.
  */
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import {
@@ -19,10 +19,12 @@ import {
 } from "@main/browser/BrowserManager.js";
 import {
   browserClick,
+  browserKeys,
   browserList,
   browserNavigate,
   browserPresent,
   browserSnapshot,
+  browserType,
 } from "@main/browser/agentBrowserTools.js";
 import { initDb, closeDb } from "@main/store/db.js";
 import { setTestWindow, sentMessages } from "./window.js";
@@ -47,6 +49,13 @@ async function main() {
   const server = createServer((req, res) => {
     const name = (req.url ?? "/").replace(/^\//, "") || "root";
     res.setHeader("Content-Type", "text/html; charset=utf-8");
+    // A search-site shaped page: a JS handler opens the result in a NEW tab on
+    // Enter - the user-reported trigger. (A plain <form> would not do here:
+    // sendKeys sends keyDown/keyUp without a char event, so no implicit submit.)
+    if (name === "search-form") {
+      res.end(`<html><body><input id="q" onkeydown="if(event.key==='Enter'){window.open('/search-result?q='+encodeURIComponent(this.value),'_blank')}"></body></html>`);
+      return;
+    }
     res.end(`<html><body><h1>Fixture page ${name}</h1><button id="b">go</button></body></html>`);
   });
   await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
@@ -84,6 +93,16 @@ async function main() {
       assert.ok(!clicked.startsWith("❌"), clicked);
       assert.equal(await wcOf(a1).mainFrame.executeJavaScript("window.__c"), 1, `real click #${i} landed`);
     }
+    // Regression (user report, v0.2.53): reading/clicking used to show() the view,
+    // pinning the page over the right 42% of the workspace until the turn ended.
+    assert.equal(parentOf(a1), "host", "clicking never moves an agent view out of the host window");
+    assert.equal(window.contentView.children.length, 1, "clicking never puts the agent view on the workspace");
+    const coords = await wcOf(a1).mainFrame.executeJavaScript(`(()=>{const r=document.getElementById("b").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+    await wcOf(a1).mainFrame.executeJavaScript(`window.__c=0`);
+    const byCoords = textOf(await browserClick({ coordinateX: coords.x, coordinateY: coords.y }, "S1"));
+    assert.ok(!byCoords.startsWith("❌"), byCoords);
+    assert.equal(parentOf(a1), "host", "coordinate click never moves an agent view out of the host window");
+    assert.equal(window.contentView.children.length, 1, "coordinate click never puts the agent view on the workspace");
     const shot = await BrowserManager.screenshot(a1);
     assert.ok(shot.ok && shot.data.length > 1000, "resting agent view can be captured");
     assert.equal(BrowserManager.list().find(i => i.browserId === userId)!.url, userUrlBefore, "user tab URL unchanged");
@@ -166,6 +185,74 @@ async function main() {
     await browserNavigate({ url: `${base}/oauth-next` }, data, "S4");
     assert.equal(agentViews("S4").length, 1, "agent opened a new hidden view");
     assert.notEqual(agentViews("S4")[0].browserId, s4);
+
+    // ── 7. a page the agent drives that calls window.open stays in the host ──
+    // (target=_blank result links are common on search / job sites). It used to
+    // spawn a USER view in the main window and tell the renderer to show it.
+    await browserNavigate({ url: `${base}/popup-parent` }, data, "S5");
+    const s5 = agentViews("S5")[0].browserId;
+    const childrenBefore = window.contentView.children.length;
+    sentMessages.length = 0;
+    await wcOf(s5).mainFrame.executeJavaScript(`window.open(${JSON.stringify(`${base}/popup-child`)}, "_blank")`, true);
+    for (let i = 0; i < 100 && agentViews("S5").length < 2; i++) await delay(50);
+    assert.equal(agentViews("S5").length, 2, "window.open from an agent view opens another AGENT view");
+    assert.equal(window.contentView.children.length, childrenBefore, "the popup never lands in the main window");
+    assert.ok(
+      !sentMessages.some(m => (m as { type?: string }).type === "tabOpened"),
+      "the renderer is not told to adopt a user tab",
+    );
+    const popup = agentViews("S5").find(i => i.browserId !== s5)!.browserId;
+    assert.equal(parentOf(popup), "host", "the popup rests in the host window");
+
+    // ── 8. the reported sequence: open -> type -> Enter -> read, result opens in a new tab ──
+    await browserNavigate({ url: `${base}/search-form` }, data, "S6");
+    const s6 = agentViews("S6")[0].browserId;
+    const childrenBeforeSearch = window.contentView.children.length;
+    sentMessages.length = 0;
+    await browserSnapshot({}, "S6");
+    const typed = textOf(await browserType({ selector: "#q", text: "芯片" }, "S6"));
+    assert.ok(!typed.startsWith("❌"), typed);
+    await delay(400); // a model takes seconds between two tool calls; back-to-back calls race the focus handoff
+    const entered = textOf(await browserKeys({ keys: "Enter" }, "S6"));
+    assert.ok(!entered.startsWith("❌"), entered);
+    for (let i = 0; i < 100 && agentViews("S6").length < 2; i++) await delay(50);
+    assert.equal(agentViews("S6").length, 2, "the result tab opened as another AGENT view");
+    const read = textOf(await browserSnapshot({}, "S6"));
+    assert.ok(!read.startsWith("❌"), read);
+    assert.equal(window.contentView.children.length, childrenBeforeSearch, "type + Enter + read never put a view on the workspace");
+    assert.ok(
+      !sentMessages.some(m => (m as { type?: string }).type === "tabOpened" || (m as { type?: string }).type === "agentOpened"),
+      "the renderer is never told to surface a tab",
+    );
+    for (const view of agentViews("S6")) assert.equal(parentOf(view.browserId), "host", "every S6 view rests in the host window");
+    void s6;
+
+    // ── 9. an agent page never hands the machine to another program ──
+    // A harmless custom scheme stands in for mailto: / app protocols, so a
+    // regression cannot launch a real mail client from the test.
+    const handedToSystem: string[] = [];
+    const realOpenExternal = shell.openExternal;
+    shell.openExternal = (async (url: string) => { handedToSystem.push(url); }) as typeof shell.openExternal;
+    try {
+      await browserNavigate({ url: `${base}/proto-page` }, data, "S7");
+      const s7 = agentViews("S7")[0].browserId;
+      const seen: Array<{ url: string; prevented: boolean }> = [];
+      // Registered after the manager's own guard, so defaultPrevented tells us whether it blocked.
+      wcOf(s7).on("will-navigate", (e, url) => seen.push({ url, prevented: e.defaultPrevented }));
+      await wcOf(s7).mainFrame.executeJavaScript(`window.open("mariocode-smoke://popup", "_blank")`, true);
+      await wcOf(s7).mainFrame.executeJavaScript(`location.href = "mariocode-smoke://navigate"`, true);
+      await delay(500);
+      assert.deepEqual(handedToSystem, [], "an agent view never hands a link to the system");
+      assert.ok(seen.find(s => s.url.startsWith("mariocode-smoke://"))?.prevented, "agent navigation to an app protocol is blocked");
+      assert.equal(agentViews("S7").length, 1, "a dropped popup spawns no view");
+      assert.equal(parentOf(s7), "host");
+      // Control: the user's own tab keeps handing such links to the system.
+      await wcOf(userId).mainFrame.executeJavaScript(`window.open("mariocode-smoke://user", "_blank")`, true);
+      await delay(300);
+      assert.deepEqual(handedToSystem, ["mariocode-smoke://user"], "a user tab still hands links to the system");
+    } finally {
+      shell.openExternal = realOpenExternal;
+    }
 
     console.log("PASS: agent-browser isolation and recycling");
   } finally {

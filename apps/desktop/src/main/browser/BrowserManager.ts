@@ -147,6 +147,12 @@ function normalizeKeyName(raw: string): string | null {
 /** Parse a key combo like "Control+Shift+Enter" into sendInputEvent modifiers
  *  + a key code. CmdOrCtrl maps to Meta on macOS / Control elsewhere (the
  *  usual convention). Exactly one non-modifier key per combo. */
+/** Protocols a browser view loads itself; anything else (mailto:, tel:, app
+ *  schemes) would be handed to another program on the user's machine. */
+function isWebProtocol(proto: string): boolean {
+  return proto === "http:" || proto === "https:" || proto === "file:";
+}
+
 function parseKeyCombo(
   combo: string,
 ): { modifiers: Array<"control" | "shift" | "alt" | "meta">; key: string } | { error: string } {
@@ -827,12 +833,28 @@ class BrowserManagerImpl {
     this.installDownloadListener();
 
     // New-window requests (target=_blank, window.open) become in-panel tabs
-    // for web URLs so browsing never leaves the app; other protocols
-    // (mailto: & co) still go to the system browser. The handler must return
+    // for web URLs so browsing never leaves the app; for a USER tab other
+    // protocols (mailto: & co) still go to the system. The handler must return
     // synchronously — the adoption work is fire-and-forget.
     view.webContents.setWindowOpenHandler(({ url, disposition }) => {
       void this.handleWindowOpen(live, url, disposition);
       return { action: "deny" };
+    });
+    // An agent-driven page must not hand the user's machine to another app
+    // either: block it navigating itself to mailto: / app protocols. User tabs
+    // are not guarded (clicking a mailto: link there is the user's own act),
+    // and take-over flips `owner`, which lifts the guard with it.
+    view.webContents.on("will-navigate", (event, url) => {
+      if (live.owner !== "agent") return;
+      let proto = "";
+      try {
+        proto = new URL(url).protocol;
+      } catch {
+        /* unparseable: blocked below */
+      }
+      if (isWebProtocol(proto) || proto === "about:" || proto === "blob:") return;
+      event.preventDefault();
+      log.info(`browser navigation blocked for agent view ${live.id}: ${proto || "unparseable"} url`);
     });
 
     log.info(`browser created: ${id} project=${projectPath}`);
@@ -844,9 +866,10 @@ class BrowserManagerImpl {
    *  URLs (http/https/file) spawn a fresh view on the SAME browser session
    *  (cookies shared, so OAuth popups land on the signed-in session) and push
    *  a "tabOpened" event; the renderer adopts the new browserId into its tab
-   *  strip and takes over visibility/bounds. Everything else — other
-   *  protocols, unparseable URLs, spawn failures — falls back to the system
-   *  browser, mirroring the previous open-everything-externally behavior. */
+   *  strip and takes over visibility/bounds. For a user tab everything else —
+   *  other protocols, unparseable URLs, spawn failures — falls back to the
+   *  system browser. An agent view never reaches the system: its web popups
+   *  become hidden agent views and the rest is dropped (see below). */
   private handleWindowOpen(parent: LiveBrowser, rawUrl: string, disposition: string): void {
     if (!rawUrl) return;
     let proto = "";
@@ -855,7 +878,25 @@ class BrowserManagerImpl {
     } catch {
       /* unparseable → system browser below */
     }
-    if (proto === "http:" || proto === "https:" || proto === "file:") {
+    // A page the agent is driving stays inside MarioCode, and out of sight:
+    // a web popup becomes another hidden agent view (a user tab would be a
+    // main-window view the panel adopts and shows), and anything else (mailto:,
+    // app protocols) is dropped rather than handed to the system.
+    if (parent.owner === "agent") {
+      if (isWebProtocol(proto)) {
+        const created = this.create(parent.projectPath, undefined, { agentSessionId: parent.agentSessionId });
+        if (created.ok) {
+          this.loadUrl(created.browserId, rawUrl);
+          log.info(`browser window-open → hidden agent tab: ${created.browserId} url=${rawUrl} (from ${parent.id})`);
+        } else {
+          log.warn(`browser window-open agent tab spawn failed: ${created.error}`);
+        }
+      } else {
+        log.info(`browser window-open dropped for agent view ${parent.id}: ${proto || "unparseable"} url`);
+      }
+      return;
+    }
+    if (isWebProtocol(proto)) {
       const spawned = this.spawnView(parent.projectPath);
       if ("live" in spawned) {
         const child = spawned.live;
@@ -2094,10 +2135,13 @@ class BrowserManagerImpl {
     const wc = live.view.webContents;
     if (wc.isDestroyed()) return { ok: false, error: "浏览器已销毁" };
 
-    // Real input needs the view on the visible surface — park it onscreen if
-    // the user has another panel tab active (same trade-off as screenshot's
-    // temp-show, minus the restore: the agent keeps browsing visibly).
-    if (!live.visible) this.show(id);
+    // A hosted agent view rests in the invisible host window, which has a real
+    // viewport and takes real input (v0.2.43), so it must NOT be show()n: that
+    // moves it into the main window at a guessed rect (right 42%, full height)
+    // and leaves it there until the turn ends - the "page pinned over the
+    // workspace" bug. Only a view with no host (host window could not be
+    // created) still needs the on-screen fallback to receive input at all.
+    if (!live.visible && !live.hostable) this.show(id);
     try {
       const center = (await wc.mainFrame.executeJavaScript(buildElementCenterScript(selector), true)) as {
         ok?: boolean;
@@ -2151,7 +2195,8 @@ class BrowserManagerImpl {
     }
     const wc = live.view.webContents;
     if (wc.isDestroyed()) return { ok: false, error: "浏览器已销毁" };
-    if (!live.visible) this.show(id);
+    // Hosted views take input in the host window; see click() for why no show().
+    if (!live.visible && !live.hostable) this.show(id);
     wc.focus();
     const base = { x: Math.round(x), y: Math.round(y), button: "left" as const, clickCount: 1 };
     wc.sendInputEvent({ type: "mouseDown", ...base });

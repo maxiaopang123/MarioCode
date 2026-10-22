@@ -27,7 +27,12 @@ import { resolveContextPolicy } from "@contracts/contextPolicy";
 import { readContextPolicy } from "@main/lib/contextPolicy.js";
 import { withEngineNetworkEnv } from "@main/network/engineProxy.js";
 import { ASK_SYSTEM_PROMPT } from "@main/lib/askQuestion.js";
-import { CLAUDE_IDENTITY_PROMPT, CLAUDE_PLAN_MODE_NUDGE, joinPromptSections } from "@main/lib/systemPrompt.js";
+import {
+  CLAUDE_IDENTITY_PROMPT,
+  CLAUDE_PLAN_MODE_NUDGE,
+  RICH_OUTPUT_PROMPT,
+  joinPromptSections,
+} from "@main/lib/systemPrompt.js";
 import { loadUserSystemPrompt, userSystemPromptSections } from "@main/lib/userSystemPrompt.js";
 import { bashPathHintFor, detectBashEnv } from "@main/lib/bashEnv.js";
 import { getFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
@@ -1383,6 +1388,11 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     // becomes the base on every platform, with our fragments appended on top.
     const appends: string[] = [];
     appends.push(CLAUDE_IDENTITY_PROMPT);
+    // (F) Rich-output guide: LaTeX / Mermaid / inline-HTML cards — the renderer
+    //     supports all three (components/chat/Markdown.tsx). Pushed here, BEFORE
+    //     the user-prompt splice below, so the final order stays identity →
+    //     user instructions → output format → tool guides.
+    appends.push(RICH_OUTPUT_PROMPT);
     if (process.platform === "win32") {
       appends.push(bashPathHintFor(detectBashEnv("claude")));
     }

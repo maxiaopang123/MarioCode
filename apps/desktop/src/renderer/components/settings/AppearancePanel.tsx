@@ -575,6 +575,12 @@ export function AppearancePanel() {
         <SettingRow title={t("settings.appearance.prosePaths")} desc={t("settings.appearance.prosePathsDesc")} htmlFor="setting-prose-paths">
           <Switch id="setting-prose-paths" label={t("settings.appearance.prosePaths")} checked={chatDisplay.prosePaths} onCheckedChange={prosePaths => saveDisplay({ ...chatDisplay, prosePaths })} />
         </SettingRow>
+        <SettingRow title={t("settings.appearance.inlineHtml")} desc={t("settings.appearance.inlineHtmlDesc")} htmlFor="setting-inline-html">
+          <Switch id="setting-inline-html" label={t("settings.appearance.inlineHtml")} checked={chatDisplay.html} onCheckedChange={html => saveDisplay({ ...chatDisplay, html })} />
+        </SettingRow>
+        <SettingRow title={t("settings.appearance.mermaid")} desc={t("settings.appearance.mermaidDesc")} htmlFor="setting-mermaid">
+          <Switch id="setting-mermaid" label={t("settings.appearance.mermaid")} checked={chatDisplay.mermaid} onCheckedChange={mermaid => saveDisplay({ ...chatDisplay, mermaid })} />
+        </SettingRow>
         <SettingRow title={t("settings.appearance.remoteImages")} desc={t("settings.appearance.remoteImagesDesc")} htmlFor="setting-remote-images">
           <select id="setting-remote-images" className="w-full rounded border border-edge bg-surface px-2 py-1.5" value={chatDisplay.remoteImages} onChange={e => saveDisplay({ ...chatDisplay, remoteImages: e.target.value as typeof chatDisplay.remoteImages })}>
             <option value="never">{t("settings.appearance.remoteNever")}</option>

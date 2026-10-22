@@ -66,6 +66,11 @@ export const zh = {
   "chatStream.copyCode": "复制代码",
   "chatStream.code.expand": "展开",
   "chatStream.code.collapse": "收起",
+  "chatStream.mermaid.source": "源码",
+  "chatStream.mermaid.diagram": "图表",
+  "chatStream.mermaid.rendering": "正在绘制图表…",
+  "chatStream.mermaid.failed": "图表语法有误，已显示源码",
+  "chatStream.mermaid.tooLarge": "图表源码过长，已显示源码",
 
   // ── FileLink ──
   "chatStream.fileLink.clickToOpen": "点击打开文件",

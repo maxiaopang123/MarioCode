@@ -62,7 +62,7 @@ import {
   formatAnswersForModel,
   ASK_NATIVE_TOOL_PROMPT,
 } from "@main/lib/askQuestion.js";
-import { PI_IDENTITY_PROMPT, joinPromptSections } from "@main/lib/systemPrompt.js";
+import { PI_IDENTITY_PROMPT, RICH_OUTPUT_PROMPT, joinPromptSections } from "@main/lib/systemPrompt.js";
 import {
   BROWSER_PARAM_DESC,
   BUILTIN_TOOL_SPECS,
@@ -1270,6 +1270,10 @@ function registerSystemPromptInjector(
       const injected = joinPromptSections(
         PI_IDENTITY_PROMPT,
         ...(deps.userSystemPrompt ? [deps.userSystemPrompt] : []),
+        // Rich-output guide (LaTeX / Mermaid / inline HTML) — same slot as the
+        // Claude provider: after the user's standing instructions, before the
+        // tool guides.
+        RICH_OUTPUT_PROMPT,
         ASK_NATIVE_TOOL_PROMPT,
         PLAN_MODE_PROMPT,
         // Advertise the browser tools only when they are actually registered

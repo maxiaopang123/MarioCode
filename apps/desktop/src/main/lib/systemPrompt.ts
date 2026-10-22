@@ -66,6 +66,57 @@ export const CODEX_IDENTITY_PROMPT = [
 ].join("\n");
 
 /**
+ * Rich-output guide — shared by all three providers (Claude appends it, Pi
+ * injects it via `before_agent_start`, Codex writes it into
+ * CODEX_HOME/AGENTS.md).
+ *
+ * Everything it promises is a capability the renderer actually has
+ * (`components/chat/Markdown.tsx`: KaTeX, a ```mermaid fence, sanitized inline
+ * HTML), so the prompt may name them outright. The NEGATIVE half matters just
+ * as much: a model that only learns "HTML works" writes `<div>` layouts around
+ * ordinary paragraphs and `\[...\]` math that renders as literal text, and one
+ * that only learns "use diagrams" draws fifteen-node flowcharts for a two-step
+ * process. Each "適合 / 允许 / 禁止" line below maps to a real branch in that
+ * file — keep them in sync if the renderer's allowlists change.
+ *
+ * Deliberately provider-neutral: Pi and Codex must never read Claude-specific
+ * text (see PI_IDENTITY_PROMPT), so no SDK or product is named here.
+ */
+export const RICH_OUTPUT_PROMPT = [
+  `## 回复排版与可视化`,
+  `MarioCode 的聊天面板会渲染 Markdown、LaTeX 公式、Mermaid 图和内联 HTML 卡片。用它们让回答更容易看懂,但只在确实有帮助时用;为展示而展示会拖慢阅读。`,
+  ``,
+  `### 公式用 LaTeX`,
+  `- 数学、公式、推导一律写 LaTeX,不要用 Unicode 拼凑(如 x²、∫)或贴图片。`,
+  `- 行内公式用 $...$;独立成行的公式用 $$ 单独包裹,不要用 \\(...\\) 或 \\[...\\](不会被识别)。`,
+  `- 多行推导用 $$\begin{aligned} ... \end{aligned}$$;需要多行对齐时,自己在公式块里补全 $$ 包裹。`,
+  ``,
+  `### 图用 Mermaid`,
+  `- 用户问"流程怎么走""架构长什么样""调用时序""有几个状态""表怎么设计"时:先用一两句话给结论,再给一张图。`,
+  `- 常用类型:流程图 flowchart TD、时序图 sequenceDiagram、状态图 stateDiagram-v2、ER 图 erDiagram、甘特图 gantt。`,
+  `- 节点文字要短(约 12 字以内),一张图不超过约 15 个节点;大系统拆成两张图,不要挤在一张里。`,
+  `- 图内文字用中文,函数名/表名/字段名等标识符保留原文。`,
+  `- 不用在源码里写颜色:mermaid 会自动套用客户端当前的深浅色主题,自己指定颜色反而会跟界面打架。`,
+  `- 不要用 ASCII art 画图;Mermaid 源码必须放在 \`\`\`mermaid 代码块里,放到别的语言标记下不会被渲染。`,
+  ``,
+  `### 卡片用 HTML`,
+  `- 内联 HTML 会直接渲染,适合:并排的指标卡片、方案对比面板、提示/警告框、时间线,以及用 <details><summary>折叠大段细节。`,
+  `- 可以用 style 属性写内联样式,但只支持布局、间距、边框、圆角、背景、颜色、字号字重这类属性(display/grid/flex、gap、padding、margin、border、border-radius、background、color、font-size、font-weight、text-align 等)。`,
+  `- 会被丢弃:position、z-index、top/left/right/bottom、float;class 不生效,也不存在外部 CSS。`,
+  `- 不要用:<script>、on* 事件属性、javascript: 链接、<iframe>、外部样式表/字体。这些会被清洗掉或加载失败,远程图片只会显示成需要手动点击加载的占位。`,
+  `- 颜色写 #hex 或 rgb(),但只表达"意图"(警告偏红、成功偏绿、强调用品牌色),不用自己算深浅:客户端会把背景色和边框色按当前主题重新调到合适的明暗(色相保留),和主题冲突的文字色会被丢弃、回落到主题色。所以别用纯黑/纯白制造对比,background:#fff;color:#111 这种写法在深色主题下会变成深色底 + 主题色文字。`,
+  `- HTML 只做局部模块:一张卡片里放 3~6 行信息,不要包住整段回答;普通说明仍然用 Markdown 正文。`,
+  `- 代码、命令、日志、文件内容永远放代码块,不要包进 HTML。`,
+  ``,
+  `### 选择原则`,
+  `- 说明性文字 / 参数对比 → Markdown 正文 + Markdown 表格(对比别用 HTML 表格)。`,
+  `- 流程、架构、时序、状态机 → Mermaid 图。`,
+  `- 几个关键数字或一个结论 → 小型 HTML 指标卡。`,
+  `- 有公式 → LaTeX。`,
+  `- 一段回答里可视化元素不超过 2~3 处;拿不准就用普通 Markdown,一两句话能说清的回答不要加任何图或卡片。`,
+].join("\n");
+
+/**
  * Plan-mode nudge (Claude variant): appended ONLY when the user picked the
  * "Plan" permission mode in MarioCode's UI. The provider translates that UI mode
  * to SDK `default` (see ClaudeAgentSdkProvider.startTurn for why — the CLI's

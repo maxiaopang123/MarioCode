@@ -1,30 +1,40 @@
 /**
  * Markdown rendering with syntax highlighting (Shiki + codeDiffs),
- * KaTeX math, and code-block output caching (FNV-1a + LRU).
+ * KaTeX math, mermaid diagrams, sanitized inline HTML, and code-block output
+ * caching (FNV-1a + LRU).
  *
  * Performance layering:
  *  - react-markdown for the base markdown→React pipeline.
  *  - remark-math + rehype-katex for LaTeX math ($...$ / $$...$$).
  *  - Shiki for fenced-code-block highlighting (+ diff annotations via
  *    transformerNotationDiff).
+ *  - ```mermaid fences are handed to MermaidBlock, which lazy-loads mermaid.
  *  - code-html cache (fnv1a hash → shiki HTML) to avoid re-highlighting.
  *  - useDeferredValue is applied at the MessageBlocks layer, not here.
  *
- * Security: react-markdown escapes raw HTML by default, so we never need
- * DOMPurify. The only `dangerouslySetInnerHTML` usage is for shiki-generated
- * code-block HTML, which is produced from known content (the code text) and
- * is thus safe by construction.
+ * Security: react-markdown escapes raw HTML by default and that stays the
+ * default behaviour of this component unless the user turns on 设置 → 外观 →
+ * 渲染 HTML. Even then nothing is injected via `dangerouslySetInnerHTML`:
+ * rehype-raw turns the markup into hast nodes, an allowlist schema
+ * (rehype-sanitize) strips every tag/attribute outside it, and
+ * `rehypeSafeStyles` filters `style` declarations. The two remaining
+ * `dangerouslySetInnerHTML` uses are for shiki output (built from the code
+ * text) and mermaid output (built by mermaid under securityLevel "strict").
  */
 import { memo, useState, useMemo, useRef, useLayoutEffect, createContext, useContext } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { cn } from "@renderer/lib/cn.js";
 import { useI18n } from "@renderer/lib/i18n/index.js";
-import { IconCheck, IconChevronDown, IconChevronUp, IconCopy } from "@renderer/lib/icons.js";
+import { IconChevronDown, IconChevronUp } from "@renderer/lib/icons.js";
 import type { Components } from "react-markdown";
 import { codeCacheKey, getCodeHtml, setCodeHtml } from "@renderer/lib/markdownCache.js";
+import { fitColorDeclaration } from "@renderer/lib/themeColor.js";
+import { useIsDarkMode } from "@renderer/lib/theme.js";
 import {
   classifyInlinePath,
   fileHrefToPath,
@@ -36,6 +46,8 @@ import { useSessionStore } from "@renderer/stores/sessionStore.js";
 import { FileChip } from "./FileChip.js";
 import { resolveRelativePath } from "@renderer/lib/path.js";
 import { FileLink } from "./FileLink.js";
+import { CopyButton } from "./CopyButton.js";
+import { MermaidBlock } from "./MermaidBlock.js";
 import {
   MarkdownGallery,
   MarkdownLocalImage,
@@ -158,28 +170,6 @@ const CODE_COLLAPSE_MAX_PX = 360;
 const LINK_CLASS =
   "text-accent-strong underline decoration-accent/35 underline-offset-2 transition-colors hover:decoration-accent";
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const { t } = useI18n();
-  return (
-    <button
-      onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1200);
-        });
-      }}
-      className={cn(
-        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors",
-        "text-content-subtle hover:bg-surface-hover/60 hover:text-content-muted",
-      )}
-      title={t("chatStream.copyCode")}
-    >
-      {copied ? (<><IconCheck size={10} /> {t("common.copied")}</>) : (<><IconCopy size={10} /> {t("common.copy")}</>)}
-    </button>
-  );
-}
-
 // ── Rehype plugin: inline skill/command highlighting ──────────────────
 //
 // react-markdown v10 does NOT support a `text` component override — text
@@ -281,6 +271,206 @@ function rehypeSkillInline(skillRe: RegExp) {
         tree.children = walkAndTransform(tree.children, skillRe, false);
       }
     };
+  };
+}
+
+// ── Raw HTML: rendered on request, allowlist-sanitized ────────────────
+//
+// react-markdown escapes raw HTML by default, and that default is what keeps
+// this renderer free of an XSS surface: no `dangerouslySetInnerHTML` over
+// model output anywhere. Some replies legitimately carry a small HTML module
+// (a `<details>` fold, a spec table, an inline SVG sparkline), and showing
+// that as literal markup is a worse read than rendering it.
+//
+// The switch is `chatDisplay.html` (设置 → 外观). When it is ON the pipeline
+// gains three steps, in this order:
+//
+//   rehype-raw      parse the HTML back into hast nodes (what react-markdown
+//                   alone refuses to do)
+//   rehype-sanitize       drop every tag/attribute not on an allowlist. This
+//                   is an ALLOWLIST, so `onclick`, `<script>`, `<iframe>`,
+//                   `<object>`, `<form>` and `javascript:` URLs never reach
+//                   React — no denylist to outrun.
+//   rehypeSafeStyles      the one attribute a sanitizer cannot judge: `style`
+//                   is a string, so every declaration is parsed and kept only
+//                   when both the property and the value are acceptable.
+//
+// Everything after this point in the chain (katex, image gallery, path chips)
+// is our own trusted output, which is why sanitizing early is safe: nothing
+// we generate is ever stripped, and nothing the model writes gets through.
+
+/**
+ * Feature switches for the markdown extensions that are gated by a setting.
+ * A context rather than a prop on `components` because `buildComponents()` is
+ * memoised once for the whole app (the block cards' expand state depends on
+ * that identity), so a prop would have to be threaded through every override.
+ */
+export const MarkdownFeatureContext = createContext<{ mermaid: boolean }>({ mermaid: true });
+
+/** Tags the default (GitHub-style) schema leaves out but a spec sheet, a
+ *  changelog or a small inline module reasonably uses. The default already
+ *  covers `details` / `summary` / `kbd` / `sub` / `sup` / `ins` / `dl` /
+ *  `h4`-`h6` / `picture`; these are only the gaps. */
+const HTML_EXTRA_TAGS = [
+  "mark", "abbr", "u", "small", "time", "figure", "figcaption", "article", "aside",
+];
+
+/** A deliberately small SVG subset: shapes, lines and text. Enough for a
+ *  sparkline or a hand-drawn diagram, without the animation/filter/foreignObject
+ *  surface (which is also where SVG's nastier edge cases live). */
+const SVG_TAGS = [
+  "svg", "g", "path", "circle", "ellipse", "rect", "line", "polyline", "polygon",
+  "text", "tspan", "defs", "use", "symbol", "title", "desc",
+  "linearGradient", "radialGradient", "stop", "clipPath", "marker",
+];
+
+const SVG_ATTRS = [
+  "viewBox", "xmlns", "d", "cx", "cy", "r", "rx", "ry", "x", "y", "x1", "x2", "y1", "y2",
+  "width", "height", "points", "transform", "preserveAspectRatio",
+  "fill", "fillOpacity", "fillRule", "stroke", "strokeWidth", "strokeLinecap",
+  "strokeLinejoin", "strokeDasharray", "strokeOpacity", "opacity",
+  "fontSize", "fontFamily", "fontWeight", "textAnchor", "dominantBaseline",
+  "offset", "stopColor", "stopOpacity", "gradientUnits", "gradientTransform",
+  "clipPath", "markerEnd", "markerStart", "ariaLabel", "role",
+];
+
+type SanitizeSchema = NonNullable<Parameters<typeof rehypeSanitize>[0]>;
+
+const HTML_SCHEMA: SanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), ...HTML_EXTRA_TAGS, ...SVG_TAGS],
+  attributes: {
+    ...defaultSchema.attributes,
+    // `style` is the only attribute added globally (`id`, `title`, `dir`,
+    // `lang`, `width`, `height`, `open` are already in the default `*` list).
+    // `className` is deliberately NOT added: every Tailwind utility in the
+    // app's stylesheet is a valid class here, so one `class="fixed inset-0
+    // z-50 bg-black"` would float a reply over the whole window — the same
+    // trick `position` is filtered out of `style` to prevent.
+    "*": [...(defaultSchema.attributes?.["*"] ?? []), "style"],
+    // Inline SVG: one attribute allowlist for every shape tag.
+    ...Object.fromEntries(SVG_TAGS.map((tag) => [tag, [...SVG_ATTRS]])),
+    // `<use>` points at a symbol in the same document, never at another URL.
+    use: [...SVG_ATTRS, ["href", /^#/], ["xLinkHref", /^#/]],
+    a: [...(defaultSchema.attributes?.a ?? []), "target", "rel"],
+  },
+  protocols: {
+    ...defaultSchema.protocols,
+    href: ["http", "https", "mailto", "file"],
+    src: ["http", "https", "file"],
+  },
+  // `id` is intentionally NOT clobbered (the default prefixes it): inline SVG
+  // gradients reference ids as plain strings inside other attributes
+  // (`fill="url(#grad)"`), which a prefix would break into a silent no-op.
+  // The residual DOM-clobbering risk is bounded — scripts cannot run here, and
+  // the renderer's bridge objects are own properties of `window`, which named
+  // element access cannot shadow.
+  clobber: ["name"],
+};
+
+/** CSS properties a snippet may set on itself: layout, spacing, typography,
+ *  colour, borders. Absent on purpose — `position`, `inset`, `z-index`,
+ *  `transform`, `filter`, `animation`, `transition`, `clip-path`, `content`:
+ *  each of those lets a message escape its own box or float over the app. */
+const SAFE_STYLE_PROPS = new Set([
+  "display", "flex", "flex-direction", "flex-wrap", "flex-grow", "flex-shrink", "flex-basis",
+  "gap", "row-gap", "column-gap", "align-items", "align-self", "align-content",
+  "justify-content", "justify-items", "justify-self", "order",
+  "grid-template-columns", "grid-template-rows", "grid-auto-flow", "grid-column", "grid-row",
+  "width", "min-width", "max-width", "height", "min-height", "max-height",
+  "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
+  "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
+  "border", "border-top", "border-right", "border-bottom", "border-left",
+  "border-width", "border-style", "border-color", "border-radius",
+  "background", "background-color", "background-size", "background-position", "background-repeat",
+  "color", "font-size", "font-weight", "font-style", "font-family", "line-height",
+  "letter-spacing", "text-align", "text-decoration", "text-transform",
+  "white-space", "word-break", "overflow-wrap", "list-style",
+  "opacity", "box-shadow", "cursor",
+]);
+
+/** Values that look like a declaration but reach outside the box: remote
+ *  fetches, IE-era script hooks, or a backslash escape that would smuggle a
+ *  quote past the parser. */
+const UNSAFE_STYLE_VALUE = /url\s*\(|expression\s*\(|javascript:|@import|\\/i;
+
+/** Parse a `style` attribute and re-emit only the safe declarations, with
+ *  colours fitted to the current theme (see `lib/themeColor.ts`).
+ *  Returns null when nothing survives (the attribute is then dropped, not
+ *  emptied, so no `style=""` remains). */
+export function sanitizeInlineStyle(value: string, dark = false): string | null {
+  const kept: string[] = [];
+  for (const declaration of value.split(";")) {
+    const colon = declaration.indexOf(":");
+    if (colon === -1) continue;
+    const property = declaration.slice(0, colon).trim().toLowerCase();
+    const raw = declaration.slice(colon + 1).trim();
+    if (!SAFE_STYLE_PROPS.has(property) || raw === "") continue;
+    if (raw.length > 400 || UNSAFE_STYLE_VALUE.test(raw)) continue;
+    const fitted = fitColorDeclaration(property, raw, dark);
+    if (fitted === null) continue;
+    kept.push(`${property}: ${fitted}`);
+  }
+  return kept.length > 0 ? kept.join("; ") : null;
+}
+
+/** Rehype plugin: run {@link sanitizeInlineStyle} over every element.
+ *  `dark` is captured per render — the plugin array is rebuilt when the theme
+ *  flips, because a card's background has to be re-derived for the new theme
+ *  (the value baked into the hast tree is the light-theme one).
+ *
+ *  Shape matters: this is an ATTACHER taking options, registered as
+ *  `[rehypeSafeStyles, { dark }]`. Pushing `rehypeSafeStyles(dark)` — i.e. the
+ *  transformer itself — looks equivalent and is not: unified calls every
+ *  `rehypePlugins` entry as an attacher (with no tree), so the returned
+ *  transformer would be invoked with `tree === undefined`. */
+function rehypeSafeStyles(options?: { dark?: boolean }) {
+  const dark = options?.dark ?? false;
+  return function transformer(tree: HastNode) {
+    const walk = (node: HastNode) => {
+      const style = node.properties?.style;
+      if (typeof style === "string") {
+        const clean = sanitizeInlineStyle(style, dark);
+        if (clean) node.properties!.style = clean;
+        else delete node.properties!.style;
+      }
+      node.children?.forEach(walk);
+    };
+    walk(tree);
+  };
+}
+
+/**
+ * Rehype plugin: rewrite Windows drive paths (`D:/shots/hero.png`) in
+ * `src`/`href` into the equivalent `file:///D:/shots/hero.png` URI.
+ *
+ * Why this is needed at all: a URL parser cannot tell `D:/…` from a URL with
+ * the one-letter scheme `d`, so `hast-util-sanitize` treats it as a protocol
+ * and drops the attribute unless `d` happens to be allowlisted — which is
+ * exactly how `![hero](D:/project/hero.png)` lost its `src` and the local-image
+ * branch of the `img` override silently degraded to an empty `<img>`.
+ * Enumerating drive letters in `protocols` is not an option, and widening the
+ * allowlist to "any single-letter scheme" would re-admit real ones, so the
+ * value is normalised instead: `fileHrefToPath` already strips the `file:///`
+ * prefix, and `isLocalFileHref` classifies `file:` as local, meaning both
+ * markdown-authored and raw-HTML links land on the same code path they did
+ * before sanitizing existed.
+ */
+function rehypeDrivePathsToFileUrls() {
+  return function transformer(tree: HastNode) {
+    const walk = (node: HastNode) => {
+      const properties = node.properties;
+      if (properties) {
+        for (const key of ["src", "href"] as const) {
+          const value = properties[key];
+          if (typeof value === "string" && /^[A-Za-z]:[\\/]/.test(value)) {
+            properties[key] = `file:///${value}`;
+          }
+        }
+      }
+      node.children?.forEach(walk);
+    };
+    walk(tree);
   };
 }
 
@@ -408,6 +598,149 @@ const CodeContext = createContext(false);
 const useInCode = () => useContext(CodeContext);
 
 /**
+ * A fenced code block: shiki highlight, language chip, copy button, and the
+ * collapse/展开 overlay for long blocks.
+ *
+ * Extracted out of the `pre` override so the mermaid branch in `pre` can pick
+ * a different component without the two sharing a hook set — `pre` sees the
+ * fence's language, which is `""` for an instant while the model is still
+ * writing ```` ``` ````, then becomes `mermaid`. React would be reconciling
+ * the same element type across that change, so any state in `pre` itself
+ * would shift hook order mid-render. Here, `pre` returns either
+ * <MermaidBlock> or <CodeBlock> and the switch is a clean remount.
+ *
+ * Falls back to plain unhighlighted code when shiki has no grammar for the
+ * language, throws, or has not finished loading.
+ */
+function CodeBlock({
+  lang,
+  rawCode,
+  rawChildren,
+}: {
+  /** Already resolved through {@link resolveLang}. */
+  lang: string;
+  /** Plain text — the source of truth for highlighting and for copying. */
+  rawCode: string;
+  /** Original React children, used for the un-highlighted fallback. */
+  rawChildren: React.ReactNode;
+}) {
+  // Lazy-init highlighter on first encounter of a fenced block.
+  const [ready, setReady] = useState(!!highlighterInstance);
+  useMemo(() => {
+    if (!highlighterInstance) {
+      ensureHighlighter().then(() => setReady(true));
+    }
+  }, []);
+
+  const html = useMemo(() => {
+    if (!rawCode) return null;
+
+    // Theme is part of the cache key so a theme switch (light↔dark, or a
+    // theme-name change) invalidates stale HTML and re-highlights instead
+    // of serving the wrong palette.
+    const theme = currentTheme();
+    const key = codeCacheKey(rawCode, lang, theme);
+    // Cache hit?
+    const cached = getCodeHtml(key);
+    if (cached) return { __html: cached, key };
+
+    // Highlighter ready?
+    if (highlighterInstance) {
+      // Helper: attempt highlighting with a given language, returning null
+      // on any error instead of throwing.
+      const tryHighlight = (tryLang: string): string | null => {
+        try {
+          return highlighterInstance!.codeToHtml(rawCode, {
+            lang: tryLang,
+            theme,
+            transformers: [transformerNotationDiff()],
+          });
+        } catch {
+          return null; // Language not found or other error — caller handles.
+        }
+      };
+
+      // First attempt: requested language.
+      let highlighted = tryHighlight(lang);
+      // Fallback: "text" (always available, plain monospace).
+      if (!highlighted && lang !== "text") {
+        highlighted = tryHighlight("text");
+      }
+      if (highlighted) {
+        setCodeHtml(key, highlighted);
+        return { __html: highlighted, key };
+      }
+      // Both attempts failed — cache a safe placeholder.
+      setCodeHtml(key, `<pre class="shiki fallback"><code>${escapeHtml(rawCode)}</code></pre>`);
+    }
+
+    return null; // Not ready yet or highlight failed — show raw text.
+  }, [rawCode, lang, ready]);
+
+  // Long code blocks are collapsed to a max-height preview with a 展开
+  // overlay; clicking it (or the 收起 header button once expanded) toggles
+  // full height. `clippable` is re-measured only while collapsed, so
+  // streaming growth stays accurate and an expanded block's unbounded
+  // scrollHeight never accidentally un-clips it.
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const [clippable, setClippable] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el || expanded) return;
+    setClippable(el.scrollHeight > el.clientHeight + 1);
+  }, [rawCode, lang, ready, html, expanded]);
+
+  return (
+    <pre className="my-[var(--chat-md-gap-md)] overflow-hidden rounded-xl border border-edge bg-surface-muted">
+      <div className="flex h-[34px] items-center justify-between gap-2 border-b border-edge pl-3 pr-1.5 text-content-subtle [font-size:var(--chat-fs-xxs)]">
+        <span className="truncate font-mono">{lang}</span>
+        <span className="flex shrink-0 items-center gap-1">
+          {clippable && expanded && (
+            <button
+              onClick={() => setExpanded(false)}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-surface-hover/60 hover:text-content-muted"
+              title={t("chatStream.code.collapse")}
+            >
+              <IconChevronUp size={10} /> {t("chatStream.code.collapse")}
+            </button>
+          )}
+          <CopyButton text={rawCode.replace(/\n$/, "")} />
+        </span>
+      </div>
+      <div className="relative">
+        <div
+          ref={bodyRef}
+          className="overflow-auto"
+          style={{ maxHeight: expanded ? undefined : CODE_COLLAPSE_MAX_PX }}
+        >
+          {html ? (
+            <div className="px-3.5 py-3 [font-size:var(--chat-fs-xs)]" dangerouslySetInnerHTML={html} />
+          ) : (
+            <code className="block px-3.5 py-3 font-mono leading-relaxed text-content [font-size:var(--chat-fs-xs)]">
+              {rawChildren}
+            </code>
+          )}
+        </div>
+        {clippable && !expanded && (
+          <>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-surface-muted/90 to-transparent" />
+            <button
+              onClick={() => setExpanded(true)}
+              className="absolute bottom-1.5 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full border border-edge bg-surface px-2.5 py-0.5 text-content-muted shadow-sm transition-colors hover:bg-surface-hover hover:text-content"
+              title={t("chatStream.code.expand")}
+            >
+              <IconChevronDown size={12} /> {t("chatStream.code.expand")}
+            </button>
+          </>
+        )}
+      </div>
+    </pre>
+  );
+}
+
+/**
  * Build the react-markdown component overrides. Skill/command highlighting
  * is NOT done here — it's handled by the `rehypeSkillInline` rehype plugin
  * (see above), which operates at the hast level because react-markdown v10
@@ -437,128 +770,27 @@ function buildComponents(): Components {
     return <code className="font-mono"><CodeContext.Provider value={true}>{children}</CodeContext.Provider></code>;
   },
 
-  // Fenced code block: highlighted via shiki with copy button + lang label.
-  // Falls back to plain code when highlighting fails (unknown language etc.).
+  // Fenced code block. A `mermaid` fence is a diagram, not code — it gets its
+  // own renderer, and that decision is made here (not inside CodeBlock) so the
+  // two are different element types: a block that gains its language while
+  // streaming swaps components instead of mutating one mid-render.
   pre({ children }) {
     const child = Array.isArray(children) ? children[0] : children;
     const childProps = (child as { props?: { className?: string; children?: unknown } })?.props;
-    const className = childProps?.className ?? "";
+    // The raw tag: `resolveLang` would map it through shiki's aliases, but
+    // "mermaid" is not a shiki language and has to be recognised before that.
+    const tag = extractLanguage(childProps?.className);
     const rawCode = extractText(childProps?.children);
-    const lang = resolveLang(extractLanguage(className));
-
-    // Lazy-init highlighter on first encounter of a fenced block.
-    const [ready, setReady] = useState(!!highlighterInstance);
-    useMemo(() => {
-      if (!highlighterInstance) {
-        ensureHighlighter().then(() => setReady(true));
-      }
-    }, []);
-
-    const html = useMemo(() => {
-      if (!rawCode) return null;
-
-      // Theme is part of the cache key so a theme switch (light↔dark, or a
-      // theme-name change) invalidates stale HTML and re-highlights instead
-      // of serving the wrong palette.
-      const theme = currentTheme();
-      const key = codeCacheKey(rawCode, lang, theme);
-      // Cache hit?
-      const cached = getCodeHtml(key);
-      if (cached) return { __html: cached, key };
-
-      // Highlighter ready?
-      if (highlighterInstance) {
-        // Helper: attempt highlighting with a given language, returning null
-        // on any error instead of throwing.
-        const tryHighlight = (tryLang: string): string | null => {
-          try {
-            return highlighterInstance!.codeToHtml(rawCode, {
-              lang: tryLang,
-              theme,
-              transformers: [transformerNotationDiff()],
-            });
-          } catch {
-            return null; // Language not found or other error — caller handles.
-          }
-        };
-
-        // First attempt: requested language.
-        let highlighted = tryHighlight(lang);
-        // Fallback: "text" (always available, plain monospace).
-        if (!highlighted && lang !== "text") {
-          highlighted = tryHighlight("text");
-        }
-        if (highlighted) {
-          setCodeHtml(key, highlighted);
-          return { __html: highlighted, key };
-        }
-        // Both attempts failed — cache a safe placeholder.
-        setCodeHtml(key, `<pre class="shiki fallback"><code>${escapeHtml(rawCode)}</code></pre>`);
-      }
-
-      return null; // Not ready yet or highlight failed — show raw text.
-    }, [rawCode, lang, ready]);
-
-    // Long code blocks are collapsed to a max-height preview with a 展开
-    // overlay; clicking it (or the 收起 header button once expanded) toggles
-    // full height. `clippable` is re-measured only while collapsed, so
-    // streaming growth stays accurate and an expanded block's unbounded
-    // scrollHeight never accidentally un-clips it.
-    const { t } = useI18n();
-    const [expanded, setExpanded] = useState(false);
-    const [clippable, setClippable] = useState(false);
-    const bodyRef = useRef<HTMLDivElement>(null);
-    useLayoutEffect(() => {
-      const el = bodyRef.current;
-      if (!el || expanded) return;
-      setClippable(el.scrollHeight > el.clientHeight + 1);
-    }, [rawCode, lang, ready, html, expanded]);
-
+    const { mermaid } = useContext(MarkdownFeatureContext);
+    if (mermaid && (tag === "mermaid" || tag === "mmd")) {
+      return <MermaidBlock code={rawCode} />;
+    }
     return (
-      <pre className="my-[var(--chat-md-gap-md)] overflow-hidden rounded-xl border border-edge bg-surface-muted">
-        <div className="flex h-[34px] items-center justify-between gap-2 border-b border-edge pl-3 pr-1.5 text-content-subtle [font-size:var(--chat-fs-xxs)]">
-          <span className="truncate font-mono">{lang}</span>
-          <span className="flex shrink-0 items-center gap-1">
-            {clippable && expanded && (
-              <button
-                onClick={() => setExpanded(false)}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-surface-hover/60 hover:text-content-muted"
-                title={t("chatStream.code.collapse")}
-              >
-                <IconChevronUp size={10} /> {t("chatStream.code.collapse")}
-              </button>
-            )}
-            <CopyButton text={rawCode.replace(/\n$/, "")} />
-          </span>
-        </div>
-        <div className="relative">
-          <div
-            ref={bodyRef}
-            className="overflow-auto"
-            style={{ maxHeight: expanded ? undefined : CODE_COLLAPSE_MAX_PX }}
-          >
-            {html ? (
-              <div className="px-3.5 py-3 [font-size:var(--chat-fs-xs)]" dangerouslySetInnerHTML={html} />
-            ) : (
-              <code className="block px-3.5 py-3 font-mono leading-relaxed text-content [font-size:var(--chat-fs-xs)]">
-                {childProps?.children as React.ReactNode}
-              </code>
-            )}
-          </div>
-          {clippable && !expanded && (
-            <>
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-surface-muted/90 to-transparent" />
-              <button
-                onClick={() => setExpanded(true)}
-                className="absolute bottom-1.5 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full border border-edge bg-surface px-2.5 py-0.5 text-content-muted shadow-sm transition-colors hover:bg-surface-hover hover:text-content"
-                title={t("chatStream.code.expand")}
-              >
-                <IconChevronDown size={12} /> {t("chatStream.code.expand")}
-              </button>
-            </>
-          )}
-        </div>
-      </pre>
+      <CodeBlock
+        lang={resolveLang(tag)}
+        rawCode={rawCode}
+        rawChildren={childProps?.children as React.ReactNode}
+      />
     );
   },
 
@@ -647,14 +879,63 @@ function buildComponents(): Components {
     }
     return <span {...rest}>{children}</span>;
   },
-  // `div` only ever appears here because `rehypeImageGallery` created one (the
-  // markdown pipeline escapes raw HTML), so the className check is a safe way
-  // to mount the gallery provider.
-  div({ className, children }) {
+  // Two sources of `div`: `rehypeImageGallery` (our own, hence the className
+  // check that mounts the gallery provider) and raw HTML when rendering is
+  // enabled. The latter arrives with `style` already filtered by
+  // `rehypeSafeStyles`, so it is worth forwarding — a card the model gave a
+  // border and padding should keep them. `node` is react-markdown's own AST
+  // handle and must not reach the DOM.
+  div({ node: _node, className, children, ...rest }) {
     if (typeof className === "string" && className.includes("md-gallery")) {
       return <MarkdownGallery>{children}</MarkdownGallery>;
     }
-    return <div className={className}>{children}</div>;
+    return (
+      <div className={className} {...rest}>
+        {children}
+      </div>
+    );
+  },
+  // `<details>`/`<summary>`: the natural way for a reply to fold a long
+  // appendix, and unstyled they read as a browser default (a triangle and a
+  // system font). Same frame as a code block so the two sit together.
+  details({ node: _node, children, className, ...rest }) {
+    return (
+      <details
+        className={cn(
+          "my-[var(--chat-md-gap-md)] rounded-xl border border-edge bg-surface-muted/60 px-3 py-2",
+          "open:[&>summary]:mb-2 [&>summary]:text-content-muted",
+          className,
+        )}
+        {...rest}
+      >
+        {children}
+      </details>
+    );
+  },
+  summary({ node: _node, children, className, ...rest }) {
+    return (
+      <summary className={cn("cursor-pointer select-none marker:text-content-subtle", className)} {...rest}>
+        {children}
+      </summary>
+    );
+  },
+  // Presentational tags used for emphasis inside prose.
+  mark({ node: _node, children, ...rest }) {
+    return (
+      <mark className="rounded bg-warning/20 px-0.5 text-content" {...rest}>
+        {children}
+      </mark>
+    );
+  },
+  kbd({ node: _node, children, ...rest }) {
+    return (
+      <kbd
+        className="rounded border border-edge bg-surface-muted px-1 py-px font-mono text-content-muted [font-size:var(--chat-fs-xxs)]"
+        {...rest}
+      >
+        {children}
+      </kbd>
+    );
   },
   ul({ children }) {
     return <ul className="my-[var(--chat-md-gap-sm)] list-disc space-y-[var(--chat-md-gap-xs)] pl-5 text-content-muted marker:text-content-subtle">{children}</ul>;
@@ -745,7 +1026,23 @@ function normalizeMathDelimiters(content: string): string {
       // 2. Standard LaTeX inline math: \( math \) -> $math$
       res = res.replace(/\\\(([\s\S]*?)\\\)/g, (_, math) => `$${math.trim()}$`);
 
-      // 3. Fallback: Standalone line or block like `[ x(t) = ... \rho ... ]` where the
+      // 3. Bare environments: `\begin{align} … \end{align}` written with no
+      //    `$$` wrapper at all. `remark-math` only splits on `$`, so without
+      //    this these reach KaTeX as literal text — the most common reason a
+      //    "LaTeX doesn't work" reply renders its own source. Skipped when an
+      //    ODD number of `$$` has already opened before it, i.e. the
+      //    environment is already inside a display block; wrapping that would
+      //    nest one math span inside another. (Counting delimiters, rather
+      //    than asking whether the preceding text ends with `$$`, because a
+      //    previous block's CLOSING `$$` also sits immediately before this
+      //    one — the common case of two display blocks in a row.)
+      res = res.replace(
+        /\\begin\{(align\*?|aligned|alignat\*?|flalign\*?|gather\*?|multline\*?|equation\*?|eqnarray\*?|split|array|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|smallmatrix)\}[\s\S]*?\\end\{\1\}/g,
+        (match, _env, offset: number) =>
+          ((res.slice(0, offset).match(/\$\$/g)?.length ?? 0) % 2 === 1 ? match : `$$\n${match}\n$$`),
+      );
+
+      // 4. Fallback: Standalone line or block like `[ x(t) = ... \rho ... ]` where the
       // leading backslash was omitted or stripped by model/markdown, but contains LaTeX commands (\rho, \frac, etc.)
       const lines = res.split("\n");
       const mappedLines = lines.map((line) => {
@@ -807,13 +1104,40 @@ export const Markdown = memo(function Markdown({
   // set) is a document whose prose should stay prose.
   const prosePaths = useSessionStore(s => s.chatDisplay.prosePaths);
   const chatChips = !baseDir && prosePaths;
+  // Both default to ON, but each is a user-facing switch (设置 → 外观): rendering
+  // model-authored HTML is a deliberate choice, and mermaid pulls in a large
+  // dependency the user may not want.
+  const htmlEnabled = useSessionStore(s => s.chatDisplay.html);
+  const mermaidEnabled = useSessionStore(s => s.chatDisplay.mermaid);
+  const features = useMemo(() => ({ mermaid: mermaidEnabled }), [mermaidEnabled]);
+  // Fills and text colours in model HTML are re-derived for the theme in play
+  // (see lib/themeColor.ts), so a theme flip must re-run the style pass — the
+  // values baked into the hast tree belong to the theme that produced them.
+  const dark = useIsDarkMode();
   const normalizedChildren = useMemo(() => normalizeMathDelimiters(children), [children]);
   const rehypePlugins = useMemo(() => {
-    const list: NonNullable<Parameters<typeof ReactMarkdown>[0]["rehypePlugins"]> = [rehypeKatex, rehypeImageGallery];
+    const list: NonNullable<Parameters<typeof ReactMarkdown>[0]["rehypePlugins"]> = [];
+    // Raw HTML first, and in this order: rehype-raw re-parses the escaped
+    // markup into hast nodes, the allowlist drops everything not permitted,
+    // then the style pass trims the one string-valued attribute. Sanitizing
+    // this early is what keeps the rest of the chain simple — everything after
+    // it (katex, gallery, path chips, skill pills) is our own output, so no
+    // later plugin has to think about what the model wrote.
+    if (htmlEnabled)
+      list.push(
+        rehypeRaw,
+        // Must run after `rehypeRaw` (raw markup's `src`/`href` need the same
+        // normalisation) and before the sanitizer (which is what would drop a
+        // drive path as a bogus protocol).
+        rehypeDrivePathsToFileUrls,
+        [rehypeSanitize, HTML_SCHEMA],
+        [rehypeSafeStyles, { dark }],
+      );
+    list.push(rehypeKatex, rehypeImageGallery);
     if (chatChips) list.push(rehypePathChips);
     if (skillRe) list.push(rehypeSkillInline(skillRe));
     return list;
-  }, [skillRe, chatChips]);
+  }, [skillRe, chatChips, htmlEnabled, dark]);
   // Block margins + line-height here are density-driven (--chat-md-gap-* /
   // --chat-md-leading, see the chat-density section in styles.css) so the
   // 对话紧凑度 setting shapes the reply body itself, not just the gaps
@@ -832,14 +1156,16 @@ export const Markdown = memo(function Markdown({
     >
       <MarkdownProjectContext.Provider value={projectPath ?? null}>
         <MarkdownBaseDirContext.Provider value={baseDir ?? null}>
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={rehypePlugins}
-            urlTransform={urlTransform}
-            components={components}
-          >
-            {normalizedChildren}
-          </ReactMarkdown>
+          <MarkdownFeatureContext.Provider value={features}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={rehypePlugins}
+              urlTransform={urlTransform}
+              components={components}
+            >
+              {normalizedChildren}
+            </ReactMarkdown>
+          </MarkdownFeatureContext.Provider>
         </MarkdownBaseDirContext.Provider>
       </MarkdownProjectContext.Provider>
     </div>

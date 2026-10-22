@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="zh-CN" data-mode="next">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>执行区原型 · 一步一行 + 展开层</title>
+<style>
+  /* ── MarioCode 暗色 token（照 styles.css:249-274 抄的）────────────── */
+  :root{
+    --surface-base:#121312; --surface:#181918; --surface-muted:#202120;
+    --surface-hover:#2c2d2b; --content:#ecece9; --content-muted:#a8a8a3;
+    --content-subtle:#868681; --edge:#282927; --accent:#e58a63;
+    --accent-strong:#f0aa8a; --success:#34d399; --danger:#f87171;
+    --warning:#fbbf24; --info:#a78bfa;
+    --mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,"Segoe UI","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--surface-base); color:var(--content);
+    font:400 14px/1.55 var(--sans);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ── 顶栏 ─────────────────────────────────────────────────────── */
+  .bar{
+    position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:14px;
+    padding:10px 18px; background:rgb(18 19 18 / .92);
+    border-bottom:1px solid var(--edge); backdrop-filter:blur(8px);
+  }
+  .brand{display:flex;align-items:center;gap:7px;font-weight:600;font-size:13px}
+  .brand svg{color:var(--accent)}
+  .seg{display:flex;gap:2px;padding:2px;border-radius:8px;background:var(--surface-muted)}
+  .seg button{
+    appearance:none;border:0;background:none;color:var(--content-muted);
+    font:inherit;font-size:12.5px;padding:4px 12px;border-radius:6px;cursor:pointer;
+  }
+  .seg button[aria-pressed="true"]{background:var(--surface-hover);color:var(--content);font-weight:600}
+  .hint{margin-left:auto;color:var(--content-subtle);font-size:11.5px}
+  .hint kbd{
+    font:600 10.5px var(--mono);background:var(--surface-muted);border:1px solid var(--edge);
+    border-radius:4px;padding:1px 5px;color:var(--content-muted);
+  }
+
+  /* ── 布局 ─────────────────────────────────────────────────────── */
+  .app{display:flex;min-height:calc(100% - 45px)}
+  .rail{
+    width:46px;flex:none;display:flex;flex-direction:column;align-items:center;gap:14px;
+    padding:14px 0;border-right:1px solid var(--edge);color:var(--content-subtle);
+  }
+  .rail .dot{width:22px;height:22px;border-radius:6px;background:var(--surface-muted)}
+  .rail .dot.on{background:var(--accent);opacity:.85}
+  .chat{flex:1;min-width:0;padding:22px 0 80px}
+  .stream{max-width:780px;margin:0 auto;padding:0 24px}
+
+  /* ── 轮次头 ───────────────────────────────────────────────────── */
+  .turn + .turn{margin-top:34px}
+  .turn-head{
+    display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+    padding:5px 6px;margin:0 -6px 8px;border-radius:6px;cursor:pointer;
+    color:var(--content-muted);font-size:12.5px;
+  }
+  .turn-head:hover{background:rgb(44 45 43 / .45)}
+  .turn-head .mdl{font-weight:600;color:var(--content)}
+  .turn-head .sep{color:var(--content-subtle);opacity:.7}
+  .turn-head .pill{
+    display:inline-flex;align-items:center;gap:4px;padding:0 6px;border-radius:5px;
+    background:var(--surface-muted);color:var(--content-muted);font-size:11.5px;
+  }
+
+  /* ── 行 ───────────────────────────────────────────────────────── */
+  .step{font-size:13.5px}
+  .head{
+    display:flex;align-items:center;gap:8px;width:100%;
+    padding:5px 6px;margin:0 -6px;border:0;border-radius:6px;background:none;
+    color:inherit;font:inherit;text-align:left;cursor:pointer;
+  }
+  .head:hover{background:rgb(44 45 43 / .5)}
+  .head .ico{flex:none;color:var(--content-subtle)}
+  .verb{flex:none;font-weight:500;color:var(--content-muted);white-space:nowrap}
+  .path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        font-family:var(--mono);font-size:12.5px;color:var(--content-subtle)}
+  .desc{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--content-muted)}
+  .stats{margin-left:auto;display:flex;gap:7px;flex:none;font-size:11.5px;font-variant-numeric:tabular-nums}
+  .add{color:var(--success)} .del{color:var(--danger)} .quiet{color:var(--content-subtle)}
+  .chev{
+    flex:none;color:var(--content-subtle);font-size:15px;line-height:1;
+    transition:transform .15s ease;transform-origin:50% 50%;
+  }
+  .step[open] .chev{transform:rotate(90deg)}
+  .body{display:none}
+  .step[open] > .body{display:block}
+  .body-inner{padding:6px 0 8px 10px;margin:0 0 4px 6px}
+
+  /* 现在这一版的展开层：竖线 + 大写标签 + 两坨 JSON */
+  #now .body-inner{border-left:1px solid var(--edge)}
+  .lbl{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--content-subtle);margin:2px 0 3px}
+  .raw{
+    margin:0 0 6px;padding:7px 9px;border-radius:6px;background:var(--surface-muted);
+    font:400 11.5px/1.6 var(--mono);color:var(--content-muted);
+    max-height:150px;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  }
+
+  /* ── 提案的展开层：一块代码容器，$ 命令 / 输出 / 元信息 ────────── */
+  .code{
+    margin:1px 0 8px;border:1px solid var(--edge);border-radius:8px;
+    background:rgb(21 22 21 / .85);overflow:hidden;
+  }
+  .cmd{
+    display:flex;align-items:flex-start;gap:7px;
+    padding:8px 10px;font:400 11.5px/1.7 var(--mono);color:var(--content);
+  }
+  .cmd .pr{flex:none;color:var(--accent);user-select:none}
+  .cmd .tx{min-width:0;white-space:pre-wrap;word-break:break-word}
+  .cmd .s{color:#a5d6a7}       /* 引号里的字符串 */
+  .cmd .f{color:#8ab4f8}       /* -flag / --flag */
+  .cp{
+    margin-left:auto;flex:none;appearance:none;border:0;background:none;padding:0;
+    color:var(--content-subtle);cursor:pointer;line-height:1;opacity:.75;
+  }
+  .cp:hover{opacity:1;color:var(--content-muted)}
+  .out{
+    border-top:1px solid var(--edge);padding:8px 10px;
+    font:400 11.5px/1.65 var(--mono);color:var(--content-muted);
+    white-space:pre-wrap;word-break:break-word;max-height:190px;overflow:auto;
+  }
+  .meta{
+    border-top:1px solid var(--edge);padding:6px 10px;
+    font:400 11px/1.5 var(--mono);color:var(--content-subtle);
+  }
+  .meta i{font-style:normal;opacity:.55;margin:0 6px}
+  .ok0{color:var(--success)}
+  .bad0{color:var(--danger)}
+
+  /* diff */
+  .diff{font:400 11.5px/1.7 var(--mono);max-height:210px;overflow:auto;padding:4px 0}
+  .diff .l{display:flex;gap:8px;padding:0 10px}
+  .diff .m{flex:none;width:7px;color:var(--content-subtle)}
+  .diff .t{min-width:0;white-space:pre-wrap;word-break:break-word;color:var(--content-muted)}
+  .diff .a{background:rgb(52 211 153 / .07)}
+  .diff .a .m{color:var(--success)}
+  .diff .d{background:rgb(248 113 113 / .07)}
+  .diff .d .m{color:var(--danger)}
+
+  /* 组卡：两版的关键差别 */
+  .group-head .tally{
+    min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    color:var(--content-subtle);font-size:12.5px;
+  }
+  .glist{display:none;margin:2px 0 2px 6px}
+  .group[open] > .glist{display:block}
+  /* 现在：左侧竖线的缩进列表 */
+  #now .glist{border-left:1px solid var(--edge);padding:4px 0 4px 10px}
+  #now .glist .step + .step{margin-top:1px}
+  #now .glist .body-inner{border-left:0}
+  /* 提案：一个描边容器，行间发丝线 */
+  #next .glist{
+    border:1px solid var(--edge);border-radius:9px;margin:7px 0 3px;overflow:hidden;
+    background:rgb(32 33 32 / .28);
+  }
+  #next .glist .step > .head{padding:7px 11px;margin:0;border-radius:0}
+  #next .glist .step + .step{border-top:1px solid var(--edge)}
+  #next .glist .body-inner{margin:0 11px 6px;padding-left:0}
+
+  .glyph{flex:none;display:inline-flex;color:var(--content-subtle)}
+  .glyph.ok{opacity:0}
+  #now .step:hover .glyph.ok{opacity:.5}
+  .glyph.err{color:var(--danger)}
+
+  .think .verb{color:var(--content-subtle)}
+  .think .desc{color:var(--content-subtle)}
+
+  /* 思考展开：散文，不是等宽 */
+  .thinkbody{
+    color:var(--content-muted);font-size:13px;line-height:1.72;
+    white-space:pre-wrap;word-break:break-word;
+  }
+
+  .prose{margin:7px 0 7px 2px;color:var(--content);font-size:14px;line-height:1.68}
+  .prose p{margin:0 0 6px}
+  .prose code{
+    font:400 12.5px var(--mono);padding:1px 5px;border-radius:4px;
+    background:var(--surface-muted);color:var(--content-muted);
+  }
+
+  .err-box{
+    display:flex;gap:7px;margin:6px 0;padding:7px 10px;border-radius:6px;
+    background:rgb(248 113 113 / .12);border:1px solid rgb(248 113 113 / .35);
+    color:var(--danger);font-size:12.5px;
+  }
+  .err-box pre{margin:4px 0 0;color:var(--danger);opacity:.9;background:none;padding:0}
+
+  /* 说明面板 */
+  .notes{max-width:780px;margin:40px auto 0;padding:16px 24px 0;border-top:1px solid var(--edge)}
+  .notes h3{margin:0 0 10px;font-size:12.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--content-subtle)}
+  .notes ol{margin:0;padding-left:18px;color:var(--content-muted);font-size:12.5px;line-height:1.75}
+  .notes li{margin-bottom:5px}
+  .notes b{color:var(--content);font-weight:600}
+  .ask{margin-top:14px;padding:11px 13px;border-radius:8px;background:var(--surface-muted);font-size:12.5px;color:var(--content-muted);line-height:1.7}
+  .ask b{color:var(--accent-strong)}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <span class="brand">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+    执行区原型
+  </span>
+  <div class="seg" role="group" aria-label="渲染方式">
+    <button id="btn-now"  onclick="setMode('now')"  aria-pressed="false">现在（v0.2.59）</button>
+    <button id="btn-next" onclick="setMode('next')" aria-pressed="true">提案（Claude 式）</button>
+  </div>
+  <span class="hint">点任意一行展开 · <kbd>1</kbd> <kbd>2</kbd> 切换</span>
+</div>
+
+<div class="app">
+  <aside class="rail">
+    <div class="dot on"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div>
+  </aside>
+  <main class="chat">
+    <div class="stream" id="stream"></div>
+    <div class="notes">
+      <h3>改了什么</h3>
+      <ol>
+        <li><b>分组标题：机械计数 → 一句话。</b>「13 个操作　Grep ×2 · Glob ×1 · Bash ×3 · Read ×7」→「搜索代码、执行 3 条命令、读取 7 个文件」。</li>
+        <li><b>组内一行：工具名 + 原始参数 → 一句人话。</b>原始参数降级到展开层。</li>
+        <li><b>展开层按工具排版，不再倒 JSON。</b>Bash 是 <code>$ 命令</code> + 输出 + 退出码；Read 是内容；Edit/Write 是 diff。不再有「输入 / 结果」两个大写标签。</li>
+        <li><b>减噪与结构：</b>去掉工具图标与成功状态点（只有失败出红点），右侧统一 <span class="add">+N</span> <span class="del">−N</span>，组内行装进描边容器、发丝线分隔。</li>
+      </ol>
+      <div class="ask">
+        <b>两个要你定的点：</b><br>
+        ① <b>那些人话从哪来。</b>A 规则映射（Grep →「搜索 X」），零成本、本地算得出，但说不出「找到了什么」；B 让模型在 tool_use 里自带 <code>description</code>（Claude 就是这么做的），多一点 token，语义最准。<b>建议先 A 后 B。</b><br>
+        ② <b>动词语言。</b>Read / Edit / Write（跟 Claude 一致）还是 读取 / 编辑 / 写入（全中文）。
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ── 图标 ──────────────────────────────────────────────────────── */
+const P = {
+  spark:'<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" stroke-linejoin="round"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/>',
+  fsearch:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5"/><path d="M14 3l5 5v2"/><circle cx="16.5" cy="16.5" r="3.2"/><path d="M18.8 18.8L21 21"/>',
+  edit:'<path d="M4 20h4L18 10l-4-4L4 16v4z" stroke-linejoin="round"/><path d="M14.5 5.5l4 4"/>',
+  write:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" stroke-linejoin="round"/><path d="M14 3v5h5"/><path d="M12 12v6M9 15h6"/>',
+  term:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3"/><path d="M13 15h4"/>',
+  stack:'<path d="M12 3l9 5-9 5-9-5z" stroke-linejoin="round"/><path d="M3 14l9 5 9-5" stroke-linejoin="round"/>',
+  alert:'<path d="M12 4l9 16H3z" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01"/>',
+  check:'<path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>',
+  copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>',
+};
+const ic = (n, cls='ico') =>
+  `<svg class="${cls}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">${P[n]||P.spark}</svg>`;
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ── 数据：同一份，两套渲染 ───────────────────────────────────── */
+const CALL = (name,summary,description,extra={}) => ({name,summary,description,...extra});
+
+const LONG_CMD = 'cd "/c/Users/MI/Desktop/ssh-亿联云" && MC_SSH_PASS=$(grep -oP \'(?<=\\| 密码 \\| `)[^`]+\' SKILL.md) node scripts/run.mjs "ls -l --time-style=full-iso /opt/octopus-src/octopus; echo \'=== newest modified source ===\'; find /opt/octopus-src/internal /opt/octopus-src/cmd -name \'*.go\' -newer /opt/octopus-src/octopus | head -10; echo \'=== diff stat ===\'; git -C /opt/octopus-src diff --stat | tail -6; echo \'=== untracked ===\'; git -C /opt/octopus-src status --short | grep \'^??\' | head"';
+
+const LONG_OUT = `-rwxr-xr-x 1 root root 70857532 2026-10-22 07:05:25.243382981 +0000 /opt/octopus-src/octopus
+=== newest modified source ===
+=== diff stat ===
+ web/src/locales/zh_hans.json                    | 1944 ++++++++++++++++++-------
+ web/src/locales/zh_hant.json                    | 1944 ++++++++++++++++++-------
+ web/src/main.tsx                                |   21 +-
+ web/src/provider/theme.tsx                      |    2 +-
+ web/src/stores/app.ts                           |   71 +-
+102 files changed, 11526 insertions(+), 5567 deletions(-)
+=== untracked ===
+?? cmd/_mktoken/
+?? internal/db/migrate/013.go
+?? internal/db/migrate/014.go
+?? internal/db/migrate/015.go
+?? internal/model/audit_log.go`;
+
+const TURN = {
+  model:'claude-sonnet-5-5', clock:'02:42:04', dur:'6m 08s', steps:14,
+  files:3, adds:39, dels:19, tokens:'509.1k', cache:'100%', tps:'15 tok/s',
+  body:[
+    {k:'think', preview:'I need to find where the relay account card reads its data, and why a valid key gets a 401…',
+     full:'The card calls three endpoints in sequence. The first one (apikey/login) works.\nThe second (/api/v1/me) returns 401.\n\nEither the key really is rejected, or the endpoint is guarded by a different auth layer. Read the middleware before assuming anything about the key.'},
+
+    {k:'group', summary:'搜索代码、执行 3 条命令、读取 7 个文件', calls:[
+      CALL('Grep','中转站 API Key 无效或已失效Key 无效或已失效','在渲染层定位报错文案的来源',{
+        icon:'search',
+        input:'{ pattern: "中转站 API Key 无效或已失效", path: "apps/desktop/src/renderer" }',
+        result:'4 matches in 2 files',
+        view:{kind:'grep', pattern:'中转站 API Key 无效或已失效', total:4, matches:[
+          'renderer/lib/i18n/zh/settings.ts:118: "settings.shared.relay.account.failed": "读取失败：{error}"',
+          'renderer/components/settings/BuiltinRelaySection.tsx:312: {t("settings.shared.relay.account.failed", …)}',
+          'main/lib/relayAccountStore.ts:156: throw new AccountError("中转站 API Key 无效或已失效")',
+        ]}}),
+      CALL('Glob','**/octopus-src/**/*.go','定位网关源码目录',{
+        icon:'fsearch',
+        input:'{ pattern: "**/octopus-src/**/*.go" }', result:'312 files',
+        view:{kind:'grep', pattern:'**/octopus-src/**/*.go', total:312, matches:['/opt/octopus-src/internal/server/handlers/apikey.go','/opt/octopus-src/internal/server/middleware/auth.go','… 310 more']}}),
+      CALL('Bash','grep -rn apikey internal/server','在处理器目录搜索 apikey 路由',{
+        icon:'term',
+        input:'{ command: "grep -rn \'apikey\' internal/server", description: "find apikey routes" }',
+        result:'internal/server/router.go:88\ninternal/server/handlers/apikey.go:41',
+        view:{kind:'bash', command:'grep -rn "apikey" internal/server', exit:0,
+          output:'internal/server/router.go:88:  api.POST("/apikey/login", h.LoginAPIKey)\ninternal/server/handlers/apikey.go:41: func (h *Handler) LoginAPIKey(c *gin.Context) {',
+          meta:['exit code 0']}}),
+      CALL('Read','apps/desktop/src/main/lib/relayAccountStore.ts','读取账户存储的实现',{
+        icon:'fsearch',
+        input:'{ file_path: "apps/desktop/src/main/lib/relayAccountStore.ts" }', result:'258 lines',
+        view:{kind:'read', lines:258, content:'  const raw = unwrapEnvelope(await requestJson(BUILTIN_RELAY_ACCOUNT_PROFILE_URL, key, deps));\n  const balanceNano = num((raw as Record<string, unknown>)?.balance);\n  if (balanceNano === null) throw new AccountError("中转站没有返回余额");'}}),
+      CALL('Read','internal/server/handlers/me.go','读 /api/v1/me 的处理器',{icon:'fsearch', input:'{ file_path: "internal/server/handlers/me.go" }', result:'96 lines',
+        view:{kind:'read', lines:96, content:'func (h *Handler) GetMe(c *gin.Context) {\n\tuser := middleware.CurrentUser(c)\n\tresp.Success(c, gin.H{"id": user.ID, "balance": user.Balance})\n}'}}),
+      CALL('Read','internal/server/middleware/auth.go','读 UserAuth 与 RequireJSON 中间件',{icon:'fsearch', input:'{ file_path: "internal/server/middleware/auth.go" }', result:'188 lines',
+        view:{kind:'read', lines:188, content:'func UserAuth() gin.HandlerFunc {\n\treturn func(c *gin.Context) {\n\t\tclaims := sessionClaims(c)   // ← reads ONLY the `auth` cookie\n\t\t…'}}),
+      CALL('Grep','APIKeyAuth','查 API Key 鉴权挂在哪些路由',{icon:'search', input:'{ pattern: "APIKeyAuth", path: "internal/server" }', result:'router.go:64,71,79',
+        view:{kind:'grep', pattern:'APIKeyAuth', total:3, matches:['router.go:64:  keys := r.Group("/api/v1/apikey", APIKeyAuth())','router.go:71:  keys.GET("/stats", h.GetStatsAPIKeyById)','router.go:79:  v1 := r.Group("/v1", APIKeyAuth())']}}),
+      CALL('Read','internal/server/router.go','读 API Key 保护的路由组',{icon:'fsearch', input:'{ file_path: "internal/server/router.go" }', result:'204 lines',
+        view:{kind:'read', lines:204, content:'\tme := r.Group("/api/v1/me", UserAuth())        // cookie only\n\tkeys := r.Group("/api/v1/apikey", APIKeyAuth()) // key accepted'}}),
+      CALL('Read','internal/server/handlers/apikey.go','读 apikey login / stats 处理器',{icon:'fsearch', input:'{ file_path: "internal/server/handlers/apikey.go" }', result:'412 lines',
+        view:{kind:'read', lines:412, content:'func (h *Handler) GetStatsAPIKeyById(c *gin.Context) {\n\tinfo := middleware.CurrentAPIKey(c)\n\tstats, _ := op.StatsAPIKey(info.APIKeyID, c.Request.Context())\n\tresp.Success(c, gin.H{"stats": stats, "info": info})\n}'}}),
+      CALL('Read','apps/desktop/src/main/lib/relayAccountStore.ts','读完账户存储的剩余部分',{icon:'fsearch', input:'{ file_path: "apps/desktop/src/main/lib/relayAccountStore.ts", offset: 120 }', result:'138 lines',
+        view:{kind:'read', lines:138, content:'  if (response.status === 401 || response.status === 403) {\n    throw new AccountError("中转站 API Key 无效或已失效");\n  }'}}),
+      CALL('Read','internal/server/models/user.go','读 APIKey / User 模型与响应信封',{icon:'fsearch', input:'{ file_path: "internal/server/models/user.go" }', result:'74 lines',
+        view:{kind:'read', lines:74, content:'type User struct {\n\tID      uint  `json:"id"`\n\tBalance int64 `json:"balance"` // nano-USD, 1 USD = 1e9\n}'}}),
+      CALL('Bash','systemctl status octopus','检查 octopus 服务状态',{icon:'term', input:'{ command: "systemctl status octopus --no-pager" }', result:'active (running) since …',
+        view:{kind:'bash', command:'systemctl status octopus --no-pager', exit:0,
+          output:'● octopus.service - Octopus Gateway\n     Active: active (running) since Wed 2026-10-22 01:14:02 UTC; 4 weeks 0 days ago',
+          meta:['exit code 0']}}),
+      CALL('Bash','find . -name "*.go" -newer octopus','核对二进制与源码新旧',{
+        icon:'term', demoOpen:true,
+        input:'{ command: "cd \\"/c/Users/MI/Desktop/ssh-亿联云\\" && … node scripts/run.mjs \\"ls -l …\\"" }',
+        result:'…102 files changed, 11526 insertions(+), 5567 deletions(-)',
+        view:{kind:'bash', command:LONG_CMD, exit:0, output:LONG_OUT,
+          meta:['remote exit code 0','Shell cwd was reset to C:\\Users\\MI\\Desktop\\MarioCode']}}),
+    ]},
+
+    {k:'text', text:'卡片的根因找到了：它调的 <code>/api/v1/me</code> 只认面板登录 cookie，不认 API Key。'},
+
+    {k:'think', preview:'So the fix is either to expose balance on a key-authenticated route, or to move the client…',
+     full:'Two ways out: patch the gateway so a key-authenticated endpoint also returns the balance, or move the client onto an endpoint that already exists.\n\nThe former keeps everything in one call and leaves old clients unaffected.'},
+
+    {k:'tool', name:'Edit', icon:'edit', path:'apps/desktop/src/main/lib/relayAccountStore.ts', adds:52, dels:32, demoOpen:true,
+     input:'{ file_path: "apps/desktop/src/main/lib/relayAccountStore.ts", old_string: "…PROFILE_URL…", new_string: "…STATS_URL…" }',
+     result:'The file has been updated.',
+     view:{kind:'diff', diff:[
+       ['-','  const profile = await requestJson(BUILTIN_RELAY_ACCOUNT_PROFILE_URL, key, deps);'],
+       ['-','  const usage   = await requestJson(BUILTIN_RELAY_ACCOUNT_USAGE_URL, key, deps);'],
+       ['+','  const raw = unwrapEnvelope(await requestJson(BUILTIN_RELAY_ACCOUNT_STATS_URL, key, deps));'],
+       ['+','  const body = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};'],
+       ['+','  const balanceNano = num(body.balance);'],
+       [' ',''],
+       ['-','  const balanceNano = num((profile as Record<string, unknown>)?.balance);'],
+       ['+','  // `stats` is a single aggregate row; parseUsage also sums arrays.'],
+     ]}},
+    {k:'tool', name:'Edit', icon:'edit', path:'packages/contracts/src/builtinRelay.ts', adds:63, dels:41,
+     input:'{ file_path: "packages/contracts/src/builtinRelay.ts", old_string: "…PROFILE_URL = …", new_string: "…STATS_URL = …" }',
+     result:'The file has been updated.',
+     view:{kind:'diff', diff:[
+       ['-','export const BUILTIN_RELAY_ACCOUNT_PROFILE_URL = `${PREFIX}/me`;'],
+       ['-','export const BUILTIN_RELAY_ACCOUNT_USAGE_URL   = `${PREFIX}/me/usage`;'],
+       ['+','export const BUILTIN_RELAY_ACCOUNT_STATS_URL = `${PREFIX}/apikey/stats`;'],
+     ]}},
+    {k:'tool', name:'Write', icon:'write', path:'apps/desktop/scripts/shared-provider-smoke/main.ts', lines:111, adds:24, dels:10,
+     input:'{ file_path: "apps/desktop/scripts/shared-provider-smoke/main.ts", content: "…" }',
+     result:'The file has been updated.',
+     view:{kind:'read', lines:111, content:'check("relay account never calls the cookie-only /api/v1/me",\n  accountUrls.every((url) => !/\\/me(\\/|$)/.test(url)));'}},
+
+    {k:'group', summary:'执行 3 条命令', calls:[
+      CALL('Bash','go build -o /tmp/octopus-build ./cmd/octopus','编译打了 balance 补丁的网关',{icon:'term',
+        input:'{ command: "go build -o /tmp/octopus-build ./cmd/octopus" }', result:'(exit 0)',
+        view:{kind:'bash', command:'cd /opt/octopus-src && go build -o /tmp/octopus-build ./cmd/octopus', exit:0, output:'(no output)', meta:['exit code 0','took 41s']}}),
+      CALL('Bash','sh deploy-octopus-balance.sh','换上二进制并重启服务',{icon:'term',
+        input:'{ command: "sh /tmp/deploy-octopus-balance.sh" }', result:'octopus: active',
+        view:{kind:'bash', command:'sh /tmp/deploy-octopus-balance.sh', exit:0,
+          output:'=== stop ===\n=== start ===\noctopus: active\napikey/stats: 401\nv1/models:    401',
+          meta:['exit code 0','2s downtime']}}),
+      CALL('Bash','curl -sS /api/v1/apikey/stats','验证返回里带了 balance',{icon:'term',
+        input:'{ command: "curl -sS -H \\"Authorization: Bearer ***\\" http://127.0.0.1:8090/api/v1/apikey/stats" }',
+        result:'data keys: balance,info,stats',
+        view:{kind:'bash', command:'curl -sS -H "Authorization: Bearer ***" http://127.0.0.1:8090/api/v1/apikey/stats',
+          exit:0, output:'{\n  "code": 200,\n  "message": "success",\n  "data": { "balance": 0, "info": {…}, "stats": {…} }\n}',
+          meta:['exit code 0']}}),
+    ]},
+  ],
+};
+
+const TURN2 = {
+  model:'claude-sonnet-5-5', clock:'02:51:19', dur:'41s', steps:3,
+  files:0, adds:0, dels:0, tokens:'18.4k', cache:'0%', tps:'22 tok/s',
+  body:[
+    {k:'group', summary:'执行 2 条命令', calls:[
+      CALL('Bash','pnpm run typecheck','跑类型检查',{icon:'term',
+        input:'{ command: "pnpm --filter @mariocode/desktop run typecheck" }', result:'3 tasks successful, 1m31s',
+        view:{kind:'bash', command:'pnpm --filter @mariocode/desktop run typecheck', exit:0,
+          output:'$ tsc --noEmit -p tsconfig.json\n• Packages in scope: @mariocode/contracts, @mariocode/desktop\n3 tasks successful, 1m31s', meta:['exit code 0']}}),
+      CALL('Bash','pnpm run test:shared-providers','跑共享提供商冒烟测试',{icon:'term',
+        input:'{ command: "pnpm --filter @mariocode/desktop run test:shared-providers" }', result:'227 checks passed',
+        view:{kind:'bash', command:'pnpm --filter @mariocode/desktop run test:shared-providers', exit:1,
+          output:'✓ relay account calls stats once\n✓ relay account sends Bearer sk-not-the-real-key\n✗ model count matches the published config\n   expected 22, received 23\n225 passed, 1 failed, 1 skipped', meta:['exit code 1','took 3.4s']}}),
+    ]},
+    {k:'error', text:'Command failed with exit code 1 — 23 个模型，线上 relay-config.json 还是旧的。'},
+  ],
+};
+
+/* ── 展开层：现在（JSON 倒出来）───────────────────────────────── */
+function bodyNowRaw(st){
+  if (!st.input && !st.result) return '';
+  return `<div class="body"><div class="body-inner">
+    ${st.input  ? `<div class="lbl">输入</div><div class="raw">${esc(st.input)}</div>` : ''}
+    ${st.result ? `<div class="lbl">结果</div><div class="raw">${esc(st.result)}</div>` : ''}
+  </div></div>`;
+}
+function bodyNowThink(b){
+  return `<div class="body"><div class="body-inner"><div class="raw">${esc(b.full)}</div></div></div>`;
+}
+
+/* ── 展开层：提案（按工具排版）────────────────────────────────── */
+function hlCmd(s){
+  // 先按引号切段：引号内整段算字符串，不再往里挑 -flag（否则 grep -oP '(?<=\| …)' 里会花掉）
+  return esc(s).split(/('[^']*'|&quot;[^&]*?&quot;)/g).map(part => {
+    if (/^'|^&quot;/.test(part)) return `<span class="s">${part}</span>`;
+    return part.replace(/(\s)(-{1,2}[A-Za-z][\w-]*)/g, (m, p1, p2) => `${p1}<span class="f">${p2}</span>`);
+  }).join('');
+}
+function bashBlock(v){
+  const meta = (v.meta||[]).map((m,i)=> {
+    const cls = /exit code 0|remote exit code 0/.test(m) ? 'ok0' : /exit code [1-9]/.test(m) ? 'bad0' : '';
+    return `<span class="${cls}">${esc(m)}</span>`;
+  }).join('<i>·</i>');
+  return `<div class="code">
+    <div class="cmd"><span class="pr">$</span><span class="tx">${hlCmd(v.command)}</span>
+      <button class="cp" title="复制命令" data-cmd="${esc(v.command)}" onclick="copyCmd(this)">${ic('copy')}</button></div>
+    ${v.output ? `<div class="out">${esc(v.output)}</div>` : ''}
+    ${meta ? `<div class="meta">${meta}</div>` : ''}
+  </div>`;
+}
+function readBlock(v){
+  return `<div class="code">
+    <div class="out">${esc(v.content||'')}</div>
+    <div class="meta"><span>${v.lines} 行</span></div>
+  </div>`;
+}
+function grepBlock(v){
+  const lines = (v.matches||[]).map(m => `<span class="s">${esc(m)}</span>`).join('\n');
+  return `<div class="code">
+    <div class="cmd"><span class="pr">/</span><span class="tx">${esc(v.pattern)}</span></div>
+    ${lines ? `<div class="out">${lines}</div>` : ''}
+    <div class="meta"><span>${v.total} 处匹配</span></div>
+  </div>`;
+}
+function diffBlock(v){
+  return `<div class="code"><div class="diff">${
+    v.diff.map(([m,t]) => {
+      const cls = m === '+' ? 'a' : m === '-' ? 'd' : '';
+      return `<div class="l ${cls}"><span class="m">${m === ' ' ? '' : esc(m)}</span><span class="t">${esc(t)}</span></div>`;
+    }).join('')
+  }</div></div>`;
+}
+function bodyNextView(st){
+  const v = st.view;
+  if (!v) return '';
+  const inner =
+      v.kind === 'bash' ? bashBlock(v)
+    : v.kind === 'diff' ? diffBlock(v)
+    : v.kind === 'read' ? readBlock(v)
+    : v.kind === 'grep' ? grepBlock(v) : '';
+  return `<div class="body"><div class="body-inner">${inner}</div></div>`;
+}
+function bodyNextThink(b){
+  return `<div class="body"><div class="body-inner"><div class="thinkbody">${esc(b.full)}</div></div></div>`;
+}
+
+/* ── 行 ───────────────────────────────────────────────────────── */
+function statsHtml(st){
+  const out=[];
+  if (st.adds) out.push(`<span class="add">+${st.adds}</span>`);
+  if (st.dels) out.push(`<span class="del">−${st.dels}</span>`);
+  if (!st.adds && !st.dels && st.lines) out.push(`<span class="quiet">${st.lines} 行</span>`);
+  return out.length ? `<span class="stats">${out.join('')}</span>` : '';
+}
+
+function rowNow(st){
+  return `<div class="step"${st.demoOpen?' open':''}>
+    <button class="head" onclick="tog(this)">
+      <span class="glyph ok">${ic('check')}</span>
+      ${ic(st.icon||'spark')}
+      <span class="verb">${esc(st.name)}</span>
+      <span class="desc">${esc(st.summary||'')}</span>
+      ${statsHtml(st)}
+      <span class="chev">›</span>
+    </button>
+    ${bodyNowRaw(st)}
+  </div>`;
+}
+
+function blockNow(b){
+  if (b.k === 'think') return `<div class="step think"${b.demoOpen?' open':''}>
+    <button class="head" onclick="tog(this)">${ic('spark')}<span class="verb">思考</span>
+      <span class="desc">${esc(b.preview)}</span><span class="chev">›</span></button>
+    ${bodyNowThink(b)}
+  </div>`;
+  if (b.k === 'text') return `<div class="prose"><p>${b.text}</p></div>`;
+  if (b.k === 'error') return `<div class="err-box">${ic('alert','')}<span>${esc(b.text)}</span></div>`;
+  if (b.k === 'tool') return rowNow(b);
+  if (b.k === 'group'){
+    const tally = {};
+    for (const c of b.calls) tally[c.name] = (tally[c.name]||0)+1;
+    const tallyTxt = Object.entries(tally).map(([n,c])=>`${n} ×${c}`).join(' · ');
+    return `<div class="step group" data-group>
+      <button class="head group-head" onclick="togGroup(this)">
+        ${ic('stack')}
+        <span class="verb">${b.calls.length} 个操作</span>
+        <span class="tally">${esc(tallyTxt)}</span>
+        <span class="chev">›</span>
+      </button>
+      <div class="glist">${b.calls.map(rowNow).join('')}</div>
+    </div>`;
+  }
+  return '';
+}
+
+function rowNext(st, inGroup){
+  const lead = st.path
+    ? `<span class="verb">${esc(st.name)}</span><span class="path">${esc(st.path)}</span>`
+    : inGroup
+      ? `<span class="desc">${esc(st.description)}</span>`
+      : `<span class="verb">${esc(st.name)}</span><span class="desc">${esc(st.description||st.summary||'')}</span>`;
+  return `<div class="step"${st.demoOpen?' open':''}>
+    <button class="head" onclick="tog(this)">
+      ${lead}${statsHtml(st)}<span class="chev">›</span>
+    </button>
+    ${bodyNextView(st)}
+  </div>`;
+}
+
+function blockNext(b){
+  if (b.k === 'think') return `<div class="step think"${b.demoOpen?' open':''}>
+    <button class="head" onclick="tog(this)">${ic('spark')}<span class="verb">思考</span>
+      <span class="desc">${esc(b.preview)}</span><span class="chev">›</span></button>
+    ${bodyNextThink(b)}
+  </div>`;
+  if (b.k === 'text') return `<div class="prose"><p>${b.text}</p></div>`;
+  if (b.k === 'error') return `<div class="err-box">${ic('alert','')}<span>${esc(b.text)}</span></div>`;
+  if (b.k === 'tool') return rowNext(b,false);
+  if (b.k === 'group') return `<div class="step group" data-group>
+      <button class="head group-head" onclick="togGroup(this)">
+        ${ic('stack')}
+        <span class="desc">${esc(b.summary)}</span>
+        <span class="chev">›</span>
+      </button>
+      <div class="glist">${b.calls.map(c=>rowNext(c,true)).join('')}</div>
+    </div>`;
+  return '';
+}
+
+/* ── 轮次头 ───────────────────────────────────────────────────── */
+function turnHtml(t, renderer){
+  return `<section class="turn">
+    <div class="turn-head">
+      ${ic('spark','')}
+      <span class="mdl">${esc(t.model)}</span>
+      <span>${esc(t.clock)}</span><span class="sep">·</span>
+      <span>${esc(t.dur)}</span><span class="sep">·</span>
+      <span>${t.steps} 步</span><span class="sep">·</span>
+      <span>改 ${t.files} 个文件 <span class="add">+${t.adds}</span> <span class="del">−${t.dels}</span></span>
+      <span class="pill">${esc(t.tokens)} tokens</span>
+      <span class="pill">缓存 ${esc(t.cache)}</span>
+      <span class="pill">${esc(t.tps)}</span>
+    </div>
+    <div>${t.body.map(renderer).join('')}</div>
+  </section>`;
+}
+
+/* ── 组装 ──────────────────────────────────────────────────────── */
+const stream = document.getElementById('stream');
+stream.innerHTML =
+  `<div id="now"  hidden>${turnHtml(TURN,blockNow)}${turnHtml(TURN2,blockNow)}</div>` +
+  `<div id="next" hidden>${turnHtml(TURN,blockNext)}${turnHtml(TURN2,blockNext)}</div>`;
+
+/* 只展开「组」，行由 demoOpen 决定——两版展开的是同一批行，比较才公平 */
+document.querySelectorAll('[data-group]').forEach(g => g.setAttribute('open',''));
+
+function copyCmd(btn){
+  const txt = btn.getAttribute('data-cmd') || '';
+  navigator.clipboard?.writeText(txt).then(() => {
+    btn.style.color = 'var(--success)';
+    setTimeout(() => { btn.style.color = ''; }, 900);
+  }).catch(() => {});
+}
+
+function setMode(m){
+  document.documentElement.dataset.mode = m;
+  document.getElementById('now').hidden  = m !== 'now';
+  document.getElementById('next').hidden = m !== 'next';
+  document.getElementById('btn-now').setAttribute('aria-pressed',  String(m === 'now'));
+  document.getElementById('btn-next').setAttribute('aria-pressed', String(m === 'next'));
+}
+function tog(btn){ btn.parentElement.toggleAttribute('open'); }
+function togGroup(btn){ btn.parentElement.toggleAttribute('open'); }
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === '1') setMode('now');
+  if (e.key === '2') setMode('next');
+});
+setMode('next');
+</script>
+</body>
+</html>

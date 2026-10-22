@@ -177,6 +177,16 @@ export const codeHtmlCache = new LRUCache<CachedString>(500, 52_428_800);
  *  Key = fnv1a(markdownText). */
 export const mdAstCache = new LRUCache<CachedString>(500, 52_428_800);
 
+/**
+ * Cache for rendered mermaid diagrams (the SVG source string mermaid hands
+ * back). Diagram layout is the most expensive render in a chat message —
+ * d3/dagre layout plus font metrics — and it depends only on the diagram
+ * source and the theme, so scrolling a long conversation back and forth must
+ * not re-lay-out every graph. Bounded smaller than the code cache because an
+ * SVG is much larger than the source that produced it.
+ */
+export const mermaidSvgCache = new LRUCache<CachedString>(120, 8_388_608);
+
 /** Compute a cache key from code text + language tag + Shiki theme.
  *  The theme is included so a theme switch invalidates stale HTML and
  *  triggers re-highlighting instead of serving the wrong palette. */
@@ -192,4 +202,21 @@ export function setCodeHtml(key: string, html: string): void {
 /** Retrieve cached shiki HTML, or undefined. */
 export function getCodeHtml(key: string): string | undefined {
   return codeHtmlCache.get(key)?.value;
+}
+
+/** Cache key for a mermaid diagram: source + resolved theme. The theme is
+ *  part of the key because mermaid bakes its palette into the SVG (there is
+ *  no CSS-variable indirection to switch afterwards). */
+export function mermaidCacheKey(source: string, theme: string): string {
+  return fnv1a(source + "\0mermaid\0" + theme);
+}
+
+/** Store a rendered mermaid SVG. */
+export function setMermaidSvg(key: string, svg: string): void {
+  mermaidSvgCache.set(key, new CachedString(svg));
+}
+
+/** Retrieve a cached mermaid SVG, or undefined. */
+export function getMermaidSvg(key: string): string | undefined {
+  return mermaidSvgCache.get(key)?.value;
 }

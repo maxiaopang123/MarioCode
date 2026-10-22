@@ -26,6 +26,7 @@ import {
   CLAUDE_PLAN_MODE_NUDGE,
   PI_IDENTITY_PROMPT,
   PI_PLAN_MODE_PROMPT,
+  RICH_OUTPUT_PROMPT,
   formatUserGlobalSection,
   formatUserProjectSection,
 } from "./systemPrompt.js";
@@ -86,6 +87,9 @@ export async function previewSystemPrompt(
         { id: "engine.claude.base", kind: "engine", text: null, meta: { style: outputStyle || "default" } },
         { id: "identity", kind: "fixed", text: CLAUDE_IDENTITY_PROMPT },
         ...user,
+        // Same slot the provider pushes it into: identity → user → format →
+        // tool guides.
+        { id: "output.format", kind: "fixed", text: RICH_OUTPUT_PROMPT },
         ...(win32
           ? [{ id: "claude.pathHint", kind: "conditional", text: bashPathHintFor(detectBashEnv("claude")) } as const]
           : []),
@@ -99,6 +103,7 @@ export async function previewSystemPrompt(
         { id: "engine.pi.base", kind: "engine", text: null },
         { id: "identity", kind: "fixed", text: PI_IDENTITY_PROMPT },
         ...user,
+        { id: "output.format", kind: "fixed", text: RICH_OUTPUT_PROMPT },
         { id: "pi.askNative", kind: "fixed", text: ASK_NATIVE_TOOL_PROMPT },
         { id: "pi.plan", kind: "fixed", text: PI_PLAN_MODE_PROMPT },
         {
@@ -123,6 +128,9 @@ export async function previewSystemPrompt(
         {
           id: "codex.agentsHome",
           kind: "fixed",
+          // Carries the rich-output section too — Codex has no per-turn
+          // append hook, so `RICH_OUTPUT_PROMPT` is baked into this file
+          // rather than listed as its own layer.
           text: codexHomeAgentsMarkdown(builtinFlags),
           meta: { path: path.join(codexHomePath(), "AGENTS.md") },
         },

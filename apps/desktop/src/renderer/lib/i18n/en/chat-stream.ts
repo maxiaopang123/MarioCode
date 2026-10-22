@@ -63,6 +63,11 @@ export const en = {
   "chatStream.copyCode": "Copy code",
   "chatStream.code.expand": "Expand",
   "chatStream.code.collapse": "Collapse",
+  "chatStream.mermaid.source": "Source",
+  "chatStream.mermaid.diagram": "Diagram",
+  "chatStream.mermaid.rendering": "Drawing diagram…",
+  "chatStream.mermaid.failed": "Diagram syntax error — showing source",
+  "chatStream.mermaid.tooLarge": "Diagram source is too large — showing source",
 
   // ── FileLink ──
   "chatStream.fileLink.clickToOpen": "Click to open file",

@@ -71,7 +71,7 @@ import { getOrSetFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
 import { withEngineNetworkEnv } from "@main/network/engineProxy.js";
 import { getMcpManagement } from "@main/lib/mcpConfig.js";
 import { skillSyncMirrorRootsSync } from "@main/lib/skillSync.js";
-import { CODEX_IDENTITY_PROMPT, joinPromptSections } from "@main/lib/systemPrompt.js";
+import { CODEX_IDENTITY_PROMPT, RICH_OUTPUT_PROMPT, joinPromptSections } from "@main/lib/systemPrompt.js";
 import { ASK_NATIVE_TOOL_PROMPT } from "@main/lib/askQuestion.js";
 import { loadUserSystemPrompt, userSystemPromptSections } from "@main/lib/userSystemPrompt.js";
 import {
@@ -703,6 +703,11 @@ function skillRootsFor(cwd: string): string[] {
 export function codexHomeAgentsMarkdown(builtinFlags: BuiltinToolFlags): string {
   return joinPromptSections(
     CODEX_IDENTITY_PROMPT,
+    // Rich-output guide (LaTeX / Mermaid / inline HTML) — second only to the
+    // identity so it reads as a general formatting rule rather than tool
+    // guidance. The user's own global/project prompt is NOT here: it travels as
+    // `developerInstructions` on thread/start, i.e. ahead of this file.
+    RICH_OUTPUT_PROMPT,
     ASK_NATIVE_TOOL_PROMPT,
     PLAN_MODE_PROMPT,
     browserToolsUsagePrompt(),

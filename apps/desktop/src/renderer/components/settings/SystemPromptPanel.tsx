@@ -18,6 +18,7 @@ const LAYER_LABELS: Record<string, MessageId> = {
   "engine.codex.projectAgents": "settings.systemPrompt.layer.engineProjectAgents",
   "engine.codex.environment": "settings.systemPrompt.layer.engineEnvironment",
   identity: "settings.systemPrompt.layer.identity",
+  "output.format": "settings.systemPrompt.layer.outputFormat",
   "user.global": "settings.systemPrompt.layer.userGlobal",
   "user.project": "settings.systemPrompt.layer.userProject",
   "claude.pathHint": "settings.systemPrompt.layer.claudePathHint",

@@ -2708,3 +2708,37 @@ html[data-tone="warm"] .chat-md {
   font-size: 1.05em;
   text-rendering: auto;
 }
+
+/* ───────────── Mermaid diagrams ─────────────
+ * Mermaid emits `width="100%"` plus an inline `max-width` equal to the graph's
+ * natural width, so a landscape diagram fills the column and a small one stays
+ * at its own size. `max-width: 100%` here is the only override needed: it lets
+ * a graph wider than the message column shrink instead of forcing a scroll.
+ * Do NOT set `width: 100%` — that would blow a 3-node graph up to the full
+ * column width (the inline max-width is what keeps it proportional). */
+.chat-md .mermaid-svg svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+/* ───────────── Raw HTML modules (设置 → 外观 → 渲染 HTML) ─────────────
+ * Only the handful of elements react-markdown does not style by default.
+ * Browser defaults worth overriding: <figure> indents 40px, <figcaption> is
+ * italic, <mark> is bright yellow (unreadable on a dark surface). */
+.chat-md figure {
+  margin: var(--chat-md-gap-md, 12px) 0;
+}
+.chat-md figcaption {
+  margin-top: 6px;
+  font-style: normal;
+  color: rgb(var(--content-subtle));
+  font-size: var(--chat-fs-xs);
+}
+.chat-md summary::-webkit-details-marker {
+  margin-right: 4px;
+}
+.chat-md details > :not(summary):last-child {
+  margin-bottom: 0;
+}

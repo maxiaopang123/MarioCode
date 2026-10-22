@@ -148,6 +148,56 @@ export function applyThemeTone(tone: ThemeTone): void {
   }
 }
 
+/**
+ * Re-render when the given attributes on <html> change, returning their
+ * current values joined — usable directly as a memo/cache key.
+ */
+function useRootAttributes(attributes: string[]): string {
+  const filter = attributes.join("|");
+  const read = (): string => {
+    const root = document.documentElement;
+    return filter
+      .split("|")
+      .map((name) => root.getAttribute(name) ?? "")
+      .join("|");
+  };
+  const [value, setValue] = useState(read);
+  useEffect(() => {
+    const observer = new MutationObserver(() => setValue(read()));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: filter.split("|") });
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `filter` IS the array
+  }, [filter]);
+  return value;
+}
+
+/**
+ * The `.dark` class on <html> — the rendered truth of the theme.
+ *
+ * For components that need the theme AT RENDER TIME (mermaid's palette,
+ * model-authored colours that must fit the current surface) but that are not
+ * mounted once at the app root. `useTheme()` is the wrong tool there: it owns
+ * the IPC subscription and is meant to be mounted exactly once, so a per-message
+ * copy would register one listener per rendered reply. The class that
+ * `applyThemeClass` maintains is what they all share anyway.
+ */
+export function useIsDarkMode(): boolean {
+  const className = useRootAttributes(["class"]);
+  return className.split(/\s+/).includes("dark");
+}
+
+/**
+ * Identity of the resolved look — dark/light PLUS the colour tone
+ * (`data-tone="warm"`, absent = neutral). Anything that bakes app colours into
+ * its own output (mermaid SVGs) must key its cache on this, not on dark alone:
+ * switching tone changes `--surface`/`--content` without flipping the class.
+ */
+export function useThemeSignature(): string {
+  const signature = useRootAttributes(["class", "data-tone"]);
+  const [className, tone] = signature.split("|");
+  return `${className.split(/\s+/).includes("dark") ? "dark" : "light"}|${tone || "neutral"}`;
+}
+
 export interface ThemeState {
   /** The user's persisted preference. */
   theme: ThemeName;

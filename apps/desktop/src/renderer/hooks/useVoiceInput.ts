@@ -91,8 +91,14 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   // Guards the async start() path so a rapid double-click can't open two
   // AudioContexts before `busy` state propagates.
   const startingRef = useRef(false);
-  // Accumulated 16 kHz samples not yet flushed to main.
-  const pendingRef = useRef<Float32Array | null>(null);
+  // Accumulated 16 kHz samples not yet flushed to main. The buffer type is
+  // spelled out (`Float32Array<ArrayBuffer>`, not bare `Float32Array`) because
+  // TS 5.7 made typed arrays generic over their backing buffer and the IPC
+  // schema types `pcm` as the ArrayBuffer variant — a bare `Float32Array` is
+  // `Float32Array<ArrayBufferLike>` and would only be assignable by copying.
+  // Every buffer here comes from `new Float32Array(n)` / `Float32Array.from`,
+  // so ArrayBuffer is also what we actually have.
+  const pendingRef = useRef<Float32Array<ArrayBuffer> | null>(null);
   // Uplink observability: total 16 kHz samples sent + last log watermark, so
   // the renderer console (forwarded to stderr) shows audio actually flowing.
   const sentSamplesRef = useRef(0);

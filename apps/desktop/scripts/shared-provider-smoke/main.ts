@@ -212,10 +212,8 @@ check("退出 (锁定) drops the stored password", !RelayConfigStore.hasAdminTok
 // ── relay account: balance + usage read with the user's own key ────────────
 // The gateway answers `{ code, message, data }`; `data` is what callers see.
 type AccountRoutes = {
-  loginStatus?: number;
-  profile?: unknown;
-  usage?: unknown;
-  usageStatus?: number;
+  statsStatus?: number;
+  stats?: unknown;
 };
 const accountUrls: string[] = [];
 const accountAuth: string[] = [];
@@ -225,33 +223,37 @@ const accountFetch =
     const url = String(input);
     accountUrls.push(url);
     accountAuth.push(new Headers(init?.headers).get("authorization") ?? "");
-    if (url.endsWith("/apikey/login")) return new Response("{}", { status: routes.loginStatus ?? 200 });
-    // Check the usage path first: "/me/usage" also starts with "/me".
-    if (url.endsWith("/me/usage")) {
-      return new Response(JSON.stringify(routes.usage ?? { code: 200, data: [] }), {
-        status: routes.usageStatus ?? 200,
-      });
-    }
-    return new Response(JSON.stringify(routes.profile ?? { code: 200, data: { balance: 0 } }), { status: 200 });
+    return new Response(JSON.stringify(routes.stats ?? { code: 200, data: {} }), {
+      status: routes.statsStatus ?? 200,
+    });
   };
 
 RelayAccountStore.forgetAccount();
 const happyAccount = await RelayAccountStore.fetchAccount({
   resolveKey: () => "sk-octopus-test",
   fetch: accountFetch({
-    profile: { code: 200, message: "success", data: { username: "mario", balance: 1_500_000_000 } },
-    usage: {
+    stats: {
       code: 200,
-      data: [
-        { billed_nano: 200_000_000, input_token: 100, cached_token: 20, output_token: 30, request_success: 8, request_failed: 2 },
-        { billed_nano: 300_000_000, input_token: 50, cached_token: 10, output_token: 10, request_success: 4, request_failed: 1 },
-      ],
+      message: "success",
+      data: {
+        balance: 1_500_000_000,
+        stats: {
+          api_key_id: 7,
+          billed_nano: 500_000_000,
+          input_token: 150,
+          cached_token: 30,
+          output_token: 40,
+          request_success: 12,
+          request_failed: 3,
+        },
+        info: { id: 7, name: "laptop", user_id: 2 },
+      },
     },
   }),
 });
 check("relay account reads the balance out of the gateway envelope", happyAccount.balanceNano === 1_500_000_000);
 check(
-  "relay account sums every usage row",
+  "relay account reads the per-key usage aggregate",
   happyAccount.spentNano === 500_000_000 &&
     happyAccount.inputTokens === 150 &&
     happyAccount.cachedTokens === 30 &&
@@ -260,11 +262,17 @@ check(
 check("relay account counts successful plus failed requests", happyAccount.requests === 15);
 check(
   "relay account sends the user's own key as a bearer token",
-  accountAuth.length === 3 && accountAuth.every((value) => value === "Bearer sk-octopus-test"),
+  accountAuth.length === 1 && accountAuth[0] === "Bearer sk-octopus-test",
 );
 check(
   "relay account reads the gateway (:8090), not the config service (:18505)",
-  accountUrls.length === 3 && accountUrls.every((url) => url.startsWith("http://39.109.58.6:8090/api/v1/")),
+  accountUrls.length === 1 && accountUrls[0] === "http://39.109.58.6:8090/api/v1/apikey/stats",
+);
+// Regression guard for v0.2.59's bug: /api/v1/me is cookie-only, so the API key
+// always got a 401 there and every user saw 「API Key 无效或已失效」.
+check(
+  "relay account never calls the cookie-only /api/v1/me",
+  accountUrls.every((url) => !/\/me(\/|$)/.test(url)),
 );
 
 const cachedCalls = accountUrls.length;
@@ -272,16 +280,16 @@ await RelayAccountStore.fetchAccount({ resolveKey: () => "sk-octopus-test", fetc
 check("a fresh snapshot is reused instead of re-fetching", accountUrls.length === cachedCalls);
 const forcedAccount = await RelayAccountStore.fetchAccount({
   resolveKey: () => "sk-octopus-test",
-  fetch: accountFetch({ profile: { code: 200, data: { balance: 7 } } }),
+  fetch: accountFetch({ stats: { code: 200, data: { balance: 7 } } }),
   noCache: true,
 });
 check(
   "force bypasses the snapshot so a replaced key cannot show stale money",
-  forcedAccount.balanceNano === 7 && accountUrls.length === cachedCalls + 3,
+  forcedAccount.balanceNano === 7 && accountUrls.length === cachedCalls + 1,
 );
 const switchedAccount = await RelayAccountStore.fetchAccount({
   resolveKey: () => "sk-octopus-other",
-  fetch: accountFetch({ profile: { code: 200, data: { balance: 42 } } }),
+  fetch: accountFetch({ stats: { code: 200, data: { balance: 42 } } }),
 });
 check("a different key never reuses the previous key's snapshot", switchedAccount.balanceNano === 42);
 
@@ -305,27 +313,66 @@ try {
 }
 check("a revoked key reports an invalid key instead of a blank card", accountRejected);
 
-const degradedAccount = await RelayAccountStore.fetchAccount({
+// Balance and usage now arrive together: a payload without a usage block still
+// has a usable balance, and the usage columns fall back to "—".
+const balanceOnly = await RelayAccountStore.fetchAccount({
   resolveKey: () => "sk-octopus-test",
   noCache: true,
-  fetch: async (input) =>
-    String(input).endsWith("/me/usage")
-      ? new Response("boom", { status: 500 })
-      : new Response(JSON.stringify({ code: 200, data: { balance: 12 } }), { status: 200 }),
+  fetch: accountFetch({ stats: { code: 200, data: { balance: 12 } } }),
 });
 check(
-  "a failed usage call still shows the balance",
-  degradedAccount.balanceNano === 12 && degradedAccount.spentNano === null && degradedAccount.requests === null,
+  "a payload without a usage block still shows the balance",
+  balanceOnly.balanceNano === 12 && balanceOnly.spentNano === null && balanceOnly.requests === null,
 );
+
+// A failing call is now a hard error: with a single request there is no second
+// source to fall back on, and an honest error beats a card missing its balance.
+let statsDown = false;
+try {
+  await RelayAccountStore.fetchAccount({
+    resolveKey: () => "sk-octopus-test",
+    noCache: true,
+    fetch: accountFetch({ statsStatus: 500, stats: { code: 500, message: "boom" } }),
+  });
+} catch (error) {
+  statsDown = error instanceof Error && error.message.includes("HTTP 500");
+}
+check("a failing stats call surfaces as an error instead of a blank card", statsDown);
 
 const bareAccount = await RelayAccountStore.fetchAccount({
   resolveKey: () => "sk-octopus-test",
   noCache: true,
-  fetch: accountFetch({ profile: { balance: 99 }, usage: [{ billed_nano: 5, request_success: 1 }] }),
+  fetch: accountFetch({ stats: { balance: 99, stats: { billed_nano: 5, request_success: 1 } } }),
 });
 check(
   "relay account also parses a response without the gateway envelope",
   bareAccount.balanceNano === 99 && bareAccount.spentNano === 5 && bareAccount.requests === 1,
+);
+
+// Tolerant of a per-day array too, should the gateway ever split the aggregate.
+const dailyAccount = await RelayAccountStore.fetchAccount({
+  resolveKey: () => "sk-octopus-daily",
+  noCache: true,
+  fetch: accountFetch({
+    stats: {
+      code: 200,
+      data: {
+        balance: 3,
+        stats: [
+          { billed_nano: 200_000_000, input_token: 100, cached_token: 20, output_token: 30, request_success: 8, request_failed: 2 },
+          { billed_nano: 300_000_000, input_token: 50, cached_token: 10, output_token: 10, request_success: 4, request_failed: 1 },
+        ],
+      },
+    },
+  }),
+});
+check(
+  "relay account sums usage rows when the aggregate is split",
+  dailyAccount.spentNano === 500_000_000 &&
+    dailyAccount.inputTokens === 150 &&
+    dailyAccount.cachedTokens === 30 &&
+    dailyAccount.outputTokens === 40 &&
+    dailyAccount.requests === 15,
 );
 RelayAccountStore.forgetAccount();
 

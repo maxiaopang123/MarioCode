@@ -20,6 +20,17 @@
  * token, and shipping an admin token inside the app would make one cracked
  * laptop equal one compromised relay. This module never asks for one.
  *
+ * Which endpoints — and why not `/api/v1/me`
+ * ------------------------------------------
+ * `/api/v1/me` and `/api/v1/me/usage` are guarded by the gateway's `UserAuth()`,
+ * which reads **only the panel's `auth` cookie** (a JWT from the web console)
+ * and ignores the Authorization header entirely. With an API key they answer
+ * 401 unconditionally, which read as "your key is invalid" on a perfectly good
+ * key. Everything here therefore goes through `/api/v1/apikey/*`, the group that
+ * actually authenticates keys via `APIKeyAuth()` (hash lookup + enabled /
+ * expiry / balance checks). v0.2.59 shipped with the cookie-only pair and every
+ * user saw 「API Key 无效或已失效」 — see docs/MarioCode-TODO.md TODO-077.
+ *
  * Why plain `fetch` and not `engineFetch`
  * ---------------------------------------
  * The gateway rejects any request carrying a foreign `Origin` header with a
@@ -32,9 +43,7 @@
  */
 import { createHash } from "node:crypto";
 import {
-  BUILTIN_RELAY_ACCOUNT_LOGIN_URL,
-  BUILTIN_RELAY_ACCOUNT_PROFILE_URL,
-  BUILTIN_RELAY_ACCOUNT_USAGE_URL,
+  BUILTIN_RELAY_ACCOUNT_STATS_URL,
   BuiltinRelayAccountSchema,
   type BuiltinRelayAccount,
 } from "@contracts/builtinRelay";
@@ -207,12 +216,14 @@ function parseUsage(raw: unknown): {
 /**
  * Fetch the balance and usage for the stored key.
  *
- * The login probe runs first on purpose: it turns "this key is not valid" into
- * one unambiguous error instead of two different endpoints failing with the
- * same 401 and the caller guessing which one was the real problem.
+ * ONE request. `GET /api/v1/apikey/stats` answers `{ balance, stats, info }`
+ * inside the gateway's `{ code, message, data }` envelope, so the money and the
+ * usage always carry the same timestamp — reading them from two endpoints could
+ * show a balance that predates the spend printed next to it.
  *
- * Usage is best-effort. A balance with dashes next to it is still useful, and
- * the usage endpoint is the more likely of the two to change shape.
+ * There is no separate "is this key valid" probe any more: stats is itself
+ * key-authenticated, so an unusable key fails here with exactly the same 401
+ * and there is no second endpoint left to blame.
  */
 export async function fetchAccount(deps: RelayAccountDeps = {}): Promise<BuiltinRelayAccount> {
   const key = (deps.resolveKey ?? (() => resolveApiKey(BUILTIN_RELAY_ID)))()?.trim();
@@ -223,30 +234,17 @@ export async function fetchAccount(deps: RelayAccountDeps = {}): Promise<Builtin
     return cache.account;
   }
 
-  await requestJson(BUILTIN_RELAY_ACCOUNT_LOGIN_URL, key, deps);
+  const raw = unwrapEnvelope(await requestJson(BUILTIN_RELAY_ACCOUNT_STATS_URL, key, deps));
+  const body = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 
-  const profileRaw = unwrapEnvelope(await requestJson(BUILTIN_RELAY_ACCOUNT_PROFILE_URL, key, deps));
-  const profile =
-    profileRaw && typeof profileRaw === "object" ? (profileRaw as Record<string, unknown>) : {};
-  const balanceNano = num(profile.balance) ?? num(profile.balance_nano);
+  const balanceNano = num(body.balance);
   if (balanceNano === null) throw new AccountError("中转站没有返回余额");
-
-  let usage = {
-    spentNano: null as number | null,
-    inputTokens: null as number | null,
-    cachedTokens: null as number | null,
-    outputTokens: null as number | null,
-    requests: null as number | null,
-  };
-  try {
-    usage = parseUsage(await requestJson(BUILTIN_RELAY_ACCOUNT_USAGE_URL, key, deps));
-  } catch {
-    // Keep the balance; the usage columns render as "—".
-  }
 
   const account: BuiltinRelayAccount = BuiltinRelayAccountSchema.parse({
     balanceNano,
-    ...usage,
+    // `stats` is a single aggregate row; `parseUsage` also sums arrays, which
+    // keeps it usable if the gateway ever splits this per day.
+    ...parseUsage(body.stats),
     fetchedAt: new Date().toISOString(),
   });
   cache = { account, at: Date.now(), keyFingerprint };

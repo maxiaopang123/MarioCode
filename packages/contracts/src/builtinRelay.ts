@@ -92,17 +92,29 @@ export const BUILTIN_RELAY_VERIFY_URL = `${BUILTIN_RELAY_CONFIG_BASE_URL}${BUILT
  *
  * Auth is `Authorization: Bearer <api key>` — in the gateway's API-key mode
  * the key IS the bearer token, so no separate session cookie is involved.
+ *
+ * The two `/api/v1/me` endpoints are NOT usable here, and that is not an
+ * accident of this client: the gateway guards them with `UserAuth()`, which
+ * reads **only its panel's `auth` cookie** (a JWT issued by the web console) and
+ * never looks at the Authorization header. A per-user API key therefore gets a
+ * 401 from `/api/v1/me` no matter how valid it is. Only the `/api/v1/apikey/*`
+ * group (`APIKeyAuth`: `x-api-key` or `Authorization: Bearer`, hash lookup,
+ * enabled/expiry/balance checks) and the `/v1/*` inference routes accept a key.
+ * Balance and usage are read from that group instead.
  */
 export const BUILTIN_RELAY_API_PREFIX = `${BUILTIN_RELAY_BASE_URL}/api/v1`;
 
-/** Validates an API key and answers whether it is usable at all. */
-export const BUILTIN_RELAY_ACCOUNT_LOGIN_URL = `${BUILTIN_RELAY_API_PREFIX}/apikey/login`;
-
-/** Profile of the key's owner: at minimum `balance`. */
-export const BUILTIN_RELAY_ACCOUNT_PROFILE_URL = `${BUILTIN_RELAY_API_PREFIX}/me`;
-
-/** Per-key usage aggregates (tokens, requests, spend). */
-export const BUILTIN_RELAY_ACCOUNT_USAGE_URL = `${BUILTIN_RELAY_API_PREFIX}/me/usage`;
+/**
+ * Balance of the key's owner **plus** this key's cumulative usage, in one call.
+ *
+ * Shape: `{ data: { balance, stats: { billed_nano, input_token, output_token,
+ * cached_token, request_success, request_failed, … }, info: {…} } }` — `balance`
+ * is nano-units (1 USD = 1e9) and is 0 for an admin-owned key (user_id 0), which
+ * has no user balance of its own. `balance` is an addition to the upstream
+ * gateway (upstream only returned `stats` + `info`); without it a key can never
+ * see its own remaining money.
+ */
+export const BUILTIN_RELAY_ACCOUNT_STATS_URL = `${BUILTIN_RELAY_API_PREFIX}/apikey/stats`;
 
 /** Protocols the relay speaks. All three, so all three engines can use it. */
 export const BUILTIN_RELAY_PROTOCOLS: SharedProviderProtocol[] = [
@@ -174,36 +186,60 @@ export type RelayConfigSource = "remote" | "cache" | "bundled";
 
 /**
  * Shipped fallback. Used only before the first successful fetch (offline
- * first run, blocked network). Matches the initial model list published on the
- * relay; once `relay-config.json` is reachable the fetched list wins.
+ * first run, blocked network). Mirrors the model list currently published on
+ * the relay; once `relay-config.json` is reachable the fetched list wins.
+ *
+ * Source of truth is the gateway's own published catalogue — `groups WHERE
+ * listed = 1` — **not** `channel_models`. That table only says "some channel can
+ * run this upstream name": those names are often unroutable (no group behind
+ * them) or spelled differently (`qwen3.8-max-0902` there vs `qwen3.8-max` as the
+ * group clients actually request). `interfaces` mirrors `channel_grants.protocols`
+ * (2 = chat-completions, 4 = responses, 8 = anthropic) — over-claiming a protocol
+ * here only surfaces later as a runtime error for that engine.
+ *
+ * ARRAY ORDER IS THE DISPLAY ORDER. Nothing in the app sorts this list — the
+ * settings card, the admin table and the composer's model menu all render it
+ * as published — so the order below IS the user-facing grouping:
+ *   1. Claude (anthropic only)
+ *   2. GPT 与同级国际模型 (chat-completions + responses: GPT / Gemini / Grok)
+ *   3. 国产模型 (chat-completions: Kimi / GLM / DeepSeek / Qwen)
+ *   4. 免费国产模型 (chat-completions only — the `oc/` free tier)
+ *   5. 生图模型 (image generation; they route through /images/*, not a chat protocol)
+ * Keep the remote `relay-config.json` in this same order: it is the copy that
+ * actually reaches users, and the two drifting apart makes the offline
+ * fallback look like a different product.
  */
 export const BUILTIN_RELAY_FALLBACK_CONFIG: RelayConfig = {
   version: RELAY_CONFIG_VERSION,
   name: BUILTIN_RELAY_NAME,
   models: [
-    { id: "claude-opus-5", interfaces: ["chat-completions", "anthropic", "responses"], reasoning: true, input: ["text", "image"] },
-    { id: "claude-opus-5-5", interfaces: ["chat-completions", "anthropic", "responses"], reasoning: true, input: ["text", "image"] },
-    { id: "claude-sonnet-5", interfaces: ["chat-completions", "anthropic", "responses"], reasoning: true, input: ["text", "image"] },
-    { id: "deepseek-v4-flash", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "deepseek-v4-pro", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "deepseek-v4.1-flash", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "gemini-3.1-flash-image", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
-    { id: "gemini-3.7-flash-high", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "gemini-3.8-flash-high", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"], imageGeneration: true },
-    { id: "glm-5.3", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "glm-5.3-flash", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "gpt-5.6-luna", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "gpt-5.6-sol", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "gpt-5.6-terra", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "gpt-6-astra", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "gpt-6-luna", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "gpt-6-sol", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "gpt-image-2", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"], imageGeneration: true },
-    { id: "gpt-image-2.5-flare", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"], imageGeneration: true },
-    { id: "gpt-image-2.5-sunburst", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"], imageGeneration: true },
-    { id: "k3", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "kimi-k3", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
-    { id: "qwen3.8-flash", interfaces: ["chat-completions", "anthropic"], reasoning: true, input: ["text", "image"] },
+    // 1 — Claude, anthropic protocol only.
+    { id: "claude-opus-5-5", interfaces: ["anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "claude-sonnet-5-5", interfaces: ["anthropic"], reasoning: true, input: ["text", "image"] },
+    // 2 — GPT and the same-tier international models (chat + responses).
+    { id: "gpt-5.6-sol", interfaces: ["chat-completions", "responses"], reasoning: true, input: ["text", "image"] },
+    { id: "gpt-6-astra", interfaces: ["chat-completions", "responses"], reasoning: true, input: ["text", "image"] },
+    { id: "gpt-6-sol", interfaces: ["chat-completions", "responses"], reasoning: true, input: ["text", "image"] },
+    { id: "gpt-6.1-sol", interfaces: ["chat-completions", "responses"], reasoning: true, input: ["text", "image"] },
+    { id: "gemini-3.8-flash-high", interfaces: ["chat-completions", "responses"], reasoning: true, input: ["text", "image"] },
+    { id: "grok-4.7", interfaces: ["chat-completions", "responses", "anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "grok-4.6", interfaces: ["chat-completions", "responses", "anthropic"], reasoning: true, input: ["text", "image"] },
+    // 3 — 国产模型 (chat-completions).
+    { id: "kimi-k3", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
+    { id: "glm-5.3", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
+    { id: "deepseek-v4.1-flash", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
+    { id: "glm-5.3-flash", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
+    { id: "qwen3.8-max", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
+    // 4 — 免费国产模型, chat-completions only.
+    { id: "oc/deepseek-v4.1-flash-free", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
+    { id: "oc/glm-5.3-flash-free", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
+    { id: "oc/mimo-v2.6-flash-free", interfaces: ["chat-completions"], reasoning: true, input: ["text"] },
+    // 5 — 生图模型 (image generation only).
+    { id: "gpt-image-2", interfaces: ["chat-completions"], input: ["text", "image"], imageGeneration: true },
+    { id: "gpt-image-2.5-flare", interfaces: ["chat-completions"], input: ["text", "image"], imageGeneration: true },
+    { id: "gpt-image-2.5-sunburst", interfaces: ["chat-completions"], input: ["text", "image"], imageGeneration: true },
+    { id: "grok-imagine-image-2.0", interfaces: ["responses", "anthropic"], input: ["text", "image"], imageGeneration: true },
+    { id: "grok-imagine-image-quality", interfaces: ["responses", "anthropic"], input: ["text", "image"], imageGeneration: true },
   ],
 };
 

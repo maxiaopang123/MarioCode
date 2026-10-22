@@ -7,6 +7,7 @@ import {
   RelayConfigSchema,
 } from "@contracts/builtinRelay.js";
 import { RelayConfigStore } from "@main/lib/relayConfigStore.js";
+import { RelayAccountStore } from "@main/lib/relayAccountStore.js";
 import { anthropicToOpenAI, translateReasoningEffort } from "@main/providers/bridge/requestTranslator.js";
 import { anthropicToResponses } from "@main/providers/bridge/responsesRequestTranslator.js";
 import { ResponsesToAnthropicSse } from "@main/providers/bridge/responsesResponseTranslator.js";
@@ -207,6 +208,126 @@ check("relay push adopts the accepted config",
   pushed.status.config.models[0]!.id === "pushed-model" && pushed.added === 1 && pushed.removed === 1);
 RelayConfigStore.lock();
 check("退出 (锁定) drops the stored password", !RelayConfigStore.hasAdminToken());
+
+// ── relay account: balance + usage read with the user's own key ────────────
+// The gateway answers `{ code, message, data }`; `data` is what callers see.
+type AccountRoutes = {
+  loginStatus?: number;
+  profile?: unknown;
+  usage?: unknown;
+  usageStatus?: number;
+};
+const accountUrls: string[] = [];
+const accountAuth: string[] = [];
+const accountFetch =
+  (routes: AccountRoutes) =>
+  async (input: string | URL, init?: RequestInit): Promise<Response> => {
+    const url = String(input);
+    accountUrls.push(url);
+    accountAuth.push(new Headers(init?.headers).get("authorization") ?? "");
+    if (url.endsWith("/apikey/login")) return new Response("{}", { status: routes.loginStatus ?? 200 });
+    // Check the usage path first: "/me/usage" also starts with "/me".
+    if (url.endsWith("/me/usage")) {
+      return new Response(JSON.stringify(routes.usage ?? { code: 200, data: [] }), {
+        status: routes.usageStatus ?? 200,
+      });
+    }
+    return new Response(JSON.stringify(routes.profile ?? { code: 200, data: { balance: 0 } }), { status: 200 });
+  };
+
+RelayAccountStore.forgetAccount();
+const happyAccount = await RelayAccountStore.fetchAccount({
+  resolveKey: () => "sk-octopus-test",
+  fetch: accountFetch({
+    profile: { code: 200, message: "success", data: { username: "mario", balance: 1_500_000_000 } },
+    usage: {
+      code: 200,
+      data: [
+        { billed_nano: 200_000_000, input_token: 100, cached_token: 20, output_token: 30, request_success: 8, request_failed: 2 },
+        { billed_nano: 300_000_000, input_token: 50, cached_token: 10, output_token: 10, request_success: 4, request_failed: 1 },
+      ],
+    },
+  }),
+});
+check("relay account reads the balance out of the gateway envelope", happyAccount.balanceNano === 1_500_000_000);
+check(
+  "relay account sums every usage row",
+  happyAccount.spentNano === 500_000_000 &&
+    happyAccount.inputTokens === 150 &&
+    happyAccount.cachedTokens === 30 &&
+    happyAccount.outputTokens === 40,
+);
+check("relay account counts successful plus failed requests", happyAccount.requests === 15);
+check(
+  "relay account sends the user's own key as a bearer token",
+  accountAuth.length === 3 && accountAuth.every((value) => value === "Bearer sk-octopus-test"),
+);
+check(
+  "relay account reads the gateway (:8090), not the config service (:18505)",
+  accountUrls.length === 3 && accountUrls.every((url) => url.startsWith("http://39.109.58.6:8090/api/v1/")),
+);
+
+const cachedCalls = accountUrls.length;
+await RelayAccountStore.fetchAccount({ resolveKey: () => "sk-octopus-test", fetch: accountFetch({}) });
+check("a fresh snapshot is reused instead of re-fetching", accountUrls.length === cachedCalls);
+const forcedAccount = await RelayAccountStore.fetchAccount({
+  resolveKey: () => "sk-octopus-test",
+  fetch: accountFetch({ profile: { code: 200, data: { balance: 7 } } }),
+  noCache: true,
+});
+check(
+  "force bypasses the snapshot so a replaced key cannot show stale money",
+  forcedAccount.balanceNano === 7 && accountUrls.length === cachedCalls + 3,
+);
+const switchedAccount = await RelayAccountStore.fetchAccount({
+  resolveKey: () => "sk-octopus-other",
+  fetch: accountFetch({ profile: { code: 200, data: { balance: 42 } } }),
+});
+check("a different key never reuses the previous key's snapshot", switchedAccount.balanceNano === 42);
+
+let accountNoKey = false;
+try {
+  await RelayAccountStore.fetchAccount({ resolveKey: () => null, fetch: accountFetch({}) });
+} catch (error) {
+  accountNoKey = error instanceof Error && error.message.includes("尚未保存");
+}
+check("relay account refuses to query without a stored key", accountNoKey);
+
+let accountRejected = false;
+try {
+  await RelayAccountStore.fetchAccount({
+    resolveKey: () => "sk-octopus-revoked",
+    fetch: async () => new Response('{"code":401,"message":"Authentication failed"}', { status: 401 }),
+    noCache: true,
+  });
+} catch (error) {
+  accountRejected = error instanceof Error && error.message.includes("无效或已失效");
+}
+check("a revoked key reports an invalid key instead of a blank card", accountRejected);
+
+const degradedAccount = await RelayAccountStore.fetchAccount({
+  resolveKey: () => "sk-octopus-test",
+  noCache: true,
+  fetch: async (input) =>
+    String(input).endsWith("/me/usage")
+      ? new Response("boom", { status: 500 })
+      : new Response(JSON.stringify({ code: 200, data: { balance: 12 } }), { status: 200 }),
+});
+check(
+  "a failed usage call still shows the balance",
+  degradedAccount.balanceNano === 12 && degradedAccount.spentNano === null && degradedAccount.requests === null,
+);
+
+const bareAccount = await RelayAccountStore.fetchAccount({
+  resolveKey: () => "sk-octopus-test",
+  noCache: true,
+  fetch: accountFetch({ profile: { balance: 99 }, usage: [{ billed_nano: 5, request_success: 1 }] }),
+});
+check(
+  "relay account also parses a response without the gateway envelope",
+  bareAccount.balanceNano === 99 && bareAccount.spentNano === 5 && bareAccount.requests === 1,
+);
+RelayAccountStore.forgetAccount();
 
 const runtimeId = sharedRuntimeId(userProvider().id);
 const claudeProjection = CustomModelStore.listPublic().find((provider) => provider.id === runtimeId);

@@ -55,11 +55,13 @@ import {
 import {
   BuiltinRelayUnlockInputSchema,
   BuiltinRelayPushInputSchema,
+  BuiltinRelayAccountQuerySchema,
   type BuiltinRelayStatus,
   type BuiltinRelayPushResult,
   type BuiltinRelayUnlockInput,
+  type BuiltinRelayAccount,
 } from "./builtinRelay.js";
-export { BuiltinRelayUnlockInputSchema, BuiltinRelayPushInputSchema };
+export { BuiltinRelayUnlockInputSchema, BuiltinRelayPushInputSchema, BuiltinRelayAccountQuerySchema };
 import {
   PluginsSetEnabledSchema,
   type PluginsListResult,
@@ -5414,6 +5416,12 @@ export interface RpcMap {
   "builtinRelay.lock": () => Promise<BuiltinRelayStatus>;
   /** Push an edited config to the relay server (overwrites the published one). */
   "builtinRelay.push": (input: { config: BuiltinRelayStatus["config"] }) => Promise<BuiltinRelayPushResult>;
+  /** Balance + usage for the key this machine holds, read from the gateway with
+   *  the user's own key. Throws when there is no key or the key is rejected;
+   *  the panel treats both as "nothing to show" rather than an error banner.
+   *  `force` skips the one-minute snapshot cache — used right after the key is
+   *  replaced, so the panel cannot show the previous key's balance. */
+  "builtinRelay.account": (input?: { force?: boolean }) => Promise<BuiltinRelayAccount>;
   // Claude Code plugins: read the CLI's own install state, flip enabledPlugins.
   "plugins.list": () => Promise<PluginsListResult>;
   "plugins.setEnabled": (input: PluginsSetEnabledInput) => Promise<{ ok: boolean; error?: string }>;
@@ -5794,6 +5802,7 @@ export const IPC = {
   BUILTIN_RELAY_UNLOCK: "builtinRelay:unlock",
   BUILTIN_RELAY_LOCK: "builtinRelay:lock",
   BUILTIN_RELAY_PUSH: "builtinRelay:push",
+  BUILTIN_RELAY_ACCOUNT: "builtinRelay:account",
   PLUGINS_LIST: "plugins:list",
   PLUGINS_SET_ENABLED: "plugins:setEnabled",
   SCHEDULER_LIST: "scheduler:list",

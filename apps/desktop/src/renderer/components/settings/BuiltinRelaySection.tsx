@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import type { SharedProviderPublic } from "@contracts/sharedProvider";
 import {
   BUILTIN_RELAY_ID,
+  RELAY_NANO_PER_UNIT,
   isBuiltinRelayId,
+  type BuiltinRelayAccount,
   type BuiltinRelayStatus,
   type RelayConfig,
 } from "@contracts/builtinRelay";
@@ -17,6 +19,7 @@ import {
   IconRefresh,
   IconShieldLock,
   IconBrain,
+  IconCoins,
   IconPhoto,
   IconWand,
 } from "@renderer/lib/icons.js";
@@ -56,6 +59,11 @@ export function BuiltinRelaySection({
   const [refreshing, setRefreshing] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Balance + usage for the stored key. Null while unknown; `accountError`
+   *  distinguishes "no key yet" from "the relay said no". */
+  const [account, setAccount] = useState<BuiltinRelayAccount | null>(null);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountError, setAccountError] = useState<string | null>(null);
 
   /** Status is display-only decoration (source + updatedAt); a transport that
    *  doesn't expose it (mobile web shim) must not break the panel. */
@@ -68,11 +76,47 @@ export function BuiltinRelaySection({
     void loadStatus();
   }, []);
 
+  /**
+   * Read balance/usage from the relay with the key this machine holds.
+   *
+   * Failure is never an error banner here: a missing key is a normal state
+   * (the block becomes a hint about what filling it in buys you), and an
+   * unreachable relay must not stop the user from editing their key. The main
+   * process already caches a snapshot for a minute, so reopening the card
+   * does not hammer the gateway.
+   */
+  async function loadAccount(force = false): Promise<void> {
+    setAccountLoading(true);
+    setAccountError(null);
+    try {
+      setAccount(await api.builtinRelay.account(force ? { force } : undefined));
+    } catch (e) {
+      setAccount(null);
+      const raw = e instanceof Error ? e.message : String(e);
+      setAccountError(raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, ""));
+    } finally {
+      setAccountLoading(false);
+    }
+  }
+
   const config: RelayConfig | null = status?.config ?? null;
   const models = config?.models ?? provider.models;
   const locked = busy || saving || refreshing;
   const keyStored = provider.hasApiKey;
   const canSave = !locked && apiKey.trim().length > 0;
+
+  // Only ask once we know a key exists — otherwise every visit to this card
+  // costs a guaranteed-to-fail IPC round trip. `provider.hasApiKey` flips after
+  // a save, which re-runs this and picks up the new key's balance.
+  useEffect(() => {
+    if (keyStored) {
+      void loadAccount();
+      return;
+    }
+    setAccount(null);
+    setAccountError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps  // loadAccount is stable enough; `t` must not re-trigger IO
+  }, [keyStored]);
 
   async function save() {
     if (!canSave) return;
@@ -93,6 +137,9 @@ export function BuiltinRelaySection({
       });
       setApiKey("");
       onSaved(result.providers);
+      // Force, because the snapshot cache may still hold the PREVIOUS key's
+      // balance — replacing a key must not display the old one's money.
+      void loadAccount(true);
       // The key is the only thing that changed, so prove it works while the
       // user is still looking at the field.
       await test();
@@ -139,6 +186,24 @@ export function BuiltinRelaySection({
       setRefreshing(false);
     }
   }
+
+  /** The gateway stores money as nano-unit integers; 1e9 = one whole unit. The
+   *  relay's own accounting unit is whatever its operators bill in — the panel
+   *  deliberately shows a bare number rather than stamping a currency symbol
+   *  onto it. */
+  const formatMoney = (nano: number | null): string =>
+    nano === null ? "—" : (nano / RELAY_NANO_PER_UNIT).toFixed(2);
+  const formatCount = (value: number | null): string => (value === null ? "—" : value.toLocaleString());
+  /** Cached tokens are included: they still occupy the request's context, and
+   *  leaving them out would make the figure disagree with the gateway's own
+   *  dashboard. */
+  const totalTokens =
+    account &&
+    account.inputTokens !== null &&
+    account.cachedTokens !== null &&
+    account.outputTokens !== null
+      ? account.inputTokens + account.cachedTokens + account.outputTokens
+      : null;
 
   const sourceLabel = status
     ? t(`settings.shared.relay.source.${status.source}`)
@@ -210,6 +275,75 @@ export function BuiltinRelaySection({
               {t("settings.shared.relay.keyHint")}
             </span>
           </label>
+        </section>
+
+        {/* 账户与用量 — read from the gateway with the user's own key. */}
+        <section className="space-y-3" data-relay-account>
+          <div className="flex min-h-7 items-center gap-2">
+            <h3 className="text-[13px] font-semibold text-content">{t("settings.shared.relay.account.title")}</h3>
+            <span className="ml-auto flex items-center gap-2">
+              {account && (
+                <span className="text-[11.5px] text-content-subtle">
+                  {t("settings.shared.relay.account.updated", { time: new Date(account.fetchedAt).toLocaleTimeString() })}
+                </span>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={!keyStored || accountLoading}
+                onClick={() => void loadAccount(true)}
+              >
+                {accountLoading ? <IconLoader2 size={13} className="animate-spin" /> : <IconRefresh size={13} />}
+                {t("settings.shared.relay.account.refresh")}
+              </Button>
+            </span>
+          </div>
+
+          {!keyStored ? (
+            <p className="text-[11.5px] leading-relaxed text-content-subtle">
+              {t("settings.shared.relay.account.noKey")}
+            </p>
+          ) : accountLoading && !account ? (
+            <div className="grid place-items-center rounded-lg border border-edge py-5" role="status">
+              <IconLoader2 size={18} className="animate-spin text-content-subtle" aria-label={t("common.loading")} />
+            </div>
+          ) : accountError ? (
+            <p role="status" className="break-words rounded-lg bg-warning/10 px-3 py-2.5 text-[12.5px] text-warning">
+              {t("settings.shared.relay.account.failed", { error: accountError })}
+            </p>
+          ) : account ? (
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-lg border border-edge bg-surface-muted/60 px-3 py-2.5">
+                <div className="flex items-center gap-1.5 text-[11.5px] text-content-subtle">
+                  <IconCoins size={12} />{t("settings.shared.relay.account.balance")}
+                </div>
+                <div
+                  className={cn(
+                    "mt-1 text-[1.15em] font-semibold tabular-nums",
+                    account.balanceNano < 0 ? "text-danger" : "text-content",
+                  )}
+                >
+                  {formatMoney(account.balanceNano)}
+                </div>
+              </div>
+              <div className="rounded-lg border border-edge bg-surface-muted/60 px-3 py-2.5">
+                <div className="text-[11.5px] text-content-subtle">{t("settings.shared.relay.account.spent")}</div>
+                <div className="mt-1 text-[1.15em] font-semibold tabular-nums text-content">
+                  {formatMoney(account.spentNano)}
+                </div>
+              </div>
+              <div className="rounded-lg border border-edge bg-surface-muted/60 px-3 py-2.5">
+                <div className="text-[11.5px] text-content-subtle">{t("settings.shared.relay.account.tokens")}</div>
+                <div className="mt-1 text-[1.15em] font-semibold tabular-nums text-content">
+                  {formatCount(totalTokens)}
+                </div>
+                <div className="text-[11px] text-content-subtle">
+                  {t("settings.shared.relay.account.requests", { n: formatCount(account.requests) })}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         {/* 接口与协议 — read-only by design. */}

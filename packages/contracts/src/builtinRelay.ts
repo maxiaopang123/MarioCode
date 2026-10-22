@@ -82,6 +82,28 @@ export const BUILTIN_RELAY_PUSH_URL = `${BUILTIN_RELAY_CONFIG_BASE_URL}${BUILTIN
 /** Admin auth probe (GET, `Authorization: Bearer <管理员密码>`). */
 export const BUILTIN_RELAY_VERIFY_URL = `${BUILTIN_RELAY_CONFIG_BASE_URL}${BUILTIN_RELAY_VERIFY_PATH}`;
 
+/**
+ * Account endpoints — the gateway's own REST surface (the "mariogate" panel
+ * served by the same process on :8090).
+ *
+ * These are a DIFFERENT service from the config endpoints above: :18505 only
+ * holds a JSON file, whereas these read the gateway's database. Both are
+ * reached with the user's own API key, never with an admin credential.
+ *
+ * Auth is `Authorization: Bearer <api key>` — in the gateway's API-key mode
+ * the key IS the bearer token, so no separate session cookie is involved.
+ */
+export const BUILTIN_RELAY_API_PREFIX = `${BUILTIN_RELAY_BASE_URL}/api/v1`;
+
+/** Validates an API key and answers whether it is usable at all. */
+export const BUILTIN_RELAY_ACCOUNT_LOGIN_URL = `${BUILTIN_RELAY_API_PREFIX}/apikey/login`;
+
+/** Profile of the key's owner: at minimum `balance`. */
+export const BUILTIN_RELAY_ACCOUNT_PROFILE_URL = `${BUILTIN_RELAY_API_PREFIX}/me`;
+
+/** Per-key usage aggregates (tokens, requests, spend). */
+export const BUILTIN_RELAY_ACCOUNT_USAGE_URL = `${BUILTIN_RELAY_API_PREFIX}/me/usage`;
+
 /** Protocols the relay speaks. All three, so all three engines can use it. */
 export const BUILTIN_RELAY_PROTOCOLS: SharedProviderProtocol[] = [
   "anthropic",
@@ -238,6 +260,14 @@ export const BuiltinRelayUnlockInputSchema = z
   .strict();
 export type BuiltinRelayUnlockInput = z.infer<typeof BuiltinRelayUnlockInputSchema>;
 
+/** `builtinRelay.account` input. Re-validated in main — a renderer is not a
+ *  trust boundary; `force` only decides whether the snapshot cache is bypassed. */
+export const BuiltinRelayAccountQuerySchema = z
+  .object({ force: z.boolean().optional() })
+  .strict()
+  .optional();
+export type BuiltinRelayAccountQuery = z.infer<typeof BuiltinRelayAccountQuerySchema>;
+
 /** `builtinRelay.push` input: the config the admin panel built. Re-validated in
  *  main — a renderer is not a trust boundary. */
 export const BuiltinRelayPushInputSchema = z.object({ config: RelayConfigSchema }).strict();
@@ -251,6 +281,39 @@ export interface BuiltinRelayPushResult {
   changed: number;
   removed: number;
 }
+
+/**
+ * A snapshot of the current key's standing on the relay, as returned by
+ * `builtinRelay.account`.
+ *
+ * Money is carried in **nano-units** (1e9 = one unit of the relay's currency),
+ * because that is how the gateway's database stores it. Converting to a
+ * human-readable amount is a display concern and happens in the renderer —
+ * keeping the raw integer here means no rounding is baked into the contract.
+ *
+ * Every usage field is nullable: the profile endpoint and the usage endpoint
+ * are separate calls, and the panel is more useful showing a balance with a
+ * dash for usage than showing nothing at all when one of them fails.
+ */
+export const BuiltinRelayAccountSchema = z
+  .object({
+    /** Current balance in nano-units. May legitimately be negative. */
+    balanceNano: z.number(),
+    /** Cumulative spend for this key, or null when usage could not be read. */
+    spentNano: z.number().nullable(),
+    inputTokens: z.number().nullable(),
+    cachedTokens: z.number().nullable(),
+    outputTokens: z.number().nullable(),
+    /** Total requests (successful + failed) behind the usage figures. */
+    requests: z.number().nullable(),
+    /** When this snapshot was taken (ISO). */
+    fetchedAt: z.string(),
+  })
+  .strict();
+export type BuiltinRelayAccount = z.infer<typeof BuiltinRelayAccountSchema>;
+
+/** Nano-units per whole currency unit. */
+export const RELAY_NANO_PER_UNIT = 1_000_000_000;
 
 /** Minimal diff between two configs — drives the admin panel's preview and the
  *  post-push toast. Field-level comparison, id-keyed. */

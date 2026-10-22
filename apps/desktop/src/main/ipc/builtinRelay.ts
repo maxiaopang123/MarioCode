@@ -1,6 +1,12 @@
 import type { IpcMain } from "electron";
-import { IPC, BuiltinRelayPushInputSchema, BuiltinRelayUnlockInputSchema } from "@contracts/ipc";
+import {
+  IPC,
+  BuiltinRelayAccountQuerySchema,
+  BuiltinRelayPushInputSchema,
+  BuiltinRelayUnlockInputSchema,
+} from "@contracts/ipc";
 import { RelayConfigStore } from "@main/lib/relayConfigStore.js";
+import { RelayAccountStore } from "@main/lib/relayAccountStore.js";
 import { engineFetch } from "@main/network/engineProxy.js";
 
 /**
@@ -28,4 +34,10 @@ export function registerBuiltinRelayHandlers(ipcMain: IpcMain): void {
     RelayConfigStore.push(BuiltinRelayPushInputSchema.parse(raw).config, {
       fetch: (input, init) => engineFetch(String(input), init ?? {}),
     }));
+  // Balance/usage goes out on Node's fetch, NOT engineFetch: the gateway
+  // rejects any request carrying a foreign Origin header (including
+  // "null", which Chromium's stack sends), and engineFetch swaps to Chromium
+  // behind a proxy. See the note at the top of relayAccountStore.
+  ipcMain.handle(IPC.BUILTIN_RELAY_ACCOUNT, async (_event, raw) =>
+    RelayAccountStore.fetchAccount({ noCache: BuiltinRelayAccountQuerySchema.parse(raw)?.force === true }));
 }

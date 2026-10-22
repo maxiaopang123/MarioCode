@@ -163,6 +163,30 @@ try {
     await evaluate("[...document.querySelectorAll('button')].some(b=>b.innerText.trim()==='保存并测试')"),
     "the relay card offers save + test for the personal key",
   );
+  // 账户与用量 (TODO-077): with no key stored this block must be a hint, not an
+  // error, and its refresh button must stay disabled so it cannot fire a
+  // guaranteed-to-fail IPC round trip on every visit.
+  assert.equal(
+    await evaluate("Boolean(document.querySelector('[data-relay-account]'))"),
+    true,
+    "the relay card carries the account/usage block",
+  );
+  assert.ok(
+    (await evaluate("document.querySelector('[data-relay-account]').innerText")).includes("填入 API Key"),
+    "without a key the account block explains what filling one in buys",
+  );
+  assert.equal(
+    await evaluate("[...document.querySelectorAll('[data-relay-account] button')].find(b=>b.innerText.includes('刷新'))?.disabled"),
+    true,
+    "the account refresh button is disabled until a key is stored",
+  );
+  assert.equal(
+    await evaluate("Boolean(document.querySelector('[data-relay-account] [role=alert]'))"),
+    false,
+    "a missing key is not reported as an error",
+  );
+  const accountShot = await command("Page.captureScreenshot", { format: "png" }).catch(() => null);
+  if (accountShot) await writeFile(join(data, "relay-account.png"), Buffer.from(accountShot.data, "base64"));
   await evaluate("window.api.sharedProviders.remove({id:'" + BUILTIN_RELAY_ID + "'}).catch(()=>{})");
   assert.equal((await evaluate("window.api.sharedProviders.list()")).providers[0].id, BUILTIN_RELAY_ID, "the relay survives a delete attempt");
 

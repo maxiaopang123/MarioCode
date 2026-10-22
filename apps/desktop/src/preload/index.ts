@@ -715,6 +715,7 @@ const api = {
     unlock: ((input) => ipcRenderer.invoke(IPC.BUILTIN_RELAY_UNLOCK, input)) as RpcMap["builtinRelay.unlock"],
     lock: (() => ipcRenderer.invoke(IPC.BUILTIN_RELAY_LOCK)) as RpcMap["builtinRelay.lock"],
     push: ((input) => ipcRenderer.invoke(IPC.BUILTIN_RELAY_PUSH, input)) as RpcMap["builtinRelay.push"],
+    account: ((input) => ipcRenderer.invoke(IPC.BUILTIN_RELAY_ACCOUNT, input)) as RpcMap["builtinRelay.account"],
   },
   /** Claude Code plugins (settings → 插件): the CLI owns install state; this
    *  only lists it and flips `enabledPlugins`. */

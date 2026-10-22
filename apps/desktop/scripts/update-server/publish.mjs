@@ -636,15 +636,29 @@ function listSiteFiles(dir, prefix = "") {
   return out;
 }
 
+/**
+ * Update manifests are NOT site files. `latest.yml` / `latest-mac.yml` are
+ * owned by `publish` (Windows) and `publishMac` (macOS), which read them from
+ * release/ or from the GitHub release and upload them LAST on purpose.
+ *
+ * A stray copy inside www/ is a snapshot of whatever release happened to be
+ * current when someone downloaded it — uploading it with the homepage would
+ * silently repoint every client at an older version, and the rollback would
+ * look like "the update just didn't happen". Skip them loudly instead.
+ */
+const SITE_EXCLUDED = ["latest.yml", "latest-mac.yml"];
+
 /** Upload the static homepage (www/) into public/. Each file goes to
  *  incoming/ first and is moved only after its sha512 matches; index.html is
  *  moved LAST so the page never references an asset that isn't there yet. */
 async function publishSite(feedUrl) {
   const root = join(HERE, "www");
-  const files = listSiteFiles(root);
-  if (!files.includes("index.html")) fail(`${root} 里没有 index.html`);
-  for (const rel of files) {
-    if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(rel) || rel.split("/").includes("..")) {
+  const found = listSiteFiles(root);
+  if (!found.includes("index.html")) fail(`${root} 里没有 index.html`);
+  const files = found.filter((rel) => !SITE_EXCLUDED.includes(rel));
+  for (const rel of found) {
+    if (!files.includes(rel)) console.log(`  ! 跳过 ${rel}(更新清单由 publish / --mac 负责,不能当站点文件上传)`);
+    else if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(rel) || rel.split("/").includes("..")) {
       fail(`非法站点文件名: ${rel}`);
     }
   }

@@ -39,27 +39,63 @@
       tourS2d: "设置 → 模型配置 → 中转站,粘贴 Key 保存即可。",
       tourS3t: "文件、代码、预览都在一个窗口",
       tourS3d: "文件树、Monaco 编辑器、Git、终端,不用切窗口。",
-      band7: "内置中转站 · 22 个模型即开即用",
       metaLoading: "正在获取最新版本…",
       metaReady: "v{version} · {size} · {date} 发布",
       metaError: "暂时获取不到最新版本,请稍后刷新重试。",
       metaMacSoon: "macOS 版即将上线,请稍后再来。",
-      mockLabel: "MarioCode 界面示意",
-      mockCaption: "界面示意:左侧项目栏与会话列,中间是对话和工具审批,右侧是文件与 Git 面板。",
-      mockAlert: "1 个会话等你处理",
-      mockS1: "重构登录模块",
-      mockS2: "修复列表分页",
-      mockS3: "补充单元测试",
-      mockS4: "升级依赖版本",
-      mockRun: "运行中 0:42",
-      mockWait: "待审批",
-      mockTime: "3 分钟前",
-      mockYesterday: "昨天",
-      mockAsk: "把登录逻辑拆成独立的 hook,并补上测试",
-      mockAnswer: "好的,先看看现有实现,再分三步改:",
-      mockDone: "完成",
-      mockApprove: "允许?",
-      mockComposer: "发送消息…",
+      navDemo: "演示",
+      ctaDemo: "看演示",
+      demoTitle: "动态演示:一次完整的编程对话",
+      demoLabel: "MarioCode 界面演示",
+      demoProj: "我的网站",
+      demoSessions: "会话",
+      demoS1: "给首页加上深色模式",
+      demoS2: "修复列表分页",
+      demoS3: "补充单元测试",
+      demoPh: "发送消息…",
+      demoQ: "帮我把首页改成深色模式",
+      demoThinking: "思考中",
+      demoA1: "好的。我先看一下首页的样式,然后:\n1. 在 styles.css 加一组深色变量\n2. 跟随系统的 prefers-color-scheme",
+      demoRead: "读取",
+      demoApprove: "要写入 styles.css,允许吗?",
+      demoApproved: "已允许 · 写入 styles.css",
+      demoDeny: "拒绝",
+      demoAllow: "允许",
+      demoDenyHint: "演示里点「允许」继续 →",
+      demoA2: "改好了,右边的预览已经切到深色。",
+      seg1: "提问",
+      seg2: "流式回复",
+      seg3: "读取文件",
+      seg4: "审批改动",
+      seg5: "改动生效",
+      demoPlay: "播放",
+      demoPause: "暂停",
+      demoReplay: "重播",
+      demoHint: "演示由网页代码实时绘制。可以点「允许」,也可以点下面的进度条跳到任一步。",
+      statsLabel: "数字",
+      stat1: "个引擎,同一套界面",
+      stat2: "个模型,粘贴 Key 即用",
+      stat3: "使用数据上传",
+      stat4: "开源,客户端免费",
+      featSub: "点左边的功能,右边演示它是怎么工作的。",
+      fPlanT: "计划模式",
+      fPlanD: "先列出要改什么、改哪些文件,你点头之后才开始动代码。",
+      fe1: "解释一下这个函数在做什么",
+      fa1: "执行命令",
+      fa2: "拒绝",
+      fa3: "允许",
+      fa4: "构建完成 · 1.8s",
+      fp0: "计划",
+      fp1: "在 styles.css 加深色变量",
+      fp2: "导航栏加切换按钮",
+      fp3: "记住用户的选择",
+      fp4: "同意并开始",
+      tourLabel: "真实界面截图",
+      tourImg1Alt: "MarioCode 主对话界面",
+      tagMine: "你的系统",
+      endTitle: "现在就试试",
+      toastDl: "已开始下载 MarioCode v{version}",
+      toastDlMac: "正在打开 GitHub 下载 MarioCode v{version}",
       featTitle: "一个窗口,完成整段编程对话",
       f1t: "三个引擎,随时切换",
       f1d: "Claude、Codex、Pi 同一套界面。也可以接入兼容 OpenAI / Anthropic 协议的第三方模型服务。",
@@ -84,7 +120,7 @@
       dlMac: "下载 .dmg",
       stepsWinTitle: "Windows",
       installTitle: "安装时可能看到的提示",
-      chipHint: "不确定 Mac 芯片:苹果菜单 → 关于本机。「芯片」写着 Apple M 选上面,写着 Intel 选下面。",
+      chipHint: "不确定 Mac 芯片:苹果菜单 → 关于本机。「芯片」写着 Apple M 选 Apple 芯片版,写着 Intel 选 Intel 版。",
       band1: "Claude · Codex · Pi",
       band2: "工具审批",
       band3: "计划模式",
@@ -147,27 +183,63 @@
       tourS2d: "Settings → Model Providers → relay. Paste your key and save.",
       tourS3t: "Files, code and preview in one window",
       tourS3d: "File tree, Monaco, Git and a terminal. No window switching.",
-      band7: "Built-in relay · 22 models, zero setup",
       metaLoading: "Checking the latest version…",
       metaReady: "v{version} · {size} · released {date}",
       metaError: "Couldn't load the latest version. Refresh in a moment.",
       metaMacSoon: "The macOS build is coming soon.",
-      mockLabel: "MarioCode interface preview",
-      mockCaption: "Interface preview.",
-      mockAlert: "1 session needs you",
-      mockS1: "Refactor login",
-      mockS2: "Fix pagination",
-      mockS3: "Add tests",
-      mockS4: "Bump dependencies",
-      mockRun: "Running 0:42",
-      mockWait: "Approval",
-      mockTime: "3 min ago",
-      mockYesterday: "Yesterday",
-      mockAsk: "Split login into its own hook and add tests",
-      mockAnswer: "I'll read the current code first, then do it in three steps:",
-      mockDone: "Done",
-      mockApprove: "Allow?",
-      mockComposer: "Send a message…",
+      navDemo: "Demo",
+      ctaDemo: "Watch the demo",
+      demoTitle: "Live demo: one full coding turn",
+      demoLabel: "MarioCode interface demo",
+      demoProj: "my-site",
+      demoSessions: "Sessions",
+      demoS1: "Add dark mode to the homepage",
+      demoS2: "Fix list pagination",
+      demoS3: "Add unit tests",
+      demoPh: "Send a message…",
+      demoQ: "Add dark mode to the homepage",
+      demoThinking: "Thinking",
+      demoA1: "Sure. I'll read the homepage styles first, then:\n1. add dark variables to styles.css\n2. follow prefers-color-scheme",
+      demoRead: "Read",
+      demoApprove: "Write to styles.css?",
+      demoApproved: "Allowed · wrote styles.css",
+      demoDeny: "Deny",
+      demoAllow: "Allow",
+      demoDenyHint: "In this demo, click Allow to continue →",
+      demoA2: "Done. The preview on the right is dark now.",
+      seg1: "Ask",
+      seg2: "Stream",
+      seg3: "Read files",
+      seg4: "Approve",
+      seg5: "Applied",
+      demoPlay: "Play",
+      demoPause: "Pause",
+      demoReplay: "Replay",
+      demoHint: "Drawn live by this page. Click Allow yourself, or jump to any step on the bar below.",
+      statsLabel: "Numbers",
+      stat1: "engines, one interface",
+      stat2: "models — paste a key",
+      stat3: "usage data uploaded",
+      stat4: "open source, free app",
+      featSub: "Pick a feature on the left to see it work on the right.",
+      fPlanT: "Plan mode",
+      fPlanD: "It lists what will change and which files first. Code moves only after you agree.",
+      fe1: "Explain what this function does",
+      fa1: "Run command",
+      fa2: "Deny",
+      fa3: "Allow",
+      fa4: "Build finished · 1.8s",
+      fp0: "Plan",
+      fp1: "Add dark variables to styles.css",
+      fp2: "Add a toggle to the nav",
+      fp3: "Remember the choice",
+      fp4: "Approve and start",
+      tourLabel: "Real screenshots",
+      tourImg1Alt: "MarioCode chat view",
+      tagMine: "Your system",
+      endTitle: "Try it now",
+      toastDl: "Downloading MarioCode v{version}",
+      toastDlMac: "Opening GitHub to download MarioCode v{version}",
       featTitle: "The whole coding conversation, one window",
       f1t: "Three engines, one interface",
       f1d: "Claude, Codex and Pi side by side. Bring any model service that speaks OpenAI or Anthropic.",
@@ -192,7 +264,7 @@
       dlMac: "Download .dmg",
       stepsWinTitle: "Windows",
       installTitle: "What the installer may say",
-      chipHint: "Not sure which Mac chip? Apple menu → About This Mac. Apple M… is the first Mac row; Intel is the second.",
+      chipHint: "Not sure which Mac chip? Apple menu → About This Mac. Apple M… means Apple silicon; Intel means Intel.",
       band1: "Claude · Codex · Pi",
       band2: "Tool approval",
       band3: "Plan mode",
@@ -287,10 +359,12 @@
           link.removeAttribute("download");
           if (r) link.setAttribute("aria-disabled", "true");
         }
-        // Primary style on the visitor's own platform.
+        // Primary style + highlighted card on the visitor's own platform.
         var mine = (platform === "win" && key === "win") || (platform === "mac" && key !== "win");
         link.classList.toggle("btn-primary", mine);
         link.classList.toggle("btn-ghost", !mine);
+        var card = link.closest(".plat");
+        if (card) card.classList.toggle("is-mine", mine);
       }
       if (meta) {
         var p = meta.parentElement;
@@ -305,7 +379,7 @@
     // Hero button: Windows → straight to the exe; macOS → the download card
     // (the chip can't be detected reliably from the browser); else → card.
     var hero = document.querySelector(".hero-dl");
-    var heroLabel = document.querySelector(".hero-dl-label");
+    var heroLabel = hero && hero.querySelector(".hero-dl-label");
     var heroMeta = document.querySelector(".hero-meta");
     if (hero && heroLabel && heroMeta) {
       var w = rel.win;
@@ -369,7 +443,16 @@
     var btn = document.getElementById("lang-toggle");
     if (btn) btn.textContent = s.langButton;
     renderRelease();
+    for (var h = 0; h < langHooks.length; h++) langHooks[h]();
   }
+
+  // Shared with demo.js (loaded after this file, also deferred).
+  var langHooks = [];
+  window.MarioSite = {
+    t: function (key) { var v = STR[lang][key]; return v == null ? key : v; },
+    onLang: function (fn) { langHooks.push(fn); },
+    ripple: function (node, x, y) { ripple(node, x, y); }
+  };
 
   // The manifests are tiny electron-builder output; a line scan is enough.
   // Installer names are validated before they become an href, so a tampered
@@ -461,61 +544,346 @@
       .then(renderRelease);
   }
 
-  // ── Tour carousel ─────────────────────────────────────────────────────────
-  var TOUR_INTERVAL = 4200;
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var finePointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+  // ── Click feedback: ripple from the pointer position ─────────────────────
+  function ripple(node, x, y) {
+    if (reduceMotion || !node) return;
+    var r = node.getBoundingClientRect();
+    var size = Math.max(r.width, r.height) * 2.2;
+    var span = document.createElement("span");
+    span.className = "ripple";
+    span.style.setProperty("--rx", (x == null ? r.width / 2 : x - r.left) + "px");
+    span.style.setProperty("--ry", (y == null ? r.height / 2 : y - r.top) + "px");
+    span.style.setProperty("--rs", size + "px");
+    node.appendChild(span);
+    span.addEventListener("animationend", function () { span.remove(); });
+  }
+
+  function initRipple() {
+    document.addEventListener("pointerdown", function (e) {
+      var node = e.target.closest && e.target.closest(".rp");
+      if (node && e.button === 0) ripple(node, e.clientX, e.clientY);
+    });
+  }
+
+  // ── Toast ────────────────────────────────────────────────────────────────
+  var toastTimer = null;
+  function toast(text) {
+    var node = document.getElementById("toast");
+    if (!node) return;
+    node.textContent = text;
+    node.classList.add("is-on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { node.classList.remove("is-on"); }, 3200);
+  }
+
+  function initDownloadToast() {
+    document.addEventListener("click", function (e) {
+      var link = e.target.closest && e.target.closest(".dl-link, .hero-dl");
+      if (!link || (link.getAttribute("href") || "#").charAt(0) === "#") return;
+      var key = link.getAttribute("data-plat") || "win";
+      var r = rel[key];
+      if (!isRelease(r)) return;
+      var s = STR[lang];
+      toast(fill(/\.dmg$/i.test(r.path) ? s.toastDlMac : s.toastDl, { version: r.version }));
+    });
+  }
+
+  // ── Scroll reveal + count-up ─────────────────────────────────────────────
+  function initReveal() {
+    var groups = document.querySelectorAll("[data-reveal-group]");
+    for (var g = 0; g < groups.length; g++) {
+      var kids = groups[g].querySelectorAll("[data-reveal]");
+      for (var k = 0; k < kids.length; k++) kids[k].style.setProperty("--i", String(k));
+    }
+    var nodes = document.querySelectorAll("[data-reveal]");
+    if (reduceMotion || !("IntersectionObserver" in window)) {
+      for (var i = 0; i < nodes.length; i++) nodes[i].classList.add("is-in");
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      for (var j = 0; j < entries.length; j++) {
+        if (!entries[j].isIntersecting) continue;
+        entries[j].target.classList.add("is-in");
+        io.unobserve(entries[j].target);
+        var counters = entries[j].target.querySelectorAll(".count");
+        for (var c = 0; c < counters.length; c++) countUp(counters[c]);
+      }
+    }, { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
+    for (var n = 0; n < nodes.length; n++) io.observe(nodes[n]);
+  }
+
+  function countUp(node) {
+    var to = Number(node.getAttribute("data-count")) || 0;
+    var start = performance.now();
+    var DUR = 1300;
+    function step(now) {
+      var p = Math.min(1, (now - start) / DUR);
+      node.textContent = String(Math.round(to * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) requestAnimationFrame(step);
+    }
+    node.textContent = "0";
+    requestAnimationFrame(step);
+  }
+
+  // ── Pointer effects: tilt, card spotlight, hero blob parallax ────────────
+  function initPointer() {
+    if (!finePointer || reduceMotion) return;
+    var tilts = document.querySelectorAll(".tilt");
+    for (var i = 0; i < tilts.length; i++) {
+      (function (node) {
+        var MAX = node.id === "demo-tilt" ? 3.5 : 5;
+        var raf = 0;
+        node.addEventListener("pointermove", function (e) {
+          var r = node.getBoundingClientRect();
+          var px = (e.clientX - r.left) / r.width - 0.5;
+          var py = (e.clientY - r.top) / r.height - 0.5;
+          cancelAnimationFrame(raf);
+          raf = requestAnimationFrame(function () {
+            node.classList.add("is-tilting");
+            node.style.setProperty("--ty", (px * MAX * 2).toFixed(2) + "deg");
+            node.style.setProperty("--tx", (-py * MAX * 2).toFixed(2) + "deg");
+          });
+        });
+        node.addEventListener("pointerleave", function () {
+          cancelAnimationFrame(raf);
+          node.classList.remove("is-tilting");
+          node.style.setProperty("--tx", "0deg");
+          node.style.setProperty("--ty", "0deg");
+        });
+      })(tilts[i]);
+    }
+    var spots = document.querySelectorAll(".spot");
+    for (var s = 0; s < spots.length; s++) {
+      spots[s].addEventListener("pointermove", function (e) {
+        var r = this.getBoundingClientRect();
+        this.style.setProperty("--sx", (e.clientX - r.left) + "px");
+        this.style.setProperty("--sy", (e.clientY - r.top) + "px");
+      });
+    }
+    var blobs = document.getElementById("blobs");
+    var hero = document.querySelector(".hero");
+    if (blobs && hero) {
+      hero.addEventListener("pointermove", function (e) {
+        blobs.style.setProperty("--mx", (e.clientX / window.innerWidth - 0.5).toFixed(3));
+        blobs.style.setProperty("--my", (e.clientY / window.innerHeight - 0.5).toFixed(3));
+        // Dot grid revealed around the pointer.
+        var r = hero.getBoundingClientRect();
+        hero.style.setProperty("--hx", (e.clientX - r.left) + "px");
+        hero.style.setProperty("--hy", (e.clientY - r.top) + "px");
+        hero.classList.add("is-hover");
+      });
+      hero.addEventListener("pointerleave", function () { hero.classList.remove("is-hover"); });
+    }
+    initMagnets();
+    initCursorRing();
+    initBurst();
+  }
+
+  // Buttons lean toward the pointer within a small radius, then spring back.
+  function initMagnets() {
+    var mags = document.querySelectorAll(".magnet");
+    for (var i = 0; i < mags.length; i++) {
+      (function (node) {
+        var PULL = 0.28;
+        node.addEventListener("pointermove", function (e) {
+          var r = node.getBoundingClientRect();
+          node.classList.add("is-pulling");
+          node.style.setProperty("--mgx", ((e.clientX - r.left - r.width / 2) * PULL).toFixed(1) + "px");
+          node.style.setProperty("--mgy", ((e.clientY - r.top - r.height / 2) * PULL).toFixed(1) + "px");
+        });
+        node.addEventListener("pointerleave", function () {
+          node.classList.remove("is-pulling");
+          node.style.setProperty("--mgx", "0px");
+          node.style.setProperty("--mgy", "0px");
+        });
+      })(mags[i]);
+    }
+  }
+
+  // A soft ring trails the pointer: grows over clickable things, turns dashed
+  // over the demo / screenshots, squeezes on press. The real cursor stays.
+  function initCursorRing() {
+    var ring = document.createElement("span");
+    ring.className = "cursor-ring";
+    ring.setAttribute("aria-hidden", "true");
+    document.body.appendChild(ring);
+    var tx = -100, ty = -100, x = tx, y = ty, raf = 0;
+    function loop() {
+      x += (tx - x) * 0.22;
+      y += (ty - y) * 0.22;
+      ring.style.setProperty("--x", x.toFixed(1) + "px");
+      ring.style.setProperty("--y", y.toFixed(1) + "px");
+      raf = Math.abs(tx - x) + Math.abs(ty - y) > 0.3 ? requestAnimationFrame(loop) : 0;
+    }
+    document.addEventListener("pointermove", function (e) {
+      if (e.pointerType !== "mouse") return;
+      tx = e.clientX; ty = e.clientY;
+      if (!ring.classList.contains("is-on")) { x = tx; y = ty; ring.classList.add("is-on"); }
+      var t = e.target.closest ? e.target : null;
+      var hot = !!(t && t.closest("a, button, summary, [role=tab]"));
+      var view = !hot && !!(t && t.closest(".win, .tour-stage, .feat-stage"));
+      ring.classList.toggle("is-hot", hot);
+      ring.classList.toggle("is-view", view);
+      if (!raf) raf = requestAnimationFrame(loop);
+    }, { passive: true });
+    document.addEventListener("pointerdown", function () { ring.classList.add("is-down"); });
+    document.addEventListener("pointerup", function () { ring.classList.remove("is-down"); });
+    document.documentElement.addEventListener("pointerleave", function () { ring.classList.remove("is-on"); });
+  }
+
+  // Clicking a primary button throws a few clay specks out from the pointer.
+  function initBurst() {
+    document.addEventListener("pointerdown", function (e) {
+      var btn = e.target.closest && e.target.closest(".btn-primary, .ap-yes, .feat-tab, .tour-step-btn");
+      if (!btn || e.button !== 0) return;
+      var fx = document.createElement("span");
+      fx.className = "burst-fx";
+      fx.style.setProperty("--x", e.clientX + "px");
+      fx.style.setProperty("--y", e.clientY + "px");
+      var N = 9;
+      for (var i = 0; i < N; i++) {
+        var a = (i / N) * Math.PI * 2 + Math.random() * 0.5;
+        var d = 26 + Math.random() * 26;
+        var p = document.createElement("i");
+        p.style.setProperty("--dx", (Math.cos(a) * d).toFixed(1) + "px");
+        p.style.setProperty("--dy", (Math.sin(a) * d).toFixed(1) + "px");
+        p.style.setProperty("--s", (0.7 + Math.random() * 0.6).toFixed(2));
+        fx.appendChild(p);
+      }
+      document.body.appendChild(fx);
+      setTimeout(function () { fx.remove(); }, 800);
+    });
+  }
+
+  // ── Nav: shadow, reading progress, current-section highlight ─────────────
+  function initNav() {
+    var nav = document.getElementById("nav");
+    var bar = document.getElementById("nav-progress");
+    var links = document.querySelectorAll(".nav nav a");
+    var targets = [];
+    for (var i = 0; i < links.length; i++) {
+      var sec = document.querySelector(links[i].getAttribute("href"));
+      if (sec) targets.push({ link: links[i], sec: sec });
+    }
+    var ticking = false;
+    function update() {
+      ticking = false;
+      var y = window.scrollY;
+      var max = document.documentElement.scrollHeight - window.innerHeight;
+      if (nav) nav.classList.toggle("is-scrolled", y > 8);
+      if (bar) bar.style.setProperty("--p", max > 0 ? (y / max).toFixed(4) : "0");
+      var current = null;
+      for (var k = 0; k < targets.length; k++) {
+        if (targets[k].sec.getBoundingClientRect().top < window.innerHeight * 0.4) current = targets[k];
+      }
+      for (var m = 0; m < targets.length; m++) targets[m].link.classList.toggle("is-current", targets[m] === current);
+    }
+    window.addEventListener("scroll", function () {
+      if (!ticking) { ticking = true; requestAnimationFrame(update); }
+    }, { passive: true });
+    update();
+  }
+
+  // ── FAQ: animate the answer height instead of a hard jump ────────────────
+  function initFaq() {
+    var items = document.querySelectorAll(".faq details");
+    for (var i = 0; i < items.length; i++) {
+      (function (d) {
+        var summary = d.querySelector("summary");
+        var body = d.querySelector(".faq-a");
+        if (!summary || !body) return;
+        summary.addEventListener("click", function (e) {
+          e.preventDefault();
+          if (d.open) {
+            d.classList.remove("is-open");
+            var done = function () { d.open = false; body.removeEventListener("transitionend", done); };
+            if (reduceMotion) done(); else body.addEventListener("transitionend", done);
+          } else {
+            d.open = true;
+            void body.offsetWidth;
+            d.classList.add("is-open");
+          }
+        });
+      })(items[i]);
+    }
+  }
+  // ── Tour carousel (real screenshots) ─────────────────────────────────────
+  // The countdown bar under the active step is a CSS animation; hovering the
+  // screenshot pauses both it and the timer, keeping them in sync.
+  var TOUR_MS = 4500;
   var tourTimer = null;
   var tourIdx = 0;
+  var tourHover = false;
+  var tourLeft = TOUR_MS;
+  var tourAt = 0;
 
   function tourGo(idx) {
     var imgs = document.querySelectorAll(".tour-img");
     var steps = document.querySelectorAll(".tour-step");
     if (!imgs.length) return;
-    tourIdx = idx % imgs.length;
+    tourIdx = (idx + imgs.length) % imgs.length;
     for (var i = 0; i < imgs.length; i++) {
-      imgs[i].classList.toggle("is-active", i === tourIdx);
-      if (steps[i]) steps[i].classList.toggle("is-active", i === tourIdx);
+      var on = i === tourIdx;
+      imgs[i].classList.toggle("is-active", on);
+      if (!steps[i]) continue;
+      steps[i].classList.toggle("is-active", on);
+      steps[i].classList.remove("is-running", "is-paused");
     }
+    if (steps[tourIdx] && !reduceMotion) {
+      void steps[tourIdx].offsetWidth;   // restart the countdown bar
+      steps[tourIdx].classList.add("is-running");
+      steps[tourIdx].classList.toggle("is-paused", tourHover);
+    }
+    clearTimeout(tourTimer);
+    tourLeft = TOUR_MS;
+    if (!reduceMotion && !tourHover) tourArm();
   }
 
-  function tourStart() {
-    if (tourTimer) return;
-    var count = document.querySelectorAll(".tour-img").length;
-    if (!count) return;
-    tourTimer = setInterval(function () {
-      tourIdx = (tourIdx + 1) % count;
-      tourGo(tourIdx);
-    }, TOUR_INTERVAL);
+  function tourArm() {
+    tourAt = Date.now();
+    tourTimer = setTimeout(function () { tourGo(tourIdx + 1); }, tourLeft);
   }
 
-  function tourStop() {
-    clearInterval(tourTimer);
-    tourTimer = null;
+  function tourPause(p) {
+    if (reduceMotion || tourHover === p) return;
+    tourHover = p;
+    var step = document.querySelectorAll(".tour-step")[tourIdx];
+    if (step) step.classList.toggle("is-paused", p);
+    if (p) { clearTimeout(tourTimer); tourLeft = Math.max(0, tourLeft - (Date.now() - tourAt)); }
+    else tourArm();
   }
 
   function initTour() {
     var stage = document.getElementById("tour-stage");
-    var steps = document.querySelectorAll(".tour-step-btn");
-    if (!stage || !steps.length) return;
-    // Respect reduced-motion: show the first frame, no autoplay.
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      tourGo(0);
-      return;
+    var btns = document.querySelectorAll(".tour-step-btn");
+    if (!stage || !btns.length) return;
+    stage.parentNode.style.setProperty("--dur", TOUR_MS + "ms");
+    for (var i = 0; i < btns.length; i++) {
+      (function (idx) { btns[idx].addEventListener("click", function () { tourGo(idx); }); })(i);
     }
-    for (var i = 0; i < steps.length; i++) {
-      (function (idx) {
-        steps[idx].addEventListener("click", function () {
-          tourStop();
-          tourGo(idx);
-          tourStart();
-        });
-      })(i);
-    }
-    stage.addEventListener("mouseenter", tourStop);
-    stage.addEventListener("mouseleave", tourStart);
-    tourStart();
+    stage.addEventListener("mouseenter", function () { tourPause(true); });
+    stage.addEventListener("mouseleave", function () { tourPause(false); });
+    stage.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowRight") { e.preventDefault(); tourGo(tourIdx + 1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); tourGo(tourIdx - 1); }
+    });
+    // Swipe on touch screens.
+    var sx = null;
+    stage.addEventListener("touchstart", function (e) { sx = e.touches[0].clientX; }, { passive: true });
+    stage.addEventListener("touchend", function (e) {
+      if (sx == null) return;
+      var dx = e.changedTouches[0].clientX - sx;
+      sx = null;
+      if (Math.abs(dx) > 40) tourGo(tourIdx + (dx < 0 ? 1 : -1));
+    });
+    tourGo(0);
   }
 
   function init() {
+    document.documentElement.classList.add("js");
     var btn = document.getElementById("lang-toggle");
     if (btn) {
       btn.addEventListener("click", function () {
@@ -524,7 +892,7 @@
         applyLang();
       });
     }
-    // Put the visitor's own platform first in the download card.
+    // Put the visitor's own platform first in the download cards.
     if (platform === "mac") {
       var list = document.querySelector(".plats");
       var win = document.querySelector('.plat[data-plat="win"]');
@@ -532,9 +900,16 @@
     }
     applyLang();
     loadReleases();
+    initRipple();
+    initDownloadToast();
+    initReveal();
+    initPointer();
+    initNav();
+    initFaq();
     initTour();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })();
+

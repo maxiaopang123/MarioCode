@@ -3,150 +3,238 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#faf9f5">
   <title>MarioCode — AI 编程桌面客户端</title>
   <meta name="description" content="MarioCode 是免费开源的 AI 编程桌面客户端:Claude Code、Codex、Pi 多引擎切换,实时流式对话、工具审批、计划模式,以及文件、Git、终端和内置浏览器。">
   <link rel="icon" type="image/png" href="site/logo.png">
   <link rel="stylesheet" href="site/style.css">
+  <link rel="stylesheet" href="site/demo.css">
   <script src="site/app.js" defer></script>
+  <script src="site/demo.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#download" data-i18n="skip">跳到下载</a>
 
-  <header class="nav">
+  <header class="nav" id="nav">
     <div class="wrap nav-inner">
-      <a class="brand" href="./" aria-label="MarioCode">
+      <a class="brand" href="#top" aria-label="MarioCode">
         <img src="site/logo.png" alt="" width="28" height="28">
         <span>MarioCode</span>
       </a>
       <nav aria-label="主导航" data-i18n-attr="aria-label:navLabel">
-        <a href="#download" data-i18n="navDownload">下载</a>
+        <a href="#demo" data-i18n="navDemo">演示</a>
         <a href="#features" data-i18n="navFeatures">功能</a>
+        <a href="#download" data-i18n="navDownload">下载</a>
         <a href="#faq" data-i18n="navFaq">常见问题</a>
       </nav>
-      <button class="lang" type="button" id="lang-toggle" aria-label="Switch to English" data-i18n-attr="aria-label:langLabel">EN</button>
+      <button class="lang rp" type="button" id="lang-toggle" aria-label="Switch to English" data-i18n-attr="aria-label:langLabel">EN</button>
     </div>
+    <span class="nav-progress" id="nav-progress" aria-hidden="true"></span>
   </header>
 
   <main id="main">
-    <section class="hero">
+    <section class="hero" id="top">
+      <div class="blobs" id="blobs" aria-hidden="true">
+        <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span>
+      </div>
       <div class="wrap hero-inner">
-        <div class="hero-copy">
-          <p class="eyebrow"><span data-i18n="eyebrow">免费 · 开源 · MIT</span></p>
-          <h1 data-i18n="heroTitle">把 Claude Code、Codex 和 Pi<br>装进一个桌面 IDE</h1>
-          <p class="lead" data-i18n="heroLead">不重新发明 agent。官方引擎放进同一套界面:流式对话、工具审批、计划模式,以及文件、Git、终端和内置浏览器。</p>
-          <ul class="pills">
-            <li data-i18n="pillRelay">内置中转站,粘贴 Key 即用</li>
-            <li data-i18n="pill1">三引擎切换</li>
-            <li data-i18n="pill2">先审批再改代码</li>
-            <li data-i18n="pill3">数据留在本机</li>
-          </ul>
-          <a class="hero-dl" href="#download">
+        <p class="eyebrow intro d1"><span data-i18n="eyebrow">免费 · 开源 · MIT</span></p>
+        <h1 class="intro d2" data-i18n="heroTitle">把 Claude Code、Codex 和 Pi<br>装进一个桌面 IDE</h1>
+        <p class="lead intro d3" data-i18n="heroLead">不重新发明 agent。官方引擎放进同一套界面:流式对话、工具审批、计划模式,以及文件、Git、终端和内置浏览器。</p>
+        <div class="hero-actions intro d4">
+          <a class="btn btn-lg btn-primary btn-shine rp magnet hero-dl" href="#download">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
             <span class="hero-dl-label" data-i18n="ctaDownload">下载 MarioCode</span>
-            <span class="hero-meta" data-i18n="heroPlatforms">支持 Windows 和 macOS(Apple 芯片 / Intel)</span>
+          </a>
+          <a class="btn btn-lg btn-ghost rp magnet" href="#demo">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+            <span data-i18n="ctaDemo">看演示</span>
           </a>
         </div>
-
-        <div class="panel" id="download">
-          <div class="panel-head">
-            <h2 data-i18n="dlTitle">下载</h2>
-            <p data-i18n="dlSub">选你的系统。版本号从发布清单自动读取。</p>
-          </div>
-          <ul class="plats">
-            <li class="plat" data-plat="win">
-              <span class="mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M3 5.5 10.5 4.4v6.7H3V5.5Zm8.3-1.2L21 3v8.1h-9.7V4.3ZM3 12.9h7.5v6.8L3 18.6v-5.7Zm8.3 0H21V21l-9.7-1.4v-6.7Z"/></svg>
-              </span>
-              <div class="plat-info">
-                <strong>Windows</strong>
-                <small data-i18n="platWin">Windows 10 / 11 · 64 位</small>
-                <p class="meta" id="dl-meta-win"><span class="dl-meta" data-plat="win" data-i18n="metaLoading">正在获取最新版本…</span></p>
-              </div>
-              <a class="btn btn-ghost dl-link" data-plat="win" href="#download" aria-describedby="dl-meta-win">
-                <span data-i18n="dlWin">下载 .exe</span>
-              </a>
-            </li>
-            <li class="plat" data-plat="macArm">
-              <span class="mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M16.4 12.7c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.6.8-3.3.8s-1.7-.8-2.9-.8c-1.5 0-2.8.9-3.6 2.2-1.5 2.7-.4 6.6 1.1 8.8.7 1.1 1.6 2.3 2.7 2.2 1.1 0 1.5-.7 2.8-.7s1.7.7 2.9.7 1.9-1.1 2.6-2.2c.8-1.2 1.1-2.3 1.2-2.4-.1 0-2.2-.8-2.2-3.5Zm-2.1-6.4c.6-.7 1-1.7.9-2.7-0.9 0-1.9.6-2.5 1.3-.6.6-1.1 1.7-.9 2.6 1 .1 1.9-.5 2.5-1.2Z"/></svg>
-              </span>
-              <div class="plat-info">
-                <strong data-i18n="platMacArmName">macOS · Apple 芯片</strong>
-                <span class="tag tag-recommend" data-i18n="tagArm">推荐</span>
-                <small data-i18n="platMacArm">M1 / M2 / M3 / M4</small>
-                <p class="meta" id="dl-meta-macArm"><span class="dl-meta" data-plat="macArm" data-i18n="metaLoading">正在获取最新版本…</span></p>
-              </div>
-              <a class="btn btn-ghost dl-link" data-plat="macArm" href="#download" aria-describedby="dl-meta-macArm">
-                <span data-i18n="dlMac">下载 .dmg</span>
-              </a>
-            </li>
-            <li class="plat" data-plat="macIntel">
-              <span class="mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M16.4 12.7c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.6.8-3.3.8s-1.7-.8-2.9-.8c-1.5 0-2.8.9-3.6 2.2-1.5 2.7-.4 6.6 1.1 8.8.7 1.1 1.6 2.3 2.7 2.2 1.1 0 1.5-.7 2.8-.7s1.7.7 2.9.7 1.9-1.1 2.6-2.2c.8-1.2 1.1-2.3 1.2-2.4-.1 0-2.2-.8-2.2-3.5Zm-2.1-6.4c.6-.7 1-1.7.9-2.7-0.9 0-1.9.6-2.5 1.3-.6.6-1.1 1.7-.9 2.6 1 .1 1.9-.5 2.5-1.2Z"/></svg>
-              </span>
-              <div class="plat-info">
-                <strong data-i18n="platMacIntelName">macOS · Intel</strong>
-                <span class="tag" data-i18n="tagIntel">旧款 Mac</span>
-                <small data-i18n="platMacIntel">Intel 处理器的 Mac</small>
-                <p class="meta" id="dl-meta-macIntel"><span class="dl-meta" data-plat="macIntel" data-i18n="metaLoading">正在获取最新版本…</span></p>
-              </div>
-              <a class="btn btn-ghost dl-link" data-plat="macIntel" href="#download" aria-describedby="dl-meta-macIntel">
-                <span data-i18n="dlMac">下载 .dmg</span>
-              </a>
-            </li>
-          </ul>
-          <p class="chip-hint" data-i18n="chipHint">不确定 Mac 芯片:苹果菜单 → 关于本机。「芯片」写着 Apple M 选上面,写着 Intel 选下面。</p>
-        </div>
+        <p class="hero-meta intro d5" data-i18n="heroPlatforms">支持 Windows 和 macOS(Apple 芯片 / Intel)</p>
+        <ul class="pills intro d5">
+          <li data-i18n="pillRelay">内置中转站,粘贴 Key 即用</li>
+          <li data-i18n="pill1">三引擎切换</li>
+          <li data-i18n="pill2">先审批再改代码</li>
+          <li data-i18n="pill3">数据留在本机</li>
+        </ul>
       </div>
     </section>
 
-    <section class="band" aria-label="capabilities">
-      <div class="wrap band-row">
-        <span data-i18n="band7">内置中转站 · 22 个模型即开即用</span>
-        <span data-i18n="band1">Claude · Codex · Pi</span>
-        <span data-i18n="band2">工具审批</span>
-        <span data-i18n="band3">计划模式</span>
-        <span data-i18n="band4">Git 与终端</span>
-        <span data-i18n="band5">内置浏览器</span>
-        <span data-i18n="band6">手机查看</span>
+    <section class="demo-sec" id="demo" aria-labelledby="demo-title">
+      <div class="wrap">
+        <h2 id="demo-title" class="sr-only" data-i18n="demoTitle">动态演示:一次完整的编程对话</h2>
+        <div class="demo-tilt tilt intro d6" id="demo-tilt">
+          <div class="win" id="demo-win" role="group" aria-label="MarioCode 界面演示" data-i18n-attr="aria-label:demoLabel">
+            <div class="win-bar">
+              <span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="win-title">MarioCode</span>
+              <div class="eng-switch" id="demo-eng" aria-hidden="true">
+                <span class="eng-pill"></span>
+                <span class="eng is-on">Claude</span><span class="eng">Codex</span><span class="eng">Pi</span>
+              </div>
+            </div>
+            <div class="win-body">
+              <aside class="win-side" aria-hidden="true">
+                <div class="side-proj"><span class="side-logo"></span><span data-i18n="demoProj">我的网站</span></div>
+                <p class="side-label" data-i18n="demoSessions">会话</p>
+                <ul class="side-list">
+                  <li class="is-active"><span class="side-dot"></span><span data-i18n="demoS1">给首页加上深色模式</span></li>
+                  <li><span class="side-dot idle"></span><span data-i18n="demoS2">修复列表分页</span></li>
+                  <li><span class="side-dot idle"></span><span data-i18n="demoS3">补充单元测试</span></li>
+                </ul>
+              </aside>
+              <div class="win-chat">
+                <div class="chat-scroll" id="demo-chat"></div>
+                <div class="composer" id="demo-composer" aria-hidden="true">
+                  <span class="composer-ph" data-i18n="demoPh">发送消息…</span>
+                  <span class="composer-text" id="demo-input"></span><span class="caret"></span>
+                  <span class="send" id="demo-send">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
+                  </span>
+                </div>
+              </div>
+              <div class="win-preview" aria-hidden="true">
+                <div class="pv-bar"><i></i><span>localhost:5173</span></div>
+                <div class="pv" id="demo-pv">
+                  <div class="pv-head"><b></b><span></span><span></span><em></em></div>
+                  <div class="pv-hero"><b></b><span></span><span class="short"></span><i></i></div>
+                  <div class="pv-cards"><i></i><i></i><i></i></div>
+                </div>
+              </div>
+            </div>
+            <span class="cursor" id="demo-cursor" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="30" height="30"><path d="M5 3l14 8-6.2 1.6L9.6 19 5 3Z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+        </div>
+        <div class="demo-ctrl">
+          <button type="button" class="ctrl-btn rp" id="demo-play" aria-label="暂停">
+            <svg class="i-pause" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor"/></svg>
+            <svg class="i-play" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+          </button>
+          <ol class="segs" id="demo-segs">
+            <li><button type="button" class="seg" data-seg="0"><span class="seg-bar"><i></i></span><span data-i18n="seg1">提问</span></button></li>
+            <li><button type="button" class="seg" data-seg="1"><span class="seg-bar"><i></i></span><span data-i18n="seg2">流式回复</span></button></li>
+            <li><button type="button" class="seg" data-seg="2"><span class="seg-bar"><i></i></span><span data-i18n="seg3">读取文件</span></button></li>
+            <li><button type="button" class="seg" data-seg="3"><span class="seg-bar"><i></i></span><span data-i18n="seg4">审批改动</span></button></li>
+            <li><button type="button" class="seg" data-seg="4"><span class="seg-bar"><i></i></span><span data-i18n="seg5">改动生效</span></button></li>
+          </ol>
+          <button type="button" class="ctrl-btn rp" id="demo-replay" aria-label="重播" data-i18n-attr="aria-label:demoReplay">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.6h4.6"/></svg>
+          </button>
+        </div>
+        <p class="demo-hint" data-i18n="demoHint">演示由网页代码实时绘制。可以点「允许」,也可以点下面的进度条跳到任一步。</p>
+      </div>
+    </section>
+
+    <section class="stats" aria-label="数字" data-i18n-attr="aria-label:statsLabel">
+      <div class="wrap stats-row" data-reveal-group>
+        <div class="stat" data-reveal><b class="count" data-count="3">3</b><span data-i18n="stat1">个引擎,同一套界面</span></div>
+        <div class="stat" data-reveal><b class="count" data-count="22">22</b><span data-i18n="stat2">个模型,粘贴 Key 即用</span></div>
+        <div class="stat" data-reveal><b>0</b><span data-i18n="stat3">使用数据上传</span></div>
+        <div class="stat" data-reveal><b>MIT</b><span data-i18n="stat4">开源,客户端免费</span></div>
+      </div>
+    </section>
+
+    <section class="features" id="features" aria-labelledby="features-title">
+      <div class="wrap">
+        <h2 id="features-title" data-reveal data-i18n="featTitle">一个窗口,完成整段编程对话</h2>
+        <p class="sec-sub" data-reveal data-i18n="featSub">点左边的功能,右边演示它是怎么工作的。</p>
+        <div class="feat" data-reveal>
+          <div class="feat-tabs" role="tablist" aria-label="功能" data-i18n-attr="aria-label:navFeatures" id="feat-tabs">
+            <button type="button" class="feat-tab rp is-active" role="tab" aria-selected="true" aria-controls="feat-p0" id="feat-t0" data-feat="0">
+              <span class="feat-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M4 17h6M18 4l3 3-3 3M14 14l3 3 3-3"/></svg></span>
+              <span class="feat-txt"><strong data-i18n="f1t">三个引擎,随时切换</strong><span data-i18n="f1d">Claude、Codex、Pi 同一套界面。也可以接入兼容 OpenAI / Anthropic 协议的第三方模型服务。</span></span>
+              <span class="feat-timer" aria-hidden="true"><i></i></span>
+            </button>
+            <button type="button" class="feat-tab rp" role="tab" aria-selected="false" aria-controls="feat-p1" id="feat-t1" data-feat="1">
+              <span class="feat-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6l-8-3Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span>
+              <span class="feat-txt"><strong data-i18n="f3t">先审批,再动手</strong><span data-i18n="f3d">写文件、执行命令前先问你。计划模式先出方案,同意之后才改代码。</span></span>
+              <span class="feat-timer" aria-hidden="true"><i></i></span>
+            </button>
+            <button type="button" class="feat-tab rp" role="tab" aria-selected="false" aria-controls="feat-p2" id="feat-t2" data-feat="2">
+              <span class="feat-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg></span>
+              <span class="feat-txt"><strong data-i18n="fPlanT">计划模式</strong><span data-i18n="fPlanD">先列出要改什么、改哪些文件,你点头之后才开始动代码。</span></span>
+              <span class="feat-timer" aria-hidden="true"><i></i></span>
+            </button>
+            <button type="button" class="feat-tab rp" role="tab" aria-selected="false" aria-controls="feat-p3" id="feat-t3" data-feat="3">
+              <span class="feat-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M13 9l2 2-2 2"/></svg></span>
+              <span class="feat-txt"><strong data-i18n="f4t">完整的 IDE</strong><span data-i18n="f4d">文件树、Monaco、diff、多仓库 Git、多标签终端、内置浏览器和语言服务器。</span></span>
+              <span class="feat-timer" aria-hidden="true"><i></i></span>
+            </button>
+          </div>
+          <div class="feat-stage tilt" id="feat-stage">
+            <div class="fp fp-engine is-active" role="tabpanel" id="feat-p0" aria-labelledby="feat-t0">
+              <div class="fe-tabs"><span class="fe-pill"></span><span>Claude</span><span>Codex</span><span>Pi</span></div>
+              <div class="fe-msg fe-user" data-i18n="fe1">解释一下这个函数在做什么</div>
+              <div class="fe-msg fe-ai"><b class="fe-who">Claude</b><span class="fe-lines"><i></i><i></i><i class="s"></i></span></div>
+            </div>
+            <div class="fp fp-approve" role="tabpanel" id="feat-p1" aria-labelledby="feat-t1" hidden>
+              <div class="fa-card">
+                <div class="fa-head"><span class="fa-ico">$</span><span data-i18n="fa1">执行命令</span></div>
+                <code>npm run build</code>
+                <div class="fa-btns"><span class="fa-no" data-i18n="fa2">拒绝</span><span class="fa-yes" data-i18n="fa3">允许</span></div>
+              </div>
+              <div class="fa-out"><span class="fa-ok">✓</span><span data-i18n="fa4">构建完成 · 1.8s</span></div>
+            </div>
+            <div class="fp fp-plan" role="tabpanel" id="feat-p2" aria-labelledby="feat-t2" hidden>
+              <p class="fpl-title" data-i18n="fp0">计划</p>
+              <ol class="fpl-list">
+                <li data-i18n="fp1">在 styles.css 加深色变量</li>
+                <li data-i18n="fp2">导航栏加切换按钮</li>
+                <li data-i18n="fp3">记住用户的选择</li>
+              </ol>
+              <span class="fpl-ok" data-i18n="fp4">同意并开始</span>
+            </div>
+            <div class="fp fp-ide" role="tabpanel" id="feat-p3" aria-labelledby="feat-t3" hidden>
+              <div class="fi-tree"><i class="d"></i><i></i><i class="on"></i><i></i><i class="d"></i><i></i></div>
+              <div class="fi-main">
+                <div class="fi-code"><i class="k"></i><i></i><i class="add"></i><i class="add"></i><i class="del"></i><i></i></div>
+                <div class="fi-term"><span>$ git commit -m "dark mode"</span><span class="fi-term-ok">[main 3f2a1c] 2 files changed</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <ul class="mini" data-reveal-group>
+          <li class="spot" data-reveal><h3 data-i18n="f2t">每一步都看得见</h3><p data-i18n="f2d">回复逐字流式显示。思考、工具调用和改过的文件都是卡片,本轮可以一键撤销。</p></li>
+          <li class="spot" data-reveal><h3 data-i18n="f5t">关窗口也不停</h3><p data-i18n="f5d">收到系统托盘后任务继续跑。定时任务、微信通知,手机上也能看会话和审批。</p></li>
+          <li class="spot" data-reveal><h3 data-i18n="f6t">自己更新</h3><p data-i18n="f6d">Windows 在应用里下载,重启即安装。macOS 回到本页下载新的 dmg,数据保留。</p></li>
+        </ul>
       </div>
     </section>
 
     <section class="tour" aria-labelledby="tour-title">
-      <div class="wrap tour-inner">
-        <h2 id="tour-title" data-i18n="tourTitle">三分钟上手</h2>
-        <p class="tour-sub" data-i18n="tourSub">下载安装 → 粘贴中转站 Key → 开始对话。截图是真实界面。</p>
-        <div class="tour-body">
-          <div class="tour-stage" id="tour-stage">
-            <img src="site/tour/01-chat.png" alt="MarioCode 主对话界面" class="tour-img is-active" data-step="0">
-            <img src="site/tour/03-relay.png" alt="中转站设置界面" class="tour-img" data-i18n-attr="alt:tourImg3Alt" data-step="1">
-            <img src="site/tour/04-ide.png" alt="IDE 文件树与编辑器" class="tour-img" data-i18n-attr="alt:tourImg4Alt" data-step="2">
+      <div class="wrap">
+        <h2 id="tour-title" data-reveal data-i18n="tourTitle">三分钟上手</h2>
+        <p class="sec-sub" data-reveal data-i18n="tourSub">下载安装 → 粘贴中转站 Key → 开始对话。截图是真实界面。</p>
+        <div class="tour-body" data-reveal>
+          <div class="tour-stage tilt" id="tour-stage" tabindex="0" aria-roledescription="carousel" aria-label="真实界面截图" data-i18n-attr="aria-label:tourLabel">
+            <img src="site/tour/01-chat.png" alt="MarioCode 主对话界面" class="tour-img is-active" data-i18n-attr="alt:tourImg1Alt" data-step="0">
+            <img src="site/tour/03-relay.png" alt="中转站设置界面" class="tour-img" data-i18n-attr="alt:tourImg3Alt" data-step="1" loading="lazy">
+            <img src="site/tour/04-ide.png" alt="IDE 文件树与编辑器" class="tour-img" data-i18n-attr="alt:tourImg4Alt" data-step="2" loading="lazy">
           </div>
           <ol class="tour-steps" id="tour-steps">
             <li class="tour-step is-active" data-step="0">
-              <button type="button" class="tour-step-btn">
+              <button type="button" class="tour-step-btn rp">
                 <span class="tour-step-num">1</span>
-                <span class="tour-step-text">
-                  <strong data-i18n="tourS1t">打开就能聊</strong>
-                  <span data-i18n="tourS1d">三引擎切换,流式对话,消息逐字显示。</span>
-                </span>
+                <span class="tour-step-text"><strong data-i18n="tourS1t">打开就能聊</strong><span data-i18n="tourS1d">三引擎切换,流式对话,消息逐字显示。</span></span>
+                <span class="tour-timer" aria-hidden="true"><i></i></span>
               </button>
             </li>
             <li class="tour-step" data-step="1">
-              <button type="button" class="tour-step-btn">
+              <button type="button" class="tour-step-btn rp">
                 <span class="tour-step-num">2</span>
-                <span class="tour-step-text">
-                  <strong data-i18n="tourS2t">粘贴 Key,即用 22 个模型</strong>
-                  <span data-i18n="tourS2d">设置 → 模型配置 → 中转站,粘贴 Key 保存即可。</span>
-                </span>
+                <span class="tour-step-text"><strong data-i18n="tourS2t">粘贴 Key,即用 22 个模型</strong><span data-i18n="tourS2d">设置 → 模型配置 → 中转站,粘贴 Key 保存即可。</span></span>
+                <span class="tour-timer" aria-hidden="true"><i></i></span>
               </button>
             </li>
             <li class="tour-step" data-step="2">
-              <button type="button" class="tour-step-btn">
+              <button type="button" class="tour-step-btn rp">
                 <span class="tour-step-num">3</span>
-                <span class="tour-step-text">
-                  <strong data-i18n="tourS3t">文件、代码、预览都在一个窗口</strong>
-                  <span data-i18n="tourS3d">文件树、Monaco 编辑器、Git、终端,不用切窗口。</span>
-                </span>
+                <span class="tour-step-text"><strong data-i18n="tourS3t">文件、代码、预览都在一个窗口</strong><span data-i18n="tourS3d">文件树、Monaco 编辑器、Git、终端,不用切窗口。</span></span>
+                <span class="tour-timer" aria-hidden="true"><i></i></span>
               </button>
             </li>
           </ol>
@@ -154,49 +242,51 @@
       </div>
     </section>
 
-    <section class="features" id="features" aria-labelledby="features-title">
+    <section class="download" id="download" aria-labelledby="dl-title">
       <div class="wrap">
-        <h2 id="features-title" data-i18n="featTitle">一个窗口,完成整段编程对话</h2>
-        <ul class="grid">
-          <li>
-            <span class="idx">01</span>
-            <h3 data-i18n="f1t">三个引擎,随时切换</h3>
-            <p data-i18n="f1d">Claude、Codex、Pi 同一套界面。也可以接入兼容 OpenAI / Anthropic 协议的第三方模型服务。</p>
+        <h2 id="dl-title" data-reveal data-i18n="dlTitle">下载</h2>
+        <p class="sec-sub" data-reveal data-i18n="dlSub">选你的系统。版本号从发布清单自动读取。</p>
+        <ul class="plats" data-reveal-group>
+          <li class="plat spot" data-plat="win" data-reveal>
+            <span class="mine-tag" data-i18n="tagMine">你的系统</span>
+            <span class="mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M3 5.5 10.5 4.4v6.7H3V5.5Zm8.3-1.2L21 3v8.1h-9.7V4.3ZM3 12.9h7.5v6.8L3 18.6v-5.7Zm8.3 0H21V21l-9.7-1.4v-6.7Z"/></svg>
+            </span>
+            <strong>Windows</strong>
+            <small data-i18n="platWin">Windows 10 / 11 · 64 位</small>
+            <p class="meta" id="dl-meta-win"><span class="dl-meta" data-plat="win" data-i18n="metaLoading">正在获取最新版本…</span></p>
+            <a class="btn btn-ghost rp dl-link" data-plat="win" href="#download" aria-describedby="dl-meta-win"><span data-i18n="dlWin">下载 .exe</span></a>
           </li>
-          <li>
-            <span class="idx">02</span>
-            <h3 data-i18n="f2t">每一步都看得见</h3>
-            <p data-i18n="f2d">回复逐字流式显示。思考、工具调用和改过的文件都是卡片,本轮可以一键撤销。</p>
+          <li class="plat spot" data-plat="macArm" data-reveal>
+            <span class="mine-tag" data-i18n="tagMine">你的系统</span>
+            <span class="mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M16.4 12.7c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.6.8-3.3.8s-1.7-.8-2.9-.8c-1.5 0-2.8.9-3.6 2.2-1.5 2.7-.4 6.6 1.1 8.8.7 1.1 1.6 2.3 2.7 2.2 1.1 0 1.5-.7 2.8-.7s1.7.7 2.9.7 1.9-1.1 2.6-2.2c.8-1.2 1.1-2.3 1.2-2.4-.1 0-2.2-.8-2.2-3.5Zm-2.1-6.4c.6-.7 1-1.7.9-2.7-0.9 0-1.9.6-2.5 1.3-.6.6-1.1 1.7-.9 2.6 1 .1 1.9-.5 2.5-1.2Z"/></svg>
+            </span>
+            <strong data-i18n="platMacArmName">macOS · Apple 芯片</strong>
+            <small><span data-i18n="platMacArm">M1 / M2 / M3 / M4</span> <span class="tag tag-recommend" data-i18n="tagArm">推荐</span></small>
+            <p class="meta" id="dl-meta-macArm"><span class="dl-meta" data-plat="macArm" data-i18n="metaLoading">正在获取最新版本…</span></p>
+            <a class="btn btn-ghost rp dl-link" data-plat="macArm" href="#download" aria-describedby="dl-meta-macArm"><span data-i18n="dlMac">下载 .dmg</span></a>
           </li>
-          <li>
-            <span class="idx">03</span>
-            <h3 data-i18n="f3t">先审批,再动手</h3>
-            <p data-i18n="f3d">写文件、执行命令前先问你。计划模式先出方案,同意之后才改代码。</p>
-          </li>
-          <li>
-            <span class="idx">04</span>
-            <h3 data-i18n="f4t">完整的 IDE</h3>
-            <p data-i18n="f4d">文件树、Monaco、diff、多仓库 Git、多标签终端、内置浏览器和语言服务器。</p>
-          </li>
-          <li>
-            <span class="idx">05</span>
-            <h3 data-i18n="f5t">关窗口也不停</h3>
-            <p data-i18n="f5d">收到系统托盘后任务继续跑。定时任务、微信通知,手机上也能看会话和审批。</p>
-          </li>
-          <li>
-            <span class="idx">06</span>
-            <h3 data-i18n="f6t">自己更新</h3>
-            <p data-i18n="f6d">Windows 在应用里下载,重启即安装。macOS 回到本页下载新的 dmg,数据保留。</p>
+          <li class="plat spot" data-plat="macIntel" data-reveal>
+            <span class="mine-tag" data-i18n="tagMine">你的系统</span>
+            <span class="mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M16.4 12.7c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.6.8-3.3.8s-1.7-.8-2.9-.8c-1.5 0-2.8.9-3.6 2.2-1.5 2.7-.4 6.6 1.1 8.8.7 1.1 1.6 2.3 2.7 2.2 1.1 0 1.5-.7 2.8-.7s1.7.7 2.9.7 1.9-1.1 2.6-2.2c.8-1.2 1.1-2.3 1.2-2.4-.1 0-2.2-.8-2.2-3.5Zm-2.1-6.4c.6-.7 1-1.7.9-2.7-0.9 0-1.9.6-2.5 1.3-.6.6-1.1 1.7-.9 2.6 1 .1 1.9-.5 2.5-1.2Z"/></svg>
+            </span>
+            <strong data-i18n="platMacIntelName">macOS · Intel</strong>
+            <small><span data-i18n="platMacIntel">Intel 处理器的 Mac</span> <span class="tag" data-i18n="tagIntel">旧款 Mac</span></small>
+            <p class="meta" id="dl-meta-macIntel"><span class="dl-meta" data-plat="macIntel" data-i18n="metaLoading">正在获取最新版本…</span></p>
+            <a class="btn btn-ghost rp dl-link" data-plat="macIntel" href="#download" aria-describedby="dl-meta-macIntel"><span data-i18n="dlMac">下载 .dmg</span></a>
           </li>
         </ul>
+        <p class="chip-hint" data-reveal data-i18n="chipHint">不确定 Mac 芯片:苹果菜单 → 关于本机。「芯片」写着 Apple M 选 Apple 芯片版,写着 Intel 选 Intel 版。</p>
       </div>
     </section>
 
     <section class="install" id="install" aria-labelledby="install-title">
       <div class="wrap">
-        <h2 id="install-title" data-i18n="installTitle">安装时可能看到的提示</h2>
-        <div class="steps-grid">
-          <article>
+        <h2 id="install-title" data-reveal data-i18n="installTitle">安装时可能看到的提示</h2>
+        <div class="steps-grid" data-reveal-group>
+          <article class="spot" data-reveal>
             <h3 data-i18n="stepsWinTitle">Windows</h3>
             <ol class="steps">
               <li data-i18n="step1">运行安装包,按提示选择安装位置。</li>
@@ -204,7 +294,7 @@
               <li data-i18n="step3">首次打开后,在 设置 → 模型配置 里登录,或添加你自己的模型服务。</li>
             </ol>
           </article>
-          <article>
+          <article class="spot" data-reveal>
             <h3 data-i18n="stepsMacTitle">macOS</h3>
             <ol class="steps">
               <li data-i18n="mac2">打开 .dmg,把 MarioCode 拖进「应用程序」。</li>
@@ -219,23 +309,20 @@
 
     <section class="faq" id="faq" aria-labelledby="faq-title">
       <div class="wrap narrow">
-        <h2 id="faq-title" data-i18n="faqTitle">常见问题</h2>
-        <details>
-          <summary data-i18n="q1">收费吗?</summary>
-          <p data-i18n="a1">客户端免费,MIT 开源。模型调用由你使用的服务商计费。</p>
-        </details>
-        <details>
-          <summary data-i18n="q2">需要准备什么?</summary>
-          <p data-i18n="a2">一个模型来源:Claude 或 Codex 账号,或任意兼容 OpenAI / Anthropic 协议的 API。</p>
-        </details>
-        <details>
-          <summary data-i18n="q3">代码和对话会上传吗?</summary>
-          <p data-i18n="a3">会话和配置在你自己的电脑上。MarioCode 不收集使用数据,对话只发给你配置的模型服务。</p>
-        </details>
-        <details>
-          <summary data-i18n="q4">怎么更新?</summary>
-          <p data-i18n="a4">应用会自己检查。Windows 提示下载并在重启时安装;macOS 提示回本页下载。也可以随时覆盖安装最新包。</p>
-        </details>
+        <h2 id="faq-title" data-reveal data-i18n="faqTitle">常见问题</h2>
+        <div data-reveal>
+          <details><summary data-i18n="q1">收费吗?</summary><div class="faq-a"><p data-i18n="a1">客户端免费,MIT 开源。模型调用由你使用的服务商计费。</p></div></details>
+          <details><summary data-i18n="q2">需要准备什么?</summary><div class="faq-a"><p data-i18n="a2">最快的方式:内置中转站,粘贴 Key 即用 22 个模型。也可以用 Claude 或 Codex 账号,或任意兼容 OpenAI / Anthropic 协议的 API。</p></div></details>
+          <details><summary data-i18n="q3">代码和对话会上传吗?</summary><div class="faq-a"><p data-i18n="a3">会话和配置在你自己的电脑上。MarioCode 不收集使用数据,对话只发给你配置的模型服务。</p></div></details>
+          <details><summary data-i18n="q4">怎么更新?</summary><div class="faq-a"><p data-i18n="a4">应用会自己检查。Windows 提示下载并在重启时安装;macOS 提示回本页下载。也可以随时覆盖安装最新包。</p></div></details>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-end" aria-label="下载" data-i18n-attr="aria-label:navDownload">
+      <div class="wrap cta-end-inner spot" data-reveal>
+        <h2 data-i18n="endTitle">现在就试试</h2>
+        <a class="btn btn-lg btn-primary btn-shine rp magnet" href="#download"><span data-i18n="ctaDownload">下载 MarioCode</span></a>
       </div>
     </section>
   </main>
@@ -246,5 +333,7 @@
       <span class="foot-version dl-version-text"></span>
     </div>
   </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

@@ -1,294 +1,522 @@
-/* MarioCode download page. Graphite #283833 + mint, same family as the app.
-   No inline styles: nginx CSP is style-src 'self'. */
+/* MarioCode download page. Claude design palette: ivory paper, clay accent,
+   near-black ink, warm neutrals. Light only, on purpose.
+   No inline styles: nginx CSP is style-src 'self'. JS only touches CSS custom
+   properties through CSSOM (allowed) and classes. The animated product demo
+   lives in demo.css. */
 :root {
-  --base: #f3f5f3;
+  --base: #faf9f5;        /* ivory */
+  --paper: #f0eee6;       /* pampas */
   --surface: #ffffff;
-  --ink: #17211d;
-  --muted: #5c6b64;
-  --faint: #8a9690;
-  --line: #dce3de;
-  --mint: #1f8a5b;
-  --mint-soft: #e7f5ee;
-  --graphite: #1c2925;
-  --on-graphite: #f4f7f5;
-  --warn: #9a5410;
-  --warn-soft: #fbf3e8;
-  --shadow: 0 30px 70px -36px rgb(23 33 29 / 0.45);
-  --serif: "Iowan Old Style", Palatino, "Palatino Linotype", "Songti SC", "Noto Serif SC", serif;
-  --sans: "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ink: #141413;
+  --muted: #5e5d59;
+  --faint: #87867f;
+  --line: #e8e6dc;
+  --accent: #c96442;      /* clay */
+  --accent-2: #d97757;    /* book cloth */
+  --accent-soft: #f6e8e0;
+  --kraft: #d4a27f;
+  --heather: #cbcadb;
+  --olive: #788c5d;
+  --dark: #141413;
+  --on-dark: #faf9f5;
+  --warn: #a0522d;
+  --shadow: 0 30px 70px -36px rgb(61 57 41 / 0.32);
+  --shadow-lg: 0 50px 120px -50px rgb(61 57 41 / 0.42);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --serif: "Tiempos Headline", "Copernicus", Georgia, "Iowan Old Style", "Songti SC", "Noto Serif SC", serif;
+  --sans: "Styrene B", "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
   color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --base: #101412;
-    --surface: #181e1b;
-    --ink: #e7eee9;
-    --muted: #a7b4ad;
-    --faint: #7d8b84;
-    --line: #2a3330;
-    --mint: #8dcead;
-    --mint-soft: #1a2c24;
-    --graphite: #d7eee2;
-    --on-graphite: #122019;
-    --warn: #e2b56a;
-    --warn-soft: #2a2418;
-    --shadow: 0 30px 70px -36px rgb(0 0 0 / 0.7);
-    color-scheme: dark;
-  }
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; }
 body {
   margin: 0;
-  background:
-    radial-gradient(900px 420px at 85% -10%, color-mix(in srgb, var(--mint) 16%, transparent), transparent 70%),
-    var(--base);
+  background: var(--base);
   color: var(--ink);
   font: 16px/1.6 var(--sans);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 a { color: inherit; }
-:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 .skip {
-  position: absolute; left: 12px; top: 12px; z-index: 20;
+  position: absolute; left: 12px; top: 12px; z-index: 30;
   padding: 8px 12px; background: var(--surface); border-radius: 8px;
   transform: translateY(-160%);
 }
 .skip:focus { transform: none; }
-.wrap { width: min(1080px, calc(100% - 40px)); margin: 0 auto; }
+.wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
 .narrow { width: min(720px, calc(100% - 40px)); }
 
+/* ── Nav ───────────────────────────────────────────────────────────────── */
 .nav {
-  position: sticky; top: 0; z-index: 10;
-  background: color-mix(in srgb, var(--base) 86%, transparent);
-  backdrop-filter: blur(14px);
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--base) 78%, transparent);
+  backdrop-filter: blur(16px) saturate(1.4);
   border-bottom: 1px solid transparent;
+  transition: border-color 0.3s, box-shadow 0.3s;
 }
+.nav.is-scrolled { border-bottom-color: var(--line); box-shadow: 0 10px 30px -24px rgb(61 57 41 / 0.35); }
 .nav-inner { display: flex; align-items: center; gap: 28px; height: 64px; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 650; letter-spacing: -0.02em; }
-.brand img { border-radius: 8px; }
-.nav nav { display: flex; gap: 22px; margin-left: auto; }
-.nav nav a { color: var(--muted); text-decoration: none; font-size: 14px; }
-.nav nav a:hover { color: var(--ink); }
+.brand img { border-radius: 8px; transition: transform 0.5s var(--ease); }
+.brand:hover img { transform: rotate(-8deg) scale(1.08); }
+.nav nav { display: flex; gap: 4px; margin-left: auto; }
+.nav nav a {
+  position: relative; padding: 6px 12px; border-radius: 999px;
+  color: var(--muted); text-decoration: none; font-size: 14px;
+  transition: color 0.2s, background 0.2s;
+}
+.nav nav a:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.nav nav a.is-current { color: var(--accent); background: var(--accent-soft); }
 .lang {
+  position: relative; overflow: hidden;
   border: 1px solid var(--line); background: transparent; color: var(--muted);
   border-radius: 999px; height: 32px; padding: 0 12px; font: inherit; font-size: 13px; cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, transform 0.15s;
 }
 .lang:hover { color: var(--ink); border-color: var(--faint); }
+.lang:active { transform: scale(0.94); }
+.nav-progress {
+  position: absolute; left: 0; bottom: -1px; height: 2px; width: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transform-origin: 0 50%; transform: scaleX(var(--p, 0));
+}
 
-.hero { padding: 56px 0 28px; }
-.hero-inner {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 460px);
-  gap: 64px;
-  align-items: center;
+/* ── Buttons + click feedback ─────────────────────────────────────────── */
+.btn {
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 40px; padding: 0 16px; border-radius: 999px;
+  font-weight: 650; font-size: 14px; text-decoration: none; white-space: nowrap;
+  cursor: pointer; isolation: isolate;
+  transition: transform 0.18s var(--ease), box-shadow 0.25s, filter 0.2s, border-color 0.2s, background 0.2s;
 }
-.eyebrow { margin: 0 0 18px; }
+.btn:active { transform: scale(0.96); }
+.btn-lg { height: 52px; padding: 0 26px; font-size: 15.5px; border-radius: 16px; }
+.btn-primary {
+  background: var(--accent); color: #fff;
+  box-shadow: 0 14px 30px -14px color-mix(in srgb, var(--accent) 85%, transparent);
+}
+.btn-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); box-shadow: 0 20px 40px -16px color-mix(in srgb, var(--accent) 90%, transparent); }
+.btn-primary:active { transform: translateY(0) scale(0.96); }
+.btn-ghost { color: var(--ink); border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 60%, transparent); }
+.btn-ghost:hover { border-color: var(--faint); transform: translateY(-1px); }
+.btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+/* A light sweep across the primary CTA on hover. */
+.btn-shine::after {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.28) 50%, transparent 65%);
+  transform: translateX(-120%);
+}
+.btn-shine:hover::after { transform: translateX(120%); transition: transform 0.8s var(--ease); }
+/* Ripple: app.js drops a <span class="ripple"> at the pointer. */
+.rp { position: relative; overflow: hidden; }
+.ripple {
+  position: absolute; left: var(--rx); top: var(--ry);
+  width: var(--rs); height: var(--rs); margin: calc(var(--rs) / -2) 0 0 calc(var(--rs) / -2);
+  border-radius: 50%; pointer-events: none;
+  background: currentColor; opacity: 0.22;
+  transform: scale(0); animation: ripple 0.6s var(--ease) forwards;
+}
+@keyframes ripple { to { transform: scale(1); opacity: 0; } }
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+.hero { position: relative; padding: 84px 0 40px; text-align: center; }
+.hero-inner { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; }
+.blobs { position: absolute; inset: -80px 0 -200px; overflow: hidden; pointer-events: none; z-index: 0; }
+.blob {
+  position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.5;
+  translate: calc(var(--mx, 0) * var(--d)) calc(var(--my, 0) * var(--d));
+  transition: translate 0.8s var(--ease);
+}
+.b1 { --d: 40px; width: 520px; height: 520px; left: 8%; top: 0; background: color-mix(in srgb, var(--accent-2) 26%, transparent); animation: drift1 18s ease-in-out infinite alternate; }
+.b2 { --d: -60px; width: 420px; height: 420px; right: 6%; top: 60px; background: color-mix(in srgb, var(--kraft) 40%, transparent); animation: drift2 22s ease-in-out infinite alternate; }
+.b3 { --d: 30px; width: 360px; height: 360px; left: 42%; top: 280px; background: color-mix(in srgb, var(--heather) 55%, transparent); animation: drift3 26s ease-in-out infinite alternate; }
+@keyframes drift1 { to { transform: translate(120px, 60px) scale(1.15); } }
+@keyframes drift2 { to { transform: translate(-100px, 90px) scale(0.9); } }
+@keyframes drift3 { to { transform: translate(-80px, -60px) scale(1.2); } }
+
+.eyebrow { margin: 0 0 22px; }
 .eyebrow span {
-  display: inline-block; padding: 4px 10px; border-radius: 999px;
-  background: var(--mint-soft); color: var(--mint);
-  font-size: 12px; font-weight: 650; letter-spacing: 0.04em;
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent); border: 1px solid var(--line);
+  color: var(--accent); font-size: 12.5px; font-weight: 650; letter-spacing: 0.04em;
 }
+.eyebrow span::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-2);
+  box-shadow: 0 0 0 0 var(--accent-2); animation: pulse 2s infinite;
+}
+@keyframes pulse { 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 h1 {
   margin: 0;
   font-family: var(--serif);
-  font-size: clamp(40px, 5vw, 64px);
+  font-size: clamp(42px, 6.2vw, 76px);
   font-weight: 560;
-  line-height: 1.05;
-  letter-spacing: -0.03em;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  background: linear-gradient(180deg, var(--ink) 30%, color-mix(in srgb, var(--ink) 62%, var(--accent)));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-.lead { margin: 20px 0 0; max-width: 36em; color: var(--muted); font-size: 17px; }
-.pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 26px 0 0; padding: 0; list-style: none; }
+.lead { margin: 22px auto 0; max-width: 40em; color: var(--muted); font-size: 18px; }
+.hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 32px; }
+.hero-meta { margin: 14px 0 0; color: var(--faint); font-size: 13px; min-height: 1.4em; }
+.pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 22px 0 0; padding: 0; list-style: none; }
 .pills li {
   padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
   color: var(--muted); font-size: 13px;
+  transition: transform 0.25s var(--ease), border-color 0.2s, color 0.2s;
 }
+.pills li:hover { transform: translateY(-2px); border-color: var(--accent); color: var(--accent); }
+.pills li:first-child { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); color: var(--accent); }
 
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  box-shadow: var(--shadow);
-  padding: 22px;
-}
-.panel-head h2 { margin: 0; font-family: var(--serif); font-size: 28px; font-weight: 560; letter-spacing: -0.03em; }
-.panel-head p { margin: 4px 0 16px; color: var(--faint); font-size: 13px; }
-.plats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.plat {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid transparent;
-}
-.plat:hover { background: color-mix(in srgb, var(--mint) 7%, transparent); }
-.mark {
-  width: 40px; height: 40px; border-radius: 12px;
-  display: grid; place-items: center;
-  background: var(--base); color: var(--ink);
-}
-.plat-info { min-width: 0; display: flex; flex-direction: column; }
-.plat-info strong { font-size: 15px; font-weight: 650; }
-.plat-info small { color: var(--muted); font-size: 12.5px; }
-.meta { margin: 2px 0 0; color: var(--faint); font-size: 12px; min-height: 1.3em; }
-.meta.error { color: var(--warn); }
-.chip-hint { margin: 14px 4px 2px; color: var(--faint); font-size: 12.5px; line-height: 1.5; }
+/* Page-load intro: staggered fade-up. */
+.intro { animation: intro 0.9s var(--ease) both; }
+.d1 { animation-delay: 0.05s; } .d2 { animation-delay: 0.12s; } .d3 { animation-delay: 0.2s; }
+.d4 { animation-delay: 0.28s; } .d5 { animation-delay: 0.36s; } .d6 { animation-delay: 0.5s; animation-duration: 1.2s; }
+@keyframes intro { from { opacity: 0; transform: translateY(24px); } }
 
-.btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  height: 38px; padding: 0 14px; border-radius: 999px;
-  font-weight: 650; font-size: 13.5px; text-decoration: none; white-space: nowrap;
+/* Scroll reveal: app.js adds .is-in once the element enters the viewport. */
+.js [data-reveal] {
+  opacity: 0; transform: translateY(28px);
+  transition: opacity 0.8s var(--ease), transform 0.8s var(--ease);
+  transition-delay: calc(var(--i, 0) * 90ms);
 }
-.btn-primary { background: var(--graphite); color: var(--on-graphite); }
-.btn-primary:hover { filter: brightness(1.08); }
-.btn-ghost { color: var(--ink); border: 1px solid var(--line); background: transparent; }
-.btn-ghost:hover { border-color: var(--faint); }
-.btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+.js [data-reveal].is-in { opacity: 1; transform: none; }
 
-/* ── Tour carousel ─────────────────────────────────────────────────────── */
-.tour { padding: 48px 0 56px; }
-.tour h2 { margin-bottom: 6px; }
-.tour-sub { margin: 0 0 28px; color: var(--muted); font-size: 15px; }
-.tour-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 40px;
-  align-items: start;
+/* Pointer tilt: app.js sets --tx/--ty (deg) while the pointer is over it. */
+.tilt {
+  transform: perspective(1400px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg));
+  transition: transform 0.6s var(--ease);
+  will-change: transform;
 }
-.tour-stage {
-  position: relative;
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-  background: var(--surface);
-  aspect-ratio: 16 / 10;
-}
-.tour-img {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%;
-  object-fit: cover;
-  object-position: top left;
-  opacity: 0;
-  transform: scale(0.985);
-  transition: opacity 0.55s ease, transform 0.55s ease;
-}
-.tour-img.is-active { opacity: 1; transform: scale(1); }
-.tour-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.tour-step-btn {
-  display: flex; align-items: flex-start; gap: 14px;
-  width: 100%; padding: 14px 16px; border-radius: 14px;
-  border: 1px solid transparent; background: transparent;
-  cursor: pointer; text-align: left; font: inherit;
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-.tour-step-btn:hover { background: var(--mint-soft); }
-.tour-step.is-active .tour-step-btn { background: var(--mint-soft); border-color: var(--mint); }
-.tour-step-num {
-  flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
-  display: grid; place-items: center;
-  background: var(--line); color: var(--muted);
-  font-size: 13px; font-weight: 650;
-  transition: background 0.2s ease, color 0.2s ease;
-}
-.tour-step.is-active .tour-step-num { background: var(--mint); color: #fff; }
-.tour-step-text { display: flex; flex-direction: column; gap: 3px; }
-.tour-step-text strong { font-size: 14.5px; font-weight: 650; letter-spacing: -0.01em; }
-.tour-step-text span { font-size: 13px; color: var(--muted); line-height: 1.5; }
-@media (max-width: 860px) {
-  .tour-body { grid-template-columns: 1fr; gap: 20px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .tour-img { transition: none; }
-}
+.tilt.is-tilting { transition-duration: 0.12s; }
 
-/* ── Platform tag chips ────────────────────────────────────────────────── */
-.tag {
-  display: inline-block;
-  padding: 1px 7px; border-radius: 999px;
-  font-size: 11px; font-weight: 650;
-  background: var(--line); color: var(--muted);
-  letter-spacing: 0.03em;
-  width: fit-content;
-}
-.tag-recommend { background: var(--mint-soft); color: var(--mint); }
-
-/* ── Hero CTA ──────────────────────────────────────────────────────────── */
-.hero-dl {
-  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px;
-  margin-top: 24px; padding: 12px 22px;
-  background: var(--graphite); color: var(--on-graphite);
-  border-radius: 14px; text-decoration: none;
-  transition: filter 0.15s ease, transform 0.1s ease;
-}
-.hero-dl:hover { filter: brightness(1.1); }
-.hero-dl:active { transform: scale(0.98); }
-.hero-dl-label { font-weight: 650; font-size: 15px; }
-.hero-meta { font-size: 12.5px; opacity: 0.72; }
-
-.band { padding: 8px 0 36px; }
-.band-row {
-  display: flex; flex-wrap: wrap; gap: 10px 22px;
-  padding-top: 18px; border-top: 1px solid var(--line);
-  color: var(--faint); font-size: 13px; letter-spacing: 0.04em;
-}
-
-.features { padding: 28px 0 64px; }
+/* ── Sections ──────────────────────────────────────────────────────────── */
 h2 {
-  margin: 0 0 22px;
+  margin: 0 0 10px;
   font-family: var(--serif);
-  font-size: clamp(28px, 3vw, 36px);
+  font-size: clamp(30px, 3.6vw, 44px);
   font-weight: 560;
   letter-spacing: -0.03em;
+  line-height: 1.15;
 }
-.grid {
-  list-style: none; margin: 0; padding: 0;
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 18px; overflow: hidden;
-}
-.grid li { background: var(--surface); padding: 22px 22px 26px; }
-.idx { display: block; margin-bottom: 18px; color: var(--mint); font-size: 12px; letter-spacing: 0.14em; }
-.grid h3 { margin: 0 0 8px; font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
-.grid p { margin: 0; color: var(--muted); font-size: 14.5px; }
+.sec-sub { margin: 0 0 34px; color: var(--muted); font-size: 16px; }
 
-.install { padding: 0 0 64px; }
-.steps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.steps-grid article {
-  padding: 22px 24px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line);
+/* ── Stats ─────────────────────────────────────────────────────────────── */
+.stats { padding: 40px 0 30px; }
+.stats-row {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
 }
+.stat { display: flex; flex-direction: column; gap: 2px; padding: 26px 22px; }
+.stat + .stat { border-left: 1px solid var(--line); }
+.stat b {
+  font-family: var(--serif); font-size: clamp(36px, 4vw, 50px); font-weight: 560; line-height: 1;
+  letter-spacing: -0.03em; color: var(--accent); font-variant-numeric: tabular-nums;
+}
+.stat span { color: var(--muted); font-size: 14px; }
+
+/* ── Features: tabs + live panel ───────────────────────────────────────── */
+.features { padding: 80px 0 40px; }
+.feat { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.25fr); gap: 36px; align-items: stretch; }
+.feat-tabs { display: flex; flex-direction: column; gap: 8px; }
+.feat-tab {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; align-items: start;
+  padding: 16px 18px 18px; border-radius: 18px; text-align: left;
+  border: 1px solid transparent; background: transparent; color: inherit; font: inherit; cursor: pointer;
+  transition: background 0.3s, border-color 0.3s, transform 0.2s var(--ease);
+}
+.feat-tab:hover { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.feat-tab:active { transform: scale(0.985); }
+.feat-tab.is-active { background: var(--surface); border-color: var(--line); box-shadow: var(--shadow); }
+.feat-ico {
+  width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+  transition: transform 0.4s var(--ease), background 0.3s, color 0.3s;
+}
+.feat-tab.is-active .feat-ico { background: var(--accent); color: var(--surface); transform: rotate(-6deg) scale(1.06); }
+.feat-txt { display: flex; flex-direction: column; gap: 4px; }
+.feat-txt strong { font-size: 16px; font-weight: 650; letter-spacing: -0.01em; }
+.feat-txt span { color: var(--muted); font-size: 14px; line-height: 1.55; }
+.feat-tab:not(.is-active) .feat-txt span { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.feat-timer { grid-column: 2; height: 2px; border-radius: 2px; background: var(--line); overflow: hidden; opacity: 0; transition: opacity 0.3s; }
+.feat-tab.is-active .feat-timer { opacity: 1; }
+.feat-timer i { display: block; height: 100%; background: var(--accent); transform-origin: 0 50%; transform: scaleX(0); }
+.feat-tab.is-active.is-running .feat-timer i { animation: timer var(--dur, 6s) linear forwards; }
+.feat.is-pinned .feat-timer { opacity: 0 !important; }
+@keyframes timer { to { transform: scaleX(1); } }
+.feat-stage {
+  position: relative; min-height: 380px; border-radius: 22px; overflow: hidden;
+  background:
+    radial-gradient(500px 260px at 80% 0%, color-mix(in srgb, var(--accent-2) 16%, transparent), transparent 70%),
+    var(--surface);
+  border: 1px solid var(--line); box-shadow: var(--shadow-lg);
+}
+.mini { list-style: none; margin: 40px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.mini li {
+  padding: 22px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface);
+  transition: transform 0.35s var(--ease), box-shadow 0.35s, border-color 0.3s;
+}
+.mini li:hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.mini h3 { margin: 0 0 6px; font-size: 16px; font-weight: 650; }
+.mini p { margin: 0; color: var(--muted); font-size: 14px; }
+
+/* ── Tour (real screenshots) ───────────────────────────────────────────── */
+.tour { padding: 80px 0 40px; }
+.tour-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 36px; align-items: start; }
+.tour-stage {
+  position: relative; border-radius: 18px; overflow: hidden; aspect-ratio: 16 / 10;
+  border: 1px solid var(--line); box-shadow: var(--shadow-lg); background: var(--surface);
+}
+.tour-img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: top left;
+  opacity: 0; transform: scale(1.04);
+  transition: opacity 0.7s var(--ease), transform 1.4s var(--ease);
+}
+.tour-img.is-active { opacity: 1; transform: scale(1); }
+.tour-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tour-step-btn {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 14px;
+  width: 100%; padding: 16px; border-radius: 16px;
+  border: 1px solid transparent; background: transparent; color: inherit;
+  cursor: pointer; text-align: left; font: inherit;
+  transition: background 0.25s, border-color 0.25s, transform 0.2s var(--ease);
+}
+.tour-step-btn:hover { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.tour-step-btn:active { transform: scale(0.985); }
+.tour-step.is-active .tour-step-btn { background: var(--surface); border-color: var(--line); box-shadow: var(--shadow); }
+.tour-step-num {
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--line); color: var(--muted); font-size: 13px; font-weight: 650;
+  transition: background 0.3s, color 0.3s, transform 0.4s var(--ease);
+}
+.tour-step.is-active .tour-step-num { background: var(--accent); color: var(--surface); transform: scale(1.1); }
+.tour-step-text { display: flex; flex-direction: column; gap: 3px; }
+.tour-step-text strong { font-size: 15px; font-weight: 650; }
+.tour-step-text span { font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+.tour-timer { grid-column: 2; height: 2px; margin-top: 10px; border-radius: 2px; background: var(--line); overflow: hidden; opacity: 0; }
+.tour-step.is-active .tour-timer { opacity: 1; }
+.tour-timer i { display: block; height: 100%; background: var(--accent); transform-origin: 0 50%; transform: scaleX(0); }
+.tour-step.is-active.is-running .tour-timer i { animation: timer var(--dur, 4.5s) linear forwards; }
+.tour-step.is-active.is-paused .tour-timer i { animation-play-state: paused; }
+
+/* ── Download cards ────────────────────────────────────────────────────── */
+.download { padding: 90px 0 40px; }
+.plats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.plat {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 26px 24px 24px; border-radius: 22px; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line);
+  transition: transform 0.35s var(--ease), box-shadow 0.35s, border-color 0.3s;
+}
+.plat:hover { transform: translateY(-5px); box-shadow: var(--shadow-lg); }
+/* Pointer spotlight: app.js sets --sx/--sy (px) on .spot elements. */
+.spot::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(320px circle at var(--sx, 50%) var(--sy, 0%), color-mix(in srgb, var(--accent-2) 18%, transparent), transparent 60%);
+  transition: opacity 0.35s;
+}
+.spot:hover::before { opacity: 1; }
+.plat > * { position: relative; }
+.plat.is-mine { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent), var(--shadow); }
+.mine-tag {
+  position: absolute !important; top: 16px; right: 16px;
+  padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 650;
+  background: var(--accent); color: var(--surface);
+  opacity: 0; transform: translateY(-4px) scale(0.9);
+  transition: opacity 0.4s var(--ease), transform 0.4s var(--ease);
+}
+.plat.is-mine .mine-tag { opacity: 1; transform: none; }
+.mark {
+  width: 52px; height: 52px; border-radius: 16px; margin-bottom: 14px;
+  display: grid; place-items: center;
+  background: var(--base); color: var(--ink);
+  transition: transform 0.5s var(--ease), background 0.3s, color 0.3s;
+}
+.plat:hover .mark { transform: rotate(-8deg) scale(1.08); background: var(--accent-soft); color: var(--accent); }
+.plat strong { font-size: 17px; font-weight: 650; }
+.plat small { color: var(--muted); font-size: 13px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.meta { margin: 6px 0 18px; color: var(--faint); font-size: 12.5px; min-height: 1.4em; }
+.meta.error { color: var(--warn); }
+.plat .btn { margin-top: auto; width: 100%; height: 44px; }
+.chip-hint { margin: 18px 4px 0; color: var(--faint); font-size: 13px; line-height: 1.5; }
+.tag {
+  display: inline-block; padding: 1px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 650; letter-spacing: 0.03em;
+  background: var(--line); color: var(--muted);
+}
+.tag-recommend { background: var(--accent-soft); color: var(--accent); }
+
+/* ── Install + FAQ ─────────────────────────────────────────────────────── */
+.install { padding: 70px 0 30px; }
+.steps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; }
+.steps-grid article { padding: 24px 26px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); }
 .steps-grid h3 { margin: 0 0 10px; font-size: 16px; }
 .steps { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14.5px; }
 .steps li { margin: 8px 0; }
 .steps code {
   display: block; margin-top: 8px; padding: 8px 10px;
-  font: 12px/1.45 ui-monospace, "Cascadia Code", Consolas, monospace;
+  font: 12px/1.45 var(--mono);
   color: var(--ink); background: var(--base); border-radius: 8px;
   overflow-wrap: anywhere; user-select: all;
 }
-
-.faq { padding: 0 0 80px; }
+.faq { padding: 70px 0 40px; }
+.faq h2 { margin-bottom: 20px; }
 details { border-top: 1px solid var(--line); }
 details:last-of-type { border-bottom: 1px solid var(--line); }
-summary { cursor: pointer; padding: 16px 2px; font-weight: 620; }
-details p { margin: 0 0 16px 18px; color: var(--muted); }
+summary {
+  position: relative; list-style: none; cursor: pointer; padding: 18px 40px 18px 4px;
+  font-weight: 620; transition: color 0.2s;
+}
+summary::-webkit-details-marker { display: none; }
+summary:hover { color: var(--accent); }
+summary::after {
+  content: ""; position: absolute; right: 8px; top: 50%; width: 10px; height: 10px; margin-top: -7px;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(45deg); transition: transform 0.35s var(--ease);
+}
+details[open] summary::after { transform: translateY(4px) rotate(225deg); }
+/* Smooth open/close: app.js toggles .is-open after setting open, the grid
+   row animates 0fr → 1fr. */
+.faq-a { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s var(--ease); }
+.faq-a > p { overflow: hidden; margin: 0; padding: 0 4px; color: var(--muted); }
+details.is-open .faq-a { grid-template-rows: 1fr; }
+details.is-open .faq-a > p { padding-bottom: 18px; }
+/* Without JS, plain <details> behaviour still works. */
+html:not(.js) details[open] .faq-a { grid-template-rows: 1fr; }
+html:not(.js) details[open] .faq-a > p { padding-bottom: 18px; }
 
+/* ── Closing CTA + footer ──────────────────────────────────────────────── */
+.cta-end { padding: 60px 0 90px; }
+.cta-end-inner {
+  position: relative; overflow: hidden; text-align: center;
+  padding: 64px 24px; border-radius: 28px;
+  background: var(--paper); color: var(--ink); border: 1px solid var(--line);
+}
+/* Soft clay glow that follows the pointer (app.js sets --sx/--sy on .spot). */
+.cta-end-inner::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 1;
+  background: radial-gradient(420px circle at var(--sx, 50%) var(--sy, 30%), color-mix(in srgb, var(--accent-2) 22%, transparent), transparent 65%);
+}
+.cta-end-inner > * { position: relative; }
+.cta-end h2 { margin-bottom: 22px; color: inherit; }
+@keyframes spin { to { transform: rotate(1turn); } }
 .foot { border-top: 1px solid var(--line); padding: 22px 0 32px; color: var(--faint); font-size: 13px; }
 .foot-inner { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
-@media (max-width: 860px) {
-  .hero { padding-top: 28px; }
-  .hero-inner { grid-template-columns: 1fr; gap: 28px; }
-  .grid { grid-template-columns: 1fr; }
+/* ── Toast ─────────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; z-index: 40;
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px; border-radius: 14px; max-width: calc(100% - 40px);
+  background: var(--dark); color: var(--on-dark); font-size: 14px; font-weight: 600;
+  box-shadow: var(--shadow-lg);
+  opacity: 0; transform: translate(-50%, 20px) scale(0.96); pointer-events: none;
+  transition: opacity 0.35s var(--ease), transform 0.35s var(--ease);
+}
+.toast::before {
+  content: "✓"; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent-2); color: #fff; font-size: 13px;
+}
+.toast.is-on { opacity: 1; transform: translate(-50%, 0) scale(1); }
+
+/* ── Mouse play ────────────────────────────────────────────────────────── */
+/* Spotlight on more cards (same --sx/--sy driver as the download cards). */
+.mini li, .steps-grid article { position: relative; overflow: hidden; }
+.mini li > *, .steps-grid article > * { position: relative; }
+
+/* Dot grid that only shows around the pointer in the hero. */
+.hero::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image: radial-gradient(color-mix(in srgb, var(--ink) 24%, transparent) 1px, transparent 1.6px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(240px circle at var(--hx, 50%) var(--hy, 30%), #000, transparent 75%);
+  mask-image: radial-gradient(240px circle at var(--hx, 50%) var(--hy, 30%), #000, transparent 75%);
+  opacity: 0; transition: opacity 0.4s;
+}
+.hero.is-hover::before { opacity: 1; }
+
+/* Magnetic CTAs: app.js sets --mgx/--mgy; `translate` stays separate from
+   the hover/press `transform`, so both apply. */
+.magnet {
+  translate: var(--mgx, 0) var(--mgy, 0);
+  transition: translate 0.4s var(--ease), transform 0.18s var(--ease), box-shadow 0.25s, background 0.2s, border-color 0.2s;
+}
+.magnet.is-pulling { transition-duration: 0.12s, 0.18s, 0.25s, 0.2s, 0.2s; }
+
+/* Trailing ring that follows the pointer and reacts to what's under it. */
+.cursor-ring {
+  position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none;
+  width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  translate: var(--x, -100px) var(--y, -100px);
+  opacity: 0;
+  transition: opacity 0.3s, width 0.3s var(--ease), height 0.3s var(--ease), margin 0.3s var(--ease), background 0.3s, border-color 0.3s, scale 0.15s;
+}
+.cursor-ring.is-on { opacity: 1; }
+.cursor-ring.is-hot {
+  width: 54px; height: 54px; margin: -27px 0 0 -27px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: transparent;
+}
+.cursor-ring.is-view {
+  width: 76px; height: 76px; margin: -38px 0 0 -38px;
+  border-style: dashed; border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.cursor-ring.is-down { scale: 0.78; }
+
+/* Click burst: a few clay / kraft specks fly out from the click point. */
+.burst-fx { position: fixed; left: var(--x); top: var(--y); z-index: 61; pointer-events: none; }
+.burst-fx i {
+  position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent-2); animation: burst 0.7s var(--ease) forwards;
+}
+.burst-fx i:nth-child(3n) { background: var(--kraft); }
+.burst-fx i:nth-child(3n + 1) { left: -2px; top: -2px; width: 4px; height: 4px; background: var(--accent); }
+@keyframes burst {
+  from { transform: translate(0, 0) scale(var(--s, 1)); opacity: 1; }
+  to { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .feat { grid-template-columns: 1fr; }
+  .feat-stage { min-height: 320px; }
+  .tour-body { grid-template-columns: 1fr; gap: 18px; }
+  .plats { grid-template-columns: 1fr; }
+  .mini { grid-template-columns: 1fr; }
   .steps-grid { grid-template-columns: 1fr; }
+  .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat:nth-child(3) { border-left: 0; }
+  .stat:nth-child(n + 3) { border-top: 1px solid var(--line); }
   .nav nav { display: none; }
   .lang { margin-left: auto; }
 }
 @media (max-width: 560px) {
-  h1 { font-size: 36px; }
-  .plat { grid-template-columns: 36px minmax(0, 1fr); }
-  .plat .btn { grid-column: 1 / -1; height: 42px; }
+  .hero { padding-top: 48px; }
+  h1 { font-size: 38px; }
+  .lead { font-size: 16px; }
+  .hero-actions .btn { width: 100%; }
+}
+/* Touch: no hover lift/tilt. */
+@media (hover: none) {
+  .cursor-ring { display: none; }
+  .tilt { transform: none !important; }
+  .plat:hover, .mini li:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  .js [data-reveal] { opacity: 1; transform: none; }
+  .tilt { transform: none !important; }
+  .cursor-ring, .burst-fx, .hero::before { display: none; }
+  .magnet { translate: none; }
 }

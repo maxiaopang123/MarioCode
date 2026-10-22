@@ -52,16 +52,35 @@ export function isBuiltinRelayId(id: string | undefined | null): boolean {
  */
 export const BUILTIN_RELAY_BASE_URL = "http://39.109.58.6:8090";
 
+/**
+ * Origin that serves the PUBLISHED CONFIG — deliberately a different host:port
+ * from `BUILTIN_RELAY_BASE_URL`.
+ *
+ * The two are separate processes: :8090 is the inference gateway every
+ * request's API key flows through, :18505 is a ~300-line service that only
+ * reads and writes one JSON file. Keeping the admin write endpoint off the
+ * gateway means the whole publish path can be restarted, or even taken down,
+ * without touching inference — and it gives the write endpoint its own, much
+ * smaller blast radius.
+ */
+export const BUILTIN_RELAY_CONFIG_BASE_URL = "http://39.109.58.6:18505";
+
 /** Where clients read the published config from, and where the administrator
  *  panel pushes it to. */
 export const BUILTIN_RELAY_CONFIG_PATH = "/relay-config.json";
 export const BUILTIN_RELAY_PUSH_PATH = "/admin/relay-config";
+/** Auth probe: 200 with the admin password, 401 without it. Lets the unlock
+ *  screen answer "is this the right password?" WITHOUT publishing anything. */
+export const BUILTIN_RELAY_VERIFY_PATH = "/admin/verify";
 
 /** Published config URL (GET, public, no auth). */
-export const BUILTIN_RELAY_CONFIG_URL = `${BUILTIN_RELAY_BASE_URL}${BUILTIN_RELAY_CONFIG_PATH}`;
+export const BUILTIN_RELAY_CONFIG_URL = `${BUILTIN_RELAY_CONFIG_BASE_URL}${BUILTIN_RELAY_CONFIG_PATH}`;
 
-/** Admin push endpoint (POST, `Authorization: Bearer <管理员令牌>`). */
-export const BUILTIN_RELAY_PUSH_URL = `${BUILTIN_RELAY_BASE_URL}${BUILTIN_RELAY_PUSH_PATH}`;
+/** Admin push endpoint (POST, `Authorization: Bearer <管理员密码>`). */
+export const BUILTIN_RELAY_PUSH_URL = `${BUILTIN_RELAY_CONFIG_BASE_URL}${BUILTIN_RELAY_PUSH_PATH}`;
+
+/** Admin auth probe (GET, `Authorization: Bearer <管理员密码>`). */
+export const BUILTIN_RELAY_VERIFY_URL = `${BUILTIN_RELAY_CONFIG_BASE_URL}${BUILTIN_RELAY_VERIFY_PATH}`;
 
 /** Protocols the relay speaks. All three, so all three engines can use it. */
 export const BUILTIN_RELAY_PROTOCOLS: SharedProviderProtocol[] = [
@@ -206,14 +225,18 @@ export interface BuiltinRelayStatus {
   source: RelayConfigSource;
   /** When the effective config was fetched/pushed (ISO), if known. */
   updatedAt: string | null;
-  /** Whether this machine holds an admin token (never the token itself). */
+  /** Whether this machine holds a VERIFIED admin password (never the password
+   *  itself). False means 设置 → 关于 shows the lock screen, not the editor. */
   hasAdminToken: boolean;
 }
 
-export const BuiltinRelaySetAdminTokenInputSchema = z
+/** `builtinRelay.unlock` input: the administrator password, i.e. the server's
+ *  `RELAY_ADMIN_TOKEN`. It is verified by the server before being stored —
+ *  see `RelayConfigStore.unlock`. */
+export const BuiltinRelayUnlockInputSchema = z
   .object({ token: z.string().trim().min(1).max(4_096) })
   .strict();
-export type BuiltinRelaySetAdminTokenInput = z.infer<typeof BuiltinRelaySetAdminTokenInputSchema>;
+export type BuiltinRelayUnlockInput = z.infer<typeof BuiltinRelayUnlockInputSchema>;
 
 /** `builtinRelay.push` input: the config the admin panel built. Re-validated in
  *  main — a renderer is not a trust boundary. */

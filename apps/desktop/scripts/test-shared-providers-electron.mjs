@@ -181,30 +181,54 @@ try {
   }
   await openSettingsPage("系统", "关于");
   const adminUntil = Date.now() + 20000;
-  while (!await evaluate("Boolean(document.querySelector('[data-relay-admin] li'))")) {
+  while (!await evaluate("Boolean(document.querySelector('[data-relay-admin]'))")) {
     if (Date.now() > adminUntil) throw new Error(`Relay admin panel missing: ${await evaluate("document.body.innerText.slice(0,600)")}`);
     await delay(150);
   }
-  const adminRows = await evaluate(`document.querySelectorAll('[data-relay-admin] li').length`);
-  assert.equal(adminRows, relayList.providers[0].models.length, "admin panel lists every published model");
-  const allRowsFlag = (label) =>
-    `[...document.querySelectorAll('[data-relay-admin] li')].every(li => [...li.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)})?.getAttribute('aria-pressed') === 'true')`;
-  // 全选 → 批量开启生图 / 关闭思考: one switch flips the whole selection.
-  await evaluate("document.querySelector('[data-relay-admin] input[aria-label=\"全选\"]').click()");
-  await delay(120);
-  await evaluate("[...document.querySelectorAll('[data-relay-admin] button')].find(b=>b.getAttribute('aria-label')==='批量开启生图').click()");
-  await delay(120);
-  assert.equal(await evaluate(allRowsFlag("生图")), true, "bulk 生图 sets the flag on every selected row");
-  await evaluate("[...document.querySelectorAll('[data-relay-admin] button')].find(b=>b.getAttribute('aria-label')==='批量关闭思考').click()");
-  await delay(120);
-  assert.equal(await evaluate(allRowsFlag("思考")), false, "bulk 思考 off clears the flag on every selected row");
-  // Row order is the user-facing order, so it has to be movable.
-  const firstId = await evaluate(`document.querySelector('[data-relay-admin] li ${modelIdInput}').value`);
-  const secondId = await evaluate(`document.querySelectorAll('[data-relay-admin] li ${modelIdInput}')[1].value`);
-  await evaluate("document.querySelectorAll('[data-relay-admin] li')[0].querySelector('button[aria-label=\"下移\"]').click()");
-  await delay(120);
-  assert.equal(await evaluate(`document.querySelectorAll('[data-relay-admin] li ${modelIdInput}')[0].value`), secondId, "move-down puts the second model on top");
-  assert.equal(await evaluate(`document.querySelectorAll('[data-relay-admin] li ${modelIdInput}')[1].value`), firstId, "move-down pushes the first model down");
+  // The panel is mounted for EVERY user; before the password it must show only
+  // the lock card. Zero rows and no push button is what keeps a normal user out
+  // of the published model list from here.
+  assert.equal(await evaluate("document.querySelectorAll('[data-relay-admin] li').length"), 0, "the admin editor stays hidden until the password is accepted");
+  assert.equal(await evaluate("Boolean(document.querySelector('[data-relay-admin][data-relay-locked] input[type=password]'))"), true, "the locked panel asks for the admin password");
+  assert.equal(await evaluate("Boolean([...document.querySelectorAll('[data-relay-admin] button')].find(b=>b.textContent.includes('推送到线上')))"), false, "no push button before unlocking");
+
+  // Unlocking is a real round trip to GET /admin/verify, so the editor
+  // assertions need the actual password. Skipped (never faked) when absent: a
+  // local "does the string match" shortcut would prove nothing at all.
+  const relayAdminPassword = (process.env.MC_RELAY_ADMIN_TOKEN ?? "").trim();
+  if (relayAdminPassword.length === 0) {
+    console.log("· relay admin editor assertions skipped: set MC_RELAY_ADMIN_TOKEN to run them");
+  } else {
+    await evaluate("document.querySelector('[data-relay-admin] input[type=password]').focus()");
+    await command("Input.insertText", { text: relayAdminPassword });
+    await delay(80);
+    await evaluate("[...document.querySelectorAll('[data-relay-admin] button')].find(b=>b.textContent.trim()==='进入').click()");
+    const unlockUntil = Date.now() + 20000;
+    while (!await evaluate("Boolean(document.querySelector('[data-relay-admin] li'))")) {
+      if (Date.now() > unlockUntil) throw new Error(`Unlocking the relay panel failed: ${await evaluate("document.body.innerText.slice(0,600)")}`);
+      await delay(150);
+    }
+    const adminRows = await evaluate(`document.querySelectorAll('[data-relay-admin] li').length`);
+    assert.equal(adminRows, relayList.providers[0].models.length, "admin panel lists every published model");
+    const allRowsFlag = (label) =>
+      `[...document.querySelectorAll('[data-relay-admin] li')].every(li => [...li.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)})?.getAttribute('aria-pressed') === 'true')`;
+    // 全选 → 批量开启生图 / 关闭思考: one switch flips the whole selection.
+    await evaluate("document.querySelector('[data-relay-admin] input[aria-label=\"全选\"]').click()");
+    await delay(120);
+    await evaluate("[...document.querySelectorAll('[data-relay-admin] button')].find(b=>b.getAttribute('aria-label')==='批量开启生图').click()");
+    await delay(120);
+    assert.equal(await evaluate(allRowsFlag("生图")), true, "bulk 生图 sets the flag on every selected row");
+    await evaluate("[...document.querySelectorAll('[data-relay-admin] button')].find(b=>b.getAttribute('aria-label')==='批量关闭思考').click()");
+    await delay(120);
+    assert.equal(await evaluate(allRowsFlag("思考")), false, "bulk 思考 off clears the flag on every selected row");
+    // Row order is the user-facing order, so it has to be movable.
+    const firstId = await evaluate(`document.querySelector('[data-relay-admin] li ${modelIdInput}').value`);
+    const secondId = await evaluate(`document.querySelectorAll('[data-relay-admin] li ${modelIdInput}')[1].value`);
+    await evaluate("document.querySelectorAll('[data-relay-admin] li')[0].querySelector('button[aria-label=\"下移\"]').click()");
+    await delay(120);
+    assert.equal(await evaluate(`document.querySelectorAll('[data-relay-admin] li ${modelIdInput}')[0].value`), secondId, "move-down puts the second model on top");
+    assert.equal(await evaluate(`document.querySelectorAll('[data-relay-admin] li ${modelIdInput}')[1].value`), firstId, "move-down pushes the first model down");
+  }
   // Back to the model settings page; the provider list must still be there.
   await openSettingsPage("AI 能力", "模型配置");
   const backUntil = Date.now() + 20000;

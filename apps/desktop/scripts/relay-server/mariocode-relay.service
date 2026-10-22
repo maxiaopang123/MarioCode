@@ -1,0 +1,35 @@
+[Unit]
+Description=MarioCode relay config service (TODO-074)
+Documentation=file:///opt/mariocode-relay/server.mjs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mariocode-relay
+EnvironmentFile=/opt/mariocode-relay/relay.env
+ExecStart=/usr/local/bin/node /opt/mariocode-relay/server.mjs
+Restart=always
+RestartSec=2
+
+# Hardening: the process only ever touches its own data directory. It needs no
+# /home, no /tmp, no new privileges, and no write access outside /opt.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/mariocode-relay/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# NOTE: do NOT add MemoryDenyWriteExecute=true here. V8's JIT must flip pages
+# between writable and executable; denying that makes node die with SIGTRAP
+# ("code=dumped, status=5/TRAP") at startup, with no hint that a sandbox
+# option was the cause.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

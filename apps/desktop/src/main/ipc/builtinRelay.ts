@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron";
-import { IPC, BuiltinRelayPushInputSchema, BuiltinRelaySetAdminTokenInputSchema } from "@contracts/ipc";
+import { IPC, BuiltinRelayPushInputSchema, BuiltinRelayUnlockInputSchema } from "@contracts/ipc";
 import { RelayConfigStore } from "@main/lib/relayConfigStore.js";
 import { engineFetch } from "@main/network/engineProxy.js";
 
@@ -19,9 +19,11 @@ export function registerBuiltinRelayHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(IPC.BUILTIN_RELAY_STATUS, async () => RelayConfigStore.currentStatus());
   ipcMain.handle(IPC.BUILTIN_RELAY_REFRESH, async () =>
     RelayConfigStore.refresh({ fetch: (input, init) => engineFetch(String(input), init ?? {}) }));
-  ipcMain.handle(IPC.BUILTIN_RELAY_SET_ADMIN_TOKEN, async (_event, raw) =>
-    RelayConfigStore.setAdminToken(BuiltinRelaySetAdminTokenInputSchema.parse(raw).token));
-  ipcMain.handle(IPC.BUILTIN_RELAY_CLEAR_ADMIN_TOKEN, async () => RelayConfigStore.clearAdminToken());
+  ipcMain.handle(IPC.BUILTIN_RELAY_UNLOCK, async (_event, raw) =>
+    RelayConfigStore.unlock(BuiltinRelayUnlockInputSchema.parse(raw).token, {
+      fetch: (input, init) => engineFetch(String(input), init ?? {}),
+    }));
+  ipcMain.handle(IPC.BUILTIN_RELAY_LOCK, async () => RelayConfigStore.lock());
   ipcMain.handle(IPC.BUILTIN_RELAY_PUSH, async (_event, raw) =>
     RelayConfigStore.push(BuiltinRelayPushInputSchema.parse(raw).config, {
       fetch: (input, init) => engineFetch(String(input), init ?? {}),

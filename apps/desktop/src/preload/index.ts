@@ -712,8 +712,8 @@ const api = {
   builtinRelay: {
     status: (() => ipcRenderer.invoke(IPC.BUILTIN_RELAY_STATUS)) as RpcMap["builtinRelay.status"],
     refresh: (() => ipcRenderer.invoke(IPC.BUILTIN_RELAY_REFRESH)) as RpcMap["builtinRelay.refresh"],
-    setAdminToken: ((input) => ipcRenderer.invoke(IPC.BUILTIN_RELAY_SET_ADMIN_TOKEN, input)) as RpcMap["builtinRelay.setAdminToken"],
-    clearAdminToken: (() => ipcRenderer.invoke(IPC.BUILTIN_RELAY_CLEAR_ADMIN_TOKEN)) as RpcMap["builtinRelay.clearAdminToken"],
+    unlock: ((input) => ipcRenderer.invoke(IPC.BUILTIN_RELAY_UNLOCK, input)) as RpcMap["builtinRelay.unlock"],
+    lock: (() => ipcRenderer.invoke(IPC.BUILTIN_RELAY_LOCK)) as RpcMap["builtinRelay.lock"],
     push: ((input) => ipcRenderer.invoke(IPC.BUILTIN_RELAY_PUSH, input)) as RpcMap["builtinRelay.push"],
   },
   /** Claude Code plugins (settings → 插件): the CLI owns install state; this

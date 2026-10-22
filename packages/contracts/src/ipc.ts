@@ -53,13 +53,13 @@ import {
   type SharedProviderDiscoveryResult,
 } from "./sharedProvider.js";
 import {
-  BuiltinRelaySetAdminTokenInputSchema,
+  BuiltinRelayUnlockInputSchema,
   BuiltinRelayPushInputSchema,
   type BuiltinRelayStatus,
   type BuiltinRelayPushResult,
-  type BuiltinRelaySetAdminTokenInput,
+  type BuiltinRelayUnlockInput,
 } from "./builtinRelay.js";
-export { BuiltinRelaySetAdminTokenInputSchema, BuiltinRelayPushInputSchema };
+export { BuiltinRelayUnlockInputSchema, BuiltinRelayPushInputSchema };
 import {
   PluginsSetEnabledSchema,
   type PluginsListResult,
@@ -5407,9 +5407,11 @@ export interface RpcMap {
   "builtinRelay.status": () => Promise<BuiltinRelayStatus>;
   /** Fetch `/relay-config.json` now; failures leave the cached list in place. */
   "builtinRelay.refresh": () => Promise<BuiltinRelayStatus>;
-  /** Store the admin token encrypted; only `hasAdminToken` is ever returned. */
-  "builtinRelay.setAdminToken": (input: BuiltinRelaySetAdminTokenInput) => Promise<BuiltinRelayStatus>;
-  "builtinRelay.clearAdminToken": () => Promise<BuiltinRelayStatus>;
+  /** Verify the admin password against the server, then store it encrypted.
+   *  Only `hasAdminToken` is ever returned — never the password. */
+  "builtinRelay.unlock": (input: BuiltinRelayUnlockInput) => Promise<BuiltinRelayStatus>;
+  /** Forget the stored password and re-lock the admin panel. */
+  "builtinRelay.lock": () => Promise<BuiltinRelayStatus>;
   /** Push an edited config to the relay server (overwrites the published one). */
   "builtinRelay.push": (input: { config: BuiltinRelayStatus["config"] }) => Promise<BuiltinRelayPushResult>;
   // Claude Code plugins: read the CLI's own install state, flip enabledPlugins.
@@ -5789,8 +5791,8 @@ export const IPC = {
   SHARED_PROVIDERS_DISCOVER_MODELS: "sharedProviders:discoverModels",
   BUILTIN_RELAY_STATUS: "builtinRelay:status",
   BUILTIN_RELAY_REFRESH: "builtinRelay:refresh",
-  BUILTIN_RELAY_SET_ADMIN_TOKEN: "builtinRelay:setAdminToken",
-  BUILTIN_RELAY_CLEAR_ADMIN_TOKEN: "builtinRelay:clearAdminToken",
+  BUILTIN_RELAY_UNLOCK: "builtinRelay:unlock",
+  BUILTIN_RELAY_LOCK: "builtinRelay:lock",
   BUILTIN_RELAY_PUSH: "builtinRelay:push",
   PLUGINS_LIST: "plugins:list",
   PLUGINS_SET_ENABLED: "plugins:setEnabled",

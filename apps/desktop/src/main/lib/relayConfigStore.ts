@@ -23,6 +23,7 @@ import {
   BUILTIN_RELAY_CONFIG_URL,
   BUILTIN_RELAY_FALLBACK_CONFIG,
   BUILTIN_RELAY_PUSH_URL,
+  BUILTIN_RELAY_VERIFY_URL,
   BuiltinRelayPushInputSchema,
   RelayConfigSchema,
   diffRelayConfigs,
@@ -136,13 +137,68 @@ export function hasAdminToken(): boolean {
   return readAdminToken() !== null;
 }
 
-export function setAdminToken(token: string): BuiltinRelayStatus {
+function storeAdminToken(token: string): void {
   writeSetting(ADMIN_TOKEN_KEY, encryptRequired(token.trim()));
-  return currentStatus();
 }
 
-export function clearAdminToken(): BuiltinRelayStatus {
+function forgetAdminToken(): void {
   deleteSetting(ADMIN_TOKEN_KEY);
+}
+
+/**
+ * Unlock the 中转站管理 panel.
+ *
+ * The typed password IS the server's `RELAY_ADMIN_TOKEN`. Crucially, it is
+ * checked by the SERVER (`GET /admin/verify`) before anything is stored —
+ * a purely local comparison would be meaningless, because the correct value
+ * would have to ship inside the app for the check to work.
+ *
+ * Because the check is a real round trip it also answers a second question the
+ * old "paste a token" flow could not: is the config server reachable at all?
+ * The three outcomes are therefore reported separately — wrong password,
+ * rate-limited, unreachable — since the fix differs for each.
+ */
+export async function unlock(token: string, deps: RelayConfigDeps = {}): Promise<BuiltinRelayStatus> {
+  const secret = token.trim();
+  if (secret.length === 0) throw new Error("请输入管理员密码");
+  const fetchFn: FetchLike = deps.fetch ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetchFn(BUILTIN_RELAY_VERIFY_URL, {
+      method: "GET",
+      headers: { accept: "application/json", authorization: `Bearer ${secret}` },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error && err.name === "AbortError"
+        ? "连接中转站服务器超时，请检查网络后重试"
+        : "无法连接中转站服务器，请检查网络后重试",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (response.status === 401 || response.status === 403) throw new Error("管理员密码不正确");
+  if (response.status === 429) throw new Error("尝试次数过多，请稍后再试");
+  if (!response.ok) throw new Error(`验证失败：HTTP ${response.status}`);
+
+  storeAdminToken(secret);
+  // Open the editor on the document the server actually serves, not on
+  // whatever this machine happened to cache — those can differ after someone
+  // else pushed. A failed refresh is not fatal: the cached list still shows.
+  // `refreshQuietly` already returns the post-refresh status (with
+  // `source: "remote"` when the fetch worked), so do NOT re-derive it from
+  // `currentStatus()` — that reads the cache and would report "cache".
+  return refreshQuietly(deps);
+}
+
+/** Drop the stored password and re-lock the panel. */
+export function lock(): BuiltinRelayStatus {
+  forgetAdminToken();
   return currentStatus();
 }
 
@@ -208,7 +264,7 @@ export async function refreshQuietly(deps: RelayConfigDeps = {}): Promise<Builti
 export async function push(config: unknown, deps: RelayConfigDeps = {}): Promise<BuiltinRelayPushResult> {
   const { config: next } = BuiltinRelayPushInputSchema.parse({ config });
   const token = readAdminToken();
-  if (!token) throw new Error("尚未配置管理员令牌，无法推送");
+  if (!token) throw new Error("尚未进入管理员模式，无法推送");
   const previous = currentConfig();
   const fetchFn: FetchLike = deps.fetch ?? fetch;
   const controller = new AbortController();
@@ -225,7 +281,13 @@ export async function push(config: unknown, deps: RelayConfigDeps = {}): Promise
       signal: controller.signal,
       cache: "no-store",
     });
-    if (response.status === 401 || response.status === 403) throw new Error("管理员令牌无效或已过期");
+    if (response.status === 401 || response.status === 403) {
+      // The password stopped being valid (rotated on the server, or it never
+      // was). Forget it so the panel falls back to the unlock screen instead
+      // of offering a push that can only fail again.
+      forgetAdminToken();
+      throw new Error("管理员密码不正确或已失效，请重新进入");
+    }
     if (!response.ok) throw new Error(`推送失败：HTTP ${response.status}`);
   } finally {
     clearTimeout(timer);
@@ -247,7 +309,7 @@ export const RelayConfigStore = {
   refresh,
   refreshQuietly,
   push,
-  setAdminToken,
-  clearAdminToken,
+  unlock,
+  lock,
   hasAdminToken,
 };

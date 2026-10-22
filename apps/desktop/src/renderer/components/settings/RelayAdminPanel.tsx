@@ -17,7 +17,6 @@ import {
   IconCheck,
   IconChevronDown,
   IconChevronUp,
-  IconKey,
   IconLoader2,
   IconLock,
   IconPlus,
@@ -30,10 +29,19 @@ import { cn } from "@renderer/lib/cn.js";
 /**
  * 中转站管理面板 — the administrator side of TODO-074, shown in 设置 → 关于.
  *
+ * Two states, and the second one does not exist until the SERVER agrees:
+ *
+ *   locked   — a password field. Nothing else is rendered: no model list, no
+ *              push button. Every build ships this panel, so the gate is what
+ *              keeps a normal user out of the editor.
+ *   unlocked — the full editor, only after `builtinRelay.unlock` got a 200 from
+ *              `GET /admin/verify`. There is intentionally no local password
+ *              check; the correct value lives on the server, not in the bundle.
+ *
  * Edits the model list that the built-in relay card publishes and pushes it to
  * the relay server, which overwrites the previous document (no history by
  * design). The address is displayed but never editable: it is a code constant,
- * so a compromised admin token cannot repoint anyone's key.
+ * so a compromised admin password cannot repoint anyone's key.
  *
  * What an administrator can decide per model: id, display name, context
  * window, which of the three interfaces it speaks, and the three capability
@@ -81,9 +89,11 @@ export function RelayAdminPanel() {
   const [name, setName] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [token, setToken] = useState("");
-  const [revealToken, setRevealToken] = useState(false);
-  const [busy, setBusy] = useState<"load" | "refresh" | "push" | "token" | null>(null);
+  /** The typed administrator password. Held only until the server says yes, or
+   *  until the field is cleared — never persisted from here. */
+  const [password, setPassword] = useState("");
+  const [revealPassword, setRevealPassword] = useState(false);
+  const [busy, setBusy] = useState<"load" | "refresh" | "push" | "unlock" | "lock" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingPush, setPendingPush] = useState<ReturnType<typeof diffRelayConfigs> | null>(null);
 
@@ -214,15 +224,18 @@ export function RelayAdminPanel() {
     }
   }
 
-  async function saveToken() {
-    if (!token.trim()) return;
-    setBusy("token");
+  /** Ask the server whether this password is the administrator's. The main
+   *  process performs the request and only stores the password on a 200, so a
+   *  wrong guess leaves the panel locked and nothing behind on disk. */
+  async function unlockPanel() {
+    if (!password.trim()) return;
+    setBusy("unlock");
     setError(null);
     try {
-      adopt(await api.builtinRelay.setAdminToken({ token: token.trim() }));
-      setToken("");
-      setRevealToken(false);
-      useToastStore.getState().push({ kind: "info", title: t("settings.about.relay.tokenSaved"), duration: 4_000 });
+      adopt(await api.builtinRelay.unlock({ token: password.trim() }));
+      setPassword("");
+      setRevealPassword(false);
+      useToastStore.getState().push({ kind: "info", title: t("settings.about.relay.unlockOk"), duration: 4_000 });
     } catch (e) {
       setError(stripIpcError(e instanceof Error ? e.message : String(e)));
     } finally {
@@ -230,21 +243,13 @@ export function RelayAdminPanel() {
     }
   }
 
-  /** Generate a strong token locally so the administrator has something to
-   *  configure on the server; it is NOT auto-saved, they must copy it and
-   *  confirm. Same value has to be set as the server's admin token. */
-  function generateToken() {
-    const bytes = new Uint8Array(24);
-    crypto.getRandomValues(bytes);
-    setToken([...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join(""));
-    setRevealToken(true);
-  }
-
-  async function clearToken() {
-    setBusy("token");
+  async function lockPanel() {
+    setBusy("lock");
     setError(null);
     try {
-      adopt(await api.builtinRelay.clearAdminToken());
+      adopt(await api.builtinRelay.lock());
+      setPassword("");
+      setPendingPush(null);
     } catch (e) {
       setError(stripIpcError(e instanceof Error ? e.message : String(e)));
     } finally {
@@ -271,6 +276,14 @@ export function RelayAdminPanel() {
     } catch (e) {
       setError(stripIpcError(e instanceof Error ? e.message : String(e)));
       setPendingPush(null);
+      // A 401 means the main process just dropped the stored password; re-read
+      // the status so the panel falls back to the lock screen instead of
+      // showing an editor whose push can never succeed.
+      try {
+        setStatus(await api.builtinRelay.status());
+      } catch {
+        /* keep the current view; the error above already explains the failure */
+      }
     } finally {
       setBusy(null);
     }
@@ -283,59 +296,114 @@ export function RelayAdminPanel() {
       on ? "border-accent/45 bg-accent/10 text-content" : "border-edge text-content-subtle hover:text-content",
     );
 
-  return (
-    <div className="mt-8 w-full max-w-md space-y-3" data-relay-admin>
-      <div className="flex items-center gap-2">
-        <IconShieldLock size={14} className="shrink-0 text-content-subtle" />
-        <h3 className="text-[13px] font-semibold text-content">{t("settings.about.relay.title")}</h3>
-        <span className="ml-auto text-[11.5px] text-content-subtle">
-          {status ? t(`settings.shared.relay.source.${status.source}`) : ""}
-        </span>
-      </div>
-
-      {error && (
-        <p role="alert" className="break-words rounded-lg bg-danger/10 px-3 py-2 text-[12.5px] text-danger">
-          {error}
-        </p>
-      )}
-
-      {/* Admin token — generated locally, never shipped with the app. */}
-      <div className="rounded-lg border border-edge p-3">
-        <div className="mb-2 flex items-center gap-2">
-          <span className="text-[12px] font-medium text-content-muted">{t("settings.about.relay.adminToken")}</span>
-          <span
-            className={cn("h-1.5 w-1.5 rounded-full", status?.hasAdminToken ? "bg-accent" : "bg-warning")}
-            aria-hidden
-          />
-          <span className="text-[11.5px] text-content-subtle">
-            {t(status?.hasAdminToken ? "settings.about.relay.tokenSet" : "settings.about.relay.tokenMissing")}
-          </span>
-          {status?.hasAdminToken && (
-            <Button type="button" size="sm" variant="ghost" className="ml-auto text-danger hover:bg-danger/10" disabled={lock} onClick={() => void clearToken()}>
-              {t("settings.about.relay.tokenClear")}
+  const shell = "mt-8 w-full max-w-md space-y-3";
+  const header = (
+    <div className="flex items-center gap-2">
+      <IconShieldLock size={14} className="shrink-0 text-content-subtle" />
+      <h3 className="text-[13px] font-semibold text-content">{t("settings.about.relay.title")}</h3>
+      <span className="ml-auto flex items-center gap-1 text-[11.5px] text-content-subtle">
+        {status?.hasAdminToken ? (
+          <>
+            <span className="text-content-muted">{t(`settings.shared.relay.source.${status.source}`)}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="ml-1 text-content-subtle hover:text-danger"
+              disabled={lock}
+              onClick={() => void lockPanel()}
+            >
+              {busy === "lock" ? <IconLoader2 size={12} className="animate-spin" /> : <IconLock size={12} />}
+              {t("settings.about.relay.lock")}
             </Button>
-          )}
+          </>
+        ) : (
+          <>
+            <IconLock size={11} />
+            {t("settings.about.relay.lockedBadge")}
+          </>
+        )}
+      </span>
+    </div>
+  );
+  const errorLine = error ? (
+    <p role="alert" className="break-words rounded-lg bg-danger/10 px-3 py-2 text-[12.5px] text-danger">
+      {error}
+    </p>
+  ) : null;
+
+  // ── Loading ────────────────────────────────────────────────────────────────
+  // `status` is null only until the first IPC round trip returns. Rendering the
+  // password field before then would let a keystroke land in a form that is
+  // about to be replaced.
+  if (!status) {
+    return (
+      <div className={shell} data-relay-admin data-relay-locked>
+        {header}
+        <div className="flex items-center gap-2 rounded-lg border border-edge p-3 text-[12px] text-content-subtle">
+          <IconLoader2 size={13} className="animate-spin" />
+          {t("common.loading")}
         </div>
-        <div className="flex items-center gap-2">
-          <Input
-            type={revealToken ? "text" : "password"}
-            autoComplete="new-password"
-            spellCheck={false}
-            className="min-w-0 flex-1 font-mono"
-            value={token}
-            disabled={lock}
-            placeholder={t("settings.about.relay.tokenPlaceholder")}
-            onChange={(e) => setToken(e.target.value)}
-          />
-          <Button type="button" size="sm" variant="ghost" disabled={lock} onClick={generateToken}>
-            <IconKey size={13} />{t("settings.about.relay.tokenGenerate")}
-          </Button>
-          <Button type="button" size="sm" disabled={lock || token.trim().length === 0} onClick={() => void saveToken()}>
-            {t("settings.about.relay.tokenSave")}
-          </Button>
-        </div>
-        <p className="mt-2 text-[11.5px] leading-relaxed text-content-subtle">{t("settings.about.relay.tokenHint")}</p>
       </div>
+    );
+  }
+
+  // ── Locked ─────────────────────────────────────────────────────────────────
+  // The panel is ALWAYS mounted in 设置 → 关于 (every build ships it), but the
+  // editor below is not rendered at all until the server confirms the password.
+  // There is deliberately no local "is this the right password" comparison: the
+  // only value this app can check against is the one it typed in.
+  if (!status.hasAdminToken) {
+    return (
+      <div className={shell} data-relay-admin data-relay-locked>
+        {header}
+        <form
+          className="space-y-2 rounded-lg border border-edge p-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void unlockPanel();
+          }}
+        >
+          <p className="text-[11.5px] leading-relaxed text-content-subtle">{t("settings.about.relay.lockHint")}</p>
+          {errorLine}
+          <div className="flex items-center gap-2">
+            <Input
+              type={revealPassword ? "text" : "password"}
+              autoComplete="current-password"
+              spellCheck={false}
+              aria-label={t("settings.about.relay.password")}
+              placeholder={t("settings.about.relay.password")}
+              className="min-w-0 flex-1 font-mono"
+              value={password}
+              disabled={lock}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-pressed={revealPassword}
+              aria-label={t("settings.about.relay.reveal")}
+              disabled={lock}
+              onClick={() => setRevealPassword((current) => !current)}
+            >
+              {t("settings.about.relay.reveal")}
+            </Button>
+            <Button type="submit" size="sm" variant="primary" disabled={lock || password.trim().length === 0}>
+              {busy === "unlock" && <IconLoader2 size={13} className="animate-spin" />}
+              {t("settings.about.relay.unlock")}
+            </Button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className={shell} data-relay-admin>
+      {header}
+
+      {errorLine}
 
       {/* Address (locked) */}
       <div className="rounded-lg border border-edge p-3">

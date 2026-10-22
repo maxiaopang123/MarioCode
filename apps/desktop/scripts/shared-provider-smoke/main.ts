@@ -158,23 +158,55 @@ try {
 check("relay refresh rejects a document that tries to move the address",
   relayAddressMoveRejected && SharedProviderStore.listPublic()[0]!.models[0]!.id === "remote-model");
 
-let relayPushWithoutToken = false;
+let relayPushWhileLocked = false;
 try {
   await RelayConfigStore.push({ version: 1, models: [{ id: "pushed-model" }] as never });
 } catch (error) {
-  relayPushWithoutToken = error instanceof Error && error.message.includes("管理员令牌");
+  relayPushWhileLocked = error instanceof Error && error.message.includes("管理员");
 }
-check("relay push requires an admin token", relayPushWithoutToken);
-RelayConfigStore.setAdminToken("ADMIN_TEST_TOKEN");
-check("admin token is stored encrypted", RelayConfigStore.hasAdminToken() && !rawSettings().includes("ADMIN_TEST_TOKEN"));
+check("relay push refuses to run while the panel is locked", relayPushWhileLocked);
+
+// TODO-074 密码门: the password is judged by the SERVER, so a wrong one
+// must be rejected AND leave nothing behind on disk.
+let wrongPasswordRejected = false;
+try {
+  await RelayConfigStore.unlock("WRONG_PASSWORD", {
+    fetch: async () => new Response('{"error":"unauthorized"}', { status: 401 }),
+  });
+} catch (error) {
+  wrongPasswordRejected = error instanceof Error && error.message.includes("密码不正确");
+}
+check("a wrong admin password is rejected", wrongPasswordRejected);
+check("a rejected password is not stored", !RelayConfigStore.hasAdminToken());
+
+let unreachableRejected = false;
+try {
+  await RelayConfigStore.unlock("ANY_PASSWORD", {
+    fetch: async () => {
+      throw new Error("ECONNREFUSED");
+    },
+  });
+} catch (error) {
+  unreachableRejected = error instanceof Error && error.message.includes("无法连接");
+}
+check("an unreachable server keeps the panel locked", unreachableRejected && !RelayConfigStore.hasAdminToken());
+
+const unlocked = await RelayConfigStore.unlock("ADMIN_TEST_TOKEN", {
+  fetch: async (input) =>
+    String(input).includes("/admin/verify")
+      ? new Response('{"ok":true}', { status: 200 })
+      : new Response(JSON.stringify({ version: 1, models: [{ id: "remote-model", label: "Remote" }] }), { status: 200 }),
+});
+check("the server's verdict unlocks the panel", unlocked.hasAdminToken && unlocked.source === "remote");
+check("admin password is stored encrypted", RelayConfigStore.hasAdminToken() && !rawSettings().includes("ADMIN_TEST_TOKEN"));
 const pushed = await RelayConfigStore.push(
   { version: 1, models: [{ id: "pushed-model", interfaces: ["chat-completions"] }] },
   { fetch: async () => new Response("{}", { status: 200 }) },
 );
 check("relay push adopts the accepted config",
   pushed.status.config.models[0]!.id === "pushed-model" && pushed.added === 1 && pushed.removed === 1);
-RelayConfigStore.clearAdminToken();
-check("admin token can be cleared", !RelayConfigStore.hasAdminToken());
+RelayConfigStore.lock();
+check("退出 (锁定) drops the stored password", !RelayConfigStore.hasAdminToken());
 
 const runtimeId = sharedRuntimeId(userProvider().id);
 const claudeProjection = CustomModelStore.listPublic().find((provider) => provider.id === runtimeId);

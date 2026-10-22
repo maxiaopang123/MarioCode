@@ -26,6 +26,20 @@
       ctaFeatures: "看看能做什么",
       heroPlatforms: "支持 Windows 和 macOS(Apple 芯片 / Intel)",
       heroMacHint: "v{version} · 下一步选择 Apple 芯片或 Intel 版本",
+      pillRelay: "内置中转站,粘贴 Key 即用",
+      tagArm: "推荐",
+      tagIntel: "旧款 Mac",
+      tourTitle: "三分钟上手",
+      tourSub: "下载安装 → 粘贴中转站 Key → 开始对话。截图是真实界面。",
+      tourImg3Alt: "中转站设置界面",
+      tourImg4Alt: "IDE 文件树与编辑器",
+      tourS1t: "打开就能聊",
+      tourS1d: "三引擎切换,流式对话,消息逐字显示。",
+      tourS2t: "粘贴 Key,即用 22 个模型",
+      tourS2d: "设置 → 模型配置 → 中转站,粘贴 Key 保存即可。",
+      tourS3t: "文件、代码、预览都在一个窗口",
+      tourS3d: "文件树、Monaco 编辑器、Git、终端,不用切窗口。",
+      band7: "内置中转站 · 22 个模型即开即用",
       metaLoading: "正在获取最新版本…",
       metaReady: "v{version} · {size} · {date} 发布",
       metaError: "暂时获取不到最新版本,请稍后刷新重试。",
@@ -90,7 +104,7 @@
       q1: "收费吗?",
       a1: "客户端免费,MIT 开源。模型调用由你使用的服务商计费。",
       q2: "需要准备什么?",
-      a2: "一个模型来源:Claude 或 Codex 账号,或任意兼容 OpenAI / Anthropic 协议的 API。",
+      a2: "最快的方式:内置中转站,粘贴 Key 即用 22 个模型。也可以用 Claude 或 Codex 账号,或任意兼容 OpenAI / Anthropic 协议的 API。",
       q3: "代码和对话会上传吗?",
       a3: "会话和配置在你自己的电脑上。MarioCode 不收集使用数据,对话只发给你配置的模型服务。",
       q4: "怎么更新?",
@@ -120,6 +134,20 @@
       ctaFeatures: "See what it does",
       heroPlatforms: "For Windows and macOS (Apple silicon / Intel)",
       heroMacHint: "v{version} · next, pick Apple silicon or Intel",
+      pillRelay: "Built-in relay — paste a key, start coding",
+      tagArm: "Recommended",
+      tagIntel: "Older Macs",
+      tourTitle: "Up and running in three minutes",
+      tourSub: "Install → paste a relay key → start chatting. These are real screenshots.",
+      tourImg3Alt: "Relay settings panel",
+      tourImg4Alt: "IDE file tree and editor",
+      tourS1t: "Chat right away",
+      tourS1d: "Three engines, streaming replies, token by token.",
+      tourS2t: "Paste a key, use 22 models",
+      tourS2d: "Settings → Model Providers → relay. Paste your key and save.",
+      tourS3t: "Files, code and preview in one window",
+      tourS3d: "File tree, Monaco, Git and a terminal. No window switching.",
+      band7: "Built-in relay · 22 models, zero setup",
       metaLoading: "Checking the latest version…",
       metaReady: "v{version} · {size} · released {date}",
       metaError: "Couldn't load the latest version. Refresh in a moment.",
@@ -184,7 +212,7 @@
       q1: "Is it free?",
       a1: "The app is free and MIT-licensed. Model usage is billed by the service you choose.",
       q2: "What do I need?",
-      a2: "A model source: a Claude or Codex account, or any API compatible with OpenAI or Anthropic.",
+      a2: "Fastest way: the built-in relay — paste a key and use 22 models. You can also bring a Claude or Codex account, or any OpenAI/Anthropic-compatible API.",
       q3: "Is my code uploaded?",
       a3: "Sessions stay on your computer. MarioCode collects nothing; conversations only go to the model service you set.",
       q4: "How do updates work?",
@@ -433,6 +461,60 @@
       .then(renderRelease);
   }
 
+  // ── Tour carousel ─────────────────────────────────────────────────────────
+  var TOUR_INTERVAL = 4200;
+  var tourTimer = null;
+  var tourIdx = 0;
+
+  function tourGo(idx) {
+    var imgs = document.querySelectorAll(".tour-img");
+    var steps = document.querySelectorAll(".tour-step");
+    if (!imgs.length) return;
+    tourIdx = idx % imgs.length;
+    for (var i = 0; i < imgs.length; i++) {
+      imgs[i].classList.toggle("is-active", i === tourIdx);
+      if (steps[i]) steps[i].classList.toggle("is-active", i === tourIdx);
+    }
+  }
+
+  function tourStart() {
+    if (tourTimer) return;
+    var count = document.querySelectorAll(".tour-img").length;
+    if (!count) return;
+    tourTimer = setInterval(function () {
+      tourIdx = (tourIdx + 1) % count;
+      tourGo(tourIdx);
+    }, TOUR_INTERVAL);
+  }
+
+  function tourStop() {
+    clearInterval(tourTimer);
+    tourTimer = null;
+  }
+
+  function initTour() {
+    var stage = document.getElementById("tour-stage");
+    var steps = document.querySelectorAll(".tour-step-btn");
+    if (!stage || !steps.length) return;
+    // Respect reduced-motion: show the first frame, no autoplay.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      tourGo(0);
+      return;
+    }
+    for (var i = 0; i < steps.length; i++) {
+      (function (idx) {
+        steps[idx].addEventListener("click", function () {
+          tourStop();
+          tourGo(idx);
+          tourStart();
+        });
+      })(i);
+    }
+    stage.addEventListener("mouseenter", tourStop);
+    stage.addEventListener("mouseleave", tourStart);
+    tourStart();
+  }
+
   function init() {
     var btn = document.getElementById("lang-toggle");
     if (btn) {
@@ -450,6 +532,7 @@
     }
     applyLang();
     loadReleases();
+    initTour();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

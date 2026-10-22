@@ -35,10 +35,15 @@
           <h1 data-i18n="heroTitle">把 Claude Code、Codex 和 Pi<br>装进一个桌面 IDE</h1>
           <p class="lead" data-i18n="heroLead">不重新发明 agent。官方引擎放进同一套界面:流式对话、工具审批、计划模式,以及文件、Git、终端和内置浏览器。</p>
           <ul class="pills">
+            <li data-i18n="pillRelay">内置中转站,粘贴 Key 即用</li>
             <li data-i18n="pill1">三引擎切换</li>
             <li data-i18n="pill2">先审批再改代码</li>
             <li data-i18n="pill3">数据留在本机</li>
           </ul>
+          <a class="hero-dl" href="#download">
+            <span class="hero-dl-label" data-i18n="ctaDownload">下载 MarioCode</span>
+            <span class="hero-meta" data-i18n="heroPlatforms">支持 Windows 和 macOS(Apple 芯片 / Intel)</span>
+          </a>
         </div>
 
         <div class="panel" id="download">
@@ -66,6 +71,7 @@
               </span>
               <div class="plat-info">
                 <strong data-i18n="platMacArmName">macOS · Apple 芯片</strong>
+                <span class="tag tag-recommend" data-i18n="tagArm">推荐</span>
                 <small data-i18n="platMacArm">M1 / M2 / M3 / M4</small>
                 <p class="meta" id="dl-meta-macArm"><span class="dl-meta" data-plat="macArm" data-i18n="metaLoading">正在获取最新版本…</span></p>
               </div>
@@ -79,6 +85,7 @@
               </span>
               <div class="plat-info">
                 <strong data-i18n="platMacIntelName">macOS · Intel</strong>
+                <span class="tag" data-i18n="tagIntel">旧款 Mac</span>
                 <small data-i18n="platMacIntel">Intel 处理器的 Mac</small>
                 <p class="meta" id="dl-meta-macIntel"><span class="dl-meta" data-plat="macIntel" data-i18n="metaLoading">正在获取最新版本…</span></p>
               </div>
@@ -94,12 +101,56 @@
 
     <section class="band" aria-label="capabilities">
       <div class="wrap band-row">
+        <span data-i18n="band7">内置中转站 · 22 个模型即开即用</span>
         <span data-i18n="band1">Claude · Codex · Pi</span>
         <span data-i18n="band2">工具审批</span>
         <span data-i18n="band3">计划模式</span>
         <span data-i18n="band4">Git 与终端</span>
         <span data-i18n="band5">内置浏览器</span>
         <span data-i18n="band6">手机查看</span>
+      </div>
+    </section>
+
+    <section class="tour" aria-labelledby="tour-title">
+      <div class="wrap tour-inner">
+        <h2 id="tour-title" data-i18n="tourTitle">三分钟上手</h2>
+        <p class="tour-sub" data-i18n="tourSub">下载安装 → 粘贴中转站 Key → 开始对话。截图是真实界面。</p>
+        <div class="tour-body">
+          <div class="tour-stage" id="tour-stage">
+            <img src="site/tour/01-chat.png" alt="MarioCode 主对话界面" class="tour-img is-active" data-step="0">
+            <img src="site/tour/03-relay.png" alt="中转站设置界面" class="tour-img" data-i18n-attr="alt:tourImg3Alt" data-step="1">
+            <img src="site/tour/04-ide.png" alt="IDE 文件树与编辑器" class="tour-img" data-i18n-attr="alt:tourImg4Alt" data-step="2">
+          </div>
+          <ol class="tour-steps" id="tour-steps">
+            <li class="tour-step is-active" data-step="0">
+              <button type="button" class="tour-step-btn">
+                <span class="tour-step-num">1</span>
+                <span class="tour-step-text">
+                  <strong data-i18n="tourS1t">打开就能聊</strong>
+                  <span data-i18n="tourS1d">三引擎切换,流式对话,消息逐字显示。</span>
+                </span>
+              </button>
+            </li>
+            <li class="tour-step" data-step="1">
+              <button type="button" class="tour-step-btn">
+                <span class="tour-step-num">2</span>
+                <span class="tour-step-text">
+                  <strong data-i18n="tourS2t">粘贴 Key,即用 22 个模型</strong>
+                  <span data-i18n="tourS2d">设置 → 模型配置 → 中转站,粘贴 Key 保存即可。</span>
+                </span>
+              </button>
+            </li>
+            <li class="tour-step" data-step="2">
+              <button type="button" class="tour-step-btn">
+                <span class="tour-step-num">3</span>
+                <span class="tour-step-text">
+                  <strong data-i18n="tourS3t">文件、代码、预览都在一个窗口</strong>
+                  <span data-i18n="tourS3d">文件树、Monaco 编辑器、Git、终端,不用切窗口。</span>
+                </span>
+              </button>
+            </li>
+          </ol>
+        </div>
       </div>
     </section>
 

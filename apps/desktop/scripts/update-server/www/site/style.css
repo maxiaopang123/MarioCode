@@ -149,6 +149,87 @@ h1 {
 .btn-ghost:hover { border-color: var(--faint); }
 .btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
 
+/* ── Tour carousel ─────────────────────────────────────────────────────── */
+.tour { padding: 48px 0 56px; }
+.tour h2 { margin-bottom: 6px; }
+.tour-sub { margin: 0 0 28px; color: var(--muted); font-size: 15px; }
+.tour-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 40px;
+  align-items: start;
+}
+.tour-stage {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  background: var(--surface);
+  aspect-ratio: 16 / 10;
+}
+.tour-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  object-position: top left;
+  opacity: 0;
+  transform: scale(0.985);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+.tour-img.is-active { opacity: 1; transform: scale(1); }
+.tour-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.tour-step-btn {
+  display: flex; align-items: flex-start; gap: 14px;
+  width: 100%; padding: 14px 16px; border-radius: 14px;
+  border: 1px solid transparent; background: transparent;
+  cursor: pointer; text-align: left; font: inherit;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.tour-step-btn:hover { background: var(--mint-soft); }
+.tour-step.is-active .tour-step-btn { background: var(--mint-soft); border-color: var(--mint); }
+.tour-step-num {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--line); color: var(--muted);
+  font-size: 13px; font-weight: 650;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.tour-step.is-active .tour-step-num { background: var(--mint); color: #fff; }
+.tour-step-text { display: flex; flex-direction: column; gap: 3px; }
+.tour-step-text strong { font-size: 14.5px; font-weight: 650; letter-spacing: -0.01em; }
+.tour-step-text span { font-size: 13px; color: var(--muted); line-height: 1.5; }
+@media (max-width: 860px) {
+  .tour-body { grid-template-columns: 1fr; gap: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-img { transition: none; }
+}
+
+/* ── Platform tag chips ────────────────────────────────────────────────── */
+.tag {
+  display: inline-block;
+  padding: 1px 7px; border-radius: 999px;
+  font-size: 11px; font-weight: 650;
+  background: var(--line); color: var(--muted);
+  letter-spacing: 0.03em;
+  width: fit-content;
+}
+.tag-recommend { background: var(--mint-soft); color: var(--mint); }
+
+/* ── Hero CTA ──────────────────────────────────────────────────────────── */
+.hero-dl {
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  margin-top: 24px; padding: 12px 22px;
+  background: var(--graphite); color: var(--on-graphite);
+  border-radius: 14px; text-decoration: none;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+.hero-dl:hover { filter: brightness(1.1); }
+.hero-dl:active { transform: scale(0.98); }
+.hero-dl-label { font-weight: 650; font-size: 15px; }
+.hero-meta { font-size: 12.5px; opacity: 0.72; }
+
 .band { padding: 8px 0 36px; }
 .band-row {
   display: flex; flex-wrap: wrap; gap: 10px 22px;

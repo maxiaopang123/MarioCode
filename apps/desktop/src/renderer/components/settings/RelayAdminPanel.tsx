@@ -6,6 +6,7 @@ import {
   type BuiltinRelayStatus,
   type RelayConfig,
   type RelayConfigModel,
+  type RelayInventory,
 } from "@contracts/builtinRelay";
 import type { SharedProviderProtocol } from "@contracts/sharedProvider";
 import { api } from "@renderer/lib/api.js";
@@ -17,6 +18,7 @@ import {
   IconCheck,
   IconChevronDown,
   IconChevronUp,
+  IconDownload,
   IconLoader2,
   IconLock,
   IconPlus,
@@ -83,6 +85,90 @@ function withImageGen(model: RelayConfigModel, on: boolean): RelayConfigModel {
   return next;
 }
 
+/** What "从中转站拉取" changed, for the toast. */
+interface PullSummary {
+  /** Rows appended because the relay publishes a model the draft had never seen. */
+  added: number;
+  /** Existing rows whose interfaces/image flag the relay now reports differently. */
+  updated: number;
+  /** Inventory rows intentionally NOT merged: unlisted, or nothing can route. */
+  skipped: number;
+  /** Draft rows the relay does not know at all — almost always a dead entry. */
+  missing: number;
+}
+
+/** Same protocols, in any order? The published JSON preserves array order, so a
+ *  pure reorder would otherwise count as a change on every pull. */
+function sameProtocols(a: SharedProviderProtocol[], b: SharedProviderProtocol[]): boolean {
+  return a.length === b.length && [...a].sort().join() === [...b].sort().join();
+}
+
+/**
+ * Fold the relay's inventory into the draft.
+ *
+ * Rules, in order of importance:
+ *   - NOTHING is removed. A model the relay no longer publishes is reported
+ *     (`missing`) and left for the administrator to delete, because the push
+ *     dialog is where removals must be seen.
+ *   - Only `listed && available` rows are merged: an unlisted group is invisible
+ *     to users, and a group with no live member would 502 on every request.
+ *   - What an administrator typed by hand (label, context window, reasoning,
+ *     vision) is preserved — the relay only owns id + interfaces + image flag,
+ *     which are exactly the facts it is authoritative about.
+ *   - Row order is preserved; appended models land at the end for the
+ *     administrator to move.
+ */
+function mergeInventory(
+  current: Row[],
+  inventory: RelayInventory,
+): { rows: Row[]; summary: PullSummary; missingIds: string[] } {
+  const publishable = new Map(
+    inventory.models.filter((model) => model.listed && model.available).map((model) => [model.id.trim(), model]),
+  );
+  const known = new Set(inventory.models.map((model) => model.id.trim()));
+  const present = new Set<string>();
+  let added = 0;
+  let updated = 0;
+
+  const rows = current.map((row) => {
+    const id = row.model.id.trim();
+    if (id) present.add(id);
+    const remote = publishable.get(id);
+    if (!remote) return row;
+
+    const interfaces = remote.interfaces as SharedProviderProtocol[];
+    const unchanged =
+      sameProtocols(row.model.interfaces ?? PROTOCOLS, interfaces) &&
+      (row.model.imageGeneration ?? false) === remote.imageGeneration;
+    if (unchanged) return row;
+
+    updated += 1;
+    return { ...row, model: withImageGen({ ...row.model, interfaces: [...interfaces] }, remote.imageGeneration) };
+  });
+
+  for (const remote of publishable.values()) {
+    if (present.has(remote.id)) continue;
+    added += 1;
+    rows.push({
+      key: nextKey(),
+      model: {
+        id: remote.id,
+        interfaces: [...remote.interfaces],
+        input: ["text", "image"],
+        // An image model does not think; every text model on this relay does.
+        ...(remote.imageGeneration ? { imageGeneration: true } : { reasoning: true }),
+      },
+    });
+  }
+
+  const missingIds = rows
+    .map((row) => row.model.id.trim())
+    .filter((id) => id.length > 0 && !known.has(id));
+  const skipped = inventory.models.filter((model) => !model.listed || !model.available).length;
+
+  return { rows, summary: { added, updated, skipped, missing: missingIds.length }, missingIds };
+}
+
 export function RelayAdminPanel() {
   const { t } = useI18n();
   const [status, setStatus] = useState<BuiltinRelayStatus | null>(null);
@@ -93,15 +179,20 @@ export function RelayAdminPanel() {
    *  until the field is cleared — never persisted from here. */
   const [password, setPassword] = useState("");
   const [revealPassword, setRevealPassword] = useState(false);
-  const [busy, setBusy] = useState<"load" | "refresh" | "push" | "unlock" | "lock" | null>(null);
+  const [busy, setBusy] = useState<"load" | "refresh" | "pull" | "push" | "unlock" | "lock" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingPush, setPendingPush] = useState<ReturnType<typeof diffRelayConfigs> | null>(null);
+  /** Model ids the last pull could not find on the relay (dead entries). Marked
+   *  in the rows until the next load/pull, so they are not overlooked before a
+   *  push — removing them is the administrator's call, never automatic. */
+  const [missingIds, setMissingIds] = useState<Set<string>>(new Set());
 
   function adopt(next: BuiltinRelayStatus) {
     setStatus(next);
     setName(next.config.name ?? BUILTIN_RELAY_FALLBACK_CONFIG.name ?? "");
     setRows(toRows(next.config.models));
     setSelected(new Set());
+    setMissingIds(new Set());
   }
 
   useEffect(() => {
@@ -217,6 +308,43 @@ export function RelayAdminPanel() {
     try {
       adopt(await api.builtinRelay.refresh());
       useToastStore.getState().push({ kind: "info", title: t("settings.about.relay.refreshed"), duration: 4_000 });
+    } catch (e) {
+      setError(stripIpcError(e instanceof Error ? e.message : String(e)));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * "从中转站拉取": read the relay's own model inventory and fold it into the
+   * draft, so a new upstream model no longer has to be typed in by hand.
+   *
+   * Deliberately NOT a reload: this merges into what is on screen and keeps the
+   * administrator's labels/order/capability flags, then leaves the usual
+   * diff → push flow to review and publish. Nothing is written to the server
+   * here.
+   */
+  async function pullFromRelay() {
+    setBusy("pull");
+    setError(null);
+    try {
+      const inventory = await api.builtinRelay.pull();
+      // Merge outside the state updater: the updater must stay pure, and `rows`
+      // cannot change while `busy === "pull"` disables every mutation.
+      const { rows: merged, summary, missingIds: stale } = mergeInventory(rows, inventory);
+      setRows(merged);
+      setMissingIds(new Set(stale));
+      setSelected(new Set());
+
+      const detail = [
+        t("settings.about.relay.pullAdded", { n: summary.added }),
+        t("settings.about.relay.pullUpdated", { n: summary.updated }),
+        ...(summary.skipped > 0 ? [t("settings.about.relay.pullSkipped", { n: summary.skipped })] : []),
+        ...(summary.missing > 0 ? [t("settings.about.relay.pullMissing", { n: summary.missing })] : []),
+      ].join("，");
+      useToastStore
+        .getState()
+        .push({ kind: "info", title: t("settings.about.relay.pullDone", { detail }), duration: 6_000 });
     } catch (e) {
       setError(stripIpcError(e instanceof Error ? e.message : String(e)));
     } finally {
@@ -424,7 +552,25 @@ export function RelayAdminPanel() {
             {t("settings.about.relay.models", { n: rows.length })}
           </span>
           <span className="ml-auto flex items-center gap-1">
-            <Button type="button" size="sm" variant="ghost" disabled={lock} onClick={() => void refreshOnline()}>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              title={t("settings.about.relay.pullFromRelayHint")}
+              disabled={lock}
+              onClick={() => void pullFromRelay()}
+            >
+              {busy === "pull" ? <IconLoader2 size={13} className="animate-spin" /> : <IconDownload size={13} />}
+              {t("settings.about.relay.pullFromRelay")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              title={t("settings.about.relay.pullOnlineHint")}
+              disabled={lock}
+              onClick={() => void refreshOnline()}
+            >
               {busy === "refresh" ? <IconLoader2 size={13} className="animate-spin" /> : <IconRefresh size={13} />}
               {t("settings.about.relay.pullOnline")}
             </Button>
@@ -519,6 +665,15 @@ export function RelayAdminPanel() {
                     disabled={lock}
                     onChange={(e) => patchRow(row.key, { id: e.target.value })}
                   />
+                  {missingIds.has(model.id.trim()) && (
+                    <span
+                      title={t("settings.about.relay.notOnRelay")}
+                      className="flex shrink-0 items-center gap-1 rounded-md bg-warning/10 px-1.5 py-0.5 text-[10.5px] text-warning"
+                    >
+                      <IconAlertTriangle size={11} />
+                      {t("settings.about.relay.notOnRelay")}
+                    </span>
+                  )}
                   <button
                     type="button"
                     title={t("settings.shared.removeModel")}

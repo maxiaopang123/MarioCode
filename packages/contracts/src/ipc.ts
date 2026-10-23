@@ -60,6 +60,7 @@ import {
   type BuiltinRelayPushResult,
   type BuiltinRelayUnlockInput,
   type BuiltinRelayAccount,
+  type RelayInventory,
 } from "./builtinRelay.js";
 export { BuiltinRelayUnlockInputSchema, BuiltinRelayPushInputSchema, BuiltinRelayAccountQuerySchema };
 import {
@@ -5432,6 +5433,10 @@ export interface RpcMap {
   "builtinRelay.lock": () => Promise<BuiltinRelayStatus>;
   /** Push an edited config to the relay server (overwrites the published one). */
   "builtinRelay.push": (input: { config: BuiltinRelayStatus["config"] }) => Promise<BuiltinRelayPushResult>;
+  /** Read the relay's own model inventory so the admin panel can fill its list
+   *  from the gateway instead of having every model typed in by hand. Read-only:
+   *  nothing is cached and nothing is published until the administrator pushes. */
+  "builtinRelay.pull": () => Promise<RelayInventory>;
   /** Balance + usage for the key this machine holds, read from the gateway with
    *  the user's own key. Throws when there is no key or the key is rejected;
    *  the panel treats both as "nothing to show" rather than an error banner.
@@ -5818,6 +5823,7 @@ export const IPC = {
   BUILTIN_RELAY_UNLOCK: "builtinRelay:unlock",
   BUILTIN_RELAY_LOCK: "builtinRelay:lock",
   BUILTIN_RELAY_PUSH: "builtinRelay:push",
+  BUILTIN_RELAY_PULL: "builtinRelay:pull",
   BUILTIN_RELAY_ACCOUNT: "builtinRelay:account",
   PLUGINS_LIST: "plugins:list",
   PLUGINS_SET_ENABLED: "plugins:setEnabled",

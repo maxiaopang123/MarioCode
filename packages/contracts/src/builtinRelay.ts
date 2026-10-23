@@ -69,9 +69,26 @@ export const BUILTIN_RELAY_CONFIG_BASE_URL = "http://39.109.58.6:18505";
  *  panel pushes it to. */
 export const BUILTIN_RELAY_CONFIG_PATH = "/relay-config.json";
 export const BUILTIN_RELAY_PUSH_PATH = "/admin/relay-config";
-/** Auth probe: 200 with the admin password, 401 without it. Lets the unlock
- *  screen answer "is this the right password?" WITHOUT publishing anything. */
+/**
+ * Auth probe: 200 with the admin password, 401 without it. Lets the unlock
+ * screen answer "is this the right password?" WITHOUT publishing anything.
+ *
+ * "The admin password" is the mariogate panel's `admin` account password — the
+ * config service has no secret of its own and validates it by logging in to the
+ * gateway. Changing the gateway password changes this one, nothing to re-deploy.
+ */
 export const BUILTIN_RELAY_VERIFY_PATH = "/admin/verify";
+
+/**
+ * The relay's own model inventory (GET, admin). One row per gateway group,
+ * already reduced to what the panel needs: which protocols that group can serve
+ * and whether it is listed/available.
+ *
+ * This exists so the panel can fill its model list from the relay instead of
+ * having the administrator type it in. The read happens server-side, over the
+ * gateway's HTTP API — the config service never opens the gateway's database.
+ */
+export const BUILTIN_RELAY_MODELS_PATH = "/admin/models";
 
 /** Published config URL (GET, public, no auth). */
 export const BUILTIN_RELAY_CONFIG_URL = `${BUILTIN_RELAY_CONFIG_BASE_URL}${BUILTIN_RELAY_CONFIG_PATH}`;
@@ -81,6 +98,9 @@ export const BUILTIN_RELAY_PUSH_URL = `${BUILTIN_RELAY_CONFIG_BASE_URL}${BUILTIN
 
 /** Admin auth probe (GET, `Authorization: Bearer <管理员密码>`). */
 export const BUILTIN_RELAY_VERIFY_URL = `${BUILTIN_RELAY_CONFIG_BASE_URL}${BUILTIN_RELAY_VERIFY_PATH}`;
+
+/** Relay inventory (GET, `Authorization: Bearer <管理员密码>`). */
+export const BUILTIN_RELAY_MODELS_URL = `${BUILTIN_RELAY_CONFIG_BASE_URL}${BUILTIN_RELAY_MODELS_PATH}`;
 
 /**
  * Account endpoints — the gateway's own REST surface (the "mariogate" panel
@@ -122,6 +142,12 @@ export const BUILTIN_RELAY_PROTOCOLS: SharedProviderProtocol[] = [
   "chat-completions",
   "responses",
 ];
+
+/** Same list, as a zod enum. Derived from the constant above so the two can
+ *  never drift; the cast is only needed because the constant is an array. */
+const RELAY_PROTOCOL_ENUM = z.enum(
+  BUILTIN_RELAY_PROTOCOLS as [SharedProviderProtocol, ...SharedProviderProtocol[]],
+);
 
 /** Engines the relay is offered to. */
 export const BUILTIN_RELAY_AGENTS: SharedProviderAgent[] = ["claude", "codex", "pi"];
@@ -202,12 +228,16 @@ export type RelayConfigSource = "remote" | "cache" | "bundled";
  * as published — so the order below IS the user-facing grouping:
  *   1. Claude (anthropic only)
  *   2. GPT 与同级国际模型 (chat-completions + responses: GPT / Gemini / Grok)
- *   3. 国产模型 (chat-completions: Kimi / GLM / DeepSeek / Qwen)
- *   4. 免费国产模型 (chat-completions only — the `oc/` free tier)
- *   5. 生图模型 (image generation; they route through /images/*, not a chat protocol)
+ *   3. 国产模型 (chat-completions: Kimi / GLM / DeepSeek / Minimax / Qwen)
+ *   4. 生图模型 (image generation; they route through /images/*, not a chat protocol)
  * Keep the remote `relay-config.json` in this same order: it is the copy that
  * actually reaches users, and the two drifting apart makes the offline
  * fallback look like a different product.
+ *
+ * Refreshed 2026-10-24 from the live inventory (`GET /admin/models`): 24 groups,
+ * all listed. The three `oc/…-free` entries that used to sit here were removed
+ * with their groups — the gateway no longer publishes them, so keeping them
+ * would only have offered users a model that answers 404.
  */
 export const BUILTIN_RELAY_FALLBACK_CONFIG: RelayConfig = {
   version: RELAY_CONFIG_VERSION,
@@ -215,7 +245,10 @@ export const BUILTIN_RELAY_FALLBACK_CONFIG: RelayConfig = {
   models: [
     // 1 — Claude, anthropic protocol only.
     { id: "claude-opus-5-5", interfaces: ["anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "claude-opus-5-5-MAX", interfaces: ["anthropic"], reasoning: true, input: ["text", "image"] },
     { id: "claude-sonnet-5-5", interfaces: ["anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "claude-sonnet-5-5-MAX", interfaces: ["anthropic"], reasoning: true, input: ["text", "image"] },
+    { id: "claude-haiku-5-5", interfaces: ["anthropic"], reasoning: true, input: ["text", "image"] },
     // 2 — GPT and the same-tier international models (chat + responses).
     { id: "gpt-5.6-sol", interfaces: ["chat-completions", "responses"], reasoning: true, input: ["text", "image"] },
     { id: "gpt-6-astra", interfaces: ["chat-completions", "responses"], reasoning: true, input: ["text", "image"] },
@@ -227,14 +260,12 @@ export const BUILTIN_RELAY_FALLBACK_CONFIG: RelayConfig = {
     // 3 — 国产模型 (chat-completions).
     { id: "kimi-k3", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
     { id: "glm-5.3", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
-    { id: "deepseek-v4.1-flash", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
     { id: "glm-5.3-flash", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
+    { id: "deepseek-v4.1-flash", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
+    { id: "minimax-m3.1-flash", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
     { id: "qwen3.8-max", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
-    // 4 — 免费国产模型, chat-completions only.
-    { id: "oc/deepseek-v4.1-flash-free", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
-    { id: "oc/glm-5.3-flash-free", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
-    { id: "oc/mimo-v2.6-flash-free", interfaces: ["chat-completions"], reasoning: true, input: ["text"] },
-    // 5 — 生图模型 (image generation only).
+    { id: "qwen3.8-flash", interfaces: ["chat-completions"], reasoning: true, input: ["text", "image"] },
+    // 4 — 生图模型 (image generation only).
     { id: "gpt-image-2", interfaces: ["chat-completions"], input: ["text", "image"], imageGeneration: true },
     { id: "gpt-image-2.5-flare", interfaces: ["chat-completions"], input: ["text", "image"], imageGeneration: true },
     { id: "gpt-image-2.5-sunburst", interfaces: ["chat-completions"], input: ["text", "image"], imageGeneration: true },
@@ -288,9 +319,10 @@ export interface BuiltinRelayStatus {
   hasAdminToken: boolean;
 }
 
-/** `builtinRelay.unlock` input: the administrator password, i.e. the server's
- *  `RELAY_ADMIN_TOKEN`. It is verified by the server before being stored —
- *  see `RelayConfigStore.unlock`. */
+/** `builtinRelay.unlock` input: the administrator password, i.e. the mariogate
+ *  panel's `admin` password. It is verified by the relay server (which checks it
+ *  against the gateway's own login) before being stored — see
+ *  `RelayConfigStore.unlock`. */
 export const BuiltinRelayUnlockInputSchema = z
   .object({ token: z.string().trim().min(1).max(4_096) })
   .strict();
@@ -317,6 +349,37 @@ export interface BuiltinRelayPushResult {
   changed: number;
   removed: number;
 }
+
+/**
+ * One row of the relay's own inventory (`GET /admin/models`).
+ *
+ * `interfaces` is derived on the server from each group's channel-grant protocol
+ * bitmask — the union over the members that can forward right now — so it is
+ * already in this app's vocabulary and the panel re-derives nothing.
+ */
+export const RelayInventoryModelSchema = z
+  .object({
+    id: z.string().trim().min(1).max(256),
+    /** Publishes to users (`groups.listed`). Unlisted groups are still returned,
+     *  so the panel can report "this exists but is not published". */
+    listed: z.boolean(),
+    /** At least one member can forward right now. */
+    available: z.boolean(),
+    interfaces: z.array(RELAY_PROTOCOL_ENUM).min(1).max(3),
+    imageGeneration: z.boolean(),
+  })
+  .strict();
+export type RelayInventoryModel = z.infer<typeof RelayInventoryModelSchema>;
+
+/** The relay's inventory as of `fetchedAt`. Read-only: it is not a config, and
+ *  nothing about it is cached or published until the administrator pushes. */
+export const RelayInventorySchema = z
+  .object({
+    fetchedAt: z.string().trim().min(1).max(64),
+    models: z.array(RelayInventoryModelSchema).max(1_000),
+  })
+  .strict();
+export type RelayInventory = z.infer<typeof RelayInventorySchema>;
 
 /**
  * A snapshot of the current key's standing on the relay, as returned by

@@ -22,20 +22,24 @@ import {
   BUILTIN_RELAY_BASE_URL,
   BUILTIN_RELAY_CONFIG_URL,
   BUILTIN_RELAY_FALLBACK_CONFIG,
+  BUILTIN_RELAY_MODELS_URL,
   BUILTIN_RELAY_PUSH_URL,
   BUILTIN_RELAY_VERIFY_URL,
   BuiltinRelayPushInputSchema,
   RelayConfigSchema,
+  RelayInventorySchema,
   diffRelayConfigs,
   type BuiltinRelayPushResult,
   type BuiltinRelayStatus,
   type RelayConfig,
+  type RelayInventory,
 } from "@contracts/builtinRelay";
 import { getDb } from "@main/store/db.js";
 
 /** Settings key holding the cached document + its provenance. */
 const CONFIG_KEY = "builtinRelay.config";
-/** Settings key holding the encrypted admin token (never the plaintext). */
+/** Settings key holding the encrypted admin password — the mariogate `admin`
+ *  account's password, verified once by the server (never the plaintext). */
 const ADMIN_TOKEN_KEY = "builtinRelay.adminToken";
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -148,10 +152,13 @@ function forgetAdminToken(): void {
 /**
  * Unlock the 中转站管理 panel.
  *
- * The typed password IS the server's `RELAY_ADMIN_TOKEN`. Crucially, it is
- * checked by the SERVER (`GET /admin/verify`) before anything is stored —
- * a purely local comparison would be meaningless, because the correct value
- * would have to ship inside the app for the check to work.
+ * The typed password IS the mariogate panel's `admin` password. There is no
+ * second secret anywhere: the config server validates it by asking the gateway
+ * to log in, so changing the gateway password changes this one too.
+ *
+ * Crucially it is checked by the SERVER (`GET /admin/verify`) before anything is
+ * stored — a purely local comparison would be meaningless, because the correct
+ * value would have to ship inside the app for the check to work.
  *
  * Because the check is a real round trip it also answers a second question the
  * old "paste a token" flow could not: is the config server reachable at all?
@@ -183,7 +190,7 @@ export async function unlock(token: string, deps: RelayConfigDeps = {}): Promise
   }
 
   if (response.status === 401 || response.status === 403) throw new Error("管理员密码不正确");
-  if (response.status === 429) throw new Error("尝试次数过多，请稍后再试");
+  if (response.status === 429) throw new Error("尝试次数过多，服务器已临时锁定该账号，请 15 分钟后再试");
   if (!response.ok) throw new Error(`验证失败：HTTP ${response.status}`);
 
   storeAdminToken(secret);
@@ -303,12 +310,65 @@ export async function push(config: unknown, deps: RelayConfigDeps = {}): Promise
   };
 }
 
+/**
+ * Read the relay's own model inventory (`GET /admin/models`).
+ *
+ * This is what makes the panel's "从中转站拉取" button possible: instead of the
+ * administrator retyping every model name, the config service asks the gateway
+ * which groups it publishes (over HTTP, with its admin session) and hands back
+ * one row per group with the protocols that group can actually serve right now.
+ *
+ * Read-only and side-effect free: nothing is cached and nothing is published.
+ * The panel merges the result into its draft, and the administrator still has
+ * to review the diff and push.
+ */
+export async function pull(deps: RelayConfigDeps = {}): Promise<RelayInventory> {
+  const token = readAdminToken();
+  if (!token) throw new Error("尚未进入管理员模式，无法从网关拉取模型");
+  const fetchFn: FetchLike = deps.fetch ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetchFn(BUILTIN_RELAY_MODELS_URL, {
+      method: "GET",
+      headers: { accept: "application/json", authorization: `Bearer ${token}` },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error && err.name === "AbortError"
+        ? "读取中转站模型清单超时，请稍后重试"
+        : "无法连接中转站服务器，请检查网络后重试",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    forgetAdminToken();
+    throw new Error("管理员密码不正确或已失效，请重新进入");
+  }
+  if (response.status === 429) throw new Error("尝试次数过多，服务器已临时锁定该账号，请 15 分钟后再试");
+  if (response.status === 502 || response.status === 503) {
+    throw new Error("中转站网关暂时读不到模型清单，请稍后重试");
+  }
+  if (!response.ok) throw new Error(`拉取失败：HTTP ${response.status}`);
+
+  const document = await readJsonCapped(response);
+  const parsed = RelayInventorySchema.safeParse(document);
+  if (!parsed.success) throw new Error("中转站返回的模型清单格式无效");
+  return parsed.data;
+}
+
 export const RelayConfigStore = {
   currentConfig,
   currentStatus,
   refresh,
   refreshQuietly,
   push,
+  pull,
   unlock,
   lock,
   hasAdminToken,

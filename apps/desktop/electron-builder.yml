@@ -28,6 +28,23 @@ npmRebuild: false
 # package.json (electron-builder needs it to resolve the main entry + version).
 # node_modules are pruned by electron-builder automatically; the globs below
 # strip docs that bloat the asar.
+#
+# ── dependencies vs devDependencies (installer size) ──
+# electron-builder packs the transitive closure of "dependencies" into
+# resources/app.asar. Vite ALREADY inlines everything the renderer imports, so
+# a renderer-only library listed in "dependencies" ships twice: once as bundled
+# JS in out/renderer, once as node_modules in the asar. Keep renderer-only
+# libraries (monaco, mermaid, react-icons, @tabler, pdfjs-dist, shiki, katex,
+# tiptap, xterm, ...) in "devDependencies" — they still install locally, so the
+# renderer build resolves them normally, but electron-builder skips packing
+# them. Moving them took the 0.2.60 installer from 219MB to 131MB.
+# The rule that must hold: "dependencies" == what the MAIN process (and the
+# forked out/pi-host + out/mcp bundles) needs from node_modules at runtime.
+# Native addons (better-sqlite3, node-pty, sherpa-onnx-*) MUST stay in
+# "dependencies": electron-vite's externalizeDepsPlugin only externalizes
+# "dependencies", so a devDependency gets inlined into the main chunk — which
+# cannot work for a .node binary.
+# Verify with: pnpm --filter @mariocode/desktop run audit:deps
 files:
   - out/**/*
   - package.json

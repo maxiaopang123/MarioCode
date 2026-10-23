@@ -129,6 +129,13 @@ div:has(> [role="menu"]) {
   --surface: 255 255 255; /* white — center pane, right panel, popups */
   --surface-base: 246 246 245; /* window ground: rail, session column, titlebar */
   --surface-muted: 243 243 241; /* inset wells */
+  /* Code-block ground. NOT --surface-muted: shiki paints the block itself (see
+   * `pre.shiki`), and a block that shares the card well's value reads as page
+   * text rather than code. One step deeper than the well, with the faintest
+   * cool bias toward shiki's own light palette. Defined per palette (light /
+   * dark × neutral / warm) so the block follows the app's tone instead of
+   * carrying github-light's pure white. */
+  --code-bg: 239 239 236;
   /* Hover/active fill. Must stay visible on BOTH white and --surface-muted
    * (sidebar rows hover on the track), and must NOT equal --edge — a hover
    * row next to a same-valued border reads as one blob. */
@@ -249,6 +256,11 @@ div:has(> [role="menu"]) {
   --surface-base: 18 19 18; /* window ground: session column, titlebar */
   --surface: 24 25 24; /* center pane, right panel, popups */
   --surface-muted: 32 33 32; /* inset wells inside cards */
+  /* Code-block ground — one step ABOVE the well (dark wells read as raised,
+   * see the ramp note above), which is the direction that makes a block look
+   * like its own surface rather than a hole. See :root for why this is a
+   * separate token from --surface-muted. */
+  --code-bg: 38 40 40;
   --surface-hover: 44 45 43; /* hover/active fills on all three layers */
   --content: 236 236 233; /* ≈15:1 on --surface */
   /* Secondary/tertiary text. --content-subtle carries 11–12px metadata
@@ -517,12 +529,13 @@ pre.shiki {
 
 /* Shiki bakes its palette's fill INLINE (`background-color:#fff` for
  * github-light, `#0d1117` for github-dark-default), and an inline background
- * paints over the card well. Neither number matches the app's own surfaces —
- * the dark one is bluer than `--surface-muted`, and the light one is pure
- * white on a warm-paper ground — so the block read as a foreign panel,
- * especially in the warm tone. Dropping the fill (only the fill; the token
- * colours stay) lets the `bg-surface-muted` card carry the background, which
- * follows all four palettes. `!important` is required: the value is inline. */
+ * paints over the card's own ground. Neither value belongs to this app — the
+ * light one is pure white on a warm-paper ground, the dark one is bluer than
+ * any surface here — which is why a block used to read as a foreign panel and
+ * stayed white in a dark window. The card now paints the ground itself
+ * (`bg-code` → `--code-bg`, one step off the well in every palette) and shiki
+ * contributes only its TOKEN colours. `!important` is required: the value
+ * shiki writes is inline. */
 pre.shiki,
 pre.shiki code {
   background-color: transparent !important;
@@ -2163,6 +2176,7 @@ html[data-tone="warm"]:not(.dark) {
   --surface: 250 249 245;
   --surface-base: 240 238 230;
   --surface-muted: 244 242 235;
+  --code-bg: 240 237 228;
   --surface-hover: 233 231 222;
   --content: 43 42 39;
   --content-muted: 100 97 88;
@@ -2176,6 +2190,7 @@ html[data-tone="warm"].dark {
   --surface: 38 38 36;
   --surface-base: 31 30 29;
   --surface-muted: 48 48 45;
+  --code-bg: 54 54 50;
   --surface-hover: 58 58 54;
   --content: 238 236 228;
   --content-muted: 170 166 154;

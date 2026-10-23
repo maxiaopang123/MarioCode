@@ -704,8 +704,12 @@ function CodeBlock({
     setClippable(el.scrollHeight > el.clientHeight + 1);
   }, [rawCode, lang, ready, html, expanded]);
 
+  // The CARD carries the code ground (`bg-code` → `--code-bg`), not the shiki
+  // <pre>: one painted surface means the 34px header, the body and the collapse
+  // gradient can never disagree, and the value follows all four palettes
+  // instead of github-light's pure white.
   return (
-    <pre className="my-[var(--chat-md-gap-md)] overflow-hidden rounded-xl border border-edge bg-surface-muted">
+    <pre className="my-[var(--chat-md-gap-md)] overflow-hidden rounded-xl border border-edge bg-code">
       <div className="flex h-[34px] items-center justify-between gap-2 border-b border-edge pl-3 pr-1.5 text-content-subtle [font-size:var(--chat-fs-xxs)]">
         <span className="truncate font-mono">{lang}</span>
         <span className="flex shrink-0 items-center gap-1">
@@ -737,7 +741,7 @@ function CodeBlock({
         </div>
         {clippable && !expanded && (
           <>
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-surface-muted/90 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-code/90 to-transparent" />
             <button
               onClick={() => setExpanded(true)}
               className="absolute bottom-1.5 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full border border-edge bg-surface px-2.5 py-0.5 text-content-muted shadow-sm transition-colors hover:bg-surface-hover hover:text-content"
@@ -774,7 +778,7 @@ function buildComponents(): Components {
     }
     if (isInline) {
       return (
-        <code className="rounded border border-edge bg-surface-muted px-[5px] py-px font-mono [font-size:var(--chat-fs-xs)] [color:var(--code-fg)]">
+        <code className="rounded border border-edge bg-code px-[5px] py-px font-mono [font-size:var(--chat-fs-xs)] [color:var(--code-fg)]">
           <CodeContext.Provider value={true}>{children}</CodeContext.Provider>
         </code>
       );

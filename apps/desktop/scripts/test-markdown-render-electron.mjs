@@ -14,8 +14,8 @@
  *  4b. Colours fit the theme: a `background:#fff;color:#fff` card becomes a
  *     light card with dark text in light mode and a dark inset with light text
  *     in dark mode; the mermaid SVG is re-rendered with the other palette; and
- *     a fenced code block re-highlights its tokens while leaving its fill to
- *     the card well, which follows the theme.
+ *     a fenced code block swaps BOTH its ground (`--code-bg`) and its token
+ *     colours when the theme flips.
  *  5. Both switches work: 渲染 HTML off → the markup shows literally; mermaid
  *     off → the fence shows as code.
  *
@@ -246,25 +246,25 @@ await electronTest(
       evaluate(
         "(()=>{const r=document.querySelector('[data-mermaid] .mermaid-svg > svg rect');return r?getComputedStyle(r).fill:''})()",
       );
-    // Code blocks carry TWO colours: shiki's inline token colours, and its
-    // inline fill. The fill is overridden to transparent in CSS so the card
-    // well (`bg-surface-muted`, which follows all four app palettes) shows
-    // through instead — hence the walk up to the first painted ancestor.
-    // What must change on a flip is the TOKENS: the highlighter has to re-run,
-    // and a stale `useMemo` (the bug this guards) left the previous palette's
-    // block — light text surface, white fill — sitting in a dark app.
+    // Code blocks carry TWO colours: the ground (shiki bakes a palette fill
+    // inline, which CSS overrides with `--code-bg`) and the token colours
+    // (shiki's own). Both must follow the theme — the tokens especially, since
+    // a stale `useMemo` (the bug this guards) left the previous palette's
+    // block, white fill and all, sitting in a dark window.
+    // `preBg` proves shiki's inline fill was overridden; `bg` walks up to the
+    // card that actually paints `--code-bg`.
     const codeBlock = () =>
       evaluate(`(()=>{
         const pre=document.querySelector('.chat-md pre.shiki');
         if(!pre) return null;
         const token=pre.querySelector('span');
-        let el=pre.parentElement, well='';
+        let el=pre, bg='';
         while(el && el!==document.body){
-          const bg=getComputedStyle(el).backgroundColor;
-          if(bg && bg!=='rgba(0, 0, 0, 0)'){well=bg;break}
+          const v=getComputedStyle(el).backgroundColor;
+          if(v && v!=='rgba(0, 0, 0, 0)'){bg=v;break}
           el=el.parentElement;
         }
-        return {bg:getComputedStyle(pre).backgroundColor, well, color:token?getComputedStyle(token).color:''};
+        return {bg, preBg:getComputedStyle(pre).backgroundColor, color:token?getComputedStyle(token).color:''};
       })()`);
     const setTheme = (dark) =>
       evaluate(
@@ -329,14 +329,23 @@ await electronTest(
     await wait("Boolean(document.querySelector('.chat-md pre.shiki span'))");
     const lightCode = await codeBlock();
     assert.ok(lightCode, "the fenced block is highlighted");
+    // The card paints the code ground from `--code-bg`, and shiki's own fill
+    // must not survive on the <pre>. Both halves matter: a real fill keeps the
+    // block reading as its own surface, and a light-palette value (a soft step
+    // below white) is what stops it looking pasted onto the warm-paper ground.
     assert.equal(
+      lightCode.preBg,
+      "rgba(0, 0, 0, 0)",
+      `light: shiki's inline fill is overridden (${lightCode.preBg})`,
+    );
+    assert.notEqual(
       lightCode.bg,
       "rgba(0, 0, 0, 0)",
-      `light: shiki's own fill is dropped, the card well carries it (${lightCode.bg})`,
+      "light: the card paints a ground of its own",
     );
     assert.ok(
-      channelSum(lightCode.well) > 600,
-      `light: the well behind the block is the light surface (${lightCode.well})`,
+      channelSum(lightCode.bg) > 600 && channelSum(lightCode.bg) < 750,
+      `light: that ground is a soft step below white, not #fff (${lightCode.bg})`,
     );
 
     await setTheme(true);
@@ -346,8 +355,8 @@ await electronTest(
       "dark: the same diagram is re-rendered with the dark palette",
     );
 
-    // Code block, dark pass: same transparent fill, different tokens, and the
-    // well behind it has followed the theme — this is the screenshot's bug
+    // Code block, dark pass: the ground flips with the palette and the tokens
+    // are re-highlighted — this is the screenshot's bug
     // ("代码块输出背景色没有跟随 MarioCode 深浅改变") in assertion form.
     await evaluate(`window.__lightTokenColor=${JSON.stringify(lightCode.color)};true`);
     await wait(
@@ -359,14 +368,14 @@ await electronTest(
       lightCode.color,
       `dark: the block is re-highlighted, not the stale light palette (${darkCode.color})`,
     );
-    assert.equal(
+    assert.notEqual(
       darkCode.bg,
-      "rgba(0, 0, 0, 0)",
-      `dark: the block still leaves the fill to the card well (${darkCode.bg})`,
+      lightCode.bg,
+      `dark: the block's ground follows the palette (still ${darkCode.bg})`,
     );
     assert.ok(
-      channelSum(darkCode.well) < 200,
-      `dark: the well behind the block switched to the dark surface (${darkCode.well})`,
+      channelSum(darkCode.bg) < 200,
+      `dark: that ground is the dark well, not github-light's white (${darkCode.bg})`,
     );
 
     /* ── 5a. 渲染 HTML off ────────────────────────────────────────────── */

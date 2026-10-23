@@ -55,6 +55,11 @@ export default {
           muted: "rgb(var(--surface-muted) / <alpha-value>)",
           hover: "rgb(var(--surface-hover) / <alpha-value>)",
         },
+        // Code ground (fenced blocks + inline code). Its own token, not
+        // `surface.muted`: shiki paints a palette fill of its own, and the
+        // block has to stay one visible step off the card either way. Declared
+        // per palette in styles.css (light/dark × neutral/warm).
+        code: "rgb(var(--code-bg) / <alpha-value>)",
         content: {
           DEFAULT: "rgb(var(--content) / <alpha-value>)",
           muted: "rgb(var(--content-muted) / <alpha-value>)",

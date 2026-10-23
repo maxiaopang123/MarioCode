@@ -406,6 +406,12 @@ export const zh = {
   "settings.general.densityCompact": "紧凑",
   "settings.general.densityComfortable": "舒适",
   "settings.general.densityCozy": "宽松",
+  "settings.general.taskDock": "任务条",
+  "settings.general.taskDockDesc":
+    "输入框上方的任务清单默认怎么显示。选「自动」时,只要有没做完的任务就展开,全部完成后自动收成一行;点任务条的标题可以临时切换当前会话,不会改动这里的默认值。",
+  "settings.general.taskDockClosed": "总是收起(一行)",
+  "settings.general.taskDockOpen": "总是展开(完整列表)",
+  "settings.general.taskDockAuto": "自动(未完成时展开)",
   "settings.general.pasteThreshold": "长文本折叠阈值",
   "settings.general.pasteThresholdDesc":
     "在输入框粘贴超过此字符数的内容时,会折叠为输入框上方的卡片而非直接插入正文({min}–{max})。",

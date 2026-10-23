@@ -79,7 +79,10 @@ import { TagPopover } from "./TagPopover.js";
 import { FileMentionPicker, type FileMentionPickerMode } from "./FileMentionPicker.js";
 import { EmptyThreadWelcome } from "./EmptyThreadWelcome.js";
 import { SlashCommandPicker } from "./SlashCommandPicker.js";
-import { SessionFloat } from "./SessionFloat.js";
+import { SessionEntry } from "./SessionEntry.js";
+import { SessionPanel } from "./SessionPanel.js";
+import { SessionTasks } from "./SessionTasks.js";
+import { isElectron } from "@renderer/lib/platform.js";
 import { SessionMetrics } from "./SessionMetrics.js";
 import { MessageTimeline, type UserItemIndexMap } from "./MessageTimeline.js";
 import { SelectionToolbar, type SelectionToolbarState } from "./SelectionToolbar.js";
@@ -1286,6 +1289,25 @@ function ChatPaneForSession({
     cardRef: composerCardRef,
     tier: composerTier,
   } = useComposerRowFit(chipsMode === "collapsed");
+
+  // 「本会话」 docked panel. The open/closed flag lives HERE (not in the panel)
+  // so the entry chip, the panel header's ‹ button and the composer's metrics
+  // shortcut all drive one truth. The panel itself stays mounted while
+  // closed: it opens by animating its own width from 0, so unmounting would
+  // make it pop in at full width instead of pushing the chat left.
+  //
+  // Side-chat panes (chipsMode "collapsed") have no room for a 320px column
+  // and would only ever show the narrow-pane overlay, so they skip the entry
+  // entirely — the checklist still docks above their composer.
+  const showOverview = isElectron && chipsMode !== "collapsed";
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const overviewNonce = useSessionStore((s) => s.sessionFloatOpenNonce);
+  // Composer's metrics group asks for the panel (a store nonce, so it can
+  // reach across the pane without prop drilling).
+  useEffect(() => {
+    if (overviewNonce > 0) setOverviewOpen(true);
+  }, [overviewNonce]);
+
   const messages = useSessionStore((s) =>
     s.messagesBySession[sessionId] ?? EMPTY_MESSAGES,
   );
@@ -3382,7 +3404,13 @@ function ChatPaneForSession({
   }, [renderItems, wrapLiveSpine]);
 
   return (
-    <div className="relative flex h-full flex-col" data-chat-root>
+    // ONE ROW: the chat column + the docked 「本会话」 column. The panel is a
+    // real sibling, not an overlay — opening it animates ITS width, the chat
+    // column is flex-1/min-w-0, and the centered message column slides left by
+    // itself. Nothing here translates the content (that would re-flow the text
+    // in a single visible jump at the end of the animation).
+    <div className="relative flex h-full min-h-0" data-chat-root>
+      <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
       {forkOrigin && <button className="shrink-0 truncate border-b border-edge px-4 py-1.5 text-left text-xs text-content-subtle hover:text-accent" onClick={() => void useSessionStore.getState().openTab(forkOrigin.sessionId)}>{t("layout.contextSource", { title: forkOrigin.title })} · {t("layout.forkSuffix")}</button>}
       {/* Message stream area */}
       <div
@@ -3481,20 +3509,20 @@ function ChatPaneForSession({
         </div>
       )}
 
-      {/* 「本会话」 float — the session overview pinned to the stream's
-          top-right corner, folded into a summary pill by default and expanding
-          into one card (tasks / subagents / plans / bookmarks /
-          cache+speed / usage). It renders nothing until the session has
-          something to report; see SessionFloat. */}
+      {/* 「本会话」 entry chip — the panel's closed state, pinned to the
+          stream's top-right corner (where the old folded card lived, so the
+          muscle memory survives). Clicking it opens the docked column; the
+          chip fades out while the panel is open. Renders nothing until the
+          session has something to report; see SessionEntry. */}
       {!empty && (
-        <SessionFloat
+        <SessionEntry
           sessionId={sessionId}
           subagents={subagents}
           todos={todos}
           planBlocks={planBlocks}
           bookmarks={bookmarks}
           // The session's pending AskUserQuestion (declared above) is the
-          // strongest "this needs you" signal the pill can report.
+          // strongest "this needs you" signal the chip can report.
           waiting={!!pendingQuestion}
           isBookmarkStale={(b) => !msgToRenderIndex.has(b.messageId)}
           onPickBookmark={(b) => jumpToMessage(b.messageId, b.excerpt)}
@@ -3503,6 +3531,8 @@ function ChatPaneForSession({
           onRenameBookmark={(b, title) => void renameBookmark(sessionId, b.id, title)}
           onPickPlan={(p) => openPlanDrawer(sessionId, p)}
           bookmarkNodeRef={bookmarkNodeRef}
+          open={showOverview && overviewOpen}
+          onOpen={() => setOverviewOpen(true)}
         />
       )}
 
@@ -3547,6 +3577,13 @@ function ChatPaneForSession({
       )}
       </div>
 
+      {/* Task dock — the session's checklist, directly above the composer
+          (the classic position). It belongs to the CHAT column, not to the
+          panel: it must not move when 「本会话」 opens, and it stays visible
+          when the panel is closed. Auto by default: expanded while anything
+          is unfinished, one line once everything is done. */}
+      {!empty && <SessionTasks todos={todos} />}
+
       {/* Input box — fixed at the bottom (outside the scroll container) so
           the user always has access to the composer. No border-t divider:
           the box sits flush against the message area. When the session is
@@ -3557,7 +3594,12 @@ function ChatPaneForSession({
           ? "flex flex-1 items-center justify-center overflow-hidden"
           : "shrink-0 pb-3",
       )}>
-        <div className={cn("relative w-full", empty ? "max-w-4xl" : "mx-auto max-w-5xl pt-5")}>
+        <div className={cn(
+          "relative w-full",
+          // The task dock already provides the gap above the input; keeping
+          // the full pt-5 would leave a 36px hole between dock and composer.
+          empty ? "max-w-4xl" : cn("mx-auto max-w-5xl", todos.length > 0 ? "pt-2" : "pt-5"),
+        )}>
           {empty && (
             <EmptyThreadWelcome projectName={projectName} />
           )}
@@ -4099,7 +4141,28 @@ function ChatPaneForSession({
           />
         </div>
       </div>
+      </div>
 
+      {/* 「本会话」 as a docked right column. Rendered (mounted) whenever the
+          session has content — the panel is the closed state's animation
+          origin, so it must exist at width 0 rather than pop in on open. */}
+      {showOverview && !empty && (
+        <SessionPanel
+          sessionId={sessionId}
+          open={overviewOpen}
+          onClose={() => setOverviewOpen(false)}
+          todos={todos}
+          subagents={subagents}
+          planBlocks={planBlocks}
+          bookmarks={bookmarks}
+          isBookmarkStale={(b) => !msgToRenderIndex.has(b.messageId)}
+          onPickBookmark={(b) => jumpToMessage(b.messageId, b.excerpt)}
+          onPickSubagent={(agent) => openSubagentTranscript(sessionId, agent.taskId)}
+          onRemoveBookmark={(b) => void removeBookmark(sessionId, b.id)}
+          onRenameBookmark={(b, title) => void renameBookmark(sessionId, b.id, title)}
+          onPickPlan={(p) => openPlanDrawer(sessionId, p)}
+        />
+      )}
     </div>
   );
 }

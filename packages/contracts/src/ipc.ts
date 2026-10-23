@@ -725,6 +725,22 @@ export const UI_RIGHT_PANEL_FONT_SIZE_SETTING_KEY = "ui.rightPanelFontSize";
 export const UI_PASTE_TAG_THRESHOLD_CHARS_SETTING_KEY = "ui.pasteTagThresholdChars";
 
 /**
+ * Setting key under which the task dock's DEFAULT state is persisted:
+ * "closed" | "open" | "auto". `auto` (the shipped default) expands the
+ * checklist above the composer while any task is unfinished and folds it to a
+ * single line once every task is done. A manual toggle on the dock only
+ * overrides the current pane — this value is what every new pane starts from.
+ */
+export const UI_TASK_DOCK_MODE_SETTING_KEY = "ui.taskDockMode";
+
+/**
+ * Setting key under which the docked 「本会话」 panel's width is persisted
+ * (260–460 px, dragged on its left edge). Defaults to 320 — the width the
+ * prototype was designed around. Clamped in the renderer store action.
+ */
+export const UI_SESSION_PANEL_WIDTH_SETTING_KEY = "ui.sessionPanelWidth";
+
+/**
  * Setting key under which the default speech-recognition language is
  * persisted. Value is a BCP-47-ish tag like "zh-CN" or "en-US" (used to pick
  * the ASR model / decoder language). Hydrated into sessionStore.voiceLang.

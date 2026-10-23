@@ -403,6 +403,12 @@ export const en = {
   "settings.general.densityCompact": "Compact",
   "settings.general.densityComfortable": "Comfortable",
   "settings.general.densityCozy": "Relaxed",
+  "settings.general.taskDock": "Task dock",
+  "settings.general.taskDockDesc":
+    "How the task checklist above the composer starts out. On Auto it expands whenever something is unfinished and folds to one line once everything is done; clicking the dock's header switches it for the current session only and leaves this default alone.",
+  "settings.general.taskDockClosed": "Always collapsed (one line)",
+  "settings.general.taskDockOpen": "Always expanded (full list)",
+  "settings.general.taskDockAuto": "Auto (expand while unfinished)",
   "settings.general.pasteThreshold": "Long-paste folding threshold",
   "settings.general.pasteThresholdDesc":
     "Pasting more than this many characters into the composer folds the content into a card above the input instead of inserting it inline ({min}–{max}).",

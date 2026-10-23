@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark" data-mode="dock" data-panel="closed">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本会话面板原型 · 浮层 → 侧面停靠</title>
+<style>
+  /* ── MarioCode token（照 styles.css 的 :root / .dark 抄的）────────── */
+  :root{
+    --surface-base:#f6f6f5; --surface:#ffffff; --surface-muted:#f3f3f1;
+    --surface-hover:#ebebe8; --code-bg:#efefec;
+    --content:#1a1a19; --content-muted:#52524e; --content-subtle:#70706b;
+    --edge:#e4e4e1; --panel-edge:#eaeae7; --input-edge:#d4d4d0; --rail:#eeeeec;
+    --accent:#d97757; --accent-strong:#a24a26; --primary:#2b2a27; --on-primary:#fff;
+    --success:#047857; --danger:#dc2626; --warning:#b45309; --info:#7c3aed;
+    --mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,"Segoe UI","Microsoft YaHei",sans-serif;
+  }
+  html[data-theme="dark"]{
+    --surface-base:#121312; --surface:#181918; --surface-muted:#202120;
+    --surface-hover:#2c2d2b; --code-bg:#262828;
+    --content:#ecece9; --content-muted:#a8a8a3; --content-subtle:#868681;
+    --edge:#282927; --panel-edge:#282927; --input-edge:#3e3f3c; --rail:#0d0e0d;
+    --accent:#e58a63; --accent-strong:#f0aa8a; --primary:#d97757; --on-primary:#1c0f09;
+    --success:#34d399; --danger:#f87171; --warning:#fbbf24; --info:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--surface-base); color:var(--content);
+    font:400 14px/1.55 var(--sans); -webkit-font-smoothing:antialiased;
+    overflow:hidden; display:flex; flex-direction:column;
+  }
+  html[data-theme="dark"] body{font-weight:450}
+
+  /* ── 原型顶栏 ─────────────────────────────────────────────────── */
+  .bar{
+    display:flex;align-items:center;gap:14px;padding:9px 16px;flex:none;
+    flex-wrap:wrap;row-gap:6px;
+    background:rgb(var(--surface)/.9); border-bottom:1px solid var(--edge);
+    position:relative; z-index:40;
+  }
+  /* 顶栏这些件都不许被挤扁：宁可换行，也不要把「窄窗口」压成竖排 */
+  .bar > .brand,.bar > .seg,.bar > .tool,.bar > .lab{flex:none}
+  .brand{display:flex;align-items:center;gap:7px;font-weight:600;font-size:13px;white-space:nowrap}
+  .brand .mark{color:var(--accent)}
+  .seg{display:flex;gap:2px;padding:2px;border-radius:8px;background:var(--surface-muted)}
+  .seg button{
+    appearance:none;border:0;background:none;color:var(--content-muted);
+    font:inherit;font-size:12.5px;padding:4px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;
+  }
+  .seg button[aria-pressed="true"]{background:var(--surface);color:var(--content);font-weight:600;box-shadow:0 1px 2px rgb(0 0 0/.12)}
+  .seg.sm button{padding:3px 9px;font-size:12px}
+  .bar .lab{font-size:11.5px;color:var(--content-subtle);white-space:nowrap}
+  .bar .spacer{margin-left:auto}
+  .tool{
+    appearance:none;border:1px solid var(--edge);background:transparent;color:var(--content-muted);
+    font:inherit;font-size:12px;padding:4px 10px;border-radius:7px;cursor:pointer;
+  }
+  .tool[aria-pressed="true"]{border-color:var(--accent);color:var(--accent-strong)}
+  .tool:hover{background:var(--surface-hover)}
+  .hint{
+    flex:1 1 auto;min-width:0;text-align:right;
+    color:var(--content-subtle);font-size:11.5px;line-height:1.4;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  /* 窗口不够宽时先牺牲提示文字，别把按钮挤成竖排 */
+  @media (max-width:1200px){.hint{display:none}}
+
+  /* ── 舞台：一个假的应用窗口 ───────────────────────────────────── */
+  .stage{
+    flex:1; min-height:0; display:flex; align-items:stretch; justify-content:center;
+    padding:0; background:var(--surface-base);
+  }
+  .app{
+    --panel-w:320px; --rail-w:232px;
+    /* 一次开合 = 内容左移/右移的时长。慢放开关把它拉长 5 倍，方便看动画本身。 */
+    --dock-dur:320ms;      /* 展开 */
+    --dock-dur-out:230ms;  /* 收起 */
+    --dock-ease:cubic-bezier(.32,.72,0,1);      /* 起步快、收尾软 */
+    --dock-ease-out:cubic-bezier(.4,0,.8,.6);
+    position:relative; display:flex; width:100%; max-width:1460px; min-height:0;
+    background:var(--surface-base); transition:max-width 180ms ease;
+  }
+  html[data-slow="true"] .app{--dock-dur:1600ms;--dock-dur-out:1150ms;--dock-ease:linear;--dock-ease-out:linear}
+  html[data-slow="true"] .fsess .card{transition-duration:1600ms!important}
+  .app[data-narrow="true"]{max-width:940px}
+
+  /* 左：项目 / 会话列 */
+  .rail{
+    width:var(--rail-w); flex:none; display:flex; flex-direction:column; gap:10px;
+    padding:12px 10px; border-right:1px solid var(--panel-edge); background:var(--surface-base);
+  }
+  .newbtn{
+    display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-radius:8px;
+    background:var(--surface);border:1px solid var(--edge);color:var(--content-muted);font-size:12.5px;
+  }
+  .newbtn kbd{margin-left:auto;font:600 10.5px var(--mono);color:var(--content-subtle)}
+  .rail h5{margin:6px 4px 2px;font-size:11px;font-weight:600;color:var(--content-subtle)}
+  .proj{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;font-size:12.5px;color:var(--content-muted)}
+  .proj .av{width:18px;height:18px;border-radius:5px;background:var(--accent);color:var(--on-primary);display:grid;place-items:center;font-size:10px;font-weight:700}
+  .sess{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;background:var(--surface-muted);font-size:12.5px;color:var(--content)}
+  .sess .when{margin-left:auto;font-size:11px;color:var(--content-subtle)}
+  .rail .foot{margin-top:auto;display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--content-muted)}
+  .rail .foot span{padding:6px 8px;border-radius:6px}
+
+  /* 中：一行两列 —— 聊天列 + 停靠面板。
+     ⚠ 这就是实现要点①：ChatPane 根节点从 flex-col 改成 flex-row，
+     面板真的是兄弟节点，聊天列被挤压（LegendList 与输入框宽度都变）。 */
+  .main{flex:1;min-width:0;display:flex;flex-direction:row;position:relative;overflow:hidden}
+  .chatcol{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+  .chat-head{
+    display:flex;align-items:center;gap:8px;height:44px;flex:none;
+    padding:0 14px;border-bottom:1px solid var(--panel-edge);
+  }
+  .crumb{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--content-muted);min-width:0}
+  .crumb .ico{color:var(--content-subtle);display:flex}
+  .crumb b{font-weight:600;color:var(--content)}
+  .head-actions{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .iconbtn{
+    width:26px;height:26px;display:grid;place-items:center;border:0;background:none;
+    border-radius:6px;color:var(--content-subtle);cursor:pointer;
+  }
+  .iconbtn:hover{background:var(--surface-hover);color:var(--content-muted)}
+
+  /* 收起态的「本会话」胶囊：A/B 模式下就是它打开面板 */
+  .session-pill{
+    display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 10px;
+    border:1px solid var(--edge);border-radius:999px;background:var(--surface);
+    color:var(--content-muted);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;
+    box-shadow:0 1px 2px rgb(0 0 0/.12);
+    transition:opacity 160ms ease,transform 160ms ease;
+  }
+  .session-pill:hover{background:var(--surface-hover);color:var(--content)}
+  .session-pill b{font-weight:600;color:var(--content);font-size:12px}
+  .session-pill .sep{width:1px;height:11px;background:var(--edge)}
+  .pill-bar{width:30px;height:3px;border-radius:999px;background:var(--edge);overflow:hidden;display:inline-block}
+  .pill-bar i{display:block;height:100%;width:50%;background:var(--accent);border-radius:999px}
+  .ring{
+    width:11px;height:11px;border-radius:50%;flex:none;
+    background:conic-gradient(rgb(var(--accent)) 62%, rgb(var(--edge)) 0);
+    mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 0);
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 0);
+  }
+  .spin{animation:spin 1.4s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* scrollbar-gutter：开合时宽度在变，滚动条会忽隐忽现 —— 预留出这条槽，
+     免得文字因为滚动条出现/消失再横着抖一下。 */
+  .stream{flex:1;min-height:0;overflow:auto;padding:16px 0 8px;scrollbar-gutter:stable}
+  .col{max-width:740px;margin:0 auto;padding:0 26px}
+
+  /* ── 假对话（沿用刚做的「一步一行」样式，保持连续）─────────────── */
+  .u-msg{margin-left:auto;max-width:78%;width:fit-content;padding:7px 12px;border-radius:12px 12px 3px 12px;
+    background:rgb(82 82 91/.15);font-size:13.5px;color:var(--content)}
+  .turn-head{display:flex;align-items:center;gap:7px;margin:18px 0 2px;font-size:12px;color:var(--content-subtle)}
+  .turn-head b{font-weight:500;color:var(--content-muted)}
+  .turn-head .chev{margin-left:auto;color:var(--content-subtle)}
+  .think{display:flex;gap:8px;align-items:baseline;padding:5px 2px;font-size:13px;color:var(--content-muted);min-width:0}
+  .think span:first-child{flex:none;font-size:11.5px;color:var(--content-subtle)}
+  .think .txt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ophead{display:flex;align-items:center;gap:8px;padding:6px 2px;font-size:13px;color:var(--content-muted);font-weight:500}
+  .ophead .glyph{color:var(--content-subtle);display:flex}
+  .ophead .chev{margin-left:auto;color:var(--content-subtle)}
+  .glist{border:1px solid var(--edge);border-radius:9px;overflow:hidden;background:rgb(var(--surface-muted)/.3);margin:2px 0 6px}
+  .step{display:flex;align-items:center;gap:9px;padding:9px 11px;font-size:13px;color:var(--content-muted);cursor:default}
+  .step + .step{border-top:1px solid var(--edge)}
+  .step .st{margin-left:auto;font-size:11.5px;color:var(--content-subtle);white-space:nowrap}
+  .step .chev{color:var(--content-subtle);display:flex}
+  .step code{font:400 12.5px var(--mono);color:var(--content-subtle)}
+  .row-line{display:flex;align-items:center;gap:9px;padding:7px 2px;font-size:13px;color:var(--content-muted)}
+  .row-line .name{font-weight:500;color:var(--content-muted);flex:none}
+  .row-line .path{font:400 12.5px var(--mono);color:var(--accent-strong);text-decoration:underline;text-decoration-color:rgb(var(--accent)/.35);text-underline-offset:2px}
+  .row-line .st{margin-left:auto;font-size:11.5px;color:var(--content-subtle)}
+  .row-line .plus{color:var(--success);font-size:11.5px}
+  .row-line .minus{color:var(--danger);font-size:11.5px}
+  .para{font-size:13.5px;color:var(--content);margin:8px 2px}
+  .para code{font:400 12.5px var(--mono);background:rgb(var(--code-bg)/.9);padding:1px 5px;border-radius:4px}
+
+  /* 输入框 */
+  .composer{flex:none;padding:8px 26px 14px}
+  .composer .box{
+    border:1px solid var(--input-edge);border-radius:12px;background:var(--surface);
+    padding:10px 12px 8px; box-shadow:0 1px 2px rgb(0 0 0/.08);
+  }
+  .composer .ph{color:var(--content-subtle);font-size:13px;min-height:34px}
+  .composer .row{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--content-subtle)}
+  .composer .row .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .composer .send{width:24px;height:24px;border-radius:50%;background:var(--surface-muted);display:grid;place-items:center;color:var(--content-subtle)}
+
+  /* ── 任务条：贴在输入框上沿（经典位）─────────────────────────────
+     以前任务清单在「本会话」面板里，得先展开面板才看得见；现在它常驻输入框上方，
+     和面板开不开完全无关 —— 任务本来就是「下一步要做什么」，该一直在视野里。
+     收起态只留一行（进度 + 当前那条），展开是完整清单。
+     高度用 grid-template-rows 0fr↔1fr 过渡：不需要猜一个魔法 max-height，
+     内容多长都能平滑推开，多出来的在列表内部滚动。 */
+  .taskdock{flex:none;padding:0 26px}
+  /* 没有任务时整条不出现 —— 别在输入框上方永久留一行「任务 0/0」 */
+  .taskdock[data-empty="true"]{display:none}
+  .taskdock .wrap{
+    border:1px solid var(--edge);border-radius:11px;background:var(--surface);
+    overflow:hidden;
+  }
+  .taskdock .head{
+    display:flex;align-items:center;gap:7px;width:100%;
+    padding:7px 10px;border:0;background:none;font:inherit;
+    font-size:12px;color:var(--content-muted);cursor:pointer;text-align:left;
+  }
+  .taskdock .head:hover{background:var(--surface-hover)}
+  .taskdock .head .glyph{flex:none;display:flex;color:var(--content-subtle)}
+  .taskdock .head b{flex:none;font-weight:600;font-size:12px;color:var(--content)}
+  .taskdock .head .frac{flex:none;font-size:11.5px;color:var(--content-subtle);font-variant-numeric:tabular-nums}
+  /* 台头右侧这一格要装两种话：收起时「当前在做的那条」，展开时清单就在眼皮底下、
+     再念一遍是废话，改成「还剩几项」。用 grid 叠两层互换（和浮层卡的 .swap 同一招），
+     两层都占着同一格，所以切换时台头不会跳。 */
+  .taskdock .head .swap{display:grid;flex:1;min-width:0;align-items:center}
+  .taskdock .head .swap > *{
+    grid-area:1/1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    color:var(--content-muted);transition:opacity 180ms ease;
+  }
+  .taskdock .head .rest{opacity:0}
+  .taskdock[data-open="true"] .head .now{opacity:0}
+  .taskdock[data-open="true"] .head .rest{opacity:1}
+  .taskdock .head .now::before{content:"·";margin:0 6px 0 1px;color:var(--content-subtle)}
+  .taskdock .head .chev{
+    flex:none;display:flex;color:var(--content-subtle);
+    transition:transform 240ms cubic-bezier(.32,.72,0,1);
+  }
+  .taskdock[data-open="true"] .head .chev{transform:rotate(180deg)}
+  .taskdock .body{
+    display:grid;grid-template-rows:0fr;
+    transition:grid-template-rows 260ms cubic-bezier(.32,.72,0,1);
+  }
+  .taskdock[data-open="true"] .body{grid-template-rows:1fr}
+  .taskdock .body > div{overflow:hidden;min-height:0}
+  /* 任务多时列表自己滚，不把输入框连同整个聊天区一起推走 */
+  .taskdock .tasks{
+    margin:0;padding:2px 10px 8px;list-style:none;
+    border-top:1px solid var(--edge);
+    max-height:196px;overflow-y:auto;
+  }
+  .taskdock .tasks li{padding:3px 4px;margin:0 -4px;font-size:12.5px;border-radius:6px;cursor:pointer}
+  .taskdock .tasks li:hover{background:var(--surface-hover)}
+  .taskdock .tasks .mk{width:14px;height:14px;margin-top:1px}
+
+  /* ── 浮层卡（现方案 / 窄窗口降级）—— 真实实现用的 clip-path 折叠 ── */
+  .fsess{
+    --pill-w:300px; --pill-h:34px;
+    --fs-in:380ms cubic-bezier(.22,1,.36,1);
+    --fs-out:260ms cubic-bezier(.5,0,.2,1);
+    position:absolute;right:14px;top:10px;z-index:12;
+    width:300px;max-height:calc(100% - 96px);
+    display:flex;
+    filter:drop-shadow(0 0 0.5px rgb(0 0 0/.35)) drop-shadow(0 12px 24px rgb(0 0 0/.14));
+    pointer-events:none;
+  }
+  html[data-theme="dark"] .fsess{filter:drop-shadow(0 0 0.5px rgb(255 255 255/.28)) drop-shadow(0 14px 28px rgb(0 0 0/.55))}
+  .fsess .card{
+    pointer-events:auto;flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;
+    background:var(--surface);clip-path:inset(0 0 0 0 round 14px);
+    transition:clip-path var(--fs-in);will-change:clip-path;
+  }
+  .fsess[data-folded="true"] .card{
+    clip-path:inset(0 0 calc(100% - var(--pill-h)) calc(100% - var(--pill-w)) round 17px);
+    transition:clip-path var(--fs-out) 40ms;
+  }
+  .fsess .head{
+    display:flex;align-items:center;gap:8px;height:var(--pill-h);flex:none;padding:0 10px 0 12px;
+    font-size:12.5px;color:var(--content-muted);background:none;border:0;cursor:pointer;text-align:left;
+  }
+  .fsess .head:hover{background:var(--surface-hover)}
+  .fsess .swap{display:grid;min-width:0;flex:1;align-items:center}
+  .fsess .swap > *{grid-area:1/1}
+  .fsess .title{justify-self:start;display:inline-flex;align-items:center;gap:8px;transition:opacity 160ms ease 80ms,transform var(--fs-in)}
+  .fsess .title b{font-weight:600;color:var(--content)}
+  .fsess .sum{justify-self:end;display:inline-flex;align-items:center;gap:7px;opacity:0;transform:translateX(6px);
+    transition:opacity 120ms ease,transform var(--fs-in)}
+  .fsess[data-folded="true"] .title{opacity:0;transform:translateX(-6px);transition:opacity 100ms ease,transform var(--fs-out)}
+  .fsess[data-folded="true"] .sum{opacity:1;transform:none;transition:opacity 180ms ease 90ms,transform var(--fs-out) 40ms}
+  .fsess .chev{flex:none;color:var(--content-subtle);transition:transform var(--fs-in)}
+  .fsess[data-folded="true"] .chev{transform:rotate(180deg)}
+  .fsess .body{
+    min-height:0;flex:1;overflow-y:auto;border-top:1px solid var(--edge);
+    transition:opacity 220ms ease 90ms,transform var(--fs-in);
+  }
+  .fsess[data-folded="true"] .body{opacity:0;transform:translateY(-8px);transition:opacity 110ms ease,transform var(--fs-out);pointer-events:none}
+
+  /* ── 停靠面板 ─────────────────────────────────────────────────── */
+  .app[data-dragging="true"] .panel{transition:none}
+  .panel{
+    position:relative;flex:none;width:var(--panel-w);overflow:hidden;
+    background:var(--surface);border-left:1px solid var(--panel-edge);
+    /* 收起比展开略快：关抽屉要利落，开抽屉可以慢一点 */
+    transition:width var(--dock-dur-out) var(--dock-ease-out);
+    will-change:width;
+    display:flex;
+  }
+  .app[data-panel="open"] .panel{transition:width var(--dock-dur) var(--dock-ease)}
+  .panel .inner{
+    width:var(--panel-w);flex:none;display:flex;flex-direction:column;min-height:0;
+    height:100%;
+    /* 宽度被裁的是壳，内容自己再轻轻推入一点：读起来像「抽屉滑进来」，
+       而不是被硬边一寸寸「切」出来的。 */
+    transition:transform var(--dock-dur) var(--dock-ease),
+               opacity calc(var(--dock-dur) * .8) ease;
+  }
+  .app[data-panel="closed"] .panel .inner{transform:translateX(22px);opacity:0}
+  .panel .phead{
+    display:flex;align-items:center;gap:8px;flex:none;height:44px;padding:0 10px 0 14px;
+    border-bottom:1px solid var(--panel-edge);
+  }
+  .panel .phead h3{margin:0;font-size:12.5px;font-weight:600;color:var(--content);display:flex;align-items:center;gap:7px}
+  .panel .phead .turnno{font-size:11.5px;color:var(--content-subtle);font-weight:400}
+  .panel .phead .acts{margin-left:auto;display:flex;gap:2px}
+  .panel .pbody{
+    min-height:0;flex:1;overflow-y:auto;scrollbar-gutter:stable;
+    /* 内容超出时最后一行不要被屏幕边缘生硬切断 */
+    -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 18px),rgba(0,0,0,.25));
+    mask-image:linear-gradient(to bottom,#000 calc(100% - 18px),rgba(0,0,0,.25));
+  }
+  /* 拖拽把手 */
+  .resizer{
+    position:absolute;left:0;top:0;bottom:0;width:9px;
+    cursor:col-resize;z-index:3;background:transparent;
+  }
+  .resizer::after{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:1px;background:transparent;
+    transition:background 120ms ease;
+  }
+  .resizer:hover::after,.resizer[data-drag="true"]::after{background:rgb(var(--accent)/.6)}
+
+  /* 收起：完全让位（回到胶囊）；可选模式留一条 44px 图标轨 */
+  .app[data-mode="dock"][data-panel="closed"] .panel{width:0!important}
+  .app[data-mode="rail"] .panel{width:var(--panel-w)!important}
+  .app[data-mode="rail"][data-panel="closed"] .panel{width:44px!important}
+  .app[data-mode="rail"][data-panel="closed"] .panel .inner{display:none}
+  .rail-collapsed{
+    display:none;flex-direction:column;align-items:center;gap:11px;width:44px;height:100%;
+    padding:12px 0 14px;color:var(--content-subtle);font-size:10.5px;cursor:pointer;
+    background:var(--surface);transition:background 120ms ease;
+  }
+  .rail-collapsed:hover{background:var(--surface-muted)}
+  .app[data-mode="rail"][data-panel="closed"] .rail-collapsed{display:flex}
+  .rail-collapsed .vert{writing-mode:vertical-rl;letter-spacing:.16em;font-size:10.5px;color:var(--content-muted);margin-top:2px}
+  .rail-collapsed b{color:var(--content-muted);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+  .rail-collapsed .track{width:3px;height:56px;border-radius:999px;background:var(--edge);overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+  .rail-collapsed .track i{display:block;height:50%;width:100%;background:var(--accent);border-radius:999px}
+  .rail-collapsed .grow{flex:1}
+  .rail-collapsed .chev{margin-bottom:2px;color:var(--content-subtle)}
+
+  /* 模式可见性 */
+  .app[data-mode="now"] .panel{display:none}
+  .app[data-mode="now"] .session-pill{display:none}
+  .app[data-mode="now"] .head-actions::after{content:""}
+  .app[data-mode="dock"] .fsess,.app[data-mode="rail"] .fsess{display:none}
+  .app[data-mode="dock"][data-panel="open"] .session-pill{
+    opacity:0;transform:scale(.94);pointer-events:none;transition:none;
+  }
+  .app[data-mode="rail"] .session-pill{display:none}
+
+  /* 窄窗口：停靠改成覆盖（给一个明确取舍，而不是硬挤成一列窄条） */
+  .app[data-narrow="true"][data-mode="dock"][data-panel="open"] .panel,
+  .app[data-narrow="true"][data-mode="rail"] .panel{
+    position:absolute;right:0;top:0;bottom:0;z-index:14;
+    box-shadow:-18px 0 40px rgb(0 0 0/.18);
+  }
+  .narrow-badge{
+    /* 挂到聊天台头下面，而不是贴着输入框 —— 输入框上沿现在是任务条，
+       窗口一宽一窄任务条高度会变，贴着它迟早撞上。 */
+    display:none;position:absolute;left:12px;top:52px;z-index:16;width:fit-content;
+    padding:4px 9px;font-size:11px;color:var(--warning);border-radius:6px;
+    background:rgb(var(--surface)/.94);border:1px solid var(--warning);
+  }
+  .app[data-narrow="true"][data-mode="dock"][data-panel="open"] .narrow-badge,
+  .app[data-narrow="true"][data-mode="rail"] .narrow-badge{display:block}
+
+  /* ── 面板内容（照 SessionFloat 的六节）────────────────────────── */
+  .sec{border-bottom:1px solid var(--edge);padding:11px 14px 10px}
+  .sec:last-child{border-bottom:0}
+  .sec h4{
+    margin:0 0 7px;display:flex;align-items:center;gap:8px;
+    font-size:11.5px;font-weight:600;color:var(--content-subtle);
+  }
+  .sec h4 .aside{margin-left:auto;display:flex;align-items:center;gap:6px;font-weight:400;font-variant-numeric:tabular-nums}
+  .minibar{width:30px;height:3px;border-radius:999px;background:var(--edge);overflow:hidden;display:inline-block}
+  .minibar i{display:block;height:100%;background:var(--accent);border-radius:999px}
+  .tasks{margin:0;padding:0;list-style:none}
+  .tasks li{display:flex;gap:9px;align-items:flex-start;padding:4px 0;font-size:12.5px;line-height:1.5;color:var(--content-muted)}
+  .tasks li.done{color:var(--content-subtle);text-decoration:line-through;text-decoration-color:rgb(var(--content-subtle)/.45)}
+  .tasks li.now{color:var(--content);font-weight:500}
+  .tasks .mk{width:15px;height:15px;flex:none;display:grid;place-items:center;margin-top:1px}
+  .tasks .dot{width:11px;height:11px;border-radius:50%;border:1.5px solid var(--input-edge)}
+  .ck{color:var(--accent-strong);font-size:11px}
+  .list{margin:0;padding:0;list-style:none}
+  .list li{display:flex;align-items:center;gap:9px;padding:4px 2px;font-size:12.5px;color:var(--content-muted);border-radius:6px}
+  .list li:hover{background:var(--surface-hover)}
+  .list li .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .list li .tm{margin-left:auto;font-size:11px;color:var(--content-subtle);font-variant-numeric:tabular-nums;flex:none}
+  .stat2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stat{border:1px solid var(--edge);background:var(--surface-muted);border-radius:10px;padding:7px 10px 6px;display:flex;flex-direction:column;gap:2px}
+  .stat .k{font-size:11.5px;color:var(--content-subtle)}
+  .stat .v{display:flex;align-items:baseline;gap:4px}
+  .stat .v b{font-size:19px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .stat .v em{font-style:normal;font-size:11.5px;color:var(--content-subtle)}
+  .stat .sub{font-size:11.5px;color:var(--content-subtle)}
+  .stat .sub b{color:var(--content-muted);font-weight:600;font-variant-numeric:tabular-nums}
+  .spark{display:flex;align-items:flex-end;gap:3px;height:26px;margin-top:9px}
+  .spark i{flex:1;background:rgb(var(--accent)/.35);border-radius:3px 3px 1px 1px;min-height:3px}
+  .spark i.cur{background:rgb(var(--accent))}
+  .spark i.low{background:rgb(var(--warning)/.55)}
+  .spark .cap{flex:none;font-size:11.5px;color:var(--content-subtle);align-self:center}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:7px 10px;font-size:12.5px;color:var(--content-subtle)}
+  .kv b{color:var(--content);font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
+  .ctxbar{grid-column:1/-1;height:6px;border-radius:999px;background:var(--edge);overflow:hidden;margin:1px 0 3px}
+  .ctxbar i{display:block;height:100%;width:74%;background:var(--accent);border-radius:999px}
+  .money{color:var(--content);font-weight:500}
+
+  /* ── 原型脚注 ─────────────────────────────────────────────────── */
+  .notes{
+    position:fixed;left:0;right:0;bottom:0;z-index:50;
+    display:none;gap:0;border-top:1px solid var(--edge);background:rgb(var(--surface)/.97);
+  }
+  .notes.open{display:flex}
+  .notes{flex-wrap:wrap}
+  .notes div{flex:1 1 300px;padding:10px 16px;font-size:11.5px;color:var(--content-muted);border-right:1px solid var(--edge)}
+  .notes div:last-child{border-right:0}
+  .notes b{display:block;color:var(--content);font-size:11.5px;margin-bottom:2px}
+  .notes code{font:400 11px var(--mono);color:var(--accent-strong)}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <span class="brand">
+    <svg class="mark" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <path d="M8 1.6v3.2M8 11.2v3.2M1.6 8h3.2M11.2 8h3.2M3.5 3.5l2.2 2.2M10.3 10.3l2.2 2.2M12.5 3.5l-2.2 2.2M5.7 10.3l-2.2 2.2"/>
+    </svg>
+    MarioCode
+  </span>
+
+  <div class="seg" role="group" aria-label="方案">
+    <button type="button" data-mode="dock" aria-pressed="true">新方案 · 内容左移</button>
+    <button type="button" data-mode="now" aria-pressed="false">对照 · 现在的浮层</button>
+    <button type="button" data-mode="rail" aria-pressed="false">可选 · 图标轨</button>
+  </div>
+
+  <span class="spacer"></span>
+  <span class="hint" id="hint">点右上角「本会话」← 看内容左移的动画</span>
+
+  <!-- 任务条的「默认态」三档：这就是你选的三条，做成一个设置项 -->
+  <span class="lab">任务条</span>
+  <div class="seg sm" role="group" aria-label="任务条默认态">
+    <button type="button" data-task="closed" aria-pressed="false">收起</button>
+    <button type="button" data-task="open" aria-pressed="false">展开</button>
+    <button type="button" data-task="auto" aria-pressed="true">自动</button>
+  </div>
+
+  <button class="tool" type="button" id="slow" aria-pressed="false">慢放 ×5</button>
+  <button class="tool" type="button" id="theme" aria-pressed="false">浅色</button>
+  <button class="tool" type="button" id="narrow" aria-pressed="false">窄窗口</button>
+  <button class="tool" type="button" id="notesBtn" aria-pressed="false">实现要点</button>
+</div>
+
+<div class="stage">
+  <div class="app" id="app" data-mode="dock" data-panel="closed" data-narrow="false">
+
+    <!-- 左：项目 / 会话列 -->
+    <aside class="rail">
+      <div class="newbtn">＋ 新会话 <kbd>Ctrl N</kbd></div>
+      <h5>项目</h5>
+      <div class="proj"><span class="av">S</span>steps<span style="margin-left:auto;color:var(--content-subtle);font-size:11px">1</span></div>
+      <div class="sess"><span>steps</span><span class="when">刚刚</span></div>
+      <div class="foot">
+        <span>▦ 技能与 MCP</span>
+        <span>◍ 画布</span>
+        <span>⌾ 定时任务</span>
+        <span>▢ 连接手机</span>
+      </div>
+    </aside>
+
+    <!-- 中：一行两列（聊天列 + 停靠面板） -->
+    <main class="main">
+    <div class="chatcol">
+      <div class="chat-head">
+        <div class="crumb">
+          <span class="ico">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.8 5.2h12.4v8.1H1.8z"/><path d="M1.8 5.2 3.6 2.7h8.8l1.8 2.5"/></svg>
+          </span>
+          <span>steps</span><span class="ico">›</span>
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"><path d="M8 1.8v2.6M8 11.6v2.6M1.8 8h2.6M11.6 8h2.6M3.7 3.7l1.9 1.9M10.4 10.4l1.9 1.9M12.3 3.7l-1.9 1.9M5.6 10.4l-1.9 1.9"/></svg>
+          <b>steps</b>
+        </div>
+        <div class="head-actions">
+          <!-- A/B 模式的展开入口：右上角胶囊（和现在的折叠态同一位置） -->
+          <button class="session-pill" type="button" id="pill" title="展开本会话概览">
+            <span style="display:flex;color:var(--content-subtle)">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 2.2h6.8v11.6H5z"/><path d="M7.4 5.2h2M7.4 7.6h2M7.4 10h2"/></svg>
+            </span>
+            <b>本会话</b>
+            <span class="sep"></span>
+            <span data-frac>2/4</span>
+            <span class="pill-bar"><i data-bar></i></span>
+            <span class="sep"></span><span class="ring"></span><span>74%</span>
+          </button>
+          <button class="iconbtn" type="button" title="代码">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5.6 4.6 2.2 8l3.4 3.4M10.4 4.6 13.8 8l-3.4 3.4"/></svg>
+          </button>
+          <button class="iconbtn" type="button" title="文件">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.4 4.2h4l1.3 1.6h5.9v6.9H2.4z"/></svg>
+          </button>
+          <button class="iconbtn" type="button" title="浏览器">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5.9"/><path d="M2.1 8h11.8M8 2.1c1.7 1.7 2.6 3.7 2.6 5.9S9.7 12.2 8 13.9C6.3 12.2 5.4 10.2 5.4 8S6.3 3.8 8 2.1z"/></svg>
+          </button>
+          <button class="iconbtn" type="button" title="侧栏">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.1" y="2.7" width="11.8" height="10.6" rx="1.6"/><path d="M10.2 2.7v10.6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="stream">
+        <div class="col">
+          <div class="u-msg">查一下中转站账户卡片为什么 401</div>
+
+          <div class="turn-head">
+            <span style="color:var(--accent);display:flex">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 1.8v2.6M8 11.6v2.6M1.8 8h2.6M11.6 8h2.6M3.7 3.7l1.9 1.9M10.4 10.4l1.9 1.9M12.3 3.7l-1.9 1.9M5.6 10.4l-1.9 1.9"/></svg>
+            </span>
+            <b>claude-sonnet-5-5</b><span>13:01:20 · 1.8s · 8 步</span>
+            <span class="chev">⌄</span>
+          </div>
+
+          <div class="think"><span>思考</span><span class="txt">卡片调了三个接口，第二个 /api/v1/me 返回 401。先读中间件再判断是不是 key 的问题。</span></div>
+
+          <div class="ophead">
+            <span class="glyph">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2.2 2.4 5 8 7.8 13.6 5z"/><path d="M2.4 8 8 10.8 13.6 8M2.4 11 8 13.8 13.6 11"/></svg>
+            </span>
+            搜索代码、执行 2 条命令
+            <span class="chev">⌄</span>
+          </div>
+          <div class="glist">
+            <div class="step"><span>搜索 “中转站 API Key 无效或已失效”</span><span class="st">3 处匹配</span><span class="chev">›</span></div>
+            <div class="step"><span>查找 <code>**/*.go</code></span><span class="st">3 个文件</span><span class="chev">›</span></div>
+            <div class="step"><span><span style="color:var(--danger);margin-right:6px">×</span>systemctl status octopus --no-pager</span><span class="chev">›</span></div>
+          </div>
+
+          <div class="row-line">
+            <span class="name">Read</span><span class="path">relayAccountStore.ts</span>
+            <span class="st">3 行</span><span class="chev" style="color:var(--content-subtle)">›</span>
+          </div>
+          <div class="para">根因找到了：<code>/api/v1/me</code> 只认面板登录 cookie，不认 API Key。</div>
+          <div class="row-line">
+            <span class="name">Edit</span><span class="path">relayAccountStore.ts</span>
+            <span class="st"><span class="plus">+3</span> <span class="minus">−3</span></span>
+            <span class="chev" style="color:var(--content-subtle)">›</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 任务条：经典位 —— 输入框正上方。不随面板开合出现/消失 -->
+      <div class="taskdock" id="taskdock" data-open="true">
+        <div class="wrap">
+          <button class="head" type="button" id="taskHead" aria-expanded="true" aria-controls="taskBody">
+            <span class="glyph">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 4.4l1.5 1.5L7 3.2"/><path d="M9.2 4.9h4"/><path d="M2.8 10.6l1.5 1.5L7 9.4"/><path d="M9.2 11.1h4"/></svg>
+            </span>
+            <b>任务</b>
+            <span class="frac" data-frac>2/4</span>
+            <span class="minibar"><i data-bar style="width:50%"></i></span>
+            <span class="swap">
+              <span class="now" id="taskNow">改取数入口为 /api/v1/stats</span>
+              <span class="rest" id="taskRest">剩 2 项</span>
+            </span>
+            <span class="chev">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.4 9.6 8 6l3.6 3.6"/></svg>
+            </span>
+          </button>
+          <div class="body" id="taskBody">
+            <div>
+              <ul class="tasks" id="taskList"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <div class="box">
+          <div class="ph">发送消息… (@ 引用文件 · / 命令 · 粘贴图片)</div>
+          <div class="row">
+            <span>＋</span><span>⊘ Auto</span><span>⇡ High</span><span>♡ Default</span>
+            <span class="right"><span style="display:flex;align-items:center;gap:5px;color:var(--content-subtle)">⟡ Claude</span><span class="send">↑</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 现方案：右上角浮层（clip-path 折叠） -->
+      <div class="fsess" id="fsess" data-folded="true">
+        <div class="card">
+          <button class="head" type="button" id="fsHead">
+            <span class="swap">
+              <span class="title">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 2.2h6.8v11.6H5z"/><path d="M7.4 5.2h2M7.4 7.6h2M7.4 10h2"/></svg>
+                <b>本会话</b><span style="color:var(--content-subtle);font-size:11.5px">第 1 轮</span>
+              </span>
+              <span class="sum">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 2.2h6.8v11.6H5z"/><path d="M7.4 5.2h2M7.4 7.6h2M7.4 10h2"/></svg>
+                <b>本会话</b>
+                <i style="width:1px;height:11px;background:var(--edge);display:inline-block"></i>
+                <span style="animation:spin 1.4s linear infinite;display:inline-flex;color:var(--accent-strong)">◠</span>
+                <b data-frac style="font-variant-numeric:tabular-nums">2/4</b>
+                <span class="minibar"><i data-bar style="width:50%"></i></span>
+                <i style="width:1px;height:11px;background:var(--edge);display:inline-block"></i>
+                <span class="ring"></span><span style="font-variant-numeric:tabular-nums">74%</span>
+              </span>
+            </span>
+            <span class="chev">⌄</span>
+          </button>
+          <div class="body" id="fsBody"></div>
+        </div>
+      </div>
+
+      <div class="narrow-badge">窄窗口：停靠面板改为覆盖显示（聊天列保持可读宽度）</div>
+    </div><!-- /chatcol -->
+
+      <!-- 提案 A/B：停靠面板 -->
+      <aside class="panel" id="panel" aria-label="本会话">
+        <div class="rail-collapsed" title="展开本会话目标">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--accent-strong)">
+            <path d="M5 2.2h6.8v11.6H5z"/><path d="M7.4 5.2h2M7.4 7.6h2M7.4 10h2"/>
+          </svg>
+          <span class="vert">本会话</span>
+          <b data-frac>2/4</b>
+          <span class="track"><i></i></span>
+          <span class="ring" style="width:13px;height:13px"></span>
+          <b>74%</b>
+          <span class="grow"></span>
+          <span class="chev">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M9.6 4.4 6 8l3.6 3.6"/></svg>
+          </span>
+        </div>
+        <div class="inner">
+          <div class="resizer" id="resizer" title="拖动调整宽度"></div>
+          <div class="phead">
+            <h3>
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--content-subtle)"><path d="M5 2.2h6.8v11.6H5z"/><path d="M7.4 5.2h2M7.4 7.6h2M7.4 10h2"/></svg>
+              本会话<span class="turnno">第 1 轮</span>
+            </h3>
+            <span class="acts">
+              <button class="iconbtn" type="button" id="panelClose" title="收起面板">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9.6 4.4 6 8l3.6 3.6"/></svg>
+              </button>
+            </span>
+          </div>
+          <div class="pbody" id="panelBody"></div>
+        </div>
+      </aside>
+
+    </main>
+  </div>
+</div>
+
+<div class="notes" id="notes">
+  <div><b>① 内容左移 = 面板宽度 0↔320 的同一帧过渡</b>：ChatPane 里「消息+输入框」那一列是 <code>flex-1</code>，面板是 <code>w-[320px] shrink-0</code>；面板宽度一动，可用宽度就跟着变，居中的 740px 消息列自然往左走 —— 不需要给内容单独加位移。</div>
+  <div><b>② 别用 <code>translateX</code> 假装左移</b>：位移结束后宽度才变，文字会重排一次、肉眼看到「跳一下」。宽度过渡则是每帧重排，反而顺滑（这里 1208→888 都 &gt; 740，动画期间完全不会重排，只是整块滑动）。</div>
+  <div><b>③ 面板形态</b>：整高右列 —— 台头 44px 与聊天台头同行，底部到窗口底；<code>border-left</code> 一条细线。收起回右上角胶囊，<code>clip-path</code> 那套裁剪动画在桌面端就不再需要了。</div>
+  <div><b>④ 边界</b>：窄于约 980px 时改回覆盖（不把消息挤成一条缝）；宽 260–460 可拖，落盘持久化；<code>Esc</code> 收起；沿用 <code>openSessionFloat</code> nonce 触发。</div>
+  <div><b>⑤ 任务挪到输入框上沿</b>：从 <code>SessionFloat</code> 的六节里摘掉，做成 <code>.taskdock</code> 常驻在聊天列里（<code>stream</code> 与 <code>composer</code> 之间）。它不属于面板，所以面板开合时不动，收起面板也还看得见。高度用 <code>grid-template-rows:0fr↔1fr</code> 过渡，任务再多也只在列表内部滚动；没有任务时 <code>data-empty</code> 整条隐藏。</div>
+  <div><b>⑥ 默认态是设置，不是开关</b>：顶栏「任务条」三档 —— 收起 / 展开 / 自动。前两档是固定态；自动档 = 还有没做完的就展开，全部做完自动收成一行「本轮 4 项已完成」。<b>点任务行</b>可以勾掉，把最后一项勾掉就能看它自己收起来。手动点头条等于选了对应那一档（三段会跟着变），这是刻意的：默认态是默认，用户手动点过就该以用户的为准。</div>
+</div>
+
+<script>
+(() => {
+  const app = document.getElementById('app');
+  const fsess = document.getElementById('fsess');
+  const fsHead = document.getElementById('fsHead');
+  const fsBody = document.getElementById('fsBody');
+  const panelBody = document.getElementById('panelBody');
+  const pill = document.getElementById('pill');
+  const panelClose = document.getElementById('panelClose');
+  const resizer = document.getElementById('resizer');
+  const hint = document.getElementById('hint');
+  const taskdock = document.getElementById('taskdock');
+  const taskHead = document.getElementById('taskHead');
+  const taskList = document.getElementById('taskList');
+  const taskNow = document.getElementById('taskNow');
+  const taskRest = document.getElementById('taskRest');
+
+  /* ── 面板内容：SessionFloat 的六节，扣掉「任务」───────────────
+     任务已挪到输入框上沿（.taskdock），常驻、与面板开合无关；
+     面板这里只剩五节，顺序照旧。 */
+  const overview = `
+    <section class="sec">
+      <h4>子代理 <span class="aside">2</span></h4>
+      <ul class="list">
+        <li><span style="color:var(--accent-strong);display:flex" class="spin">◠</span><span class="nm">explore · 找中转站相关接口</span><span class="tm">0:42</span></li>
+        <li><span style="color:var(--accent-strong);display:flex">✓</span><span class="nm">general · 读 octopus 服务配置</span><span class="tm">1:18</span></li>
+      </ul>
+    </section>
+
+    <section class="sec">
+      <h4>计划 <span class="aside">1</span></h4>
+      <ul class="list">
+        <li><span style="color:var(--content-subtle)">☰</span><span class="nm">中转站账户卡片 401 排查</span></li>
+      </ul>
+    </section>
+
+    <section class="sec">
+      <h4>书签 <span class="aside">2</span></h4>
+      <ul class="list">
+        <li><span style="color:var(--warning)">◆</span><span class="nm">中间件只认 cookie 那段</span></li>
+        <li><span style="color:var(--warning)">◆</span><span class="nm">UseAuthProfile 的调用点</span></li>
+      </ul>
+    </section>
+
+    <section class="sec">
+      <h4>缓存与速度</h4>
+      <div class="stat2">
+        <div class="stat">
+          <span class="k">缓存命中</span>
+          <span class="v"><b>92%</b><em>本轮</em></span>
+          <span class="sub">平均 <b>88%</b></span>
+        </div>
+        <div class="stat">
+          <span class="k">速度</span>
+          <span class="v"><b>41</b><em>tok/s</em></span>
+          <span class="sub">平均 <b>38</b> tok/s</span>
+        </div>
+      </div>
+      <div class="spark">
+        <span class="cap" style="font-size:11.5px;color:var(--content-subtle)">逐轮</span>
+        <i style="height:62%"></i><i style="height:74%"></i><i style="height:58%" class="low"></i><i style="height:81%"></i>
+        <i style="height:88%"></i><i style="height:70%"></i><i style="height:92%"></i><i style="height:84%"></i>
+        <i style="height:96%" class="cur"></i>
+      </div>
+    </section>
+
+    <section class="sec">
+      <h4>用量</h4>
+      <div class="kv">
+        <span>上下文</span><b>148k / 200k · 74%</b>
+        <span class="ctxbar"><i></i></span>
+        <span>本会话 tokens</span><b>1.42M</b>
+        <span>工具调用</span><b>23 次 · 1 失败</b>
+        <span>文件变更</span><b><span style="color:var(--success)">+128</span> <span style="color:var(--danger)">−41</span></b>
+        <span>成本</span><b class="money">$3.86</b>
+      </div>
+    </section>`;
+
+  fsBody.innerHTML = overview;
+  panelBody.innerHTML = overview;
+
+  /* ── 模式切换 ─────────────────────────────────────────────────── */
+  const HINTS = {
+    dock: '点右上角「本会话」→ 内容左移、右侧腾出整列 · 点 ‹ 收起 · 拖左边缘改宽',
+    now: '对照：现在的浮层盖在内容上 · 点空白处收回',
+    rail: '收起态改成一列图标轨（不浮动、也不完全让位）· 点轨道展开',
+  };
+  function setMode(mode) {
+    app.dataset.mode = mode;
+    app.dataset.panel = mode === 'rail' ? 'open' : 'closed';
+    document.querySelectorAll('.seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+    hint.textContent = HINTS[mode];
+    fsess.dataset.folded = 'true';
+  }
+  document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+  /* ── 现方案：浮层折叠 ─────────────────────────────────────────── */
+  fsHead.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fsess.dataset.folded = fsess.dataset.folded === 'true' ? 'false' : 'true';
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (app.dataset.mode !== 'now') return;
+    if (!fsess.contains(e.target)) fsess.dataset.folded = 'true';
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (app.dataset.mode === 'now') fsess.dataset.folded = 'true';
+    else app.dataset.panel = 'closed';
+  });
+
+  /* ── 任务条：数据 + 三档默认态 ─────────────────────────────────
+     三种默认态各自成立，所以它是个「设置」而不是一次性开关：
+       closed 永远收起（只留一行摘要）
+       open   永远展开
+       auto   还有没做完的就展开，全部做完自动收成一行
+     点任务行可以勾掉/恢复，用来验证 auto —— 最后一个勾掉，它自己会收起来。 */
+  const TASKS = [
+    { text: '读 relayAccountStore 的取数逻辑', state: 'done' },
+    { text: '确认 /api/v1/me 的鉴权中间件', state: 'done' },
+    { text: '改取数入口为 /api/v1/stats', state: 'now' },
+    { text: '回归：卡片 401 消失', state: 'todo' },
+  ];
+  let taskMode = 'auto'; // 'closed' | 'open' | 'auto'（默认 auto：有没做完的就展开）
+
+  const taskDone = () => TASKS.filter((t) => t.state === 'done').length;
+  const taskRunning = () => TASKS.find((t) => t.state === 'now');
+
+  function applyTaskOpen() {
+    const open =
+      taskMode === 'open' ? true :
+      taskMode === 'closed' ? false :
+      // 自动：还有没做完的就展开，全做完收成一行。判据用「没做完」而不是「有在跑」——
+      // 停在等你确认的那一刻，剩下的待办恰恰是最该看见的东西。
+      taskDone() < TASKS.length;
+    taskdock.dataset.open = String(open);
+    taskHead.setAttribute('aria-expanded', String(open));
+    document.querySelectorAll('[data-task]').forEach((b) =>
+      b.setAttribute('aria-pressed', String(b.dataset.task === taskMode)));
+  }
+
+  function renderTasks() {
+    const total = TASKS.length;
+    const done = taskDone();
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    taskdock.dataset.empty = String(total === 0);
+
+    taskList.innerHTML = TASKS.map((t, i) => {
+      const cls = t.state === 'done' ? ' class="done"' : t.state === 'now' ? ' class="now"' : '';
+      const mk =
+        t.state === 'done' ? '<span class="ck">✓</span>' :
+        t.state === 'now' ? '<span class="spin" style="display:inline-flex;color:var(--accent-strong)">◠</span>' :
+        '<span class="dot"></span>';
+      return `<li${cls} data-i="${i}"><span class="mk">${mk}</span><span>${t.text}</span></li>`;
+    }).join('');
+
+    // 计数只有一处真相：任务条 / 右上胶囊 / 浮层卡 / 收起图标轨都读这一份
+    document.querySelectorAll('[data-frac]').forEach((el) => { el.textContent = `${done}/${total}`; });
+    document.querySelectorAll('[data-bar]').forEach((el) => { el.style.width = pct + '%'; });
+
+    const running = taskRunning();
+    taskNow.textContent = running
+      ? running.text
+      : (done === total ? `本轮 ${total} 项已完成` : '暂时没有进行中的任务');
+    taskRest.textContent = done === total ? '全部完成' : `剩 ${total - done} 项`;
+
+    applyTaskOpen();
+  }
+
+  taskList.addEventListener('click', (e) => {
+    const li = e.target.closest('li[data-i]');
+    if (!li) return;
+    const t = TASKS[Number(li.dataset.i)];
+    if (t.state === 'done') {
+      // 一次只有一个「正在做」：恢复某条时，原来那条退回待办
+      TASKS.forEach((o) => { if (o.state === 'now') o.state = 'todo'; });
+      t.state = 'now';
+    } else {
+      t.state = 'done';
+    }
+    renderTasks();
+  });
+
+  taskHead.addEventListener('click', () => {
+    // 手动点 = 明确表态，于是把默认态钉成对应的那一档（顶栏三段会跟着变）
+    taskMode = taskdock.dataset.open === 'true' ? 'closed' : 'open';
+    applyTaskOpen();
+  });
+
+  document.querySelectorAll('[data-task]').forEach((b) =>
+    b.addEventListener('click', () => { taskMode = b.dataset.task; applyTaskOpen(); }));
+
+  renderTasks();
+
+  /* ── A/B：打开 / 收起停靠面板 ─────────────────────────────────── */
+  pill.addEventListener('click', () => { app.dataset.panel = 'open'; });
+  panelClose.addEventListener('click', () => { app.dataset.panel = 'closed'; });
+  document.querySelector('.rail-collapsed').addEventListener('click', () => { app.dataset.panel = 'open'; });
+
+  /* ── 拖拽宽度（260–460）─────────────────────────────────────── */
+  let dragging = false;
+  resizer.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    resizer.dataset.drag = 'true';
+    app.dataset.dragging = 'true'; // 拖拽时不要 300ms 过渡，否则跟手很糊
+    try { resizer.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  });
+  resizer.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const rect = app.getBoundingClientRect();
+    const w = Math.min(460, Math.max(260, Math.round(rect.right - e.clientX)));
+    app.style.setProperty('--panel-w', w + 'px');
+  });
+  const endDrag = () => {
+    dragging = false;
+    delete resizer.dataset.drag;
+    delete app.dataset.dragging;
+  };
+  resizer.addEventListener('pointerup', endDrag);
+  resizer.addEventListener('pointercancel', endDrag);
+
+  /* ── 慢放（看清「内容左移」这一下）──────────────────────────── */
+  const slowBtn = document.getElementById('slow');
+  slowBtn.addEventListener('click', () => {
+    const on = document.documentElement.dataset.slow !== 'true';
+    document.documentElement.dataset.slow = String(on);
+    slowBtn.setAttribute('aria-pressed', String(on));
+  });
+
+  /* ── 主题 / 窄窗口 / 脚注 ────────────────────────────────────── */
+  const themeBtn = document.getElementById('theme');
+  themeBtn.addEventListener('click', () => {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+    themeBtn.textContent = dark ? '深色' : '浅色';
+    themeBtn.setAttribute('aria-pressed', String(!dark));
+  });
+
+  const narrowBtn = document.getElementById('narrow');
+  function applyNarrow() {
+    // 窗格比 980 窄 → 停靠降级成覆盖（见 .app[data-narrow] 的 CSS）
+    const w = app.getBoundingClientRect().width;
+    app.dataset.narrow = String(w < 980);
+  }
+  narrowBtn.addEventListener('click', () => {
+    const on = narrowBtn.getAttribute('aria-pressed') !== 'true';
+    narrowBtn.setAttribute('aria-pressed', String(on));
+    app.style.maxWidth = on ? '940px' : '';
+    setTimeout(applyNarrow, 200);
+  });
+  new ResizeObserver(applyNarrow).observe(app);
+
+  const notes = document.getElementById('notes');
+  const notesBtn = document.getElementById('notesBtn');
+  notesBtn.addEventListener('click', () => {
+    const on = notes.classList.toggle('open');
+    notesBtn.setAttribute('aria-pressed', String(on));
+  });
+})();
+</script>
+</body>
+</html>

@@ -41,6 +41,8 @@ import {
   DEFAULT_PROVIDER_ID,
   UI_CHAT_FONT_SIZE_SETTING_KEY,
   UI_RIGHT_PANEL_FONT_SIZE_SETTING_KEY,
+  UI_TASK_DOCK_MODE_SETTING_KEY,
+  UI_SESSION_PANEL_WIDTH_SETTING_KEY,
   UI_PASTE_TAG_THRESHOLD_CHARS_SETTING_KEY,
   UI_USER_MSG_COLOR_SETTING_KEY,
   UI_ACCENT_COLOR_SETTING_KEY,
@@ -734,6 +736,12 @@ export interface SessionState {
    *  table. Applied to <html> as the --chat-font-size CSS var by
    *  lib/appearance.ts so it cascades into the message rows + markdown. */
   chatFontSize: number;
+  /** Default state of the task dock above the composer. Persisted in the
+   *  `settings` table; a manual toggle on the dock overrides it per pane. */
+  taskDockMode: TaskDockMode;
+  /** Width in px of the docked 「本会话」 panel (260–460). Persisted in the
+   *  `settings` table when a drag ends. */
+  sessionPanelWidth: number;
   /** Global side-panel + settings font size in px (10–22). Despite the
    *  legacy field name, this drives the whole app chrome: the left project
    *  bar, the right files/git/terminal panels, AND the settings page all
@@ -1720,6 +1728,12 @@ export interface SessionState {
   /** Update the right-panel base font size (clamped to 10–22 px). Persists
    *  to the `settings` table. */
   setRightPanelFontSize: (px: number) => Promise<void>;
+  /** Update the task dock's default state (closed / open / auto). Persists to
+   *  the `settings` table; open panes honour it on their next mount. */
+  setTaskDockMode: (mode: TaskDockMode) => Promise<void>;
+  /** Update the docked 「本会话」 panel width (clamped to 260–460 px). Persists
+   *  to the `settings` table on drag release. */
+  setSessionPanelWidth: (px: number) => Promise<void>;
   /** Update the paste-to-card threshold (clamped to 50–5000 chars). Persists
    *  to the `settings` table. */
   setPasteTagThresholdChars: (n: number) => Promise<void>;
@@ -2362,6 +2376,34 @@ export function clampRightPanelFontSize(px: number): number {
   return Math.min(
     RIGHT_PANEL_FONT_SIZE_MAX,
     Math.max(RIGHT_PANEL_FONT_SIZE_MIN, Math.round(px)),
+  );
+}
+
+/**
+ * Default state of the task dock (the checklist above the composer):
+ *  closed — one-line summary only
+ *  open   — always expanded
+ *  auto   — expanded while any task is unfinished, folded once all are done
+ */
+export type TaskDockMode = "closed" | "open" | "auto";
+
+export const TASK_DOCK_MODES: readonly TaskDockMode[] = ["closed", "open", "auto"] as const;
+
+export function parseTaskDockMode(v: unknown): TaskDockMode {
+  return v === "closed" || v === "open" ? v : "auto";
+}
+
+/** Min/max width of the docked 「本会话」 panel (px). The drag handle on its
+ *  left edge uses the same bounds; setSessionPanelWidth clamps defensively. */
+export const SESSION_PANEL_WIDTH_MIN = 260;
+export const SESSION_PANEL_WIDTH_MAX = 460;
+
+/** Clamp a panel width to the allowed drag range. */
+export function clampSessionPanelWidth(px: number): number {
+  if (!Number.isFinite(px)) return 320;
+  return Math.min(
+    SESSION_PANEL_WIDTH_MAX,
+    Math.max(SESSION_PANEL_WIDTH_MIN, Math.round(px)),
   );
 }
 
@@ -4555,6 +4597,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // Persisted in `settings` table; init() overwrites from the DB. Default
   // 15px mirrors the --chat-font-size CSS var in styles.css.
   chatFontSize: 15,
+  // 「有任务就展开」 is the shipped default: the checklist appears exactly
+  // while there is something left to do, and folds to one line when done.
+  taskDockMode: "auto",
+  // The width the docked panel was designed around (prototype --panel-w).
+  sessionPanelWidth: 320,
   // Persisted in `settings` table; init() overwrites from the DB. Default
   // 14px mirrors the --right-panel-font-size CSS var in styles.css.
   rightPanelFontSize: 14,
@@ -4985,19 +5032,31 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       console.error("apply(composerModel) failed:", err);
     }
 
-    // Fetch the project list, chat font size, and the global pinned bucket in
-    // parallel - all three are needed for the first frame (session tree + chat
-    // text size + pinned section above the tree).
-    const [projectListRes, fontRes, pinnedRes] = await Promise.allSettled([
+    // Fetch the project list, the chat/panel chrome settings and the global
+    // pinned bucket in parallel - all of them shape the first frame (session
+    // tree, chat text size, task dock default, docked panel width, pinned
+    // section above the tree).
+    const [projectListRes, fontRes, pinnedRes, dockModeRes, panelWidthRes] = await Promise.allSettled([
       api.project.list(),
       api.setting.get({ key: UI_CHAT_FONT_SIZE_SETTING_KEY }),
       api.session.listPinned(),
+      api.setting.get({ key: UI_TASK_DOCK_MODE_SETTING_KEY }),
+      api.setting.get({ key: UI_SESSION_PANEL_WIDTH_SETTING_KEY }),
     ]);
 
     // Apply chat font size (best-effort - missing/invalid leaves the default).
     if (fontRes.status === "fulfilled" && fontRes.value.value != null) {
       const px = Number(fontRes.value.value);
       if (Number.isFinite(px)) set({ chatFontSize: clampFontSize(px) });
+    }
+
+    // Task dock default + docked panel width (same best-effort contract).
+    if (dockModeRes.status === "fulfilled" && dockModeRes.value.value != null) {
+      set({ taskDockMode: parseTaskDockMode(dockModeRes.value.value) });
+    }
+    if (panelWidthRes.status === "fulfilled" && panelWidthRes.value.value != null) {
+      const px = Number(panelWidthRes.value.value);
+      if (Number.isFinite(px)) set({ sessionPanelWidth: clampSessionPanelWidth(px) });
     }
 
     if (projectListRes.status !== "fulfilled") {
@@ -9027,6 +9086,29 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       });
     } catch (err) {
       console.error("setting.set(chatFontSize) failed:", err);
+    }
+  },
+
+  setTaskDockMode: async (mode) => {
+    const next = parseTaskDockMode(mode);
+    set({ taskDockMode: next });
+    try {
+      await api.setting.set({ key: UI_TASK_DOCK_MODE_SETTING_KEY, value: next });
+    } catch (err) {
+      console.error("setting.set(taskDockMode) failed:", err);
+    }
+  },
+
+  setSessionPanelWidth: async (px) => {
+    const clamped = clampSessionPanelWidth(px);
+    set({ sessionPanelWidth: clamped });
+    try {
+      await api.setting.set({
+        key: UI_SESSION_PANEL_WIDTH_SETTING_KEY,
+        value: String(clamped),
+      });
+    } catch (err) {
+      console.error("setting.set(sessionPanelWidth) failed:", err);
     }
   },
 

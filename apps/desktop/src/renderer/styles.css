@@ -2262,79 +2262,13 @@ html[data-tone="warm"] .chat-md {
   box-shadow: none;
 }
 
-/* ───────── 本会话浮窗 (prototypes/ui-refresh-v3.html「本会话」) ─────────
- * Fold/expand animates ONLY clip-path: the card's width and inner layout
- * never change, so nothing reflows or re-wraps mid-animation. The collapsed
- * state clips everything except a pill-sized rect in the top-right corner;
- * the header's title and summary cross-fade in the same grid cell so the pill
- * shows the summary and the card shows the title.
- *
- * The hairline + shadow come from `filter: drop-shadow` on the OUTER element
- * so they trace the CLIPPED shape (a pill gets a pill outline). A border on
- * the card would stay rectangular and leak outside the clip.
- *
- * No backdrop-filter: re-blurring a translucent layer on every scroll frame
- * of the stream underneath it was a measurable cost for no design gain. */
-.fsess {
-  --pill-w: 300px;
-  --pill-h: 34px;
-  --fs-in: 380ms cubic-bezier(0.22, 1, 0.36, 1);
-  --fs-out: 260ms cubic-bezier(0.5, 0, 0.2, 1);
-  filter: drop-shadow(0 0 0.5px rgb(24 24 22 / 0.35)) drop-shadow(0 12px 24px rgb(24 24 22 / 0.14));
-}
-.dark .fsess {
-  filter: drop-shadow(0 0 0.5px rgb(255 255 255 / 0.28)) drop-shadow(0 14px 28px rgb(0 0 0 / 0.55));
-}
-.fs-card {
-  clip-path: inset(0 0 0 0 round 14px);
-  transition: clip-path var(--fs-in);
-  will-change: clip-path;
-}
-.fsess[data-folded="true"] .fs-card {
-  clip-path: inset(0 0 calc(100% - var(--pill-h)) calc(100% - var(--pill-w)) round 17px);
-  transition: clip-path var(--fs-out) 40ms;
-}
-/* Header: title (expanded) and summary (folded) share one grid cell. */
-.fs-swap > * {
-  grid-area: 1 / 1;
-}
-.fs-title {
-  justify-self: start;
-  transition: opacity 160ms ease 80ms, transform var(--fs-in);
-}
-.fs-sum {
-  justify-self: end;
-  opacity: 0;
-  transform: translateX(6px);
-  transition: opacity 120ms ease, transform var(--fs-in);
-}
-.fsess[data-folded="true"] .fs-title {
-  opacity: 0;
-  transform: translateX(-6px);
-  transition: opacity 100ms ease, transform var(--fs-out);
-}
-.fsess[data-folded="true"] .fs-sum {
-  opacity: 1;
-  transform: none;
-  transition: opacity 180ms ease 90ms, transform var(--fs-out) 40ms;
-}
-.fs-body {
-  transition: opacity 220ms ease 90ms, transform var(--fs-in);
-}
-.fsess[data-folded="true"] .fs-body {
-  opacity: 0;
-  transform: translateY(-8px);
-  transition: opacity 110ms ease, transform var(--fs-out);
-  pointer-events: none;
-}
-.fsess[data-folded="true"] .fs-chev {
-  transform: rotate(180deg);
-}
-.fs-chev {
-  transition: transform var(--fs-in);
-}
-/* Per-turn cache sparkline. Bar heights ride --h so the markup stays free of
- * computed styles beyond the one custom property. */
+/* ───────── 「本会话」 (.fs-spark) ─────────
+ * The card that used to live in the transcript's top-right corner — the
+ * clip-path unfold, the pill's cross-fading title/summary, the drop-shadow
+ * hairline — is gone. It is now a docked column (SessionPanel) whose width
+ * animates in a flex row, so none of that machinery is left to style; the
+ * motion numbers live in SessionPanel.tsx next to the code that runs them.
+ * Only the cache sparkline survives from this namespace. */
 .fs-spark i {
   flex: 1;
   height: max(3px, var(--h));
@@ -2346,15 +2280,6 @@ html[data-tone="warm"] .chat-md {
 }
 .fs-spark i[data-low="true"] {
   background: rgb(var(--warning) / 0.55);
-}
-@media (prefers-reduced-motion: reduce) {
-  .fs-card,
-  .fs-title,
-  .fs-sum,
-  .fs-body,
-  .fs-chev {
-    transition: none !important;
-  }
 }
 
 /* Per-turn cache / speed pill in the reply byline (TODO-023). A pill, not

@@ -2,9 +2,20 @@ import {
   useSessionStore,
   PASTE_TAG_THRESHOLD_CHARS_MIN,
   PASTE_TAG_THRESHOLD_CHARS_MAX,
+  type TaskDockMode,
 } from "@renderer/stores/sessionStore.js";
 import { Select, Input, Switch, Button } from "@renderer/components/ui/index.js";
-import { IconSquare, IconStack2, IconList, IconListDetails, IconGripHorizontal, IconX } from "@renderer/lib/icons.js";
+import {
+  IconSquare,
+  IconStack2,
+  IconList,
+  IconListDetails,
+  IconGripHorizontal,
+  IconX,
+  IconChevronRight,
+  IconListCheck,
+  IconSparkles,
+} from "@renderer/lib/icons.js";
 import { useI18n, type MessageId } from "@renderer/lib/i18n/index.js";
 import type { ChatDensity, DisplayMode, AutoArchiveConfig, Locale } from "@contracts/ipc";
 import type { ReactNode } from "react";
@@ -19,7 +30,8 @@ import { OutputStylePanel } from "./OutputStylePanel.js";
  *
  * Hosts general-purpose preferences that aren't tied to a specific feature
  * area. Currently:
- *  - 基础 (SettingsSection): 界面语言 + 中间面板显示模式 + 对话紧凑度 + 长文本折叠阈值
+ *  - 基础 (SettingsSection): 界面语言 + 中间面板显示模式 + 对话紧凑度 + 任务条默认
+ *    + 长文本折叠阈值
  *    (语言与显示合并为一组——单行小节不值得独占一张卡)
  *  - 会话自动归档 (SettingsSection): 开关 + 默认不活跃天数 + 按项目覆盖
  *  - 会话标题生成 (TitleGenPanel, renders its own SettingsSection)
@@ -40,6 +52,16 @@ const DENSITY_OPTIONS: { value: ChatDensity; labelKey: MessageId; icon: ReactNod
   { value: "compact", labelKey: "settings.general.densityCompact", icon: <IconList size={14} className="text-content-muted" /> },
   { value: "comfortable", labelKey: "settings.general.densityComfortable", icon: <IconListDetails size={14} className="text-content-muted" /> },
   { value: "cozy", labelKey: "settings.general.densityCozy", icon: <IconGripHorizontal size={14} className="text-content-muted" /> },
+];
+
+/** Task dock default. "auto" is the shipped default: open while anything is
+ *  unfinished, one line once everything is done. "closed"/"open" pin it so it
+ *  never moves on its own — the choice is persisted, unlike the per-pane
+ *  override you get by clicking the dock's header. */
+const TASK_DOCK_MODE_OPTIONS: { value: TaskDockMode; labelKey: MessageId; icon: ReactNode }[] = [
+  { value: "closed", labelKey: "settings.general.taskDockClosed", icon: <IconChevronRight size={14} className="text-content-muted" /> },
+  { value: "open", labelKey: "settings.general.taskDockOpen", icon: <IconListCheck size={14} className="text-content-muted" /> },
+  { value: "auto", labelKey: "settings.general.taskDockAuto", icon: <IconSparkles size={14} className="text-content-muted" /> },
 ];
 
 /** Inactivity day thresholds. Labels are built via t("common.dayCount") at
@@ -68,6 +90,10 @@ export function GeneralPanel() {
   // ── Paste-to-card threshold ──
   const pasteTagThresholdChars = useSessionStore((s) => s.pasteTagThresholdChars);
   const setPasteTagThresholdChars = useSessionStore((s) => s.setPasteTagThresholdChars);
+
+  // ── Task dock default (the checklist above the composer) ──
+  const taskDockMode = useSessionStore((s) => s.taskDockMode);
+  const setTaskDockMode = useSessionStore((s) => s.setTaskDockMode);
 
   // ── Session auto-archive rules ──
   const autoArchiveConfig = useSessionStore((s) => s.autoArchiveConfig);
@@ -226,6 +252,48 @@ export function GeneralPanel() {
                 <Select.Popup>
                   <Select.List>
                     {DENSITY_OPTIONS.map((o) => (
+                      <Select.Item key={o.value} value={o.value}>
+                        {o.icon}
+                        <Select.ItemText>{t(o.labelKey)}</Select.ItemText>
+                      </Select.Item>
+                    ))}
+                  </Select.List>
+                </Select.Popup>
+              </Select.Positioner>
+            </Select.Portal>
+          </Select.Root>
+        </SettingRow>
+
+        {/* ── Task dock default (收起 / 展开 / 自动) ── */}
+        <SettingRow
+          title={t("settings.general.taskDock")}
+          desc={t("settings.general.taskDockDesc")}
+          htmlFor="setting-taskdock"
+        >
+          <Select.Root
+            value={taskDockMode}
+            onValueChange={(v) => void setTaskDockMode(v as TaskDockMode)}
+          >
+            <Select.Trigger id="setting-taskdock" className="w-full">
+              <Select.Value>
+                {(val: TaskDockMode) => {
+                  const o =
+                    TASK_DOCK_MODE_OPTIONS.find((x) => x.value === val) ??
+                    TASK_DOCK_MODE_OPTIONS[2];
+                  return (
+                    <span className="flex items-center gap-1.5">
+                      {o.icon}
+                      {t(o.labelKey)}
+                    </span>
+                  );
+                }}
+              </Select.Value>
+            </Select.Trigger>
+            <Select.Portal>
+              <Select.Positioner>
+                <Select.Popup>
+                  <Select.List>
+                    {TASK_DOCK_MODE_OPTIONS.map((o) => (
                       <Select.Item key={o.value} value={o.value}>
                         {o.icon}
                         <Select.ItemText>{t(o.labelKey)}</Select.ItemText>

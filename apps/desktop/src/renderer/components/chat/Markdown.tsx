@@ -126,11 +126,19 @@ function ensureHighlighter(): Promise<ShikiHighlighter> {
   return highlighterPromise;
 }
 
-function currentTheme(): BundledTheme {
-  if (typeof document !== "undefined") {
-    return document.documentElement.classList.contains("dark") ? "github-dark-default" : "github-light";
-  }
-  return "github-dark-default";
+/** Shiki theme for a given app palette. `github-dark-default` (#0d1117) sits
+ *  close to the deep dark surface, `github-light` close to the light one; the
+ *  block's own FILL is dropped in CSS (see `pre.shiki` in styles.css) so the
+ *  card well — which follows all four palettes, warm and neutral — shows
+ *  through and only the token colours come from shiki.
+ *
+ *  Takes the dark flag as an ARGUMENT rather than reading the DOM: the caller
+ *  has it from `useIsDarkMode()`, which makes it a render dependency. Reading
+ *  `document.documentElement.classList` inside the memo is what used to leave
+ *  a light-palette block sitting in a dark app after a theme flip — the memo
+ *  had no way to know anything had changed. */
+function shikiTheme(dark: boolean): BundledTheme {
+  return dark ? "github-dark-default" : "github-light";
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -626,6 +634,10 @@ function CodeBlock({
 }) {
   // Lazy-init highlighter on first encounter of a fenced block.
   const [ready, setReady] = useState(!!highlighterInstance);
+  // Palette as a REACT dependency (not a DOM read inside the memo): flipping
+  // the theme has to re-highlight, otherwise the previous palette's inline
+  // token colours — and its inline background — stay on screen.
+  const dark = useIsDarkMode();
   useMemo(() => {
     if (!highlighterInstance) {
       ensureHighlighter().then(() => setReady(true));
@@ -638,7 +650,7 @@ function CodeBlock({
     // Theme is part of the cache key so a theme switch (light↔dark, or a
     // theme-name change) invalidates stale HTML and re-highlights instead
     // of serving the wrong palette.
-    const theme = currentTheme();
+    const theme = shikiTheme(dark);
     const key = codeCacheKey(rawCode, lang, theme);
     // Cache hit?
     const cached = getCodeHtml(key);
@@ -675,7 +687,7 @@ function CodeBlock({
     }
 
     return null; // Not ready yet or highlight failed — show raw text.
-  }, [rawCode, lang, ready]);
+  }, [rawCode, lang, ready, dark]);
 
   // Long code blocks are collapsed to a max-height preview with a 展开
   // overlay; clicking it (or the 收起 header button once expanded) toggles

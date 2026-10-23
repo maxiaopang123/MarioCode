@@ -13,7 +13,9 @@
  *     dropping `position`/`z-index`/`top`/`left`.
  *  4b. Colours fit the theme: a `background:#fff;color:#fff` card becomes a
  *     light card with dark text in light mode and a dark inset with light text
- *     in dark mode, and the mermaid SVG is re-rendered with the other palette.
+ *     in dark mode; the mermaid SVG is re-rendered with the other palette; and
+ *     a fenced code block re-highlights its tokens while leaving its fill to
+ *     the card well, which follows the theme.
  *  5. Both switches work: 渲染 HTML off → the markup shows literally; mermaid
  *     off → the fence shows as code.
  *
@@ -47,6 +49,13 @@ const REPLY = [
   "graph TD",
   "  A[开始] --> B{判断}",
   "  B -->|是| C[结束]",
+  FENCE,
+  "",
+  // A fenced code block: shiki bakes its palette into BOTH the token colours
+  // and the block's own fill. Section 4b asserts the tokens follow the theme
+  // while the fill does not (the card well carries it).
+  `${FENCE}ts`,
+  "const answer: number = 42;",
   FENCE,
   "",
   "<details><summary>点开看细节</summary><p>折叠里的内容</p></details>",
@@ -237,6 +246,26 @@ await electronTest(
       evaluate(
         "(()=>{const r=document.querySelector('[data-mermaid] .mermaid-svg > svg rect');return r?getComputedStyle(r).fill:''})()",
       );
+    // Code blocks carry TWO colours: shiki's inline token colours, and its
+    // inline fill. The fill is overridden to transparent in CSS so the card
+    // well (`bg-surface-muted`, which follows all four app palettes) shows
+    // through instead — hence the walk up to the first painted ancestor.
+    // What must change on a flip is the TOKENS: the highlighter has to re-run,
+    // and a stale `useMemo` (the bug this guards) left the previous palette's
+    // block — light text surface, white fill — sitting in a dark app.
+    const codeBlock = () =>
+      evaluate(`(()=>{
+        const pre=document.querySelector('.chat-md pre.shiki');
+        if(!pre) return null;
+        const token=pre.querySelector('span');
+        let el=pre.parentElement, well='';
+        while(el && el!==document.body){
+          const bg=getComputedStyle(el).backgroundColor;
+          if(bg && bg!=='rgba(0, 0, 0, 0)'){well=bg;break}
+          el=el.parentElement;
+        }
+        return {bg:getComputedStyle(pre).backgroundColor, well, color:token?getComputedStyle(token).color:''};
+      })()`);
     const setTheme = (dark) =>
       evaluate(
         dark
@@ -294,11 +323,50 @@ await electronTest(
       "rgba(0, 0, 0, 0)",
       "the SVG itself stays transparent so the block's own surface shows through",
     );
+
+    // Code block, light pass: the highlighter is lazy (first fenced block), so
+    // wait for its output rather than reading straight after the reload.
+    await wait("Boolean(document.querySelector('.chat-md pre.shiki span'))");
+    const lightCode = await codeBlock();
+    assert.ok(lightCode, "the fenced block is highlighted");
+    assert.equal(
+      lightCode.bg,
+      "rgba(0, 0, 0, 0)",
+      `light: shiki's own fill is dropped, the card well carries it (${lightCode.bg})`,
+    );
+    assert.ok(
+      channelSum(lightCode.well) > 600,
+      `light: the well behind the block is the light surface (${lightCode.well})`,
+    );
+
     await setTheme(true);
     await wait("window.__fillSum() > 0 && window.__fillSum() < 300");
     assert.ok(
       channelSum(await nodeFill()) < 300,
       "dark: the same diagram is re-rendered with the dark palette",
+    );
+
+    // Code block, dark pass: same transparent fill, different tokens, and the
+    // well behind it has followed the theme — this is the screenshot's bug
+    // ("代码块输出背景色没有跟随 MarioCode 深浅改变") in assertion form.
+    await evaluate(`window.__lightTokenColor=${JSON.stringify(lightCode.color)};true`);
+    await wait(
+      "(()=>{const t=document.querySelector('.chat-md pre.shiki span');return !!t && getComputedStyle(t).color !== window.__lightTokenColor})()",
+    );
+    const darkCode = await codeBlock();
+    assert.notEqual(
+      darkCode.color,
+      lightCode.color,
+      `dark: the block is re-highlighted, not the stale light palette (${darkCode.color})`,
+    );
+    assert.equal(
+      darkCode.bg,
+      "rgba(0, 0, 0, 0)",
+      `dark: the block still leaves the fill to the card well (${darkCode.bg})`,
+    );
+    assert.ok(
+      channelSum(darkCode.well) < 200,
+      `dark: the well behind the block switched to the dark surface (${darkCode.well})`,
     );
 
     /* ── 5a. 渲染 HTML off ────────────────────────────────────────────── */

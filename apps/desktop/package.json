@@ -60,7 +60,9 @@
     "package": "pnpm run build && node -e \"require('fs').rmSync('../../packages/contracts/dist',{recursive:true,force:true})\" && node build/dereference-workspace-symlinks.cjs && electron-builder --publish never",
     "test:rich-output-prompt-electron": "node scripts/test-rich-output-prompt-electron.mjs",
     "test:tool-summary": "node --import ./scripts/tool-summary-smoke/register.mjs scripts/tool-summary-smoke/run.mjs",
-    "test:tool-row-summary-electron": "node scripts/test-tool-row-summary-electron.mjs"
+    "test:tool-row-summary-electron": "node scripts/test-tool-row-summary-electron.mjs",
+    "test:codex-bridge-timeout": "node scripts/codex-bridge-timeout-smoke/run.mjs",
+    "test:timeout-policy": "node scripts/timeout-policy-smoke/run.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.258",

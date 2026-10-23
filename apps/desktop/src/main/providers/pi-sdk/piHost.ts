@@ -15,13 +15,14 @@ import { createMarioCodeExtension } from "./mariocodeExtension.js";
 import { normalizePiRegisteredModel } from "./piRegisteredModel.js";
 import { dropFileSnapshot, getFileSnapshot } from "@main/lib/fileSnapshotRegistry.js";
 import { isMainToPiHost, PI_HOST_PROTOCOL_VERSION, type MainToPiHost, type PiHostReverseMethod, type PiHostToMain, type PiHostTurnConfig } from "./piHostProtocol.js";
+import { reverseTimeoutMs } from "./reverseBudgets.js";
 
 const sdkEntry = process.argv[2];
 const runtimeVersion = process.argv[4];
 if (!sdkEntry || !isAbsolute(sdkEntry)) throw new Error("Pi host requires an absolute SDK entry path");
 const sdkPromise = import(pathToFileURL(sdkEntry).href) as Promise<typeof import("@earendil-works/pi-coding-agent")>;
 const turns = new Map<string, { session: { abort(): Promise<void>; dispose(): void }; aborted: boolean }>();
-const reversePending = new Map<string, { turnId: string; resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
+const reversePending = new Map<string, { turnId: string; resolve(value: unknown): void; reject(error: Error): void; timer?: NodeJS.Timeout }>();
 const abortedTurns = new Set<string>();
 
 let shuttingDown = false;
@@ -39,8 +40,15 @@ function validateReverseResult(method: PiHostReverseMethod, value: unknown): unk
 }
 function reverse(turnId: string, method: PiHostReverseMethod, params: never): Promise<unknown> {
   const id = randomUUID();
+  // Per-method budget: human prompts wait indefinitely, tool calls get a
+  // generous ceiling. See reverseBudgets.ts for why one flat 5 minutes was
+  // wrong. A pending entry without a timer is still cleaned up by the turn
+  // interrupt / host-close sweeps below, so "no timer" cannot leak.
+  const timeoutMs = reverseTimeoutMs(method);
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { reversePending.delete(id); reject(new Error(`${method} timed out`)); }, 5 * 60_000);
+    const timer = timeoutMs > 0
+      ? setTimeout(() => { reversePending.delete(id); reject(new Error(`${method} timed out after ${Math.round(timeoutMs / 60_000)}min`)); }, timeoutMs)
+      : undefined;
     reversePending.set(id, { turnId, resolve: (value) => { try { resolve(validateReverseResult(method, value)); } catch (err) { reject(err as Error); } }, reject, timer });
     send({ type: "reverse", id, turnId, method, params });
   });

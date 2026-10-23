@@ -13,7 +13,9 @@ import { PI_HOST_PROTOCOL_VERSION, type MainToPiHost, type PiHostCall, type PiHo
 import { unpackPiHostPath } from "./piHostPath.js";
 
 const CALL_TIMEOUT_MS = 30_000;
-const REVERSE_TIMEOUT_MS = 5 * 60_000;
+// The reverse channel's deadlines live in the pi-host process (reverseBudgets
+// .ts) — that is the side that awaits the answer. Nothing here caps them, so a
+// slow tool or an unanswered approval prompt is bounded exactly once.
 const BROWSER_METHODS = new Set([
   "browser_list", "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_keys",
   "browser_scroll", "browser_wait", "browser_history", "browser_select", "browser_find", "browser_switch_tab",

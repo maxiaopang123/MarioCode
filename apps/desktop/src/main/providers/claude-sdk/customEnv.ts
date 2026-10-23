@@ -142,6 +142,29 @@ export function resolveActiveModel(cfg: ApiConfig): string | undefined {
   return entry.supports1m ? with1MSuffix(entry.id) : entry.id;
 }
 
+/* ── Per-request deadline (gateway turns) ─────────────────────────────────
+ * The CLI's own budget is `timeout: API_TIMEOUT_MS ?? 600000` in its API
+ * client — a TOTAL per-HTTP-request deadline, not a silence watchdog. That is
+ * the wrong shape for a long streaming reply: a healthy generation that runs
+ * past 10 minutes is aborted mid-stream.
+ *
+ * We cannot fix it the way the Codex bridge does (idle re-armed per chunk),
+ * because the CLI's byte-idle watchdog is gated to first-party/bedrock:
+ *
+ *   X$r(provider) = _i() && Dp(provider) && Dp(currentProvider)
+ *   Dp(p)         = firstParty (with first-party auth) || bedrock
+ *
+ * On a third-party gateway Dp() is false, so `CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS`
+ * is inert there and API_TIMEOUT_MS is the ONLY guard. It therefore has to stay
+ * at a human-scale value: large enough that no healthy reply can reach it
+ * (a 32k-token answer on a slow 10 tok/s gateway ≈ 53 min), small enough that a
+ * black-holed connection surfaces the same session, not the next day.
+ *
+ * 60 min, with the user always able to press Stop. An explicit per-model
+ * timeoutMs still wins for anyone who configured one.
+ */
+export const CLAUDE_API_TIMEOUT_MS = 60 * 60_000;
+
 /**
  * @param opts.sessionId MarioCode session driving this turn. Only used to name the
  *   gateway's required session header — see the `ANTHROPIC_CUSTOM_HEADERS`
@@ -222,10 +245,9 @@ export function buildCustomEnv(
     env.ANTHROPIC_MODEL = mainModel;
   }
 
-  // Per-request timeout (ms). The SDK honors API_TIMEOUT_MS.
-  if (cfg.timeoutMs && cfg.timeoutMs > 0) {
-    env.API_TIMEOUT_MS = String(cfg.timeoutMs);
-  }
+  // Per-request timeout (ms). Always set: left unset, the CLI falls back to
+  // 600000 (10 min) on every gateway turn — see CLAUDE_API_TIMEOUT_MS above.
+  env.API_TIMEOUT_MS = String(cfg.timeoutMs && cfg.timeoutMs > 0 ? cfg.timeoutMs : CLAUDE_API_TIMEOUT_MS);
 
   // Gateway request headers. The binary forwards ANTHROPIC_CUSTOM_HEADERS on
   // every API request, which is exactly the channel a direct (anthropic-

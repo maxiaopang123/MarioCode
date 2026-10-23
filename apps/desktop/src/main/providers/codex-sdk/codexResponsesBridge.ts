@@ -12,7 +12,12 @@ export interface CodexResponsesBridgeConfig {
   apiKey: string;
   model: string;
   maxTokens?: number;
+  /** Absolute ceiling for one `/responses` call (default 12h). This is NOT an
+   *  idle timeout — see the deadline policy above. */
   timeoutMs?: number;
+  /** Overrides for the silence watchdogs; tests use these to run in ms. */
+  idleTimeoutMs?: number;
+  firstByteTimeoutMs?: number;
   sessionId: string;
   customHeaders?: Record<string, string>;
 }
@@ -24,6 +29,41 @@ export interface CodexResponsesBridgeHandle {
 
 /** Hosted Responses web_search cannot execute on Chat/Messages; MarioTool remains available. */
 export const CODEX_BRIDGE_CONFIG_ARGS = ["-c", 'web_search="disabled"'] as const;
+
+/* ── Deadline policy ──────────────────────────────────────────────────────
+ * This bridge translates Codex's Responses calls into a third-party gateway's
+ * Chat/Messages protocol, so the deadline is ours to choose — the gateway's
+ * own HTTP timeout does not apply to the loopback hop Codex sees.
+ *
+ * A fixed TOTAL deadline is the wrong shape for a streaming turn: a healthy
+ * reply that streams a long file can legitimately run past any per-request
+ * budget, and aborting mid-stream turns a slow success into an error. What
+ * actually needs bounding is SILENCE — how long the upstream may send nothing
+ * at all. (Before this policy the budget was a flat 5 minutes per request,
+ * which killed long-but-healthy turns with "Codex upstream request timed out".)
+ *
+ * Three bounds, checked by two timers:
+ *   • first byte — the gateway's queueing + prompt prefill live here, so this
+ *     one gets a larger budget than a mid-stream gap;
+ *   • idle — re-armed on every byte received, including bare SSE comments;
+ *   • absolute — never re-armed, and exists precisely because idle re-arms on
+ *     heartbeats: an upstream that pings forever without ever sending a token
+ *     would otherwise hold the request open indefinitely.
+ */
+/** Longest the gateway may stay silent once it has started streaming. */
+export const CODEX_BRIDGE_IDLE_TIMEOUT_MS = 120_000;
+/** Longest the gateway has to produce its first byte at all. */
+export const CODEX_BRIDGE_FIRST_BYTE_TIMEOUT_MS = 180_000;
+/** Absolute ceiling for one `/responses` call; only heartbeat-only ups hit it. */
+export const CODEX_BRIDGE_ABSOLUTE_TIMEOUT_MS = 12 * 60 * 60_000;
+
+/** Budget label for timeout messages: 12h / 3min / 120ms — never "720min". */
+function formatBudget(ms: number): string {
+  if (ms >= 3_600_000) return `${Math.round(ms / 3_600_000)}h`;
+  if (ms >= 60_000) return `${Math.round(ms / 60_000)}min`;
+  if (ms >= 1000) return `${Math.round(ms / 1000)}s`;
+  return `${ms}ms`;
+}
 
 export function codexUpstreamUrl(base: string, protocol: CodexUpstreamProtocol): string {
   const url = new URL(base);
@@ -72,8 +112,30 @@ export async function startCodexResponsesBridge(config: CodexResponsesBridgeConf
     if (req.method !== "POST" || !["/responses", "/v1/responses"].includes(pathname)) { errorResponse(res, 404, new Error("Unsupported Codex bridge route")); return; }
     const ac = new AbortController();
     active.add(ac);
-    const timer = setTimeout(() => ac.abort(new Error("Codex upstream request timed out")), config.timeoutMs ?? 300_000);
-    timer.unref();
+    const absoluteMs = config.timeoutMs ?? CODEX_BRIDGE_ABSOLUTE_TIMEOUT_MS;
+    const idleMs = config.idleTimeoutMs ?? CODEX_BRIDGE_IDLE_TIMEOUT_MS;
+    const firstByteMs = config.firstByteTimeoutMs ?? CODEX_BRIDGE_FIRST_BYTE_TIMEOUT_MS;
+    // Absolute ceiling — deliberately never re-armed; see the deadline policy.
+    const absoluteTimer = setTimeout(() => {
+      ac.abort(new Error(`Codex upstream exceeded the ${formatBudget(absoluteMs)} absolute limit`));
+    }, absoluteMs);
+    absoluteTimer.unref();
+    // Silence watchdog — starts on the first-byte budget and switches to the
+    // (shorter) idle budget as soon as anything arrives, then re-arms per chunk.
+    let sawFirstByte = false;
+    let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+    const armSilence = () => {
+      if (silenceTimer) clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(() => {
+        ac.abort(new Error(
+          sawFirstByte
+            ? `Codex upstream went silent for ${formatBudget(idleMs)}`
+            : `Codex upstream sent no response within ${formatBudget(firstByteMs)}`,
+        ));
+      }, sawFirstByte ? idleMs : firstByteMs);
+      silenceTimer.unref();
+    };
+    armSilence();
     const disconnect = () => { if (!res.writableEnded) ac.abort(new Error("Codex client disconnected")); };
     req.once("aborted", disconnect);
     res.once("close", disconnect);
@@ -101,6 +163,10 @@ export async function startCodexResponsesBridge(config: CodexResponsesBridgeConf
         ac.signal.throwIfAborted();
         const { done, value } = await reader.read();
         if (done) break;
+        // Any byte proves the upstream is alive: promote to the idle budget
+        // (if we were still waiting for the first byte) and restart the clock.
+        sawFirstByte = true;
+        armSilence();
         decoder.push(value);
       }
       decoder.finish();
@@ -112,7 +178,8 @@ export async function startCodexResponsesBridge(config: CodexResponsesBridgeConf
       else if (!res.headersSent) errorResponse(res, 502, ac.signal.aborted ? ac.signal.reason : error);
       else res.destroy();
     } finally {
-      clearTimeout(timer);
+      clearTimeout(absoluteTimer);
+      if (silenceTimer) clearTimeout(silenceTimer);
       ac.abort();
       await reader?.cancel().catch(() => {});
       reader?.releaseLock();

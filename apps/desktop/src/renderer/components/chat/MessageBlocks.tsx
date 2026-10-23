@@ -53,6 +53,19 @@ import { TagPopover } from "./TagPopover.js";
 import { isImageFilePath, type ContentTag } from "@renderer/lib/contentTag.js";
 import { BUILT_IN_COMMANDS } from "@renderer/lib/slashCommands.js";
 import { toolDisplayName } from "@renderer/lib/builtinToolNames.js";
+import { shellSummary, redactCommandSecrets } from "@renderer/lib/commandSummary.js";
+import {
+  displayCommand,
+  fileLabel,
+  grepTotals,
+  groupCounts,
+  highlightCommand,
+  lineCount,
+  modelDescription,
+  stepDetail,
+  stepKind,
+} from "@renderer/lib/stepSummary.js";
+import { CopyButton } from "./CopyButton.js";
 
 /** Map of absolute file path → its pre-turn content. Built from the
  *  `turn.files` event payload so the Write tool card can diff the new
@@ -323,9 +336,296 @@ function groupBlocks(blocks: Block[]): Segment[] {
   return out;
 }
 
+/* ─────────────────── 一步一行：句子层（原型 exec-steps） ─────────────────── */
+
+type Translator = (key: MessageId, params?: Record<string, string | number>) => string;
+
+/** Group header sentence: 「搜索代码、执行 3 条命令、读取 7 个文件」.
+ *
+ *  Replaces the mechanical tally 「13 个操作  Grep ×2 · Glob ×1 · Bash ×3 …」.
+ *  Same information, one line of prose, and the tool vocabulary (which is
+ *  English in a mostly-Chinese UI) moves down into the rows where it is
+ *  actually needed. Buckets come from `groupCounts`, which fixes their order
+ *  so two runs with the same tools always read the same way. */
+function groupSentence(blocks: ProceduralBlock[], t: Translator): string {
+  const names = blocks.filter(isToolBlock).map((b) => b.toolName);
+  const parts: string[] = [];
+  for (const { kind, count } of groupCounts(names)) {
+    if (kind === "search") parts.push(t("chatStream.group.search"));
+    else if (kind === "command") parts.push(t("chatStream.group.commands", { n: count }));
+    else if (kind === "read") parts.push(t("chatStream.group.read", { n: count }));
+    else if (kind === "write") parts.push(t("chatStream.group.write", { n: count }));
+    else if (kind === "web") parts.push(t("chatStream.group.web"));
+    else if (kind === "tasks") parts.push(t("chatStream.group.tasks"));
+    // MCP / unknown tools have no category — count them plainly rather than
+    // inventing a verb for a name we don't understand.
+    else parts.push(t("chatStream.opCount", { n: count }));
+  }
+  const thinking = blocks.length - names.length;
+  if (thinking > 0) parts.push(t("chatStream.group.thinking", { n: thinking }));
+  const sentence =
+    parts.length > 0
+      ? parts.join(t("chatStream.group.sep"))
+      : t("chatStream.opCount", { n: blocks.length });
+  // en parts are lowercase verbs ("searched code, ran 2 commands"); as a header
+  // they read like a fragment, so capitalise the first letter only (zh: no-op).
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+/** One row's sentence: the model's own `description` when it wrote one
+ *  (answer B), otherwise rule A from `stepDetail`. Never empty — an unknown
+ *  tool falls back to its display name. */
+function stepSentence(toolName: string, input: unknown, t: Translator): string {
+  const idea = modelDescription(input);
+  if (idea) return idea;
+  const detail = stepDetail(toolName, input);
+  switch (detail.kind) {
+    case "command":
+      return detail.value;
+    case "file":
+      return stepKind(toolName) === "write"
+        ? t("chatStream.step.write", { name: detail.value })
+        : t("chatStream.step.read", { name: detail.value });
+    case "pattern":
+      return t("chatStream.step.grep", { q: detail.value });
+    case "glob":
+      return t("chatStream.step.glob", { q: detail.value });
+    case "path":
+      return t("chatStream.step.list", { q: detail.value });
+    case "query":
+      return t("chatStream.step.webSearch", { q: detail.value });
+    case "url":
+      return t("chatStream.step.webFetch", { q: detail.value });
+    default:
+      return stepKind(toolName) === "tasks"
+        ? t("chatStream.group.tasks")
+        : toolDisplayName(toolName);
+  }
+}
+
+/** A tool result as text (Read content, Grep list, Bash stdout …). Images are
+ *  stripped by `resultPreview`; it also caps the length, which is what makes
+ *  counting lines/columns on it safe. */
+function resultText(result: unknown): string {
+  if (result === undefined || result === null) return "";
+  return typeof result === "string" ? result : resultPreview(result);
+}
+
+/** The quiet right-aligned number of a row: 「258 行」 for a read, 「4 处匹配」
+ *  for a grep, 「12 个文件」 for a glob. Nothing for commands — their output
+ *  length says more than a count would. */
+/** en distinguishes one from many ("1 match" / "2 matches") while zh does not.
+ *  Choosing between two message ids is cheaper than a plural engine and keeps
+ *  both locales explicit at the call site. */
+function countLabel(t: Translator, n: number, one: MessageId, many: MessageId): string {
+  return t(n === 1 ? one : many, { n });
+}
+
+function stepStats(toolName: string, input: unknown, result: unknown, t: Translator): string | null {
+  const text = resultText(result);
+  if (!text) return null;
+  const kind = stepKind(toolName);
+  const detail = stepDetail(toolName, input);
+  if (kind === "read") {
+    const n = lineCount(text);
+    return n > 0 ? countLabel(t, n, "chatStream.tool.oneLine", "chatStream.lineCount") : null;
+  }
+  if (detail.kind === "pattern") {
+    const totals = grepTotals(text);
+    if (totals.matches) return countLabel(t, totals.matches, "chatStream.tool.oneMatch", "chatStream.tool.matches");
+    if (totals.files) return countLabel(t, totals.files, "chatStream.tool.oneFile", "chatStream.tool.filesFound");
+    return null;
+  }
+  if (detail.kind === "glob") {
+    const n = lineCount(text);
+    return n > 0 ? countLabel(t, n, "chatStream.tool.oneFile", "chatStream.tool.filesFound") : null;
+  }
+  return null;
+}
+
+/** A command line with its quoted strings and flags coloured — the `$ …` head
+ *  of the Bash expansion. Deliberately small: three colours, no tokenizer. */
+function CmdLine({ marker = "$", text }: { marker?: string; text: string }) {
+  const pieces = useMemo(() => highlightCommand(text), [text]);
+  return (
+    <>
+      <span className="select-none text-accent">{marker}</span>{" "}
+      <span>
+        {pieces.map((piece, i) =>
+          piece.kind === "plain" ? (
+            <span key={i}>{piece.text}</span>
+          ) : (
+            <span key={i} className={piece.kind === "string" ? "text-success" : "text-info"}>
+              {piece.text}
+            </span>
+          ),
+        )}
+      </span>
+    </>
+  );
+}
+
+/** The expansion layer's one visual container: a `$ command` head, an output
+ *  pane, and a meta strip (exit code / counts). Replaces the 「输入」「结果」
+ *  uppercase-label + JSON-dump pair for every tool that has a typed view. */
+function CodeBox({
+  head,
+  output,
+  meta,
+  copy,
+  copyTitle,
+  tone,
+}: {
+  head?: ReactNode;
+  output?: string;
+  meta?: string | null;
+  /** Raw text for the copy button (unmasked — a copied command is meant to
+   *  be run). Absent = no copy affordance. */
+  copy?: string;
+  copyTitle?: string;
+  tone?: "ok" | "bad";
+}) {
+  return (
+    <div className="my-1 overflow-hidden rounded-lg border border-edge bg-surface-muted/40">
+      {head != null && (
+        <div className="flex items-start gap-2 px-2.5 py-2 font-mono [font-size:var(--chat-fs-xs)] text-content">
+          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{head}</span>
+          {copy !== undefined && (
+            <CopyButton text={copy} iconOnly className="-mr-1 -mt-0.5" title={copyTitle} />
+          )}
+        </div>
+      )}
+      {output && (
+        <div
+          className={cn(
+            "max-h-[190px] overflow-auto border-t border-edge px-2.5 py-2 font-mono [font-size:var(--chat-fs-xs)] whitespace-pre-wrap break-words",
+            tone === "bad" ? "text-danger" : "text-content-muted",
+          )}
+        >
+          {output}
+        </div>
+      )}
+      {meta && (
+        <div className="border-t border-edge px-2.5 py-1.5 font-mono [font-size:var(--chat-fs-xxs)]">
+          <span className={tone === "bad" ? "text-danger" : "text-content-subtle"}>{meta}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The typed expansion layer — the heart of the redesign: instead of dumping
+ * the tool input and result as two JSON blobs, lay out what the tool actually
+ * produced.
+ *
+ *  Bash        `$ command` + output + exit code (+ copy)
+ *  Read        the file content + line count
+ *  Grep / Glob `/ pattern` + hits + count
+ *  anything    its output; or its input, when the call hasn't returned yet
+ */
+function ToolBody({ block }: { block: ToolUseBlock }) {
+  const { t } = useI18n();
+  const input = (block.input && typeof block.input === "object" ? block.input : {}) as Record<string, unknown>;
+  const command = typeof input.command === "string" ? input.command : "";
+  const output = resultText(block.result);
+  const detail = stepDetail(block.toolName, input);
+  const failed = block.status === "error";
+  const tone = failed ? "bad" : "ok";
+
+  if (stepKind(block.toolName) === "command" && command) {
+    return (
+      <CodeBox
+        head={<CmdLine text={displayCommand(command)} />}
+        copy={command}
+        copyTitle={t("chatStream.tool.copyCommand")}
+        output={output}
+        meta={failed ? t("chatStream.tool.exitBad") : t("chatStream.tool.exitOk")}
+        tone={tone}
+      />
+    );
+  }
+  if (detail.kind === "pattern" || detail.kind === "glob") {
+    return (
+      <CodeBox
+        head={<CmdLine marker="/" text={detail.value} />}
+        output={output}
+        meta={stepStats(block.toolName, block.input, block.result, t)}
+        tone={tone}
+      />
+    );
+  }
+  if (detail.kind === "file" && stepKind(block.toolName) === "read") {
+    return (
+      <CodeBox
+        output={output}
+        meta={stepStats(block.toolName, block.input, block.result, t)}
+        tone={tone}
+      />
+    );
+  }
+  // Everything else (MCP, web, task lists, unknown tools): the output if the
+  // call has returned, otherwise the arguments, so an in-flight row still says
+  // what it was asked to do.
+  if (output) return <CodeBox output={output} tone={failed ? "bad" : undefined} meta={failed ? t("chatStream.tool.exitBad") : null} />;
+  if (block.input !== undefined) return <CodeBox head={<span className="whitespace-pre-wrap">{safeStringify(block.input)}</span>} />;
+  return null;
+}
+
+/** One row inside an expanded group: a sentence, an optional count, and the
+ *  typed body underneath. No tool icon and no success tick — at a dozen rows
+ *  those are wallpaper; a failure is the only state worth a glyph. */
+function StepRow({ block }: { block: ProceduralBlock }) {
+  const [open, setOpen] = useState(false);
+  const { t } = useI18n();
+  const thinking = block.kind === "thinking";
+  const sentence = thinking ? summarize(block.text) : stepSentence(block.toolName, block.input, t);
+  const stats = thinking ? null : stepStats(block.toolName, block.input, block.result, t);
+  const failed = !thinking && block.status === "error";
+
+  return (
+    <div>
+      <button
+        onClick={(e) => toggleHoldPosition(e, setOpen)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-hover/40"
+      >
+        {thinking && <IconBulb size={13} className="shrink-0 text-content-subtle" />}
+        {failed && <IconX size={12} className="shrink-0 text-danger" />}
+        {thinking ? (
+          <>
+            <span className="shrink-0 whitespace-nowrap font-medium text-content-muted">
+              {t("chatStream.thinking")}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-content-subtle" title={block.text}>
+              {sentence}
+            </span>
+          </>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-content-muted" title={sentence}>
+            {sentence}
+          </span>
+        )}
+        {stats && (
+          <span className="shrink-0 tabular-nums text-content-subtle [font-size:var(--chat-fs-xxs)]">{stats}</span>
+        )}
+        <Chevron open={open} />
+      </button>
+      {open && (
+        <div className="px-3 pb-2 text-content-muted [font-size:var(--chat-fs-xs)]">
+          {thinking ? (
+            <p className="whitespace-pre-wrap break-words">{block.text}</p>
+          ) : (
+            <ToolBody block={block} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** A collapsible card for a run of consecutive FOLDABLE blocks (batch tools —
  *  Glob/Grep/Bash/task-list/web/skills — plus MCP calls) INSIDE an expanded
- *  TurnPanel. One summary line when collapsed (block tally + live ticker),
+ *  TurnPanel. One summary line when collapsed (a sentence + live ticker),
  *  each child folded underneath when expanded. Only low-signal process blocks
  *  land here; Task (subagent), AskUserQuestion, thinking and the file
  *  operations are pulled out by groupBlocks as their own standalone rows - so
@@ -334,12 +634,13 @@ function groupBlocks(blocks: Block[]): Segment[] {
  *  standalone list items (see groupMessagesForRender's opsGroup kind). */
 export function BatchToolGroup({
   blocks,
-  beforeMap,
   turnActive = false,
   showTicker = true,
-  projectPath,
 }: {
   blocks: ProceduralBlock[];
+  /** Accepted for call-site compatibility; a folded run only ever holds
+   *  foldable tools (Read/Grep/Bash/MCP), and the file-mutation cards that
+   *  need pre-turn content never land in one. */
   beforeMap?: BeforeContentMap;
   /** Whether the owning turn is still streaming. Drives the current-operation
    *  ticker on the header so the user can see what this group is executing
@@ -373,16 +674,7 @@ export function BatchToolGroup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blocks]);
 
-  // Block tally in first-appearance order. Thinking segments count under the
-  // localized "思考" label so the tally reads as one uniform list.
-  const counts = new Map<string, number>();
-  for (const b of blocks) {
-    const name = b.kind === "thinking" ? t("chatStream.thinking") : toolDisplayName(b.toolName);
-    counts.set(name, (counts.get(name) ?? 0) + 1);
-  }
-  const breakdown = [...counts.entries()].map(([n, c]) => `${n} ×${c}`).join(" · ");
-
-  const label = t("chatStream.opCount", { n: blocks.length });
+  const sentence = groupSentence(blocks, t);
 
   return (
     <div className="[font-size:var(--chat-fs-sm)]">
@@ -391,39 +683,45 @@ export function BatchToolGroup({
         className="flex w-full items-center gap-2 rounded-md py-1.5 text-left hover:bg-surface-muted/40"
       >
         {/* 操作集合: a stack of layers reads as "a set of folded operations",
-            clearer than the toolbox wrench for the N-ops batch header. */}
+            clearer than the toolbox wrench for the batch header. */}
         <IconStack2 size={13} className="shrink-0 text-content-subtle" />
-        {/* shrink-0 + whitespace-nowrap: the count label is the row's anchor
-            and must never wrap or shrink — under squeeze the breakdown (and
-            the ticker) give way instead. Same pattern as the Collapsible
-            thinking header. */}
-        <span className="shrink-0 whitespace-nowrap font-medium text-content-muted">{label}</span>
-        {/* min-w-0 lets truncate actually bite: a flex item defaults to
-            min-width:auto, which would push the row wide instead of
-            ellipsizing the (potentially very long, mcp__-heavy) tally. */}
-        {breakdown && <span className="min-w-0 truncate text-content-subtle">{breakdown}</span>}
+        {/* The sentence is the whole header now — it replaced the
+            「N 个操作」+ tally pair. min-w-0 lets truncate bite when a group
+            holds a long command; the ticker and chevron give way after it. */}
+        <span className="min-w-0 truncate font-medium text-content-muted" title={sentence}>
+          {sentence}
+        </span>
         {/* Live current-operation ticker - only while the turn is streaming.
-            Sits right of the tool tally and rolls up like a slot machine as
-            the agent moves between commands. Rendered inside the <button>
-            (CurrentOpTicker emits only phrasing content). */}
+            Rolls up like a slot machine as the agent moves between commands,
+            so a long group still says WHICH command is running. Rendered
+            inside the <button> (CurrentOpTicker emits only phrasing content). */}
         {turnActive && showTicker && <CurrentOpTicker op={runningTool} turnActive={turnActive} />}
-        {/* Error marker on the right - success needs no glyph, only failures
-            surface so the user can spot the broken call without expanding. */}
-        {aggregateStatus === "error" && <StatusIcon status="error" />}
-        <Chevron open={open} className="ml-auto" />
+        {/* Status glyphs live in ONE right-hand cluster with the chevron: an
+            error mark glued to the end of the sentence read like a dismiss ×,
+            and a failure marker belongs with the row's other right-aligned
+            affordances anyway. Success needs no glyph — only failures surface.
+            ml-auto sits on the cluster so the sentence keeps the slack. */}
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {aggregateStatus === "error" && <StatusIcon status="error" />}
+          <Chevron open={open} />
+        </span>
       </button>
       {open && (
-        // Cap height so a large batch (20 reads) doesn't stretch the stream;
-        // the list scrolls internally instead. The left border marks this as
-        // an expanded group body, visually nested under its header.
-        <div className="max-h-80 space-y-1.5 overflow-y-auto border-l border-edge py-1 pl-2">
+        // One outlined container with hairline dividers between rows (原型
+        // 「提案」card), not a left-ruled indent: the border closes the group
+        // off from the narration around it, and the divider is the only
+        // separator the rows need. Capped height so a 20-read batch doesn't
+        // stretch the stream; the list scrolls internally instead. 26rem
+        // (not 20rem) because a five-step group with one expanded row needs
+        // ~26rem — at 20rem the expansion was clipped the moment it opened.
+        <div className="my-1 max-h-[26rem] divide-y divide-edge overflow-y-auto rounded-[9px] border border-edge bg-surface-muted/30">
           {/* Tool calls key by their unique toolCallId (thinking has no id —
               the run only appends, so the index is stable for it). Each child
               gets its own boundary: one broken block must not take down the
               group (or, absent boundaries, the whole tree). */}
           {blocks.map((b, i) => (
             <RenderErrorBoundary key={b.kind === "tool_use" ? `tu:${b.toolCallId}` : `th:${i}`}>
-              <BlockView block={b} beforeMap={beforeMap} liveTurn={turnActive} projectPath={projectPath} />
+              <StepRow block={b} />
             </RenderErrorBoundary>
           ))}
         </div>
@@ -1441,7 +1739,6 @@ function EditToolCard({
   // first render (user can collapse an individual card even inside an
   // open group).
   const [open, setOpen] = useState(defaultOpen);
-  const { t } = useI18n();
   const diff = useMemo(() => lineDiff(oldString, newString), [oldString, newString]);
   const { adds, dels } = useMemo(() => diffSummary(diff), [diff]);
 
@@ -1452,27 +1749,28 @@ function EditToolCard({
         className="flex w-full items-center gap-2 rounded-md py-1.5 text-left hover:bg-surface-muted/50"
       >
         <StatusIcon status={status} live={live} />
-        <ToolIcon name="Edit" className="text-content-subtle" />
-        <span className="font-medium text-content-muted">Edit</span>
-        <span className="truncate font-mono text-content-subtle" title={filePath}>
-          {filePath}
+        <span className="shrink-0 font-medium text-content-muted">Edit</span>
+        {/* Basename + full path on hover — same rule as the Read row (see
+            GenericToolCard), so a run of edits reads as a file list. */}
+        <span className="min-w-0 truncate font-mono text-content-subtle" title={filePath}>
+          {fileLabel(filePath)}
         </span>
-        <span className="ml-auto flex items-center gap-1.5 [font-size:var(--chat-fs-xxs)]">
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 [font-size:var(--chat-fs-xxs)]">
           {adds > 0 && <span className="text-success">+{adds}</span>}
           {dels > 0 && <span className="text-danger">−{dels}</span>}
           <Chevron open={open} />
         </span>
       </button>
       {open && (
-        <div className="space-y-2 border-l border-edge py-2 pl-2">
+        <div className="border-l border-edge py-2 pl-2">
           <DiffView diff={diff} />
-          {result !== undefined && (
-            <div>
-              <div className="mb-0.5 uppercase text-content-subtle [font-size:var(--chat-fs-xxs)]">{t("chatStream.tool.result")}</div>
-              <pre className="max-h-40 overflow-auto rounded bg-surface-muted/60 p-2 text-content-muted [font-size:var(--chat-fs-xs)]">
-                {truncateResult(result)}
-              </pre>
-            </div>
+          {/* A successful Edit's result is boilerplate ("The file has been
+              updated.") — the diff already said it. Only a failure has
+              something to add. */}
+          {status === "error" && result !== undefined && (
+            <pre className="mt-2 max-h-40 overflow-auto rounded bg-danger/10 p-2 text-danger [font-size:var(--chat-fs-xs)]">
+              {truncateResult(result)}
+            </pre>
           )}
         </div>
       )}
@@ -1506,7 +1804,10 @@ function WriteToolCard({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const { t } = useI18n();
-  const lineCount = content ? content.split("\n").length : 0;
+  // Named `contentLines`, not `lineCount`: the module imports `lineCount`
+  // from stepSummary (the Read row's stat), and shadowing it here would read
+  // like the same function.
+  const contentLines = content ? content.split("\n").length : 0;
 
   // Look up the pre-turn content for this file. The turn.files payload
   // carries absolute paths, but the Write tool's file_path may be relative
@@ -1536,42 +1837,38 @@ function WriteToolCard({
         className="flex w-full items-center gap-2 rounded-md py-1.5 text-left hover:bg-surface-muted/50"
       >
         <StatusIcon status={status} live={live} />
-        <ToolIcon name="Write" className="text-content-subtle" />
-        <span className="font-medium text-content-muted">Write</span>
-        <span className="truncate font-mono text-content-subtle" title={filePath}>
-          {filePath}
+        <span className="shrink-0 font-medium text-content-muted">Write</span>
+        <span className="min-w-0 truncate font-mono text-content-subtle" title={filePath}>
+          {fileLabel(filePath)}
         </span>
-        <span className="ml-auto flex items-center gap-1.5 [font-size:var(--chat-fs-xxs)]">
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 [font-size:var(--chat-fs-xxs)]">
           {diff && adds > 0 && <span className="text-success">+{adds}</span>}
           {diff && dels > 0 && <span className="text-danger">−{dels}</span>}
-          {!diff && <span className="text-content-subtle">{t("chatStream.lineCount", { n: lineCount })}</span>}
+          {!diff && <span className="text-content-subtle">{t("chatStream.lineCount", { n: contentLines })}</span>}
           <Chevron open={open} />
         </span>
       </button>
       {open && (
-        <div className="space-y-2 border-l border-edge py-2 pl-2">
+        <div className="border-l border-edge py-2 pl-2">
           {diff ? (
             <div>
-              <div className="mb-0.5 uppercase text-content-subtle [font-size:var(--chat-fs-xxs)]">
+              {/* Quiet caption, not an uppercase label: it states what the
+                  diff is against, which the DiffView itself cannot say. */}
+              <div className="mb-1 text-content-subtle [font-size:var(--chat-fs-xxs)]">
                 {before === "" ? t("chatStream.diff.newFile") : t("chatStream.diff.vsPreTurn")}
               </div>
               <DiffView diff={diff} />
             </div>
           ) : (
-            <div>
-              <div className="mb-0.5 uppercase text-content-subtle [font-size:var(--chat-fs-xxs)]">{t("chatStream.diff.newFileContent")}</div>
-              <pre className="max-h-80 overflow-auto rounded bg-surface-muted/60 p-2 text-content-muted [font-size:var(--chat-fs-xs)]">
-                {content || t("chatStream.emptyPlaceholder")}
-              </pre>
-            </div>
+            <pre className="max-h-80 overflow-auto rounded bg-surface-muted/60 p-2 text-content-muted [font-size:var(--chat-fs-xs)]">
+              {content || t("chatStream.emptyPlaceholder")}
+            </pre>
           )}
-          {result !== undefined && (
-            <div>
-              <div className="mb-0.5 uppercase text-content-subtle [font-size:var(--chat-fs-xxs)]">{t("chatStream.tool.result")}</div>
-              <pre className="max-h-40 overflow-auto rounded bg-surface-muted/60 p-2 text-content-muted [font-size:var(--chat-fs-xs)]">
-                {truncateResult(result)}
-              </pre>
-            </div>
+          {/* Same rule as Edit: a successful Write says nothing new. */}
+          {status === "error" && result !== undefined && (
+            <pre className="mt-2 max-h-40 overflow-auto rounded bg-danger/10 p-2 text-danger [font-size:var(--chat-fs-xs)]">
+              {truncateResult(result)}
+            </pre>
           )}
         </div>
       )}
@@ -1614,24 +1911,37 @@ function GenericToolCard({
   // patterns, not paths, so they stay plain text.
   const summaryToolPath = extractToolFilePath(block.toolName, block.input);
   const approvalBroken = isPlanApprovalChannelFailure(block);
+  const stats = stepStats(block.toolName, block.input, block.result, t);
 
   return (
     <div className="[font-size:var(--chat-fs-sm)]">
+      {/* No tool icon (原型 减噪): at this size the name IS the icon, and the
+          glyph column was costing the summary its most valuable characters.
+          Failures still get a red glyph from StatusIcon; a running call keeps
+          its live arc. */}
       <button
         onClick={(e) => toggleHoldPosition(e, setOpen)}
         className="flex w-full items-center gap-2 rounded-md py-1.5 text-left hover:bg-surface-muted/50"
       >
         <StatusIcon status={block.status} live={live} />
-        <ToolIcon name={block.toolName} className="text-content-subtle" />
-        <span className="font-medium text-content-muted">{toolDisplayName(block.toolName)}</span>
+        <span className="shrink-0 font-medium text-content-muted">{toolDisplayName(block.toolName)}</span>
         {summaryToolPath ? (
-          <span className="truncate font-mono text-content-subtle">
-            <FileLink token={summaryToolPath} projectPath={projectPath} />
+          // Basename on the row, full path on hover: a column of
+          // `apps/desktop/src/main/lib/…` prefixes truncates at the DIRECTORY
+          // and hides the only part that differs. FileLink still carries the
+          // real path, so the click target is unchanged.
+          <span className="min-w-0 truncate font-mono text-content-subtle" title={summaryToolPath}>
+            <FileLink token={summaryToolPath} projectPath={projectPath} display={fileLabel(summaryToolPath)} />
           </span>
         ) : (
-          <span className="truncate text-content-subtle">{toolSummary(block.toolName, block.input)}</span>
+          <span className="min-w-0 truncate text-content-subtle">{toolSummary(block.toolName, block.input)}</span>
         )}
-        <Chevron open={open} />
+        <span className="ml-auto flex shrink-0 items-center gap-2">
+          {stats && (
+            <span className="tabular-nums text-content-subtle [font-size:var(--chat-fs-xxs)]">{stats}</span>
+          )}
+          <Chevron open={open} />
+        </span>
       </button>
       {approvalBroken && (
         // Amber (not red): the turn's context is intact and the model usually
@@ -1646,21 +1956,8 @@ function GenericToolCard({
         </div>
       )}
       {open && (
-        <div className="space-y-2 border-l border-edge py-2 pl-2">
-          <div>
-            <div className="mb-0.5 uppercase text-content-subtle [font-size:var(--chat-fs-xxs)]">{t("chatStream.tool.input")}</div>
-            <pre className="max-h-60 overflow-auto rounded bg-surface-muted/60 p-2 text-content-muted [font-size:var(--chat-fs-xs)]">
-              {safeStringify(block.input)}
-            </pre>
-          </div>
-          {block.result !== undefined && (
-            <div>
-              <div className="mb-0.5 uppercase text-content-subtle [font-size:var(--chat-fs-xxs)]">{t("chatStream.tool.result")}</div>
-              <pre className="max-h-60 overflow-auto rounded bg-surface-muted/60 p-2 text-content-muted [font-size:var(--chat-fs-xs)]">
-                {resultPreview(block.result)}
-              </pre>
-            </div>
-          )}
+        <div className="py-1 pl-2">
+          <ToolBody block={block} />
         </div>
       )}
     </div>
@@ -1813,8 +2110,15 @@ export function ToolIcon({ name, className }: { name: string; className?: string
   return <Icon size={13} className={cn("shrink-0", className)} />;
 }
 
-/** A one-line hint for common tools (Read/Edit/Bash etc.) shown on the card header.
- *  Exported for reuse by the floating "current operation" card. */
+/** A one-line hint for common tools (Read/Edit/Bash etc.) shown on the card
+ *  header. Exported for reuse by the current-operation ticker and the
+ *  turn-flow panel, so all three surfaces read the same summary.
+ *
+ *  Shell tools are the only branch that needs real work: an agent command is
+ *  mostly boilerplate (`cd "…" && PASS=… node run.mjs "…"`), which made three
+ *  consecutive Bash rows look identical and truncate before the informative
+ *  part. `shellSummary` prefers the model's `description`, otherwise strips the
+ *  setup segments and masks credential values — see lib/commandSummary.ts. */
 export function toolSummary(name: string, input: unknown): string {
   if (!input || typeof input !== "object") return "";
   const obj = input as Record<string, unknown>;
@@ -1825,7 +2129,7 @@ export function toolSummary(name: string, input: unknown): string {
       return String(obj.file_path ?? "");
     case "Bash":
     case "PowerShell":
-      return String(obj.command ?? obj.description ?? "");
+      return shellSummary(obj);
     case "Glob":
       return String(obj.pattern ?? "");
     case "Grep":
@@ -1852,7 +2156,7 @@ export function toolSummary(name: string, input: unknown): string {
     case "edit":
       return String(obj.file_path ?? obj.path ?? "");
     case "bash":
-      return String(obj.command ?? obj.description ?? "");
+      return shellSummary(obj);
     case "find":
       return String(obj.pattern ?? "");
     case "grep":
@@ -1860,7 +2164,10 @@ export function toolSummary(name: string, input: unknown): string {
     case "ls":
       return String(obj.path ?? "");
     default:
-      return Object.values(obj).slice(0, 1).map(String).join("").slice(0, 60);
+      // Unknown (usually MCP) tools: a command-shaped first argument is common,
+      // so run it through the same credential mask — an MCP wrapper that takes
+      // a shell string must not print its `PASS=` value either.
+      return redactCommandSecrets(Object.values(obj).slice(0, 1).map(String).join("")).slice(0, 60);
   }
 }
 

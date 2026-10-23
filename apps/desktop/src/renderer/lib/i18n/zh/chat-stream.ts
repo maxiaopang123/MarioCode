@@ -40,6 +40,36 @@ export const zh = {
   "chatStream.emptyPlaceholder": "(空)",
   "chatStream.truncatedSuffix": "(已截断)",
 
+  // ── MessageBlocks: 一步一行（原型 exec-steps-claude-style）──
+  // Group header runs these buckets in a fixed order, joined by `.sep`.
+  "chatStream.group.search": "搜索代码",
+  "chatStream.group.commands": "执行 {n} 条命令",
+  "chatStream.group.read": "读取 {n} 个文件",
+  "chatStream.group.write": "修改 {n} 个文件",
+  "chatStream.group.web": "联网搜索",
+  "chatStream.group.tasks": "更新任务清单",
+  "chatStream.group.thinking": "思考 {n} 次",
+  "chatStream.group.sep": "、",
+  // Row sentences (rule A: derived locally from the tool name + input).
+  "chatStream.step.read": "读取 {name}",
+  "chatStream.step.write": "修改 {name}",
+  "chatStream.step.grep": "搜索 “{q}”",
+  "chatStream.step.glob": "查找 {q}",
+  "chatStream.step.list": "列出 {q}",
+  "chatStream.step.webSearch": "搜索网页 “{q}”",
+  "chatStream.step.webFetch": "抓取 {q}",
+  // Expansion layer: per-tool typed views.
+  "chatStream.tool.copyCommand": "复制命令（含未打码参数）",
+  "chatStream.tool.exitOk": "退出码 0",
+  "chatStream.tool.exitBad": "执行失败",
+  "chatStream.tool.matches": "{n} 处匹配",
+  "chatStream.tool.filesFound": "{n} 个文件",
+  // 单数变体：中文本来不变，但英文的 "1 match" 不能写成 "1 matches"，
+  // 所以统计文案统一走 allOne(n, 单数键, 复数键) 选键，中文侧重复一遍同一个串。
+  "chatStream.tool.oneLine": "{n} 行",
+  "chatStream.tool.oneMatch": "{n} 处匹配",
+  "chatStream.tool.oneFile": "{n} 个文件",
+
   // ── MessageBlocks: compact summary ──
   "chatStream.compact.manual": "已手动压缩对话历史",
   "chatStream.compact.auto": "已自动压缩对话历史",

@@ -57,7 +57,9 @@
     "pack:pi-runtime": "node build/pack-pi-runtime.cjs",
     "release:upload": "node scripts/update-server/publish.mjs",
     "package": "pnpm run build && node -e \"require('fs').rmSync('../../packages/contracts/dist',{recursive:true,force:true})\" && node build/dereference-workspace-symlinks.cjs && electron-builder --publish never",
-    "test:rich-output-prompt-electron": "node scripts/test-rich-output-prompt-electron.mjs"
+    "test:rich-output-prompt-electron": "node scripts/test-rich-output-prompt-electron.mjs",
+    "test:tool-summary": "node --import ./scripts/tool-summary-smoke/register.mjs scripts/tool-summary-smoke/run.mjs",
+    "test:tool-row-summary-electron": "node scripts/test-tool-row-summary-electron.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.258",

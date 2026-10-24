@@ -11,6 +11,7 @@ import { sshMcpConfig } from "@main/mcp/sshCatalog.js";
 import { SSH_MCP_SERVER_NAME, isSshMcpTool } from "@contracts/ssh";
 import { z } from "zod";
 import { is } from "@main/utils.js";
+import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "@anthropic-ai/claude-agent-sdk";
 import type { Options, CanUseTool, OnUserDialog, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type {
   AgentProvider,
@@ -1387,6 +1388,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     // the `claude_code` preset (full Claude Code tool guidance + safety rules)
     // becomes the base on every platform, with our fragments appended on top.
     const appends: string[] = [];
+    const dynamicAppends: string[] = [];
     appends.push(CLAUDE_IDENTITY_PROMPT);
     // (F) Rich-output guide: LaTeX / Mermaid / inline-HTML cards — the renderer
     //     supports all three (components/chat/Markdown.tsx). Pushed here, BEFORE
@@ -1397,7 +1399,10 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
       appends.push(bashPathHintFor(detectBashEnv("claude")));
     }
     if (isUiPlanMode) {
-      appends.push(CLAUDE_PLAN_MODE_NUDGE);
+      // This changes with the current UI mode. Keep it after the SDK's
+      // dynamic system-prompt boundary so it cannot move the stable cache
+      // prefix on every resumed turn.
+      dynamicAppends.push(CLAUDE_PLAN_MODE_NUDGE);
     }
     if (!this.capabilities.supportsAskUserQuestion) {
       appends.push(ASK_SYSTEM_PROMPT);
@@ -1449,10 +1454,16 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     options.systemPrompt = {
       type: "preset",
       preset: "claude_code",
-      // Blank-line section separation (shared with the Pi provider's injector)
-      // — a bare space glues the Chinese identity section onto the English
-      // path hint and the model reads them as one run-on paragraph.
-      append: joinPromptSections(...appends),
+      // SDK 0.3.304 recognizes this standalone line and places the Anthropic
+      // cache boundary after the stable MarioCode additions. The plan nudge
+      // is per-turn, so it must remain after the boundary. This keeps the
+      // system/tools prefix stable without changing query() lifetime.
+      // Blank-line section separation is shared with the Pi injector.
+      append: joinPromptSections(
+        joinPromptSections(...appends),
+        SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
+        joinPromptSections(...dynamicAppends),
+      ),
     };
 
     if (!mcpState.browserDisabled) {

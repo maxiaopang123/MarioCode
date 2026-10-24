@@ -3977,7 +3977,7 @@ export type RuntimeCompatibility = "compatible" | "incompatible" | "unknown";
  *  - claude: Claude Code CLI version as reported by `claude --version`.
  *    2.1.238 is the CLI verified against MarioCode's plan-approval /
  *    AskUserQuestion / tool-approval paths (see AGENTS.md); the pinned SDK
- *    bundles 2.1.258.
+ *    bundles 2.1.304.
  *  - codex: `codex` app-server; developerInstructions + dynamicTools were
  *    verified on 0.153.4.
  *  - pi: `@earendil-works/pi-coding-agent` package version; the Pi host relies

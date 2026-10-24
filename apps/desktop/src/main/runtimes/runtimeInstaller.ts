@@ -78,7 +78,7 @@ import { ensureManagedNodeRuntime, managedNpmCli } from "./managedNodeRuntime.js
 /** Used when this app's package.json can't be read (shouldn't happen — it
  *  ships inside the asar and exists in dev). Keep in sync with package.json. */
 const FALLBACK_VERSIONS: Record<RuntimeAgentId, string> = {
-  claude: "0.3.258",
+  claude: "0.3.304",
   codex: "0.153.4",
   pi: "0.83.0",
 };

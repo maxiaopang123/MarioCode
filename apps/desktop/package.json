@@ -1,6 +1,6 @@
 {
   "name": "@mariocode/desktop",
-  "version": "0.2.61",
+  "version": "0.2.62",
   "private": true,
   "description": "MarioCode - Desktop GUI for Claude Code",
   "author": "huangbh",
@@ -65,7 +65,7 @@
     "test:timeout-policy": "node scripts/timeout-policy-smoke/run.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.258",
+    "@anthropic-ai/claude-agent-sdk": "0.3.304",
     "@mariocode/contracts": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
     "better-sqlite3": "12.4.1",

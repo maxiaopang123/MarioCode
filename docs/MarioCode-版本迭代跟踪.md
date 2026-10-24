@@ -2,9 +2,11 @@
 
 > 记录完成结果、验证与 Git 版本。新想法和未完成事项统一维护在 [MarioCode 想法与待办](MarioCode-TODO.md)。
 
-最后更新：2026-10-24
+最后更新：2026-10-25
 
-## 当前进度（2026-10-24）
+## 当前进度（2026-10-25）
+
+**10/25（v0.2.63 · HTML/Mermaid 可视化输出增强）**：①**HTML 输出格式**：模型可根据场景选择内联 HTML（短重点、状态标签、局部强调）或 ` ```html` 围栏 HTML（指标卡、网格、A/B 对比、时间线、进度条、静态图表）；围栏 HTML 默认显示安全预览，可切换查看源码。②**HTML 视觉层次**：提示词引导使用 grid/flex、`<strong>`、`<mark>`、重点文字和 2～4 种语义色；客户端按当前浅色/深色及 MarioCode 配色自动调整背景、边框和文字对比度。脚本、事件属性、危险 CSS、外部资源和任意动画均清洗，当前只支持静态可视化。③**Mermaid 配色与风格**：流程图、饼图、柱/折线图、象限图使用主题化多色序列；`classDef` / `style` / `linkStyle` 的模型颜色按主题重新拟合。模型可在首行用受控 `%%{init: {"look":"classic"}}%%` 选择 `classic`、`neo` 或 `handDrawn`，客户端过滤 `themeVariables`、`securityLevel`、字体和外部资源。**验证**：`typecheck`、`build`、`test:rich-output-prompt-electron`、`test:markdown-render-electron`（含 handDrawn 受控主题）、`test:chat-display-electron`、`git diff --check` 全部通过。**未完成**：没有开放任意 JavaScript/CSS 动画；如需动画，后续应增加客户端白名单组件，而不是让模型注入动画代码。
 
 **10/24（v0.2.62 · Claude Anthropic 缓存断点稳定性）**：①**SDK 对齐**：MarioCode 使用的 `@anthropic-ai/claude-agent-sdk` 从 `0.3.258` 升到 `0.3.304`，内置 Claude runtime fallback 与 contracts 注释同步更新，避免客户端 CLI / SDK 版本落后于已验证的缓存行为。②**动态提示词断点**：Claude 原生 Anthropic `/v1/messages` 请求在稳定的 MarioCode system prompt 后插入 SDK 官方 `SYSTEM_PROMPT_DYNAMIC_BOUNDARY`，把每轮会随 UI 模式变化的 plan-mode nudge 放到动态边界之后，避免动态段污染稳定前缀的缓存断点；Claude `query()` 生命周期与 `/v1/chat/completions` 未改。**验证**：`typecheck`、`test:runtime-selection`（60 项）、`test:shared-providers`（227 项）、`test:protocol-bridges-native`（12 项）全部通过；`git diff --check` 通过。**未验证**：需要在真实 KiroRS 上用新 runtime 做连续两轮 A/B，确认 proxy credits 的真实命中率改善；TODO-079 的完整出站请求体取证仍保留。
 

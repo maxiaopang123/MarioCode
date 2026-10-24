@@ -92,6 +92,7 @@ const LANG_ALIAS: Record<string, string> = {
   ts: "typescript",
   py: "python",
   mdx: "markdown",
+  htm: "html", xhtml: "html",
   jsonc: "json", json5: "json",
   yml: "yaml",
   scss: "css", less: "css", sass: "css", stylus: "css",
@@ -313,7 +314,10 @@ function rehypeSkillInline(skillRe: RegExp) {
  * memoised once for the whole app (the block cards' expand state depends on
  * that identity), so a prop would have to be threaded through every override.
  */
-export const MarkdownFeatureContext = createContext<{ mermaid: boolean }>({ mermaid: true });
+export const MarkdownFeatureContext = createContext<{ mermaid: boolean; html: boolean }>({
+  mermaid: true,
+  html: true,
+});
 
 /** Tags the default (GitHub-style) schema leaves out but a spec sheet, a
  *  changelog or a small inline module reasonably uses. The default already
@@ -374,6 +378,11 @@ const HTML_SCHEMA: SanitizeSchema = {
   // the renderer's bridge objects are own properties of `window`, which named
   // element access cannot shadow.
   clobber: ["name"],
+  // `script` is stripped by the default schema; `style` is not in `tagNames`
+  // either, but an un-allowed element is UNWRAPPED, not discarded — its text
+  // children survive. Without this, a model that pastes a full document with
+  // a `<style>` block leaks the raw CSS into the reply as visible text.
+  strip: [...(defaultSchema.strip ?? []), "style"],
 };
 
 /** CSS properties a snippet may set on itself: layout, spacing, typography,
@@ -606,6 +615,23 @@ const CodeContext = createContext(false);
 const useInCode = () => useContext(CodeContext);
 
 /**
+ * The 34px strip across the top of a code/card surface: label on the left,
+ * controls on the right.
+ *
+ * Shared by `CodeBlock` and `HtmlCard` so a fenced card's two views keep the
+ * identical chrome height and the 预览/源码 switch sits at the same x/y in both
+ * — a toggle that jumps when you press it reads as a glitch.
+ */
+function CodeCardHeader({ label, children }: { label: string; children?: React.ReactNode }) {
+  return (
+    <div className="flex h-[34px] shrink-0 items-center justify-between gap-2 border-b border-edge pl-3 pr-1.5 text-content-subtle [font-size:var(--chat-fs-xxs)]">
+      <span className="truncate font-mono">{label}</span>
+      <span className="flex shrink-0 items-center gap-1">{children}</span>
+    </div>
+  );
+}
+
+/**
  * A fenced code block: shiki highlight, language chip, copy button, and the
  * collapse/展开 overlay for long blocks.
  *
@@ -624,6 +650,7 @@ function CodeBlock({
   lang,
   rawCode,
   rawChildren,
+  toolbar,
 }: {
   /** Already resolved through {@link resolveLang}. */
   lang: string;
@@ -631,6 +658,10 @@ function CodeBlock({
   rawCode: string;
   /** Original React children, used for the un-highlighted fallback. */
   rawChildren: React.ReactNode;
+  /** Extra controls for the header, placed before the copy button. Used by
+   *  `HtmlCard` to keep its 预览/源码 switch in the same physical spot whether
+   *  it is showing rendered markup or this component's source. */
+  toolbar?: React.ReactNode;
 }) {
   // Lazy-init highlighter on first encounter of a fenced block.
   const [ready, setReady] = useState(!!highlighterInstance);
@@ -710,21 +741,19 @@ function CodeBlock({
   // instead of github-light's pure white.
   return (
     <pre className="my-[var(--chat-md-gap-md)] overflow-hidden rounded-xl border border-edge bg-code">
-      <div className="flex h-[34px] items-center justify-between gap-2 border-b border-edge pl-3 pr-1.5 text-content-subtle [font-size:var(--chat-fs-xxs)]">
-        <span className="truncate font-mono">{lang}</span>
-        <span className="flex shrink-0 items-center gap-1">
-          {clippable && expanded && (
-            <button
-              onClick={() => setExpanded(false)}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-surface-hover/60 hover:text-content-muted"
-              title={t("chatStream.code.collapse")}
-            >
-              <IconChevronUp size={10} /> {t("chatStream.code.collapse")}
-            </button>
-          )}
-          <CopyButton text={rawCode.replace(/\n$/, "")} />
-        </span>
-      </div>
+      <CodeCardHeader label={lang}>
+        {toolbar}
+        {clippable && expanded && (
+          <button
+            onClick={() => setExpanded(false)}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-surface-hover/60 hover:text-content-muted"
+            title={t("chatStream.code.collapse")}
+          >
+            <IconChevronUp size={10} /> {t("chatStream.code.collapse")}
+          </button>
+        )}
+        <CopyButton text={rawCode.replace(/\n$/, "")} />
+      </CodeCardHeader>
       <div className="relative">
         <div
           ref={bodyRef}
@@ -753,6 +782,64 @@ function CodeBlock({
         )}
       </div>
     </pre>
+  );
+}
+
+/** Fence languages whose body is markup to RENDER rather than source to show. */
+const HTML_FENCE_LANGS = new Set(["html", "htm", "xhtml"]);
+
+/**
+ * Body of an ```html fence: the markup rendered by default, with a 源码/预览
+ * switch in the header (the same slot, and the same one-button idiom, as
+ * `MermaidBlock`'s 源码/图表).
+ *
+ * Preview goes back through `<Markdown>` on purpose instead of running the
+ * plugins by hand: a leading block tag is a single raw-HTML node to remark, so
+ * the body travels the identical path an un-fenced card does (rehypeRaw →
+ * sanitize → theme fit → the same component overrides). That keeps one
+ * pipeline, one allowlist and one set of quirks, and it means a fence body can
+ * never render something bare HTML would have been stopped from rendering.
+ *
+ * Source reuses `CodeBlock` (shiki + copy + the collapse overlay for long
+ * markup) rather than a bare <code>: a fence the user flipped open is still a
+ * fence, and it should look like every other one.
+ */
+function HtmlCard({ code, lang }: { code: string; lang: string }) {
+  const trimmed = code.trim();
+  const { t } = useI18n();
+  const [showSource, setShowSource] = useState(false);
+  const toggle = (
+    <button
+      onClick={() => setShowSource((value) => !value)}
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-surface-hover/60 hover:text-content-muted"
+      title={showSource ? t("chatStream.html.preview") : t("chatStream.html.source")}
+    >
+      {showSource ? <IconChevronUp size={10} /> : <IconChevronDown size={10} />}
+      {showSource ? t("chatStream.html.preview") : t("chatStream.html.source")}
+    </button>
+  );
+  // Hooks run above this guard, so the early return never shifts hook order.
+  if (!trimmed) return null;
+  if (showSource) {
+    return (
+      <CodeBlock
+        lang={resolveLang(lang)}
+        rawCode={trimmed}
+        rawChildren={trimmed}
+        toolbar={toggle}
+      />
+    );
+  }
+  return (
+    <div className="my-[var(--chat-md-gap-md)] overflow-hidden rounded-xl border border-edge bg-code">
+      <CodeCardHeader label={lang}>
+        {toggle}
+        <CopyButton text={trimmed} />
+      </CodeCardHeader>
+      <div className="px-3.5 py-3">
+        <Markdown>{trimmed}</Markdown>
+      </div>
+    </div>
   );
 }
 
@@ -797,9 +884,21 @@ function buildComponents(): Components {
     // "mermaid" is not a shiki language and has to be recognised before that.
     const tag = extractLanguage(childProps?.className);
     const rawCode = extractText(childProps?.children);
-    const { mermaid } = useContext(MarkdownFeatureContext);
+    const { mermaid, html: htmlFences } = useContext(MarkdownFeatureContext);
+    const baseDir = useContext(MarkdownBaseDirContext);
     if (mermaid && (tag === "mermaid" || tag === "mmd")) {
       return <MermaidBlock code={rawCode} />;
+    }
+    // An ```html fence is a CARD, not code — models habitually wrap markup in
+    // a fence (the prompt has to fence mermaid source, so they generalise),
+    // and showing the source of the very thing the user asked to see drawn is
+    // useless. Same feature switch as raw HTML: with it off this stays a code
+    // block, which is the honest rendering.
+    // Chat only (`baseDir` unset): in a .md preview a fenced block is source
+    // the author chose to show — a document about HTML being the obvious case
+    // — so the file keeps its code block. Same rule as prose path chips.
+    if (!baseDir && htmlFences && HTML_FENCE_LANGS.has(tag.toLowerCase())) {
+      return <HtmlCard code={rawCode} lang={tag.toLowerCase()} />;
     }
     return (
       <CodeBlock
@@ -1081,6 +1180,69 @@ function normalizeMathDelimiters(content: string): string {
     .join("");
 }
 
+// ── Inline SVG normalization helper ───────────────────────────────────
+/**
+ * Collapse the blank lines INSIDE an inline `<svg>…</svg>` span.
+ *
+ * This is a Markdown *block-parsing* problem, not a sanitizer one — which is
+ * why it looks like "the sanitizer ate my SVG" and isn't. CommonMark type-6
+ * HTML blocks (`div`, `table`, `details`, …) run until the next blank line and
+ * their consecutive fragments are re-joined by the HTML parser. `svg` is NOT a
+ * type-6 tag, so `<svg …>` opens a *type-7* block that ends at the first blank
+ * line, and the fragments do NOT reassemble: parse5 sees `<svg><defs>…</defs>`
+ * (unterminated, so it auto-closes), then the following lines become ordinary
+ * paragraphs and loose elements in the body. The visible symptom is precisely
+ * "an empty dark box with all the labels spilled out underneath".
+ *
+ * A model that formats shapes with a blank line between groups (very natural)
+ * hits this every time. Deleting *only* the blank lines keeps every element in
+ * one block, so the whole `<svg>` arrives at `rehypeRaw` intact — attributes,
+ * camelCase SVG properties and all.
+ *
+ * Guarded like {@link normalizeMathDelimiters}: fenced blocks and inline code
+ * spans are left byte-for-byte alone, so an ```svg snippet still shows its own
+ * source verbatim (and a ```html fence is re-entered through `<Markdown>` by
+ * `HtmlCard`, i.e. normalized on that pass instead).
+ */
+function normalizeInlineSvg(content: string): string {
+  if (!content || !/<svg[\s>]/i.test(content)) return content;
+  return content
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+    .map((part, idx) => {
+      // Odd indices are code fences or inline code spans.
+      if (idx % 2 === 1) return part;
+      const lower = part.toLowerCase();
+      let out = "";
+      let cursor = 0;
+      for (;;) {
+        const open = lower.indexOf("<svg", cursor);
+        if (open === -1) break;
+        // Must be the TAG, not a longer name such as `<svgfoo`.
+        const after = part.charAt(open + 4);
+        if (after !== ">" && after !== "/" && !/\s/.test(after)) {
+          cursor = open + 4;
+          continue;
+        }
+        const close = lower.indexOf("</svg>", open + 4);
+        if (close === -1) {
+          // Self-closing or unterminated: nothing to collapse here, but keep
+          // scanning — a later complete `<svg>` in the same span still needs it.
+          cursor = open + 4;
+          continue;
+        }
+        out += part.slice(cursor, open);
+        out += part
+          .slice(open, close + 6)
+          .split("\n")
+          .filter((line) => line.trim() !== "")
+          .join("\n");
+        cursor = close + 6;
+      }
+      return out + part.slice(cursor);
+    })
+    .join("");
+}
+
 export const Markdown = memo(function Markdown({
   children,
   projectPath,
@@ -1125,12 +1287,22 @@ export const Markdown = memo(function Markdown({
   // dependency the user may not want.
   const htmlEnabled = useSessionStore(s => s.chatDisplay.html);
   const mermaidEnabled = useSessionStore(s => s.chatDisplay.mermaid);
-  const features = useMemo(() => ({ mermaid: mermaidEnabled }), [mermaidEnabled]);
+  const features = useMemo(
+    () => ({ mermaid: mermaidEnabled, html: htmlEnabled }),
+    [mermaidEnabled, htmlEnabled],
+  );
   // Fills and text colours in model HTML are re-derived for the theme in play
   // (see lib/themeColor.ts), so a theme flip must re-run the style pass — the
   // values baked into the hast tree belong to the theme that produced them.
   const dark = useIsDarkMode();
-  const normalizedChildren = useMemo(() => normalizeMathDelimiters(children), [children]);
+  // Pre-parse string passes, in this order: math delimiters first (it only
+  // rewrites `\[…\]`-style delimiters and bare `\begin{…}` environments), then
+  // the svg blank-line collapse — which must see the final text because it
+  // works on a span, not a line. Both are no-ops on ordinary replies.
+  const normalizedChildren = useMemo(
+    () => normalizeInlineSvg(normalizeMathDelimiters(children)),
+    [children],
+  );
   const rehypePlugins = useMemo(() => {
     const list: NonNullable<Parameters<typeof ReactMarkdown>[0]["rehypePlugins"]> = [];
     // Raw HTML first, and in this order: rehype-raw re-parses the escaped

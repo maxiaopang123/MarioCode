@@ -88,6 +88,8 @@ export const en = {
   "chatStream.copyCode": "Copy code",
   "chatStream.code.expand": "Expand",
   "chatStream.code.collapse": "Collapse",
+  "chatStream.html.preview": "Preview",
+  "chatStream.html.source": "Source",
   "chatStream.mermaid.source": "Source",
   "chatStream.mermaid.diagram": "Diagram",
   "chatStream.mermaid.rendering": "Drawing diagram…",

@@ -17,9 +17,10 @@
  * So the colour is reinterpreted in theme terms instead of trusted verbatim:
  *
  *  - FILLS (`background`, `background-color`, `border*`) keep their HUE and
- *    saturation (a red warning card stays red-ish) but their LIGHTNESS is
+ *    their saturation (a red warning card stays red) but their LIGHTNESS is
  *    snapped into the current theme's band — a near-white becomes a near-black
- *    inset in dark mode.
+ *    inset in dark mode. Depth is therefore uniform across every card the model
+ *    writes, while colour is what distinguishes them.
  *  - TEXT (`color`) is kept only when it is legible against the theme; when it
  *    is not (white on dark, near-black on light), the declaration is DROPPED so
  *    the element inherits the app's own text colour, which is guaranteed
@@ -112,7 +113,7 @@ function rgbFunctionToRgb(value: string): Rgb | null {
   return { r, g, b, a: Math.min(1, Math.max(0, a)) };
 }
 
-function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+export function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
   const chroma = (1 - Math.abs(2 * l - 1)) * s;
   const hp = ((h % 360) + 360) % 360 / 60;
   const x = chroma * (1 - Math.abs((hp % 2) - 1));
@@ -200,16 +201,32 @@ function hslCss(h: number, s: number, l: number, a: number): string {
     : `hsl(${hue} ${sat}% ${light}% / ${Number(a.toFixed(2))})`;
 }
 
+/** Hex is what Mermaid's diagram grammars can actually lex (see
+ *  {@link fitColorDeclaration}'s `form` argument): its lexer turns `(` and `)`
+ *  inside a `classDef` into node-shape tokens, so `hsl(...)`/`rgb(...)` there is
+ *  a parse error, not a colour. */
+function rgbToHex({ r, g, b }: Pick<Rgb, "r" | "g" | "b">): string {
+  return `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  return rgbToHex(hslToRgb(h, s, l));
+}
+
 /** Lightness band a fill is snapped into, per theme. Chosen to sit on the
  *  app's own surfaces: light ≈ the white card ground, dark ≈ one step above
- *  `--surface-muted` so a card still reads as a raised panel. */
+ *  `--surface-muted` so a card still reads as a raised panel. This is the
+ *  "every card sits at the same depth" half of the contract — it never moves. */
 const FILL_BAND = { light: 0.965, dark: 0.17 } as const;
 const LINE_BAND = { light: 0.88, dark: 0.31 } as const;
-/** Saturation ceilings keep a snapped fill from turning into a neon block —
- *  at band lightness, a saturated hue reads far louder than it did at the
- *  lightness the model picked. */
-const FILL_SAT = { light: 0.55, dark: 0.3 } as const;
-const LINE_SAT = { light: 0.18, dark: 0.22 } as const;
+/** Saturation ceilings are the "colour" half, and they are deliberately HIGH:
+ *  at band lightness a hue only becomes visible through saturation, so a low
+ *  ceiling is what used to make every model-authored card read as grey. The
+ *  ceiling is not zero only because a fully saturated hue would flare into a
+ *  neon slab in dark mode (a #ff0000 fill at 17% lightness is still a solid
+ *  red card; at 100% saturation it is a warning light). */
+const FILL_SAT = { light: 0.85, dark: 0.5 } as const;
+const LINE_SAT = { light: 0.5, dark: 0.42 } as const;
 
 /** Text colours outside this luminance window are unreadable in the given
  *  theme and get dropped (the element then inherits the app's colour). */
@@ -218,7 +235,12 @@ const TEXT_MAX_LUMINANCE = { light: 0.55, dark: 1 } as const;
 
 type Role = "fill" | "line";
 
-function snap(token: string, role: Role, dark: boolean): string {
+/** How the fitted colour is written back out. `css` is for inline styles (the
+ *  browser parses anything modern CSS does); `hex` is for Mermaid, whose
+ *  diagram grammars cannot tokenise functional colour syntax. */
+export type ColorForm = "css" | "hex";
+
+function snap(token: string, role: Role, dark: boolean, form: ColorForm): string {
   const rgb = parseColor(token);
   if (!rgb) return token;
   // A wash (shadow, faint tint) already works on any background.
@@ -227,7 +249,7 @@ function snap(token: string, role: Role, dark: boolean): string {
   const hsl = rgbToHsl(rgb);
   const lightness = role === "fill" ? FILL_BAND[theme] : LINE_BAND[theme];
   const saturation = Math.min(hsl.s, role === "fill" ? FILL_SAT[theme] : LINE_SAT[theme]);
-  return hslCss(hsl.h, saturation, lightness, rgb.a);
+  return form === "hex" ? hslToHex(hsl.h, saturation, lightness) : hslCss(hsl.h, saturation, lightness, rgb.a);
 }
 
 /** True when a text colour would be illegible in this theme. */
@@ -250,21 +272,135 @@ function isIllegibleText(token: string, dark: boolean): boolean {
  * untouched — this function is not a sanitizer; `sanitizeInlineStyle` has
  * already decided WHAT may be set, this only decides HOW it looks.
  */
-export function fitColorDeclaration(property: string, value: string, dark: boolean): string | null {
+export function fitColorDeclaration(
+  property: string,
+  value: string,
+  dark: boolean,
+  form: ColorForm = "css",
+): string | null {
   if (property === "color") {
     // A `color` value is a single colour; anything with several tokens is
     // beyond what the contrast rule can judge, so it is left alone.
     const tokens = value.match(COLOR_TOKEN) ?? [];
-    if (tokens.length === 1 && tokens[0] === value.trim() && isIllegibleText(tokens[0], dark)) {
-      return null;
+    if (tokens.length === 1 && tokens[0] === value.trim()) {
+      if (isIllegibleText(tokens[0], dark)) return null;
+      // Keep the declaration but normalise a functional colour: Mermaid's
+      // grammar cannot lex the parens, and a legible `rgb(...)` would take the
+      // whole diagram down with it.
+      if (form === "hex") {
+        const rgb = parseColor(tokens[0]);
+        if (rgb) return rgbToHex(rgb);
+      }
     }
     return value;
   }
   if (property === "background" || property === "background-color") {
-    return value.replace(COLOR_TOKEN, (token) => snap(token, "fill", dark));
+    return value.replace(COLOR_TOKEN, (token) => snap(token, "fill", dark, form));
   }
   if (property === "border" || property.startsWith("border-") || property === "outline") {
-    return value.replace(COLOR_TOKEN, (token) => snap(token, "line", dark));
+    return value.replace(COLOR_TOKEN, (token) => snap(token, "line", dark, form));
   }
   return value;
+}
+
+/* ── Mermaid: colours written in the diagram source ──────────────────────
+ * Mermaid has no theme-fitting layer of its own: whatever a `classDef` (or the
+ * older `style` / `linkStyle`) statement says is copied verbatim into the CSS
+ * mermaid embeds in the SVG it emits. So the same model-authored colour that
+ * reads well in one theme is unreadable in the other — the exact failure this
+ * module exists to prevent for HTML cards, one layer down.
+ *
+ * We fit the SOURCE rather than the emitted SVG on purpose. A pass over the
+ * SVG would also rewrite the palette `MermaidBlock` hands mermaid through
+ * `themeVariables` (its categorical series, pie slices, chart bars, quadrant
+ * zones) — those are already theme-correct and deliberately live OUTSIDE the
+ * card bands, because a chart series needs more contrast than a card ground.
+ * Only the model's own colour statements need interpreting, and those sit in
+ * exactly three statement types, whose syntax is small enough to parse.
+ */
+
+/** The statement types that carry colour properties. `class A,B hot` carries
+ *  none, so a line with no `prop:` is left untouched below.
+ *
+ *  `m` is load-bearing twice over: `fitMermaidSource` uses this pattern both as
+ *  a cheap "is there anything to do" guard over the WHOLE source and per line.
+ *  Without it `^` only anchors at the start of the diagram, so a `classDef` on
+ *  line 5 of a `graph TD` would slip past the guard unfitted. */
+const MERMAID_COLOR_LINE = /^[ \t]*(?:classDef|style|linkStyle)\b/im;
+
+/** Where the property list starts, i.e. after the leading ids. Matching the
+ *  first PROPERTY (not the first comma) is what keeps `linkStyle 0,1 stroke:#f00`
+ *  intact — those leading commas are link indices, not declarations. */
+const MERMAID_FIRST_PROPERTY = /\b(fill|stroke|color|background(?:-color)?|border(?:-color)?)\s*:/i;
+
+/** Split a declaration list on commas that are not inside parentheses, so
+ *  `fill:rgb(1, 2, 3)` stays one declaration. */
+function splitTopLevel(list: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < list.length; i++) {
+    const char = list[i];
+    if (char === "(") depth++;
+    else if (char === ")") depth = Math.max(0, depth - 1);
+    else if (char === "," && depth === 0) {
+      parts.push(list.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(list.slice(start));
+  return parts;
+}
+
+function fitMermaidStyleLine(line: string, dark: boolean): string {
+  const first = MERMAID_FIRST_PROPERTY.exec(line);
+  if (!first) return line;
+  const head = line.slice(0, first.index);
+  const kept: string[] = [];
+  for (const declaration of splitTopLevel(line.slice(first.index))) {
+    const colon = declaration.indexOf(":");
+    if (colon === -1) continue;
+    const property = declaration.slice(0, colon).trim().toLowerCase();
+    const value = declaration.slice(colon + 1).trim();
+    const role = property.startsWith("fill") || property.startsWith("background")
+      ? "background"
+      : property.startsWith("stroke") || property.startsWith("border")
+        ? "border"
+        : property === "color"
+          ? "color"
+          : null;
+    if (role === null) {
+      // Geometry (`stroke-width`, `stroke-dasharray`, …) is theme-neutral.
+      kept.push(`${property}:${value}`);
+      continue;
+    }
+    // Hex, always: Mermaid lexes these statements itself, and a `(` in the
+    // value is a node-shape token there — `fill:hsl(...)` fails the whole
+    // diagram, not just that property.
+    const fitted = fitColorDeclaration(role, value, dark, "hex");
+    // An illegible `color` is dropped rather than blanked: mermaid then falls
+    // back to the theme's own text colour, which is contrast-correct by
+    // construction.
+    if (fitted !== null) kept.push(`${property}:${fitted}`);
+  }
+  // Every declaration dropped (a classDef that only set an unreadable text
+  // colour): the statement itself is now pointless and possibly invalid.
+  if (kept.length === 0) return "";
+  return `${head}${kept.join(",")}`;
+}
+
+/**
+ * Re-fit the colours a model wrote into a Mermaid diagram's `classDef` /
+ * `style` / `linkStyle` statements for the theme in play. Everything else in
+ * the source — and the entire diagram's own palette — is left alone.
+ *
+ * The component keeps the UNFITTED source for display and copying, so the
+ * user still sees the colours the model chose.
+ */
+export function fitMermaidSource(source: string, dark: boolean): string {
+  if (!MERMAID_COLOR_LINE.test(source)) return source;
+  return source
+    .split("\n")
+    .map((line) => (MERMAID_COLOR_LINE.test(line) ? fitMermaidStyleLine(line, dark) : line))
+    .join("\n");
 }

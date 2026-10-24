@@ -34,6 +34,7 @@ import { useI18n } from "@renderer/lib/i18n/index.js";
 import { IconAlertTriangle, IconChevronDown, IconChevronUp, IconLoader2, IconPhoto } from "@renderer/lib/icons.js";
 import { getMermaidSvg, mermaidCacheKey, setMermaidSvg } from "@renderer/lib/markdownCache.js";
 import { useThemeSignature } from "@renderer/lib/theme.js";
+import { fitMermaidSource, hslToRgb } from "@renderer/lib/themeColor.js";
 import { CopyButton } from "./CopyButton.js";
 
 /**
@@ -121,11 +122,66 @@ function readPalette(dark: boolean): Palette {
   return palette;
 }
 
-function themeVariables(dark: boolean): Record<string, string | boolean> {
+/**
+ * Categorical hues for the diagram types that DRAW DATA: pie slices, xychart
+ * bars/lines, git branches, quadrant zones. Depth is held constant per theme
+ * and the hue carries the series identity — the same split `themeColor.ts`
+ * uses for cards, except that charts sit at a stronger contrast than a card
+ * ground (a slice has to be distinguishable from its neighbour, not just from
+ * the page). Twelve hues so mermaid's full 12-colour scale is covered.
+ */
+const SERIES_HUES = [205, 158, 268, 32, 340, 188, 12, 100, 292, 48, 232, 128] as const;
+const SERIES_TONE = { light: { s: 0.52, l: 0.72 }, dark: { s: 0.46, l: 0.45 } } as const;
+
+/** One series colour. Emitted as `rgb()` (not the `hsl()` we computed from)
+ *  because mermaid runs `darken`/`lighten`/`mkBorder` over these values, and
+ *  its colour library is happier with the rgb form than with CSS Color 4's
+ *  space-separated hsl(). */
+function seriesColor(index: number, dark: boolean): string {
+  const tone = SERIES_TONE[dark ? "dark" : "light"];
+  const { r, g, b } = hslToRgb(SERIES_HUES[index % SERIES_HUES.length], tone.s, tone.l);
+  return `rgb(${r} ${g} ${b})`;
+}
+
+/** Quadrant zones are large areas, so they get the CARD treatment instead of
+ *  the series treatment: hue varies, lightness is pinned to the theme's fill
+ *  band, and four quadrants never read as four different materials. */
+function quadrantTint(index: number, dark: boolean): string {
+  const { r, g, b } = hslToRgb(SERIES_HUES[index % SERIES_HUES.length], dark ? 0.3 : 0.5, dark ? 0.17 : 0.965);
+  return `rgb(${r} ${g} ${b})`;
+}
+
+function themeVariables(dark: boolean): Record<string, unknown> {
   const p = readPalette(dark);
   // Text sitting ON the accent fill: the accent is light in dark mode and
   // mid-tone in light mode, so the legible partner flips with the theme.
   const onAccent = dark ? p.surface : p.content;
+  const series = SERIES_HUES.map((_, index) => seriesColor(index, dark));
+  // Mermaid's base theme derives every data colour from `primaryColor`, which
+  // we set to the app's near-neutral surface — so a pie chart would otherwise
+  // come out as a GRAY ramp (`cScale0..11` are a greyscale ladder in the base
+  // theme). Writing `cScaleN` is what corrects it: mermaid fills each slot with
+  // `x = x || default`, i.e. our value survives its own derivation.
+  //
+  // `pieN` needs the opposite treatment. Its `updateColors()` ends with an
+  // UNCONDITIONAL `pie[i] = cScale[i]` for i < 12, so any `pie0..pie11` we set
+  // is overwritten — deriving the pie palette from `cScale` is the only way to
+  // colour it. And because the pie renderer reads `pie1..pie12` while the loop
+  // only fills `pie0..pie11`, `pie12` is the single slot NOTHING assigns: left
+  // alone it is `undefined`, and the 12th slice of a 12-slice pie draws with no
+  // fill at all. It is also the only `pieN` an override can win, since the loop
+  // never touches it.
+  const seriesVars: Record<string, string> = {};
+  series.forEach((color, index) => {
+    seriesVars[`cScale${index}`] = color;
+    // Labels drawn on a series colour: our tones sit at 72% lightness (light)
+    // and 45% (dark), so the app's own text colour is the legible partner in
+    // both themes.
+    seriesVars[`cScaleLabel${index}`] = p.content;
+  });
+  // pie1..pie11 come from cScale1..cScale11 (H1..H11); this supplies H0, which
+  // the offset leaves unused, so twelve slices still get twelve distinct hues.
+  seriesVars.pie12 = series[0];
   return {
     darkMode: dark,
     // The block already paints itself with `bg-surface-muted`; a second
@@ -197,6 +253,54 @@ function themeVariables(dark: boolean): Record<string, string | boolean> {
     // ER
     attributeBackgroundColorOdd: p.surface,
     attributeBackgroundColorEven: p.surfaceMuted,
+
+    // data diagrams — the categorical scale, see SERIES_HUES
+    ...seriesVars,
+    pieTitleTextColor: p.content,
+    pieSectionTextColor: p.content,
+    pieLegendTextColor: p.content,
+    // 1px of surface between slices: two neighbouring hues at the same
+    // lightness are otherwise hard to tell apart at the boundary.
+    pieStrokeColor: p.surface,
+    pieStrokeWidth: "1px",
+    pieOpacity: "1",
+
+    // quadrant — zones are large areas, so they use the card bands
+    quadrant1Fill: quadrantTint(0, dark),
+    quadrant2Fill: quadrantTint(1, dark),
+    quadrant3Fill: quadrantTint(2, dark),
+    quadrant4Fill: quadrantTint(3, dark),
+    quadrant1TextFill: p.content,
+    quadrant2TextFill: p.content,
+    quadrant3TextFill: p.content,
+    quadrant4TextFill: p.content,
+    quadrantPointFill: p.content,
+    quadrantPointTextFill: p.surface,
+    quadrantXAxisTextFill: p.contentMuted,
+    quadrantYAxisTextFill: p.contentMuted,
+    quadrantInternalBorderStrokeFill: p.edge,
+    quadrantExternalBorderStrokeFill: p.edge,
+    quadrantTitleFill: p.content,
+
+    // xychart-beta: mermaid REPLACES this nested object with whatever it is
+    // given (after filling in its own defaults), so every key it reads has to
+    // be present — a partial object would blank the axes. Keys mirror the base
+    // theme in mermaid 11.17; keep them in sync when the dependency moves.
+    xyChart: {
+      backgroundColor: "transparent",
+      titleColor: p.content,
+      dataLabelColor: p.contentMuted,
+      legendTextColor: p.contentMuted,
+      xAxisTitleColor: p.contentMuted,
+      xAxisLabelColor: p.contentMuted,
+      xAxisTickColor: p.contentSubtle,
+      xAxisLineColor: p.edge,
+      yAxisTitleColor: p.contentMuted,
+      yAxisLabelColor: p.contentMuted,
+      yAxisTickColor: p.contentSubtle,
+      yAxisLineColor: p.edge,
+      plotColorPalette: series.join(","),
+    },
   };
 }
 
@@ -238,6 +342,46 @@ function firstLine(message: string): string {
   return line.length > 180 ? `${line.slice(0, 180)}…` : line;
 }
 
+type MermaidLook = "classic" | "handDrawn" | "neo";
+
+/**
+ * Mermaid supports an `%%{init: ...}%%` directive at the top of a diagram.
+ * Let the model choose the visual stroke style, but keep the app's theme,
+ * security level, fonts and external-resource policy authoritative. Unknown
+ * init keys are discarded and the directive is rewritten to the small safe
+ * subset before Mermaid sees it.
+ */
+function normalizeMermaidInit(source: string): { renderSource: string; look: MermaidLook } {
+  const lines = source.split("\n");
+  const first = lines[0] ?? "";
+  const match = /^\s*%%\s*\{\s*init\s*:\s*(\{.*\})\s*\}\s*%%\s*$/i.exec(first);
+  if (!match) return { renderSource: source, look: "classic" };
+
+  let config: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(match[1]);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { renderSource: lines.slice(1).join("\n"), look: "classic" };
+    }
+    config = parsed as Record<string, unknown>;
+  } catch {
+    // An invalid init directive should not make an otherwise valid diagram
+    // fail; drop it and let Mermaid parse the diagram body.
+    return { renderSource: lines.slice(1).join("\n"), look: "classic" };
+  }
+
+  const look = config.look === "handDrawn" || config.look === "neo" || config.look === "classic"
+    ? config.look
+    : "classic";
+  const safe: Record<string, unknown> = { look };
+  if (look === "handDrawn" && Number.isInteger(config.handDrawnSeed)) {
+    const seed = Number(config.handDrawnSeed);
+    if (seed >= 0 && seed <= 1_000_000) safe.handDrawnSeed = seed;
+  }
+  lines[0] = `%%{init: ${JSON.stringify(safe)}}%%`;
+  return { renderSource: lines.join("\n"), look };
+}
+
 type RenderState =
   | { status: "rendering" }
   | { status: "ready"; svg: string }
@@ -250,10 +394,17 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string 
   const themeSignature = useThemeSignature();
   // Trailing newline is an artifact of the fenced block, not the diagram.
   const source = code.replace(/\s+$/, "");
+  const normalized = normalizeMermaidInit(source);
+  // What mermaid parses. Differs from `source` only in the colours the model
+  // and the small safe visual-style directive: those are re-fitted or
+  // normalized for the theme in play (see lib/themeColor.ts). The user still
+  // sees and copies the ORIGINAL source — the toggle and copy button use
+  // `source`.
+  const renderSource = fitMermaidSource(normalized.renderSource, themeSignature.startsWith("dark"));
   const tooLarge = source.length > MAX_SOURCE_CHARS;
 
   const [state, setState] = useState<RenderState>(() => {
-    const cached = getMermaidSvg(mermaidCacheKey(source, themeSignature));
+    const cached = getMermaidSvg(mermaidCacheKey(renderSource, themeSignature));
     return cached ? { status: "ready", svg: cached } : { status: "rendering" };
   });
   const [showSource, setShowSource] = useState(false);
@@ -268,7 +419,7 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string 
 
   useEffect(() => {
     if (tooLarge) return;
-    const key = mermaidCacheKey(source, themeSignature);
+    const key = mermaidCacheKey(renderSource, themeSignature);
     const cached = getMermaidSvg(key);
     if (cached) {
       setState({ status: "ready", svg: cached });
@@ -283,7 +434,7 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string 
         const id = `mc-mmd-${++renderSeq}`;
         try {
           const mermaid = await ensureMermaid(themeSignature);
-          const { svg } = await mermaid.render(id, source);
+          const { svg } = await mermaid.render(id, renderSource);
           if (cancelled || !alive.current) return;
           setMermaidSvg(key, svg);
           setState({ status: "ready", svg });
@@ -304,7 +455,7 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string 
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [source, themeSignature, tooLarge]);
+  }, [renderSource, themeSignature, tooLarge]);
 
   const failed = state.status === "error" || tooLarge;
   const sourceVisible = showSource || failed;
@@ -312,6 +463,7 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string 
   return (
     <div
       data-mermaid
+      data-mermaid-look={normalized.look}
       className="my-[var(--chat-md-gap-md)] overflow-hidden rounded-xl border border-edge bg-surface-muted"
     >
       <div className="flex h-[34px] items-center justify-between gap-2 border-b border-edge pl-3 pr-1.5 text-content-subtle [font-size:var(--chat-fs-xxs)]">

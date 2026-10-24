@@ -16,8 +16,18 @@
  *     in dark mode; the mermaid SVG is re-rendered with the other palette; and
  *     a fenced code block swaps BOTH its ground (`--code-bg`) and its token
  *     colours when the theme flips.
- *  5. Both switches work: 渲染 HTML off → the markup shows literally; mermaid
- *     off → the fence shows as code.
+ *  4c. An ```html fence renders as the card it describes (models wrap markup
+ *     in a fence out of habit), and a `<style>` block does not leak its CSS
+ *     into the reply as text.
+ *  4d. A bare `<svg>` whose shape groups are separated by BLANK LINES still
+ *     renders as one element — `svg` is not a CommonMark type-6 HTML block, so
+ *     without `normalizeInlineSvg` the tag closes at the first blank line and
+ *     the labels spill out below it as loose body text.
+ *  4e. That same ```html fence offers a 源码 / 预览 switch, defaulting to the
+ *     rendered card and returning to it after a round trip.
+ *  5. Both switches work: 渲染 HTML off → the markup shows literally (and the
+ *     ```html fence goes back to being a code block); mermaid off → the fence
+ *     shows as code.
  *
  * The last two are the point of the feature being opt-out rather than opt-in:
  * if a toggle is ignored, a user cannot get out of a broken render.
@@ -49,6 +59,20 @@ const REPLY = [
   "graph TD",
   "  A[开始] --> B{判断}",
   "  B -->|是| C[结束]",
+  // A model-authored semantic colour — the only place a diagram colour is
+  // allowed to come from the model (`fitMermaidSource` re-fits it per theme).
+  // Put on the LAST node so the first `<rect>` stays the neutral surface every
+  // other assertion in this file reads.
+  "  classDef hot fill:#ef4444,stroke:#b91c1c,color:#ffffff",
+  "  class C hot",
+  FENCE,
+  "",
+  `${FENCE}mermaid`,
+  // The renderer keeps the model-selected look but strips themeVariables and
+  // other global config keys before Mermaid sees the directive.
+  `%%{init: {"look":"handDrawn","themeVariables":{"fontFamily":"Comic Sans"}}}%%`,
+  "flowchart LR",
+  "  S[草图] --> T[完成]",
   FENCE,
   "",
   // A fenced code block: shiki bakes its palette into BOTH the token colours
@@ -76,6 +100,38 @@ const REPLY = [
   '<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="window.__mdPwned = 2" alt="probe">',
   "",
   '<a href="javascript:window.__mdPwned=3">bad link</a>',
+  "",
+  // The way a model actually writes a card half the time: fenced as html. It
+  // has to render as the card, not as the card's source code.
+  `${FENCE}html`,
+  '<div style="padding:9px;border:1px solid #8b5cf6">围栏卡片</div>',
+  FENCE,
+  "",
+  // Not an allowed tag, so the ELEMENT is dropped — but sanitize UNWRAPS an
+  // un-allowed element rather than discarding it, which used to leave this
+  // rule sitting in the reply as visible text. `strip` in HTML_SCHEMA fixes it.
+  "<style>.leaked{color:red}</style>",
+  "",
+  // A bare inline <svg> written the way a model writes one: blank lines
+  // BETWEEN the shape groups. That matters — `svg` is not a CommonMark type-6
+  // HTML block, so without `normalizeInlineSvg` the element ends at the first
+  // blank line, parse5 auto-closes it after `</defs>`, and everything below
+  // spills into the body as loose <text>/<circle> nodes (visible symptom: an
+  // empty rounded box with the labels printed underneath it).
+  '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120" role="img" aria-label="svg 探针">',
+  "",
+  "  <defs>",
+  '    <linearGradient id="probeGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b5cf6"></stop><stop offset="1" stop-color="#22c55e"></stop></linearGradient>',
+  "  </defs>",
+  "",
+  '  <rect x="0.5" y="0.5" width="319" height="119" rx="14" fill="none" stroke="#2b3244"></rect>',
+  "",
+  '  <circle cx="60" cy="60" r="30" fill="url(#probeGrad)"></circle>',
+  "",
+  '  <text x="110" y="55" fill="#f2f4fa" font-size="16">图形保真</text>',
+  '  <text x="110" y="80" fill="#7c8398" font-size="13">blank lines probe</text>',
+  "",
+  "</svg>",
 ].join("\n");
 
 await electronTest(
@@ -130,6 +186,7 @@ await electronTest(
     // Streaming renders progressively even for a settled message; wait for the
     // slowest piece (mermaid) so the tree is complete before asserting.
     await wait("Boolean(document.querySelector('[data-mermaid] .mermaid-svg > svg'))");
+      await wait("Boolean(document.querySelector('[data-mermaid][data-mermaid-look=\"handDrawn\"] .mermaid-svg > svg'))");
 
     /* ── 1. LaTeX ──────────────────────────────────────────────────────── */
     assert.ok(
@@ -156,8 +213,8 @@ await electronTest(
     // so `[data-mermaid] svg` would also count the copy/chevron glyphs.
     assert.equal(
       await evaluate("document.querySelectorAll('[data-mermaid] .mermaid-svg > svg').length"),
-      1,
-      "mermaid fence renders exactly one diagram (plus the block's icon glyphs)",
+      2,
+      "mermaid fences render both diagrams (plus the block's icon glyphs)",
     );
     assert.equal(
       await evaluate("document.querySelector('[data-mermaid] .mermaid-svg > svg').getAttribute('class')"),
@@ -226,6 +283,30 @@ await electronTest(
       await evaluate("document.querySelectorAll('.chat-md img[alt=\"probe\"]').length"),
       1,
       "an allowlisted img still renders",
+    );
+
+    /* ── 4c. ```html fence ────────────────────────────────────────────── */
+    // `.chat-md div` matches the card's own wrapper too (the fence body is
+    // rendered through `<Markdown>`, so it brings a `chat-md` div with it) —
+    // take the element that actually carries the inline style.
+    const fenceCard = await evaluate(`(()=>{
+      const el=[...document.querySelectorAll('.chat-md div')]
+        .filter(e=>e.textContent==='围栏卡片')
+        .find(e=>e.hasAttribute('style'));
+      if(!el) return null;
+      const asCode=[...document.querySelectorAll('.chat-md pre')].find(p=>p.textContent.includes('围栏卡片'));
+      return {tag:el.tagName, style:el.getAttribute('style')||'', asCode:!!asCode};
+    })()`);
+    assert.ok(fenceCard, "an ```html fence renders as markup, not as source");
+    assert.ok(
+      fenceCard.style.includes("padding") && fenceCard.style.includes("border"),
+      `the fenced card keeps its safe declarations (got ${JSON.stringify(fenceCard.style)})`,
+    );
+    assert.equal(fenceCard.asCode, false, "the fenced card is not ALSO shown as a code block");
+    assert.equal(
+      await evaluate("document.querySelector('.chat-md').textContent.includes('.leaked{color:red}')"),
+      false,
+      "a <style> block does not leak its CSS as visible text",
     );
 
     /* ── 4b. Theme fitting ────────────────────────────────────────────── */
@@ -324,6 +405,34 @@ await electronTest(
       "the SVG itself stays transparent so the block's own surface shows through",
     );
 
+    /* ── 4c. mermaid classDef colours are fitted, not trusted ─────────── */
+    // `#ef4444` is a light-theme red. Mermaid copies classDef colours straight
+    // into the stylesheet it embeds, so without `fitMermaidSource` the light
+    // diagram would carry a fill at the wrong depth for this theme and the dark
+    // one a glaring red node. Same contract as HTML cards: HUE survives,
+    // LIGHTNESS is the theme's.
+    const hotNode = () =>
+      evaluate(`(()=>{
+        const g=[...document.querySelectorAll('[data-mermaid] .mermaid-svg > svg g')]
+          .find(n=>(n.getAttribute('class')||'').split(/\\s+/).includes('hot'));
+        const r=g&&g.querySelector('rect');
+        if(!r) return null;
+        return {fill:getComputedStyle(r).fill, stroke:getComputedStyle(r).stroke};
+      })()`);
+    const channels = (value) => (String(value).match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+    // Measured here, asserted below: the dark pass is where the contrast
+    // between the two themes is meaningful.
+    const lightHot = await hotNode();
+    assert.ok(lightHot, "the classDef-styled node is in the diagram (light)");
+    const [lr, lg, lb] = channels(lightHot.fill);
+    assert.ok(lr + lg + lb > 600, `light: the red fill is snapped onto the light band (${lightHot.fill})`);
+    assert.ok(
+      lr - Math.max(lg, lb) > 8,
+      `light: the fill keeps its red HUE rather than flattening to grey (${lightHot.fill})`,
+    );
+    const [sr, , sb] = channels(lightHot.stroke);
+    assert.ok(sr > sb, `light: the border keeps the same hue (${lightHot.stroke})`);
+
     // Code block, light pass: the highlighter is lazy (first fenced block), so
     // wait for its output rather than reading straight after the reload.
     await wait("Boolean(document.querySelector('.chat-md pre.shiki span'))");
@@ -355,6 +464,23 @@ await electronTest(
       "dark: the same diagram is re-rendered with the dark palette",
     );
 
+    // Same two nodes, re-fitted for the dark theme. The diagram is re-parsed
+    // from the REFITTED source, so the fill has to land as a dark inset while
+    // keeping the hue the model asked for.
+    await wait(`(()=>{const g=[...document.querySelectorAll('[data-mermaid] .mermaid-svg > svg g')]
+      .find(n=>(n.getAttribute('class')||'').split(/\\s+/).includes('hot'));
+      const r=g&&g.querySelector('rect');
+      if(!r) return false;
+      return getComputedStyle(r).fill.match(/[\\d.]+/g).slice(0,3).map(Number).reduce((a,n)=>a+n,0) < 240})()`);
+    const darkHot = await hotNode();
+    assert.ok(darkHot, "the classDef-styled node is still on screen in dark mode");
+    const [dr, dg, db] = channels(darkHot.fill);
+    assert.ok(dr + dg + db < 240, `dark: the same fill becomes a dark inset (${darkHot.fill})`);
+    assert.ok(
+      dr - Math.max(dg, db) > 8,
+      `dark: the hue survives the refit (${darkHot.fill})`,
+    );
+
     // Code block, dark pass: the ground flips with the palette and the tokens
     // are re-highlighted — this is the screenshot's bug
     // ("代码块输出背景色没有跟随 MarioCode 深浅改变") in assertion form.
@@ -376,6 +502,85 @@ await electronTest(
     assert.ok(
       channelSum(darkCode.bg) < 200,
       `dark: that ground is the dark well, not github-light's white (${darkCode.bg})`,
+    );
+
+    /* ── 4d. inline <svg> with blank lines ───────────────────────────── */
+    // Everything the model wrote must land INSIDE the <svg>: the bug was not
+    // sanitize (the allowlist keeps the whole shape vocabulary) but block
+    // parsing — each blank line ended the type-7 HTML block and the remaining
+    // fragments became loose body elements.
+    const svgProbe = await evaluate(`(()=>{
+      const svg=[...document.querySelectorAll('.chat-md svg')]
+        .find(s=>s.textContent.includes('图形保真'));
+      if(!svg) return null;
+      const kids=[...svg.children].map(n=>n.tagName.toLowerCase());
+      const nested=svg.querySelectorAll('text').length;
+      // Any <text> that parsed OUTSIDE every <svg> — the "labels spilled below
+      // the box" symptom itself.
+      const loose=[...document.querySelectorAll('.chat-md text')]
+        .filter(n=>!n.closest('svg')).length;
+      const grad=svg.querySelector('defs')?.firstElementChild ?? null;
+      return {
+        kids, nested, loose,
+        defs: kids.includes('defs'), rect: kids.includes('rect'), circle: kids.includes('circle'),
+        text: kids.includes('text'),
+        gradTag: grad ? grad.tagName.toLowerCase() : null,
+        gradId: grad ? grad.getAttribute('id') : null,
+        fill: svg.querySelector('circle')?.getAttribute('fill') ?? '',
+      };
+    })()`);
+    assert.ok(svgProbe, "a bare <svg> with blank lines still renders");
+    assert.equal(
+      svgProbe.loose,
+      0,
+      `no <text> escapes the <svg> (got ${svgProbe.loose} loose)`,
+    );
+    assert.ok(
+      svgProbe.defs && svgProbe.rect && svgProbe.circle && svgProbe.text,
+      `every shape group is a child of <svg> after the blank lines (got ${JSON.stringify(svgProbe.kids)})`,
+    );
+    assert.equal(svgProbe.nested, 2, `both <text> labels are inside <svg> (got ${svgProbe.nested})`);
+    assert.equal(svgProbe.gradTag, "lineargradient", "the <defs> gradient is kept as a gradient");
+    assert.equal(svgProbe.gradId, "probeGrad", "the gradient id survives un-clobbered");
+    assert.ok(
+      svgProbe.fill.includes("probeGrad"),
+      `fill="url(#probeGrad)" is intact (got ${JSON.stringify(svgProbe.fill)})`,
+    );
+
+    /* ── 4e. html fence: 源码 / 预览 switch ───────────────────────────── */
+    // Default view is 预览 (the rendered card); the header's single switch
+    // button must flip to the fence's own source and back. Located by label so
+    // the assertion is about behaviour, not about where the button sits —
+    // but SCOPED to the card's own header: `MermaidBlock` offers a 源码 switch
+    // too, and the mermaid fence sits EARLIER in this message, so an unscoped
+    // `find(textContent === "源码")` would toggle the diagram instead of the
+    // card (and then wait forever for markup that card never shows).
+    // The language chip (`span.font-mono` reading "html") is the anchor that
+    // tells the two headers apart, and it exists in both states: the card's own
+    // `CodeCardHeader`, and `CodeBlock`'s once the source is showing.
+    const clickSwitch = (label) =>
+      evaluate(`(()=>{
+        const chip=[...document.querySelectorAll('.chat-md span.font-mono')]
+          .find(s=>s.textContent.trim()==='html');
+        const header=chip&&chip.parentElement;
+        const btn=header&&[...header.querySelectorAll('button')]
+          .find(b=>b.textContent.trim()===${JSON.stringify(label)});
+        if(!btn) return false;
+        btn.click();
+        return true;
+      })()`);
+    assert.equal(await clickSwitch("源码"), true, "the html card offers a 源码 switch");
+    await wait("!![...document.querySelectorAll('.chat-md pre')].find(p=>p.textContent.includes('border:1px solid #8b5cf6'))");
+    assert.equal(
+      await evaluate(
+        `[...document.querySelectorAll('.chat-md div')].filter(e=>e.textContent==='围栏卡片').filter(e=>e.hasAttribute('style')).length`,
+      ),
+      0,
+      "源码: the rendered card is replaced by its source, not shown alongside",
+    );
+    assert.equal(await clickSwitch("预览"), true, "the switch reads 预览 once the source is showing");
+    await wait(
+      "[...document.querySelectorAll('.chat-md div')].some(e=>e.textContent==='围栏卡片'&&e.hasAttribute('style'))",
     );
 
     /* ── 5a. 渲染 HTML off ────────────────────────────────────────────── */
@@ -400,6 +605,13 @@ await electronTest(
       (await allText()).includes("折叠里的内容"),
       true,
       "HTML switch off: the markup is shown as text",
+    );
+    assert.equal(
+      await evaluate(
+        "[...document.querySelectorAll('.chat-md pre')].some(p=>p.textContent.includes('围栏卡片'))",
+      ),
+      true,
+      "HTML switch off: the ```html fence is a code block again",
     );
     // Math and mermaid are independent of the HTML switch.
     assert.ok(

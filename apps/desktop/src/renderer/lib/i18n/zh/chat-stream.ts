@@ -96,6 +96,8 @@ export const zh = {
   "chatStream.copyCode": "复制代码",
   "chatStream.code.expand": "展开",
   "chatStream.code.collapse": "收起",
+  "chatStream.html.preview": "预览",
+  "chatStream.html.source": "源码",
   "chatStream.mermaid.source": "源码",
   "chatStream.mermaid.diagram": "图表",
   "chatStream.mermaid.rendering": "正在绘制图表…",

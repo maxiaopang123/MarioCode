@@ -31,6 +31,10 @@ const MARKERS = [
   "$...$", // inline math
   "$$", // display math
   "```mermaid", // the fence the renderer switches on
+  "handDrawn", // Mermaid look can be selected without opening themeVariables
+  "classDef", // the only place the model is allowed to write a diagram colour
+  "xychart-beta", // data charts are named outright, not left to paraphrase
+  "```html", // visual cards are fenced and rendered as previews
   "<details>", // collapsible raw HTML
   "z-index", // the property the sanitizer drops — the prompt must say so
 ];

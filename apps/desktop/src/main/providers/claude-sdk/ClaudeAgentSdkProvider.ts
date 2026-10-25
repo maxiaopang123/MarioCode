@@ -11,7 +11,6 @@ import { sshMcpConfig } from "@main/mcp/sshCatalog.js";
 import { SSH_MCP_SERVER_NAME, isSshMcpTool } from "@contracts/ssh";
 import { z } from "zod";
 import { is } from "@main/utils.js";
-import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "@anthropic-ai/claude-agent-sdk";
 import type { Options, CanUseTool, OnUserDialog, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type {
   AgentProvider,
@@ -135,9 +134,9 @@ function makeSettleGate(): { promise: Promise<void>; release: () => void } {
 
 /**
  * Build the SDK `prompt` argument for a turn: an AsyncIterable yielding ONE
- * user message (text block + any inline base64 image blocks — the same
- * inline-encoding the Claude Code CLI uses for user-attached images), then
- * HOLDING OPEN until the turn settles.
+ * user message (optional hidden reminder + text block + any inline base64
+ * image blocks — the same inline-encoding the Claude Code CLI uses for
+ * user-attached images), then HOLDING OPEN until the turn settles.
  *
  * Why the hold: with a plain string (or a one-shot iterable) the SDK closes
  * the CLI's stdin after the first result message (`isSingleUserTurn` /
@@ -158,12 +157,20 @@ function buildPromptInput(
   req: StartTurnRequest,
   gate: { promise: Promise<void> },
   signal: AbortSignal,
+  dynamicReminder = "",
 ): AsyncIterable<SDKUserMessage> {
   const content: (
     | { type: "text"; text: string }
     | { type: "image"; source: { type: "base64"; media_type: ImageMediaType; data: string } }
   )[] = [];
-  // Image-only turns send no text block (the images still reach the model).
+  if (dynamicReminder.trim()) {
+    content.push({
+      type: "text",
+      text: `<system-reminder>\n${dynamicReminder.trim()}\n</system-reminder>`,
+    });
+  }
+  // Image-only turns without a reminder send no text block (the images still
+  // reach the model).
   if (req.prompt.trim()) content.push({ type: "text", text: req.prompt });
   for (const img of req.images ?? []) {
     content.push({
@@ -1399,9 +1406,9 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
       appends.push(bashPathHintFor(detectBashEnv("claude")));
     }
     if (isUiPlanMode) {
-      // This changes with the current UI mode. Keep it after the SDK's
-      // dynamic system-prompt boundary so it cannot move the stable cache
-      // prefix on every resumed turn.
+      // This changes with the current UI mode. It is sent in a hidden
+      // user-message reminder below so it cannot move the stable system
+      // prompt cache prefix on every resumed turn.
       dynamicAppends.push(CLAUDE_PLAN_MODE_NUDGE);
     }
     if (!this.capabilities.supportsAskUserQuestion) {
@@ -1451,19 +1458,18 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     // model reads the user's standing instructions before tool guidance —
     // the same slot Pi's injector and Codex's developerInstructions use.
     appends.splice(1, 0, ...userSystemPromptSections(userPrompt));
+    const dynamicReminder = joinPromptSections(...dynamicAppends);
     options.systemPrompt = {
       type: "preset",
       preset: "claude_code",
-      // SDK 0.3.304 recognizes this standalone line and places the Anthropic
-      // cache boundary after the stable MarioCode additions. The plan nudge
-      // is per-turn, so it must remain after the boundary. This keeps the
-      // system/tools prefix stable without changing query() lifetime.
-      // Blank-line section separation is shared with the Pi injector.
-      append: joinPromptSections(
-        joinPromptSections(...appends),
-        SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
-        joinPromptSections(...dynamicAppends),
-      ),
+      // Keep the preset append stable across turns and runtime versions. The
+      // SDK's dynamic-boundary marker is only defined for custom
+      // `systemPrompt: string[]`; embedding it in this preset `append` string
+      // sends the marker upstream as ordinary prompt text. Per-turn guidance
+      // is injected into the user message below instead, so it cannot move
+      // the system/tools cache prefix.
+      append: joinPromptSections(...appends),
+      snapshot: true,
     };
 
     if (!mcpState.browserDisabled) {
@@ -1532,7 +1538,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
     ctx.log.info(
       `claude turn start: session=${req.sessionId} uiMode=${req.permissionMode} sdkMode=${(typeof options.permissionMode === "string" ? options.permissionMode : "default")} settleGate=on`,
     );
-    const q = await loadQuery().then(query => query({ prompt: buildPromptInput(req, gate, ac.signal), options })).catch(error => {
+    const q = await loadQuery().then(query => query({ prompt: buildPromptInput(req, gate, ac.signal, dynamicReminder), options })).catch(error => {
       ssh.dispose(); for (const timer of settleTimers) clearTimeout(timer); throw error;
     });
 
@@ -1619,7 +1625,7 @@ export class ClaudeAgentSdkProvider implements AgentProvider {
               settleTimers.push(
                 setTimeout(() => retryGate?.release(), PROMPT_SETTLE_FALLBACK_MS),
               );
-              activeQuery = (await loadQuery())({ prompt: buildPromptInput(req, retryGate, ac.signal), options });
+              activeQuery = (await loadQuery())({ prompt: buildPromptInput(req, retryGate, ac.signal, dynamicReminder), options });
               activeAdapter = new SdkMessageAdapter(
                 ctx,
                 req.sessionId,

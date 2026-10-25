@@ -23,6 +23,7 @@ import { unpackPiHostPath } from "@main/providers/pi-sdk/piHostPath.js";
 import { normalizePiRegisteredModel } from "@main/providers/pi-sdk/piRegisteredModel.js";
 import { SharedProviderStore } from "@main/lib/sharedProviderStore.js";
 import { runBridgeRegressions } from "./bridge-regressions.js";
+import { runIrRegressions } from "./ir-regressions.js";
 import { addSession, corruptSharedKey, rawSettings } from "./stub-db.js";
 import { setEncryptionAvailable } from "./stub-electron.js";
 import { CustomModelStore } from "@main/lib/secretStore.js";
@@ -934,6 +935,7 @@ try { translateCodexRequest({ input: [], tools: [{ type: "web_search" }] }, "cha
 check("Codex rejects unsupported tools rather than dropping them", rejectedTool);
 const disconnectedEvents: WireObject[] = [];
 await runBridgeRegressions(check);
+runIrRegressions(check);
 const disconnectedStream = new CodexResponsesStream("chat-completions", "m", new Set(), (event) => disconnectedEvents.push(event));
 disconnectedStream.start();
 let disconnected = false;

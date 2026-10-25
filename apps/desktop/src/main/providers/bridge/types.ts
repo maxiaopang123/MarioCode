@@ -186,10 +186,14 @@ export interface OpenAIUsage {
   total_tokens?: number;
   /** Cache-read tokens, OpenAI-style (automatic prefix caching). Unlike
    *  Anthropic, `prompt_tokens` INCLUDES this count. */
-  prompt_tokens_details?: { cached_tokens?: number };
+  prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
   /** Cache-hit tokens, DeepSeek-style. Gateways that don't implement
    *  `prompt_tokens_details` report hits here instead. */
   prompt_cache_hit_tokens?: number;
+  /** Flat spellings some gateways use instead of `prompt_tokens_details`. */
+  cached_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
 }
 
 /** One SSE chunk from OpenAI's streaming response. */

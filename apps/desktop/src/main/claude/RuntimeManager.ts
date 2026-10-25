@@ -636,7 +636,7 @@ class RuntimeManager {
         // Anthropic-compatible endpoint on localhost. The bridge is shared
         // across sessions via the registry (grouped by config id and revision,
         // then reference-counted).
-        if (cfg.protocol === "openai" || cfg.protocol === "responses") {
+        if (cfg.protocol === "openai" || cfg.protocol === "responses" || cfg.protocol === "anthropic") {
           // A saved provider may have a newer revision while this session is
           // still holding the old one. Acquire the new listener first so a
           // failed startup leaves the old revision usable, then release the

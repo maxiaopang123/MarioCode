@@ -29,6 +29,12 @@ import {
   resolveUpstreamHeaders,
   SESSION_HEADER,
 } from "@main/providers/upstreamHeaders.js";
+import {
+  buildAnthropicUpstreamUrl,
+  forwardRequestHeaders,
+  forwardResponseHeaders,
+  normalizeSystemMessages,
+} from "./anthropicPassthrough.js";
 import { anthropicToOpenAI } from "./requestTranslator.js";
 import { OpenAiToAnthropicSse } from "./responseTranslator.js";
 import { anthropicToResponses } from "./responsesRequestTranslator.js";
@@ -329,12 +335,15 @@ async function handleMessages(
     catch (error) { sendError(res, 400, `invalid request body: ${describeFetchError(error)}`); return; }
     ac.signal.throwIfAborted();
     const isResponses = upstream.protocol === "responses";
-    const upstreamUrl = buildUpstreamUrl(upstream.baseUrl, upstream.protocol);
+    // "anthropic" never reaches this handler (it is routed to the pass-through
+    // handler in the server callback), so the target here is one of two.
+    const upstreamUrl = buildUpstreamUrl(upstream.baseUrl, isResponses ? "responses" : "chat-completions");
     const translated = isResponses ? anthropicToResponses(body) : anthropicToOpenAI(body);
     translated.stream = true;
     if (!isResponses) (translated as OpenAIRequest).stream_options = { include_usage: true };
+    const payload = JSON.stringify(translated);
     const response = await fetchUpstreamWithRetry(upstreamUrl, {
-      method: "POST", headers: upstreamHeaders(upstream, sessionId), body: JSON.stringify(translated),
+      method: "POST", headers: upstreamHeaders(upstream, sessionId), body: payload,
     }, ac.signal, onStatus, 2, 500, fetchUpstream);
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
@@ -367,6 +376,100 @@ async function handleMessages(
   } catch (error) {
     const cause = describeFetchError(ac.signal.aborted ? ac.signal.reason : error);
     log.error(`bridge: upstream request failed: ${cause}`);
+    sendError(res, 502, cause);
+  } finally {
+    if (timer) clearTimeout(timer);
+    ac.abort();
+    await reader?.cancel().catch(() => {});
+    reader?.releaseLock();
+    req.off("aborted", disconnect);
+    res.off("close", disconnect);
+  }
+}
+
+/** Read the whole request body as text, with the same size guard as
+ *  {@link readJsonBody}. Pass-through needs the original bytes so an untouched
+ *  request can be forwarded exactly as the binary wrote it. */
+function readRawBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > 32 * 1024 * 1024) {
+        reject(new Error("request body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("error", reject);
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+  });
+}
+
+/** Anthropic-protocol endpoints: same wire in and out. The only thing the bridge
+ *  changes is the spelling of replayed `system` messages (see
+ *  `anthropicPassthrough.ts`); the response streams back untouched. Every path is
+ *  forwarded (not just `/v1/messages`) so `count_tokens` and friends keep
+ *  working exactly as they did on the direct connection. */
+async function handleAnthropicPassthrough(
+  req: IncomingMessage,
+  res: ServerResponse,
+  upstream: UpstreamConfig,
+  sessionId: string,
+  onStatus?: (s: BridgeStatus) => void,
+  fetchUpstream: typeof engineFetch = engineFetch,
+): Promise<void> {
+  const ac = new AbortController();
+  const timer = upstream.timeoutMs ? setTimeout(() => ac.abort(new Error("Upstream request timed out")), upstream.timeoutMs) : undefined;
+  timer?.unref();
+  const disconnect = () => { if (!res.writableEnded) ac.abort(new Error("Claude client disconnected")); };
+  req.once("aborted", disconnect);
+  res.once("close", disconnect);
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  try {
+    const rawUrl = req.url ?? "/";
+    const path = rawUrl.split("?", 2)[0];
+    const method = req.method ?? "POST";
+    let payload: string | undefined;
+    if (method !== "GET" && method !== "HEAD") {
+      try { payload = await readRawBody(req); }
+      catch (error) { sendError(res, 400, `invalid request body: ${describeFetchError(error)}`); return; }
+      if (method === "POST" && payload && (path.endsWith("/v1/messages") || path.endsWith("/messages"))) {
+        try {
+          const parsed: unknown = JSON.parse(payload);
+          // Re-serialise only when something changed; otherwise the binary's
+          // own bytes go out untouched.
+          if (normalizeSystemMessages(parsed)) payload = JSON.stringify(parsed);
+        } catch {
+          // Not JSON: forward as-is and let the upstream answer.
+        }
+      }
+    }
+    ac.signal.throwIfAborted();
+    // The binary already carries the endpoint's credential and its custom
+    // headers; fill in only what is missing (the auto session id, which
+    // `buildCustomEnv` cannot derive once the base URL is the local bridge).
+    const extra: Record<string, string> = resolveUpstreamHeaders(upstream.customHeaders, upstream.baseUrl, sessionId);
+    if (upstream.authMode === "api_key") extra["x-api-key"] = upstream.authToken;
+    else extra["Authorization"] = `Bearer ${upstream.authToken}`;
+    const response = await fetchUpstreamWithRetry(buildAnthropicUpstreamUrl(upstream.baseUrl, rawUrl), {
+      method, headers: forwardRequestHeaders(req.headers, extra), body: payload,
+    }, ac.signal, onStatus, 2, 500, fetchUpstream);
+    res.writeHead(response.status, forwardResponseHeaders(response.headers));
+    if (!response.body) { res.end(); return; }
+    reader = response.body.getReader();
+    for (;;) {
+      ac.signal.throwIfAborted();
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+    res.end();
+  } catch (error) {
+    const cause = describeFetchError(ac.signal.aborted ? ac.signal.reason : error);
+    log.error(`bridge: anthropic pass-through failed: ${cause}`);
     sendError(res, 502, cause);
   } finally {
     if (timer) clearTimeout(timer);
@@ -422,6 +525,13 @@ export async function startBridge(upstream: UpstreamConfig, fetchUpstream: typeo
     // gateways (e.g. MiniMax-M3). Matching on the path alone fixes it.
     const rawUrl = req.url ?? "";
     const path = rawUrl.split("?", 2)[0];
+    if (upstream.protocol === "anthropic") {
+      handleAnthropicPassthrough(req, res, upstream, bridgeSessionId, notifyStatus, fetchUpstream).catch((err) => {
+        log.error(`bridge: pass-through handler threw: ${(err as Error).message}`);
+        sendError(res, 500, "internal bridge error");
+      });
+      return;
+    }
     if (req.method === "POST" && (path.endsWith("/v1/messages") || path.endsWith("/messages"))) {
       handleMessages(req, res, upstream, bridgeSessionId, notifyStatus, fetchUpstream).catch((err) => {
         log.error(`bridge: handler threw: ${(err as Error).message}`);

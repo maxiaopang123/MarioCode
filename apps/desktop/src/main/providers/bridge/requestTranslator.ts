@@ -9,7 +9,10 @@
  * ## Key shape differences handled here
  *
  * 1. **System prompt**: Anthropic carries `system` as a top-level field; OpenAI
- *    wants it as the first `{role:"system"}` message.
+ *    wants it as the first `{role:"system"}` message. The binary also puts
+ *    `system` messages *inside* `messages[]` (environment block, deferred-tool
+ *    notices), and those go out as `user` at their own position — see the
+ *    note in `translateMessage`.
  * 2. **Content blocks vs. strings**: Anthropic's `messages[].content` is either
  *    a plain string or an array of typed blocks. OpenAI uses a flat `content`
  *    string for user/assistant text, and a separate `tool_calls` array for the
@@ -67,6 +70,25 @@ function joinText(content: string | AnthropicContentBlock[]): string {
  */
 function translateMessage(msg: AnthropicMessage): OpenAIMessage[] {
   const out: OpenAIMessage[] = [];
+
+  // A `system` message inside `messages[]`. The Claude binary injects these
+  // mid-conversation (the environment block, the deferred-tool notices, the
+  // per-turn output-style reminder) and spells them as text blocks on the
+  // turn they are new, as a plain string once replayed from its transcript.
+  //
+  // It goes out as a `user` message — with either spelling, always. magpie
+  // does the same (its Chat builder renders every non-assistant turn as
+  // `user`), and the constancy is what matters: the same history has to
+  // translate to the same bytes on every turn, or the upstream's prefix
+  // cache misses at that message and everything after it is re-sent cold.
+  // This branch sits above the string fast path on purpose: below it, the
+  // string spelling returned `role:"system"` while the block spelling fell
+  // through to the user branch, so one and the same message flipped role
+  // between turns.
+  if (msg.role === "system") {
+    out.push({ role: "user", content: joinText(msg.content) });
+    return out;
+  }
 
   // Plain string content — the common case, no tool involvement.
   if (typeof msg.content === "string") {
@@ -172,14 +194,22 @@ function translateMessage(msg: AnthropicMessage): OpenAIMessage[] {
 }
 
 function translateTools(tools: AnthropicTool[]): OpenAITool[] {
-  return tools.map((t) => ({
-    type: "function",
-    function: {
-      name: t.name,
-      description: t.description,
-      parameters: t.input_schema,
-    },
-  }));
+  // `DeferredToolPlaceholder` is not a tool: it is the marker that keeps
+  // Anthropic's deferred tool loading on, and the binary never calls it. It
+  // also changes as ToolSearch loads and unloads definitions. An OpenAI-
+  // protocol upstream renders `tools` ahead of the conversation, so a tool
+  // list that changes mid-session re-tokenizes the whole prompt; magpie
+  // drops the marker for the same reason.
+  return tools
+    .filter((t) => t.name !== "DeferredToolPlaceholder")
+    .map((t): OpenAITool => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.input_schema,
+      },
+    }));
 }
 
 function translateToolChoice(tc: AnthropicToolChoice): OpenAIRequest["tool_choice"] {

@@ -64,12 +64,16 @@ function formatToolResultOutput(content: unknown, isError?: boolean): string | R
 
 /** Translate Anthropic tools into Responses API tools. */
 function translateResponsesTools(tools: AnthropicTool[]): ResponsesTool[] {
-  return tools.map((t) => ({
-    type: "function",
-    name: t.name,
-    description: t.description,
-    parameters: (t.input_schema ?? {}) as Record<string, unknown>,
-  }));
+  // `DeferredToolPlaceholder` is a marker, not a tool, and it changes as
+  // ToolSearch loads definitions; a changing tool list re-tokenizes the prompt.
+  return tools
+    .filter((t) => t.name !== "DeferredToolPlaceholder")
+    .map((t) => ({
+      type: "function",
+      name: t.name,
+      description: t.description,
+      parameters: (t.input_schema ?? {}) as Record<string, unknown>,
+    }));
 }
 
 /** Translate Anthropic tool_choice into Responses API tool_choice. */
@@ -91,6 +95,20 @@ function translateResponsesToolChoice(
 /** Translate one Anthropic message into zero or more Responses input items. */
 function translateResponsesMessage(msg: AnthropicMessage): ResponsesInputItem[] {
   const out: ResponsesInputItem[] = [];
+
+  // A `system` message inside `messages[]` (environment block, deferred-tool
+  // notices, per-turn reminder). The Claude binary spells it as a block array on
+  // the turn it is new and as a plain string once replayed, so it must go out as
+  // the same role either way — see `translateMessage` in requestTranslator.ts.
+  // Above the string fast path on purpose: below it, the string spelling kept
+  // `role:"system"` while the array spelling fell through to the user branch.
+  if (msg.role === "system") {
+    const text = typeof msg.content === "string"
+      ? msg.content
+      : msg.content.filter((b): b is { type: "text"; text: string } => b.type === "text").map((b) => b.text).join("");
+    out.push({ type: "message", role: "user", content: [{ type: "input_text", text }] });
+    return out;
+  }
 
   if (typeof msg.content === "string") {
     if (msg.role === "assistant") {

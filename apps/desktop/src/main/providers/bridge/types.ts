@@ -62,7 +62,10 @@ export type AnthropicContentBlock =
   | AnthropicImageBlock;
 
 export interface AnthropicMessage {
-  role: "user" | "assistant";
+  /** `system` is not in Anthropic's documented `messages` schema, but the
+   *  Claude binary does put system messages in the list — the environment
+   *  block and the deferred-tool notices arrive that way, mid-conversation. */
+  role: "user" | "assistant" | "system";
   content: string | AnthropicContentBlock[];
 }
 
@@ -241,8 +244,10 @@ export interface UpstreamConfig {
   authToken: string;
   authMode: "auth_token" | "api_key";
   timeoutMs?: number;
-  /** Target wire protocol: "chat-completions" (default) or "responses". */
-  protocol?: "chat-completions" | "responses";
+  /** Target wire protocol: "chat-completions" (default), "responses", or
+   *  "anthropic" (pass-through: same wire in and out, see
+   *  `anthropicPassthrough.ts`). */
+  protocol?: "chat-completions" | "responses" | "anthropic";
   /** Extra headers to send upstream (the config's `customHeaders`). Merged by
    *  `upstreamHeaders()` so both delivery paths send one header set. */
   customHeaders?: Record<string, string>;

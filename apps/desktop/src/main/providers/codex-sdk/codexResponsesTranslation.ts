@@ -31,6 +31,30 @@ function parts(value: unknown, anthropic: boolean): WireObject[] {
   });
 }
 
+const CACHE_MARK = { type: "ephemeral" } as const;
+
+/**
+ * Anthropic prompt caching is opt-in: without a `cache_control` breakpoint the
+ * upstream never caches, however stable the prefix is. Marks are placed at
+ * build time only (the Codex client never sends any):
+ *  - the last system block, or the last tool when there is no system prompt;
+ *  - the last block of the last message, which moves forward each turn. The
+ *    previous turn's breakpoint stays within the upstream's 20-block lookback,
+ *    so it still hits.
+ * At most two breakpoints, well under the limit of four.
+ */
+function markCacheBreakpoints(body: WireObject, system: WireObject[]): void {
+  if (system.length > 0) system[system.length - 1]!.cache_control = CACHE_MARK;
+  else {
+    const tools = array(body.tools);
+    if (tools.length > 0) object(tools[tools.length - 1]).cache_control = CACHE_MARK;
+  }
+  const last = body.messages ? array(body.messages).at(-1) : undefined;
+  const blocks = last ? array(object(last).content) : [];
+  const block = blocks.at(-1);
+  if (block) object(block).cache_control = CACHE_MARK;
+}
+
 export function translateCodexRequest(raw: unknown, protocol: CodexUpstreamProtocol, model: string, maxTokens?: number): TranslatedCodexRequest {
   const request = object(raw);
   if (request.previous_response_id) throw new Error("previous_response_id is not supported by the stateless Codex bridge; send full input history");
@@ -157,6 +181,7 @@ export function translateCodexRequest(raw: unknown, protocol: CodexUpstreamProto
       body.thinking = { type: "enabled", budget_tokens: budget };
     } else body.reasoning_effort = level;
   }
+  if (anthropic) markCacheBreakpoints(body, system);
   return { body, customTools, toolNames };
 }
 

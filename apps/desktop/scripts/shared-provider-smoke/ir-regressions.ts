@@ -1,6 +1,7 @@
 import { anthropicToOpenAI } from "@main/providers/bridge/requestTranslator.js";
 import { anthropicToResponses } from "@main/providers/bridge/responsesRequestTranslator.js";
 import { MISSING_RESULT_TEXT, ORPHAN_RESULT_TEXT } from "@main/providers/bridge/ir.js";
+import { translateCodexRequest } from "@main/providers/codex-sdk/codexResponsesTranslation.js";
 import { OpenAiToAnthropicSse } from "@main/providers/bridge/responseTranslator.js";
 import { ResponsesToAnthropicSse } from "@main/providers/bridge/responsesResponseTranslator.js";
 import type { AnthropicMessage, AnthropicRequest, AnthropicSseEvent, OpenAIChunk } from "@main/providers/bridge/types.js";
@@ -57,6 +58,33 @@ export function runIrRegressions(check: Check): void {
   check("tool_choice and stop_sequences map across", anthropicToOpenAI(req([], { tool_choice: { type: "any" }, stop_sequences: ["x"] })).tool_choice === "required" && anthropicToOpenAI(req([], { stop_sequences: ["x"] })).stop?.[0] === "x");
 
   runIrResponseRegressions(check);
+  runCodexCacheRegressions(check);
+}
+
+function runCodexCacheRegressions(check: Check): void {
+  const marks = (value: unknown): number => (JSON.stringify(value).match(/"cache_control"/g) ?? []).length;
+  const input = [
+    { role: "user", content: [{ type: "input_text", text: "hi" }] },
+    { type: "function_call", call_id: "c1", name: "read", arguments: "{}" },
+    { type: "function_call_output", call_id: "c1", output: "ok" },
+  ];
+  const tools = [{ type: "function", name: "read", parameters: { type: "object" } }, { type: "function", name: "write", parameters: { type: "object" } }];
+
+  const withSystem = translateCodexRequest({ instructions: "sys", input, tools }, "anthropic", "m", 4096).body;
+  const system = withSystem.system as Array<Record<string, unknown>>;
+  const messages = withSystem.messages as Array<{ content: Array<Record<string, unknown>> }>;
+  check("Codex→Anthropic marks the last system block", system.at(-1)?.cache_control !== undefined);
+  check("Codex→Anthropic marks the last block of the last message", messages.at(-1)?.content.at(-1)?.cache_control !== undefined);
+  check("Codex→Anthropic does not mark tools when a system prompt exists", (withSystem.tools as unknown[]).every((t) => marks(t) === 0));
+  check("Codex→Anthropic uses at most two breakpoints", marks(withSystem) === 2);
+
+  const noSystem = translateCodexRequest({ input, tools }, "anthropic", "m", 4096).body;
+  const noSystemTools = noSystem.tools as Array<Record<string, unknown>>;
+  check("Codex→Anthropic without a system prompt marks the last tool", noSystemTools.at(-1)?.cache_control !== undefined && noSystemTools[0]?.cache_control === undefined);
+
+  const empty = translateCodexRequest({ input: [] }, "anthropic", "m", 4096).body;
+  check("Codex→Anthropic with nothing to cache adds no marks", marks(empty) === 0);
+  check("Codex→chat-completions never gets cache_control", marks(translateCodexRequest({ instructions: "sys", input, tools }, "chat-completions", "m", 4096).body) === 0);
 }
 
 type Out = AnthropicSseEvent[];
